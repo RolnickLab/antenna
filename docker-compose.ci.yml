@@ -1,0 +1,8 @@
+version: "3.9"
+
+services:
+  backend:
+    image: "ami-backend:latest"
+
+  frontend:
+    image: "ami-frontend:latest"

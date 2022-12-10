@@ -1,0 +1,61 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^12.1.5",
+    "@testing-library/user-event": "^14.4.3",
+    "@types/jest": "^29.0.3",
+    "@types/node": "^18.11.9",
+    "@types/react": "^17.0.24",
+    "@types/react-dom": "^17.0.0",
+    "axios": "^0.21.4",
+    "ra-data-json-server": "^4.1.2",
+    "ra-data-simple-rest": "^4.5.1",
+    "react": "^17.0.2",
+    "react-admin": "^4.2.2",
+    "react-dom": "^17.0.2",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.7.4",
+    "web-vitals": "^3.1.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache",
+    "eject": "react-scripts eject",
+    "format": "prettier src --write",
+    "run-e2e-tests": "cypress run",
+    "open-e2e-test": "cypress open",
+    "genapi": "openapi-generator-cli generate -i <(curl -s 'http://localhost:8000/api/v1/openapi.json') -g typescript-axios -o src/generated -p withSeparateModelsAndApi=true,apiPackage=api,modelPackage=models,useSingleRequestParameter=true"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest",
+      "plugin:cypress/recommended"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.5.1",
+    "@types/react-router": "^5.1.19",
+    "cypress": "^11.1.0",
+    "cypress-localstorage-commands": "^2.2.1",
+    "eslint-plugin-cypress": "^2.12.1",
+    "prettier": "^2.7.1"
+  }
+}

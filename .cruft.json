@@ -1,0 +1,20 @@
+{
+  "template": "https://github.com/gaganpreet/fastapi-starter",
+  "commit": "d43598a07f1851eb058f5ea6de6115056c88964d",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "project_name": "AMI Data Manager",
+      "project_slug": "ami",
+      "backend_port": "8000",
+      "frontend_port": "3000",
+      "_copy_without_render": [
+        "*node_modules",
+        "*src/App.tsx",
+        "*pages/ProfileEdit.tsx"
+      ],
+      "_template": "https://github.com/gaganpreet/fastapi-starter"
+    }
+  },
+  "directory": null
+}
