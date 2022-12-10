@@ -17,4 +17,4 @@ jobs:
         cache-dependency-path: "frontend/yarn.lock"
         cache: 'yarn'
     - run: cd frontend && yarn install
-    - uses: pre-commit/action@v2.0.0
+    - uses: pre-commit/action@v3.0.0
