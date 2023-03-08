@@ -15,7 +15,7 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 # Install dependencies
 yarn install
 
-# Run the app in the development mode
+# Run app in development mode
 yarn start
 ```
 
