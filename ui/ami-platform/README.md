@@ -51,3 +51,16 @@ To run tests:
 # Launch test runner in interactive watch mode
 yarn test
 ```
+
+## Storybook
+
+We use Storybook to document our design system in code. You can read more about Storybook here.
+
+To run Storybook locally:
+
+```bash
+# Launch Storybook in development mode
+yarn storybook
+```
+
+Now you can navigate to the following URL: http://localhost:6006
