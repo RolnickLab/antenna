@@ -1,5 +1,5 @@
-import React from "react";
-import "./App.css";
+import React from 'react'
+import './App.css'
 
 export const App = () => {
   return (
@@ -8,5 +8,5 @@ export const App = () => {
         <p>Welcome to AMI Platform!</p>
       </header>
     </div>
-  );
-};
+  )
+}
