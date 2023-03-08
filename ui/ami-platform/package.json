@@ -22,6 +22,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "storybook": "start-storybook -p 6006 -s public",
+    "build-storybook": "build-storybook -s public",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

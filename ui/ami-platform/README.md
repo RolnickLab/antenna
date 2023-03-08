@@ -59,8 +59,19 @@ We use Storybook to document our design system in code. You can read more about 
 To run Storybook locally:
 
 ```bash
+# Install dependencies
+yarn install
+
 # Launch Storybook in development mode
 yarn storybook
 ```
 
 Now you can navigate to the following URL: http://localhost:6006
+
+### Publish Storybook
+
+Build Storybook as a static web application:
+
+```bash
+yarn build-storybook
+```
