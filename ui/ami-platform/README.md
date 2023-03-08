@@ -54,7 +54,7 @@ yarn test
 
 ## Storybook
 
-We use Storybook to document our design system in code. You can read more about Storybook here.
+We use Storybook to document our design system in code. You can read more about Storybook [here](https://storybook.js.org/).
 
 To run Storybook locally:
 
@@ -75,3 +75,5 @@ Build Storybook as a static web application:
 ```bash
 yarn build-storybook
 ```
+
+Read more about publishing Storybook [here](https://storybook.js.org/docs/react/sharing/publish-storybook).
