@@ -29,3 +29,18 @@ We use [Prettier](https://prettier.io/) as a code formatter. You can setup your 
 # Auto formats all code in folder src
 yarn format
 ```
+
+## Tests
+
+We use [Jest](https://jestjs.io/) as a test runner. Jest will search the project for for the following files:
+
+- Files with .test.js suffix.
+- Files with .spec.js suffix.
+- Files with .ts suffix in \_\_tests\_\_ folders.
+
+To run tests:
+
+```bash
+# Launch test runner in interactive watch mode
+yarn test
+```
