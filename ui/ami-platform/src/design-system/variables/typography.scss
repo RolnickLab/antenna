@@ -14,9 +14,24 @@
 
 @font-face {
   font-family: 'AzoSans';
+  src: url('./fonts/AzoSans/AzoSans-Medium.otf');
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'AzoSans';
   src: url('./fonts/AzoSans/AzoSans-Bold.otf');
   font-weight: 700;
   font-style: normal;
+}
+
+@mixin paragraph-xx-small {
+  font-family: 'AzoSans';
+  font-style: normal;
+  font-weight: 400;
+  font-size: 10px;
+  line-height: 18px;
 }
 
 @mixin paragraph-small {
@@ -27,10 +42,10 @@
   line-height: 20px;
 }
 
-@mixin paragraph-xx-small {
+@mixin paragraph-large {
   font-family: 'AzoSans';
   font-style: normal;
   font-weight: 400;
-  font-size: 10px;
-  line-height: 18px;
+  font-size: 18px;
+  line-height: 26px;
 }
