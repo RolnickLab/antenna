@@ -1,0 +1,32 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.container {
+  background-color: $color-generic-white;
+  border: 1px solid $color-neutral-200;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.image {
+  width: 100%;
+}
+
+.footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  padding: 12px 16px;
+}
+
+.title {
+  @include paragraph-small();
+  color: $color-neutral-800;
+  font-style: italic;
+}
+
+.subTitle {
+  @include paragraph-xx-small();
+  color: $color-neutral-600;
+}

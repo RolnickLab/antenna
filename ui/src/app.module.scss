@@ -1,0 +1,20 @@
+@import 'design-system/variables/colors.scss';
+
+.wrapper {
+}
+
+.header {
+  background-color: $color-generic-white;
+  height: 64px;
+  border-bottom: 1px solid $color-neutral-200;
+  box-sizing: border-box;
+}
+
+.main {
+  background-color: $color-neutral-100;
+  height: calc(100vh - 64px);
+  padding: 0 100px;
+}
+
+.content {
+}
