@@ -34,8 +34,7 @@ export const NavigationBar = ({
             <div
               role="button"
               tabIndex={0}
-              className={classNames({
-                [styles.item]: true,
+              className={classNames(styles.item, {
                 [styles.active]: activeItemId === item.id,
               })}
               onClick={() => onItemClick(item.id)}
