@@ -1,6 +1,6 @@
 import * as _Checkbox from '@radix-ui/react-checkbox'
-import { CheckIcon } from '@radix-ui/react-icons'
 import classNames from 'classnames'
+import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './checkbox.module.scss'
 
 export enum CheckboxTheme {
@@ -30,7 +30,7 @@ export const Checkbox = ({
         defaultChecked={defaultChecked}
       >
         <_Checkbox.Indicator className={styles.checkboxIndicator}>
-          <CheckIcon />
+          <Icon type={IconType.Checkmark} theme={IconTheme.Light} />
         </_Checkbox.Indicator>
       </_Checkbox.Root>
       <label

@@ -1,0 +1,19 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &.dark {
+    color: $color-generic-black;
+  }
+
+  &.light {
+    color: $color-generic-white;
+  }
+}
+
+.image {
+}
