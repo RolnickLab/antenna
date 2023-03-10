@@ -9,3 +9,11 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+button,
+fieldset,
+input,
+li,
+ul {
+  all: unset;
+}

@@ -26,6 +26,23 @@
   font-style: normal;
 }
 
+@mixin heading-6 {
+  font-family: 'AzoSans';
+  font-style: normal;
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+@mixin heading-5 {
+  font-family: 'AzoSans';
+  font-style: normal;
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+}
+
 @mixin paragraph-xx-small {
   font-family: 'AzoSans';
   font-style: normal;
@@ -48,4 +65,14 @@
   font-weight: 400;
   font-size: 18px;
   line-height: 26px;
+}
+
+// Not present in Figma
+@mixin label {
+  font-family: 'AzoSans';
+  font-style: normal;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 15px;
+  text-transform: uppercase;
 }
