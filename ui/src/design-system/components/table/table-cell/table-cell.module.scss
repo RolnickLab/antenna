@@ -1,0 +1,22 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.container {
+  padding: 36px 16px;
+}
+
+.title {
+  display: block;
+  @include paragraph-medium();
+  color: $color-primary-1-600;
+}
+
+.text {
+  display: block;
+  @include paragraph-x-small();
+  color: $color-neutral-600;
+}
+
+.contentWrapper {
+  margin: 6px 0;
+}
