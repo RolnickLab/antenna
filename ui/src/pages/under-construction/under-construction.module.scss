@@ -1,0 +1,8 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.message {
+  @include heading-6();
+  color: $color-neutral-800;
+  margin: 32px 0;
+}

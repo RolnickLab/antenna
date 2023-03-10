@@ -1,8 +1,5 @@
 @import 'design-system/variables/colors.scss';
 
-.wrapper {
-}
-
 .header {
   background-color: $color-generic-white;
   height: 64px;
@@ -10,11 +7,17 @@
   box-sizing: border-box;
 }
 
-.main {
+.backdrop {
+  background-color: $color-neutral-200;
+  height: 380px;
+  border-radius: 0px 0px 16px 16px;
+  margin-bottom: 32px;
+}
+
+.page {
   background-color: $color-neutral-100;
   height: calc(100vh - 64px);
   padding: 0 100px;
-}
-
-.content {
+  overflow-y: auto;
+  overflow-x: hidden;
 }
