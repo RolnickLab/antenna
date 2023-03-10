@@ -39,6 +39,11 @@ export const NavigationBar = ({
                 [styles.active]: activeItemId === item.id,
               })}
               onClick={() => onItemClick(item.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  onItemClick(item.id)
+                }
+              }}
             >
               <div className={styles.topContent}>
                 {item.count !== undefined && (
