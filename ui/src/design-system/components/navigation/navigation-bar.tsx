@@ -15,7 +15,7 @@ export const NavigationBar = ({
 }: NavigationBarProps) => {
   const [lineStyle, setLineStyle] = useState<React.CSSProperties>({})
 
-  const updateLineStyle = useCallback(() => {
+  useEffect(() => {
     const element = activeItemId && document.getElementById(activeItemId)
     const updatedLineStyle = element
       ? {
@@ -24,16 +24,7 @@ export const NavigationBar = ({
         }
       : {}
     setLineStyle(updatedLineStyle)
-  }, [activeItemId])
-
-  // TODO: Pre load fonts and remove this work around.
-  useEffect(() => {
-    setTimeout(() => {
-      updateLineStyle()
-    }, 200)
-  }, [])
-
-  useEffect(() => updateLineStyle(), [activeItemId])
+  }, [activeItemId, items])
 
   return (
     <nav>

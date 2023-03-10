@@ -1,31 +1,3 @@
-@font-face {
-  font-family: 'AzoSans';
-  src: url('./fonts/AzoSans/AzoSans.otf');
-  font-weight: normal;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'AzoSans';
-  src: url('./fonts/AzoSans/AzoSans-Italic.otf');
-  font-weight: normal;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: 'AzoSans';
-  src: url('./fonts/AzoSans/AzoSans-Medium.otf');
-  font-weight: 600;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'AzoSans';
-  src: url('./fonts/AzoSans/AzoSans-Bold.otf');
-  font-weight: 700;
-  font-style: normal;
-}
-
 @mixin heading-6 {
   font-family: 'AzoSans';
   font-style: normal;
