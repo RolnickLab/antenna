@@ -23,12 +23,28 @@
   line-height: 18px;
 }
 
+@mixin paragraph-x-small {
+  font-family: 'AzoSans';
+  font-style: normal;
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 20px;
+}
+
 @mixin paragraph-small {
   font-family: 'AzoSans';
   font-style: normal;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+}
+
+@mixin paragraph-medium {
+  font-family: 'AzoSans';
+  font-style: normal;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 24px;
 }
 
 @mixin paragraph-large {
