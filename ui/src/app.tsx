@@ -1,4 +1,5 @@
 import { NavigationBar } from 'design-system/components/navigation/navigation-bar'
+import { Deployments } from 'pages/deployments/deployments'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import React from 'react'
@@ -27,6 +28,7 @@ export const App = () => {
         />
         <main>
           <Routes>
+            <Route path="/deployments" element={<Deployments />} />
             <Route path="/occurrences" element={<Occurrences />} />
             <Route path="*" element={<UnderConstruction />} />
           </Routes>

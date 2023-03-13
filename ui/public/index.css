@@ -42,6 +42,12 @@ button,
 fieldset,
 input,
 li,
+table,
+tbody,
+td,
+th,
+thead,
+tr,
 ul {
   all: unset;
 }
