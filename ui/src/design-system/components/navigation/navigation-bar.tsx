@@ -23,6 +23,7 @@ export const NavigationBar = ({
           width: `${element.offsetWidth}px`,
         }
       : {}
+
     setLineStyle(updatedLineStyle)
   }, [activeItemId, items])
 

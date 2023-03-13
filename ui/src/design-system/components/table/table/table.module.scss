@@ -1,9 +1,17 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+table,
+tbody,
+td,
+th,
+thead,
+tr {
+  all: unset;
+}
+
 .table {
   display: table;
-  width: 100%;
 
   thead {
     display: table-header-group;
@@ -24,7 +32,7 @@
   th {
     display: table-cell;
     vertical-align: middle;
-    padding: 0 16px 14px 16px;
+    padding: 0 32px 14px 16px;
     border-bottom: 2px solid $color-neutral-200;
 
     span {
@@ -36,6 +44,11 @@
 
   td {
     display: table-cell;
-    vertical-align: top;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .fill {
+    width: 100%;
   }
 }

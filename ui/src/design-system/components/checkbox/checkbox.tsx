@@ -13,7 +13,7 @@ interface CheckboxProps {
   id: string
   label: string
   theme?: CheckboxTheme
-  defaultChecked: boolean
+  defaultChecked?: boolean
 }
 
 export const Checkbox = ({

@@ -1,4 +1,4 @@
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell.module'
+import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { Table } from 'design-system/components/table/table/table'
 import { CellTheme, TextAlign } from 'design-system/components/table/types'
 import React from 'react'

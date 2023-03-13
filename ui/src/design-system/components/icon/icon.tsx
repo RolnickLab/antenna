@@ -74,7 +74,7 @@ const COMPONENT_MAP = {
 
 interface IconProps {
   type: IconType
-  theme: IconTheme
+  theme?: IconTheme
 }
 
 export const Icon = ({ type, theme = IconTheme.Dark }: IconProps) => {
@@ -87,7 +87,7 @@ export const Icon = ({ type, theme = IconTheme.Dark }: IconProps) => {
         [styles.light]: theme === IconTheme.Light,
       })}
     >
-      <Component className={styles.image} />
+      <Component />
     </div>
   )
 }

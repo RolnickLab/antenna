@@ -12,7 +12,9 @@ export const BasicTableCell = ({
   value,
   theme = CellTheme.Default,
 }: BasicTableCellProps) => {
-  const textAlign = _.isNumber(value) ? TextAlign.Right : TextAlign.Left
+  const isNumber = _.isNumber(value)
+  const textAlign = isNumber ? TextAlign.Right : TextAlign.Left
+  const label = isNumber ? value.toLocaleString('en-US') : value
 
   return (
     <div
@@ -21,7 +23,7 @@ export const BasicTableCell = ({
       })}
       style={{ textAlign }}
     >
-      <span>{value}</span>
+      <span>{label}</span>
     </div>
   )
 }

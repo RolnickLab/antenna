@@ -1,14 +1,9 @@
-import { TextAlign } from '../types'
+import { TableColumn } from '../types'
 import styles from './table.module.scss'
 
 interface TableProps<T> {
   items: T[]
-  columns: {
-    id: string
-    name: string
-    textAlign?: TextAlign
-    renderCell: (item: T) => JSX.Element
-  }[]
+  columns: TableColumn<T>[]
 }
 
 export const Table = <T,>({ items, columns }: TableProps<T>) => {
@@ -21,6 +16,7 @@ export const Table = <T,>({ items, columns }: TableProps<T>) => {
               <span>{column.name}</span>
             </th>
           ))}
+          <th aria-hidden="true" className={styles.fill} />
         </tr>
       </thead>
       <tbody>
@@ -29,6 +25,7 @@ export const Table = <T,>({ items, columns }: TableProps<T>) => {
             {columns.map((column, index) => (
               <td key={index}>{column.renderCell(item)}</td>
             ))}
+            <td aria-hidden="true" />
           </tr>
         ))}
       </tbody>
