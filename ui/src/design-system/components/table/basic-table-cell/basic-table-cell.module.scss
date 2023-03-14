@@ -4,14 +4,20 @@
 .tableCell {
   padding: 12px 32px 12px 16px;
 
-  span {
+  .label {
     display: block;
     @include paragraph-medium();
     color: $color-neutral-800;
   }
 
+  .details {
+    display: block;
+    @include paragraph-x-small();
+    color: $color-neutral-600;
+  }
+
   &.primary {
-    span {
+    .label {
       color: $color-primary-1-600;
     }
   }

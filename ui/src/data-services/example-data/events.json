@@ -1,0 +1,52 @@
+[
+  {
+    "deployment":"Vermont-Snapshots-Sample",
+    "event":"2022-06-20",
+    "duration_minutes":561,
+    "duration_label":"9 hours",
+    "num_source_images":52,
+    "num_detections":172,
+    "start_time":"2022-06-20T20:02:00",
+    "end_time":"2022-06-21T05:23:00"
+  },
+  {
+    "deployment":"Vermont-Snapshots-Sample",
+    "event":"2022-06-21",
+    "duration_minutes":275,
+    "duration_label":"5 hours",
+    "num_source_images":26,
+    "num_detections":0,
+    "start_time":"2022-06-21T20:03:00",
+    "end_time":"2022-06-22T00:38:00"
+  },
+  {
+    "deployment":"Vermont-Snapshots-Sample",
+    "event":"2022-06-22",
+    "duration_minutes":561,
+    "duration_label":"9 hours",
+    "num_source_images":52,
+    "num_detections":0,
+    "start_time":"2022-06-22T20:04:00",
+    "end_time":"2022-06-23T05:24:59"
+  },
+  {
+    "deployment":"Vermont-Snapshots-Sample",
+    "event":"2022-06-23",
+    "duration_minutes":561,
+    "duration_label":"9 hours",
+    "num_source_images":44,
+    "num_detections":0,
+    "start_time":"2022-06-23T20:05:00",
+    "end_time":"2022-06-24T05:26:00"
+  },
+  {
+    "deployment":"Vermont-Snapshots-Sample",
+    "event":"2022-06-24",
+    "duration_minutes":33,
+    "duration_label":"1 hour",
+    "num_source_images":4,
+    "num_detections":0,
+    "start_time":"2022-06-24T23:13:00",
+    "end_time":"2022-06-24T23:45:59"
+  }
+]

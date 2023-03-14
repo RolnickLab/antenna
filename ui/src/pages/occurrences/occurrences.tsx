@@ -1,9 +1,13 @@
+import { useOccurrences } from 'data-services/useOccurrences'
 import { Card } from 'design-system/components/card/card'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import React from 'react'
+import { OccurrencesTable } from './occurrences-table/occurrences-table'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
+  const occurrences = useOccurrences()
+
   return (
     <div className={styles.wrapper}>
       <Tabs.Root defaultValue="table">
@@ -12,17 +16,19 @@ export const Occurrences = () => {
           <Tabs.Trigger value="gallery" label="Gallery" />
         </Tabs.List>
         <Tabs.Content value="table">
-          <div className={styles.occurrencesContent}></div>
+          <div className={styles.occurrencesContent}>
+            <OccurrencesTable />
+          </div>
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
             <div className={styles.sidebar}></div>
             <div className={styles.gallery}>
-              {['a', 'b', 'c', 'd', 'e', 'f'].map((_, index) => (
+              {occurrences.map((occurrence, index) => (
                 <Card
                   key={index}
-                  title="Lorem ipsum"
-                  subTitle="Lorem ipsum dolor sit amet"
+                  title={occurrence.categoryLabel}
+                  subTitle={occurrence.familyLabel}
                   image={{
                     src: 'https://placekitten.com/600/400',
                     alt: '',

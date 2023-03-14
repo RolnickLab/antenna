@@ -22,3 +22,11 @@ export const WithNumber: Meta = {
     theme: CellTheme.Default,
   },
 }
+
+export const WithDetails: Meta = {
+  args: {
+    value: 'Lorem ipsum',
+    details: 'Lorem ipsum dolor sit amet',
+    theme: CellTheme.Primary,
+  },
+}

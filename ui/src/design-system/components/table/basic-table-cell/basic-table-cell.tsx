@@ -5,16 +5,18 @@ import styles from './basic-table-cell.module.scss'
 
 interface BasicTableCellProps {
   value: string | number
+  details?: string
   theme?: CellTheme
 }
 
 export const BasicTableCell = ({
   value,
+  details,
   theme = CellTheme.Default,
 }: BasicTableCellProps) => {
   const isNumber = _.isNumber(value)
   const textAlign = isNumber ? TextAlign.Right : TextAlign.Left
-  const label = isNumber ? value.toLocaleString('en-US') : value
+  const label = isNumber ? value.toLocaleString() : value
 
   return (
     <div
@@ -23,7 +25,8 @@ export const BasicTableCell = ({
       })}
       style={{ textAlign }}
     >
-      <span>{label}</span>
+      <span className={styles.label}>{label}</span>
+      {details && <span className={styles.details}>{details}</span>}
     </div>
   )
 }

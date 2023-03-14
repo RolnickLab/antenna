@@ -1,6 +1,6 @@
 import * as _Checkbox from '@radix-ui/react-checkbox'
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from '../icon/icon'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import styles from './checkbox.module.scss'
 
 export enum CheckboxTheme {
