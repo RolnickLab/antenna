@@ -1,0 +1,61 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.tableHeader {
+  border-bottom: 2px solid $color-neutral-200;
+
+  &.active {
+    border-color: $color-neutral-400;
+  }
+}
+
+.content {
+  padding: 16px 32px 16px 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.columnName {
+  span {
+    @include paragraph-medium();
+    font-weight: 600;
+    color: $color-neutral-500;
+  }
+}
+
+.sortButton {
+  display: flex;
+  align-items: center;
+  position: relative;
+
+  .columnName {
+    display: block;
+    position: relative;
+  }
+
+  &:hover {
+    opacity: 0.7;
+    cursor: pointer;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+}
+
+.iconWrapper {
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  transform-origin: center;
+  transform: translate(100%, -50%);
+  visibility: hidden;
+
+  &.visible {
+    visibility: visible;
+  }
+
+  &.ascending {
+    transform: translate(100%, -50%) rotate(180deg);
+  }
+}

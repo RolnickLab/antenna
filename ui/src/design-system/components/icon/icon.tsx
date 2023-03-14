@@ -46,6 +46,7 @@ export enum IconType {
 
 export enum IconTheme {
   Light = 'light',
+  Neutral = 'neutral',
   Dark = 'dark',
 }
 
@@ -83,8 +84,9 @@ export const Icon = ({ type, theme = IconTheme.Dark }: IconProps) => {
   return (
     <div
       className={classNames(styles.wrapper, {
-        [styles.dark]: theme === IconTheme.Dark,
         [styles.light]: theme === IconTheme.Light,
+        [styles.neutral]: theme === IconTheme.Neutral,
+        [styles.dark]: theme === IconTheme.Dark,
       })}
     >
       <Component />
