@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import styles from './navigation-bar.module.scss'
 
 interface NavigationBarProps {
