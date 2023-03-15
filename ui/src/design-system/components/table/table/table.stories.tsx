@@ -43,21 +43,27 @@ const columns: TableColumn<Item>[] = [
     id: 'sessions',
     field: 'numEvents',
     name: 'Sessions',
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Item) => <BasicTableCell value={item.numEvents} />,
   },
   {
     id: 'images',
     field: 'numSourceImages',
     name: 'Images',
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Item) => <BasicTableCell value={item.numSourceImages} />,
   },
   {
     id: 'detections',
     field: 'numDetections',
     name: 'Detections',
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Item) => <BasicTableCell value={item.numDetections} />,
   },
 ]

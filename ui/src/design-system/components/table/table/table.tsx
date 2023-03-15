@@ -11,7 +11,7 @@ interface TableProps<T> {
   defaultSortSettings?: TableSortSettings
 }
 
-export const Table = <T,>({
+export const Table = <T extends { id: string }>({
   items,
   columns,
   defaultSortSettings,
@@ -66,10 +66,10 @@ export const Table = <T,>({
         </tr>
       </thead>
       <tbody>
-        {sortedItems.map((item, index) => (
-          <tr key={index}>
-            {columns.map((column, index) => (
-              <td key={index}>{column.renderCell(item)}</td>
+        {sortedItems.map((item) => (
+          <tr key={item.id}>
+            {columns.map((column) => (
+              <td key={column.id}>{column.renderCell(item)}</td>
             ))}
             <td aria-hidden="true" />
           </tr>

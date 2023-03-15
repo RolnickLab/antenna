@@ -32,10 +32,10 @@ const BasicTableHeader = <T,>({
 }: Omit<TableHeaderProps<T>, 'sortSettings' | 'onSortClick'>) => (
   <th
     key={column.id}
-    style={{ textAlign: column.textAlign }}
+    style={{ textAlign: column.styles?.textAlign }}
     className={styles.tableHeader}
   >
-    <div className={styles.content}>
+    <div className={styles.content} style={{ padding: column.styles?.padding }}>
       <div className={styles.columnName}>
         <span>{column.name}</span>
       </div>
@@ -63,13 +63,14 @@ const SortableTableHeader = <T,>({
     <th
       key={column.id}
       aria-sort={ariaSort}
-      style={{ textAlign: column.textAlign }}
+      style={{ textAlign: column.styles?.textAlign }}
       className={classNames(styles.tableHeader, {
         [styles.active]: sortActive,
       })}
     >
       <button
         className={classNames(styles.content, styles.sortButton)}
+        style={{ padding: column.styles?.padding }}
         onClick={onSortClick}
       >
         <div className={styles.columnName}>

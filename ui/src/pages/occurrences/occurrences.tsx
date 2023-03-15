@@ -24,15 +24,12 @@ export const Occurrences = () => {
           <div className={styles.galleryContent}>
             <div className={styles.sidebar}></div>
             <div className={styles.gallery}>
-              {occurrences.map((occurrence, index) => (
+              {occurrences.map((occurrence) => (
                 <Card
-                  key={index}
+                  key={occurrence.id}
                   title={occurrence.categoryLabel}
                   subTitle={occurrence.familyLabel}
-                  image={{
-                    src: 'https://placekitten.com/600/400',
-                    alt: '',
-                  }}
+                  image={occurrence.images[0]}
                   maxWidth="262px"
                 />
               ))}

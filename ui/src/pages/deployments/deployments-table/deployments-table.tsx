@@ -25,7 +25,9 @@ const columns: TableColumn<Deployment>[] = [
     field: 'numEvents',
     name: 'Sessions',
     sortable: true,
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Deployment) => <BasicTableCell value={item.numEvents} />,
   },
   {
@@ -33,7 +35,9 @@ const columns: TableColumn<Deployment>[] = [
     field: 'numSourceImages',
     name: 'Images',
     sortable: true,
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.numSourceImages} />
     ),
@@ -43,7 +47,9 @@ const columns: TableColumn<Deployment>[] = [
     field: 'numDetections',
     name: 'Detections',
     sortable: true,
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.numDetections} />
     ),

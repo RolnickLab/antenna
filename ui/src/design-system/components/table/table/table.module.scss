@@ -19,6 +19,8 @@
 
   th {
     display: table-cell;
+    white-space: nowrap;
+    vertical-align: middle;
   }
 
   tbody {
@@ -36,5 +38,6 @@
   td {
     display: table-cell;
     white-space: nowrap;
+    vertical-align: middle;
   }
 }

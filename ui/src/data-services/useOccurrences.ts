@@ -6,7 +6,7 @@ import { Occurrence } from './types'
 export const useOccurrences = (): Occurrence[] => {
   // TODO: Use real data
 
-  return detections.map((detection) => {
+  return detections.map((detection, index) => {
     const event = events.find((e) => e.event === detection.event)
 
     return {
@@ -16,6 +16,18 @@ export const useOccurrences = (): Occurrence[] => {
       deployment: detection.deployment,
       deploymentLocation: '[WIP] Deployment location',
       familyLabel: '[WIP] Family',
+      id: `#${index}`,
+      images: [
+        {
+          src: 'https://placekitten.com/240/240',
+        },
+        {
+          src: 'https://placekitten.com/240/160',
+        },
+        {
+          src: 'https://placekitten.com/160/240',
+        },
+      ],
       sessionId: '[WIP] Session ID',
       sessionTimespan: event
         ? getCompactTimespanString({
@@ -23,6 +35,7 @@ export const useOccurrences = (): Occurrence[] => {
             date2: new Date(event.end_time),
           })
         : '',
+      timestamp: new Date(detection.timestamp),
     }
   })
 }

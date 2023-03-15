@@ -11,7 +11,6 @@
   position: relative;
   width: 100px;
   height: 100px;
-  margin: 0 10px 10px;
   padding: 10px;
   border-radius: 8px;
   background-color: $color-neutral-50;
@@ -33,6 +32,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 10px;
+
+  :not(:last-child) {
+    margin-right: 10px;
+  }
 }
 
 .slide {

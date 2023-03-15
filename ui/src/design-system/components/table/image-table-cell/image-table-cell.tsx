@@ -137,7 +137,7 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
         </div>
       </div>
       <span
-        className={classNames(styles.label, styles.control, {
+        className={classNames(styles.info, styles.control, {
           [styles.visible]: paused,
         })}
       >

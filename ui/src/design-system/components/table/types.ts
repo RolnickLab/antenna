@@ -23,7 +23,10 @@ export interface TableColumn<T> {
   field?: string
   name: string
   sortable?: boolean
-  textAlign?: TextAlign
+  styles?: {
+    textAlign?: TextAlign
+    padding?: string
+  }
   renderCell: (item: T) => JSX.Element
 }
 
