@@ -1,0 +1,27 @@
+@import 'design-system/variables/colors.scss';
+
+.container {
+  padding: 12px 16px;
+}
+
+.imageBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  padding: 10px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background-color: $color-neutral-50;
+  border: 1px solid $color-neutral-100;
+
+  &.light {
+    background-color: $color-generic-white;
+  }
+}
+
+.image {
+  max-width: 100%;
+  max-height: 100%;
+}

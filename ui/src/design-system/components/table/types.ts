@@ -3,6 +3,11 @@ export enum CellTheme {
   Primary = 'primary',
 }
 
+export enum ImageCellTheme {
+  Default = 'default',
+  Light = 'light',
+}
+
 export enum TextAlign {
   Left = 'left',
   Right = 'right',
