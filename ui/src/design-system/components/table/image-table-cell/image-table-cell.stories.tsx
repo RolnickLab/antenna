@@ -9,12 +9,30 @@ export default {
   component: ImageTableCell,
 } as Meta
 
-export const Default: Meta = {
+export const WithOneImage: Meta = {
   args: {
-    image: {
-      src: 'https://placekitten.com/240/240',
-      alt: '',
-    },
+    images: [
+      {
+        src: 'https://placekitten.com/240/240',
+      },
+    ],
+    theme: ImageCellTheme.Default,
+  },
+}
+
+export const WithManyImages: Meta = {
+  args: {
+    images: [
+      {
+        src: 'https://placekitten.com/240/240',
+      },
+      {
+        src: 'https://placekitten.com/240/160',
+      },
+      {
+        src: 'https://placekitten.com/160/240',
+      },
+    ],
     theme: ImageCellTheme.Default,
   },
 }
