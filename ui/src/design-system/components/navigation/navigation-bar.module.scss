@@ -50,6 +50,10 @@
   align-items: center;
   justify-content: flex-start;
   margin-bottom: 4px;
+
+  :not(:last-child) {
+    margin-right: 8px;
+  }
 }
 
 .itemCount {

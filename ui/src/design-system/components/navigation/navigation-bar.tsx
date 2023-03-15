@@ -1,10 +1,11 @@
 import classNames from 'classnames'
 import { useEffect, useState } from 'react'
+import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './navigation-bar.module.scss'
 
 interface NavigationBarProps {
   activeItemId: string
-  items: { id: string; title: string; count?: number }[]
+  items: { id: string; title: string; icon?: IconType; count?: number }[]
   onItemClick: (id: string) => void
 }
 
@@ -30,32 +31,42 @@ export const NavigationBar = ({
   return (
     <nav className={styles.wrapper}>
       <ul className={styles.items}>
-        {items.map((item) => (
-          <li key={item.id} id={item.id}>
-            <div
-              role="button"
-              tabIndex={0}
-              className={classNames(styles.item, {
-                [styles.active]: activeItemId === item.id,
-              })}
-              onClick={() => onItemClick(item.id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  onItemClick(item.id)
-                }
-              }}
-            >
-              <div className={styles.topContent}>
-                {item.count !== undefined && (
-                  <span className={styles.itemCount}>{item.count}</span>
-                )}
+        {items.map((item) => {
+          const isActive = activeItemId === item.id
+
+          return (
+            <li key={item.id} id={item.id}>
+              <div
+                role="button"
+                tabIndex={0}
+                className={classNames(styles.item, {
+                  [styles.active]: isActive,
+                })}
+                onClick={() => onItemClick(item.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onItemClick(item.id)
+                  }
+                }}
+              >
+                <div className={styles.topContent}>
+                  {item.icon && (
+                    <Icon
+                      type={item.icon}
+                      theme={isActive ? IconTheme.Success : IconTheme.Primary}
+                    />
+                  )}
+                  {item.count !== undefined && (
+                    <span className={styles.itemCount}>{item.count}</span>
+                  )}
+                </div>
+                <div>
+                  <span className={styles.itemTitle}>{item.title}</span>
+                </div>
               </div>
-              <div>
-                <span className={styles.itemTitle}>{item.title}</span>
-              </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          )
+        })}
         <div className={styles.line} style={lineStyle} />
       </ul>
     </nav>
