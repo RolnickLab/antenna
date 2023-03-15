@@ -76,10 +76,12 @@ const COMPONENT_MAP = {
 interface IconProps {
   type: IconType
   theme?: IconTheme
+  size?: number
 }
 
-export const Icon = ({ type, theme = IconTheme.Dark }: IconProps) => {
+export const Icon = ({ type, theme = IconTheme.Dark, size }: IconProps) => {
   const Component = COMPONENT_MAP[type]
+  const fixedSized = size !== undefined
 
   return (
     <div
@@ -87,7 +89,16 @@ export const Icon = ({ type, theme = IconTheme.Dark }: IconProps) => {
         [styles.light]: theme === IconTheme.Light,
         [styles.neutral]: theme === IconTheme.Neutral,
         [styles.dark]: theme === IconTheme.Dark,
+        [styles.fixedSized]: fixedSized,
       })}
+      style={
+        fixedSized
+          ? {
+              width: `${size}px`,
+              height: `${size}px`,
+            }
+          : undefined
+      }
     >
       <Component />
     </div>

@@ -17,4 +17,11 @@
   &.dark {
     color: $color-generic-black;
   }
+
+  &.fixedSized {
+    > * {
+      width: 100%;
+      height: 100%;
+    }
+  }
 }
