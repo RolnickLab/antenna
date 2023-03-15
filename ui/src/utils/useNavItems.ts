@@ -32,13 +32,6 @@ export const useNavItems = () => {
         path: '/occurrences',
       },
       { id: 'species', title: 'Species', count: 0, path: '/species' },
-      { id: 'members', title: 'Members', count: 0, path: '/members' },
-      {
-        id: 'identifiers',
-        title: 'Identifiers',
-        count: 0,
-        path: '/identifiers',
-      },
     ],
     [deployments, occurrences]
   )

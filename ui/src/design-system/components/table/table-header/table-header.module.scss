@@ -2,6 +2,10 @@
 @import 'design-system/variables/typography.scss';
 
 .tableHeader {
+  all: unset;
+  display: table-cell;
+  white-space: nowrap;
+  vertical-align: middle;
   border-bottom: 2px solid $color-neutral-200;
 
   &.active {

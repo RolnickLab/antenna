@@ -7,13 +7,6 @@
   box-sizing: border-box;
 }
 
-.backdrop {
-  background-color: $color-neutral-200;
-  height: 380px;
-  border-radius: 0px 0px 16px 16px;
-  margin-bottom: 32px;
-}
-
 .page {
   background-color: $color-neutral-50;
   height: calc(100vh - 64px);

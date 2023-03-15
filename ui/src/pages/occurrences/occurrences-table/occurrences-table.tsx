@@ -78,7 +78,7 @@ export const OccurrencesTable = () => {
     <Table
       items={occurrences}
       columns={columns}
-      defaultSortSettings={{ columnId: 'id', orderBy: OrderBy.Descending }}
+      defaultSortSettings={{ columnId: 'image', orderBy: OrderBy.Descending }}
     ></Table>
   )
 }

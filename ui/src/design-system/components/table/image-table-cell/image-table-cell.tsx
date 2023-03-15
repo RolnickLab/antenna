@@ -61,7 +61,7 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
       if (!pausedRef.current) {
         showNext(slideIndexRef.current)
       }
-    }, 2000)
+    }, 5000)
 
     return () => clearInterval(interval)
   }, [])

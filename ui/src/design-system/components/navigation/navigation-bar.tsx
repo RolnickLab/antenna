@@ -28,7 +28,7 @@ export const NavigationBar = ({
   }, [activeItemId, items])
 
   return (
-    <nav>
+    <nav className={styles.wrapper}>
       <ul className={styles.items}>
         {items.map((item) => (
           <li key={item.id} id={item.id}>

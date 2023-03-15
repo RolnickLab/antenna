@@ -9,34 +9,32 @@ export const Occurrences = () => {
   const occurrences = useOccurrences()
 
   return (
-    <div className={styles.wrapper}>
-      <Tabs.Root defaultValue="table">
-        <Tabs.List>
-          <Tabs.Trigger value="table" label="Table" />
-          <Tabs.Trigger value="gallery" label="Gallery" />
-        </Tabs.List>
-        <Tabs.Content value="table">
-          <div className={styles.occurrencesContent}>
-            <OccurrencesTable />
+    <Tabs.Root defaultValue="table">
+      <Tabs.List>
+        <Tabs.Trigger value="table" label="Table" />
+        <Tabs.Trigger value="gallery" label="Gallery" />
+      </Tabs.List>
+      <Tabs.Content value="table">
+        <div className={styles.occurrencesContent}>
+          <OccurrencesTable />
+        </div>
+      </Tabs.Content>
+      <Tabs.Content value="gallery">
+        <div className={styles.galleryContent}>
+          <div className={styles.sidebar}></div>
+          <div className={styles.gallery}>
+            {occurrences.map((occurrence) => (
+              <Card
+                key={occurrence.id}
+                title={occurrence.categoryLabel}
+                subTitle={occurrence.familyLabel}
+                image={occurrence.images[0]}
+                maxWidth="262px"
+              />
+            ))}
           </div>
-        </Tabs.Content>
-        <Tabs.Content value="gallery">
-          <div className={styles.galleryContent}>
-            <div className={styles.sidebar}></div>
-            <div className={styles.gallery}>
-              {occurrences.map((occurrence) => (
-                <Card
-                  key={occurrence.id}
-                  title={occurrence.categoryLabel}
-                  subTitle={occurrence.familyLabel}
-                  image={occurrence.images[0]}
-                  maxWidth="262px"
-                />
-              ))}
-            </div>
-          </div>
-        </Tabs.Content>
-      </Tabs.Root>
-    </div>
+        </div>
+      </Tabs.Content>
+    </Tabs.Root>
   )
 }

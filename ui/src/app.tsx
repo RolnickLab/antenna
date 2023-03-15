@@ -15,7 +15,6 @@ export const App = () => {
     <>
       <header className={styles.header}></header>
       <div className={styles.page}>
-        <div className={styles.backdrop}></div>
         <NavigationBar
           items={navItems}
           activeItemId={activeNavItemId}
