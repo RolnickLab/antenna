@@ -1,0 +1,70 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.items {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  border-bottom: 2px solid $color-neutral-200;
+  position: relative;
+
+  :not(:last-child) {
+    margin-right: 2px;
+  }
+}
+
+.item {
+  outline: none;
+  display: block;
+  padding: 8px 16px;
+  border-radius: 8px 8px 0px 0px;
+  transition: background-color 200ms ease;
+
+  &:hover {
+    opacity: 0.7;
+    cursor: pointer;
+  }
+
+  &.active {
+    opacity: 1;
+    background-color: $color-success-100;
+
+    .itemCount,
+    .itemTitle {
+      color: $color-success-700;
+    }
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+}
+
+.topContent {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 4px;
+}
+
+.itemCount {
+  display: block;
+  @include heading-6();
+  color: $color-primary-1-600;
+}
+
+.itemTitle {
+  display: block;
+  @include label();
+  color: $color-neutral-500;
+}
+
+.line {
+  position: absolute;
+  bottom: 0px;
+  height: 2px;
+  transform: translateY(100%);
+  background-color: $color-success-700;
+  transition: left 400ms ease, width 200ms ease;
+}

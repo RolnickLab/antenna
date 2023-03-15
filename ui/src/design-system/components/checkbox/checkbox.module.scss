@@ -1,0 +1,51 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.wrapper {
+  display: flex;
+}
+
+.checkboxRoot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid $color-neutral-300;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+
+  &[data-state='checked'] {
+    background-color: $color-neutral-600;
+    border-color: $color-neutral-600;
+  }
+
+  &:hover {
+    opacity: 0.7;
+    cursor: pointer;
+  }
+}
+
+.checkboxIndicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $color-generic-white;
+}
+
+.label {
+  @include paragraph-x-small();
+  color: $color-neutral-500;
+  margin-left: 6px;
+
+  &.success {
+    color: $color-success-600;
+  }
+
+  &.alert {
+    color: $color-alert-600;
+  }
+}
