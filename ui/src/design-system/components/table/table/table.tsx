@@ -66,10 +66,12 @@ export const Table = <T extends { id: string }>({
         </tr>
       </thead>
       <tbody>
-        {sortedItems.map((item) => (
+        {sortedItems.map((item, rowIndex) => (
           <tr key={item.id}>
-            {columns.map((column) => (
-              <td key={column.id}>{column.renderCell(item)}</td>
+            {columns.map((column, columnIndex) => (
+              <td key={column.id}>
+                {column.renderCell(item, rowIndex, columnIndex)}
+              </td>
             ))}
             <td aria-hidden="true" />
           </tr>

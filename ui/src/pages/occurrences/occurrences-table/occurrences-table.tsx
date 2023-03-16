@@ -5,6 +5,7 @@ import { ImageTableCell } from 'design-system/components/table/image-table-cell/
 import { Table } from 'design-system/components/table/table/table'
 import {
   CellTheme,
+  ImageCellTheme,
   OrderBy,
   TableColumn,
 } from 'design-system/components/table/types'
@@ -20,7 +21,16 @@ const columns: TableColumn<Occurrence>[] = [
     styles: {
       padding: '16px 32px 16px 50px',
     },
-    renderCell: (item: Occurrence) => <ImageTableCell images={item.images} />,
+    renderCell: (item: Occurrence, rowIndex: number) => {
+      const isOddRow = rowIndex % 2 == 0
+
+      return (
+        <ImageTableCell
+          images={item.images}
+          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+        />
+      )
+    },
   },
   {
     id: 'id',

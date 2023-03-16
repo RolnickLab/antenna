@@ -50,6 +50,7 @@
   justify-content: center;
   padding: 10px;
   box-sizing: border-box;
+  animation: fadeIn 500ms;
 
   &.visible {
     display: flex;
@@ -68,5 +69,14 @@
 
   &.visible {
     visibility: visible;
+  }
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
   }
 }

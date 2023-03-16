@@ -114,16 +114,27 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
             [styles.light]: theme === ImageCellTheme.Light,
           })}
         >
-          {images.map((image, index) => (
-            <div
-              key={index}
-              className={classNames(styles.slide, {
-                [styles.visible]: index === slideIndex,
-              })}
-            >
-              <img src={image.src} alt={image.alt} className={styles.image} />
-            </div>
-          ))}
+          {images.map((image, index) => {
+            const render =
+              index === 0 || // Always render first slide
+              index === images.length - 1 || // Always render last image
+              Math.abs(index - slideIndex) <= 1 // Render nearby slides
+
+            if (!render) {
+              return
+            }
+
+            return (
+              <div
+                key={index}
+                className={classNames(styles.slide, {
+                  [styles.visible]: index === slideIndex,
+                })}
+              >
+                <img src={image.src} alt={image.alt} className={styles.image} />
+              </div>
+            )
+          })}
         </div>
         <div
           className={classNames(styles.control, {

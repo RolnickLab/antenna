@@ -27,7 +27,7 @@ export interface TableColumn<T> {
     textAlign?: TextAlign
     padding?: string
   }
-  renderCell: (item: T) => JSX.Element
+  renderCell: (item: T, rowIndex: number, columnIndex: number) => JSX.Element
 }
 
 export interface TableSortSettings {
