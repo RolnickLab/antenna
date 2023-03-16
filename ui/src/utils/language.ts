@@ -1,0 +1,48 @@
+export enum STRING {
+  /* NAV_ITEM */
+  NAV_ITEM_DEPLOYMENTS,
+  NAV_ITEM_OCCURRENCES,
+  NAV_ITEM_OVERVIEW,
+  NAV_ITEM_SESSIONS,
+  NAV_ITEM_SPECIES,
+
+  /* TAB_ITEM */
+  TAB_ITEM_GALLERY,
+  TAB_ITEM_TABLE,
+
+  /* TABLE_COLUMN */
+  TABLE_COLUMN_APPEARANCE,
+  TABLE_COLUMN_DEPLOYMENT,
+  TABLE_COLUMN_DETECTIONS,
+  TABLE_COLUMN_ID,
+  TABLE_COLUMN_IMAGES,
+  TABLE_COLUMN_MOST_RECENT,
+  TABLE_COLUMN_SESSION,
+  TABLE_COLUMN_SESSIONS,
+}
+
+const ENGLISH_STRINGS: { [key in STRING]: string } = {
+  /* NAV_ITEM */
+  [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
+  [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
+  [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
+  [STRING.NAV_ITEM_SESSIONS]: 'Sessions',
+  [STRING.NAV_ITEM_SPECIES]: 'Species',
+
+  /* TAB_ITEM */
+  [STRING.TAB_ITEM_GALLERY]: 'Gallery',
+  [STRING.TAB_ITEM_TABLE]: 'Table',
+
+  /* TABLE_COLUMN */
+  [STRING.TABLE_COLUMN_APPEARANCE]: 'Appearance',
+  [STRING.TABLE_COLUMN_DEPLOYMENT]: 'Deployment',
+  [STRING.TABLE_COLUMN_DETECTIONS]: 'Detections',
+  [STRING.TABLE_COLUMN_ID]: 'ID',
+  [STRING.TABLE_COLUMN_IMAGES]: 'Images',
+  [STRING.TABLE_COLUMN_MOST_RECENT]: 'Most recent',
+  [STRING.TABLE_COLUMN_SESSION]: 'Session',
+  [STRING.TABLE_COLUMN_SESSIONS]: 'Sessions',
+}
+
+// When we have more translations available, this function could return a value based on current language settings.
+export const translate = (key: STRING): string => ENGLISH_STRINGS[key]

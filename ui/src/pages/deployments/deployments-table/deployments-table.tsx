@@ -9,12 +9,13 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import React from 'react'
+import { STRING, translate } from 'utils/language'
 
 const columns: TableColumn<Deployment>[] = [
   {
     id: 'deployment',
     field: 'name',
-    name: 'Deployment',
+    name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortable: true,
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.name} theme={CellTheme.Primary} />
@@ -23,7 +24,7 @@ const columns: TableColumn<Deployment>[] = [
   {
     id: 'sessions',
     field: 'numEvents',
-    name: 'Sessions',
+    name: translate(STRING.TABLE_COLUMN_SESSIONS),
     sortable: true,
     styles: {
       textAlign: TextAlign.Right,
@@ -33,7 +34,7 @@ const columns: TableColumn<Deployment>[] = [
   {
     id: 'images',
     field: 'numSourceImages',
-    name: 'Images',
+    name: translate(STRING.TABLE_COLUMN_IMAGES),
     sortable: true,
     styles: {
       textAlign: TextAlign.Right,
@@ -45,7 +46,7 @@ const columns: TableColumn<Deployment>[] = [
   {
     id: 'detections',
     field: 'numDetections',
-    name: 'Detections',
+    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
     sortable: true,
     styles: {
       textAlign: TextAlign.Right,

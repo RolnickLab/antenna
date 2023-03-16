@@ -9,11 +9,12 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import React from 'react'
+import { STRING, translate } from 'utils/language'
 
 const columns: TableColumn<Occurrence>[] = [
   {
     id: 'image',
-    name: 'Most recent',
+    name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
     sortable: true,
     field: 'timestamp',
     styles: {
@@ -23,7 +24,7 @@ const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'id',
-    name: 'ID',
+    name: translate(STRING.TABLE_COLUMN_ID),
     sortable: true,
     field: 'categoryLabel',
     renderCell: (item: Occurrence) => (
@@ -36,7 +37,7 @@ const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'deployment',
-    name: 'Deployment',
+    name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortable: true,
     field: 'deployment',
     renderCell: (item: Occurrence) => (
@@ -49,7 +50,7 @@ const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'session',
-    name: 'Session',
+    name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.sessionId}
@@ -60,7 +61,7 @@ const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'appearance',
-    name: 'Appearance',
+    name: translate(STRING.TABLE_COLUMN_APPEARANCE),
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.appearanceTimespan}

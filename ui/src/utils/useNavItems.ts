@@ -3,6 +3,7 @@ import { useOccurrences } from 'data-services/useOccurrences'
 import { IconType } from 'design-system/components/icon/icon'
 import { useMemo } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
+import { STRING, translate } from './language'
 
 interface NavigatinonItem {
   id: string
@@ -21,34 +22,34 @@ export const useNavItems = () => {
     () => [
       {
         id: 'overview',
-        title: 'Overview',
+        title: translate(STRING.NAV_ITEM_OVERVIEW),
         icon: IconType.Overview,
         path: '/overview',
       },
       {
         id: 'deployments',
-        title: 'Deployments',
+        title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
         count: deployments.length,
         path: '/deployments',
       },
       {
         id: 'sessions',
-        title: 'Sessions',
+        title: translate(STRING.NAV_ITEM_SESSIONS),
         icon: IconType.Sessions,
         count: 0,
         path: '/sessions',
       },
       {
         id: 'occurrences',
-        title: 'Occurrences',
+        title: translate(STRING.NAV_ITEM_OCCURRENCES),
         icon: IconType.Occurrences,
         count: occurrences.length,
         path: '/occurrences',
       },
       {
         id: 'species',
-        title: 'Species',
+        title: translate(STRING.NAV_ITEM_SPECIES),
         icon: IconType.Species,
         count: 0,
         path: '/species',
