@@ -1,0 +1,7 @@
+.actionCellContent {
+  display: flex;
+
+  :not(:last-child) {
+    margin-right: 6px;
+  }
+}

@@ -29,6 +29,12 @@ export const useNavItems = () => {
         path: '/overview',
       },
       {
+        id: 'batch-id',
+        title: translate(STRING.NAV_ITEM_BATCH_ID),
+        icon: IconType.BatchId,
+        path: '/batch-id',
+      },
+      {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
@@ -55,12 +61,6 @@ export const useNavItems = () => {
         icon: IconType.Species,
         count: 0,
         path: '/species',
-      },
-      {
-        id: 'batch-id',
-        title: translate(STRING.NAV_ITEM_BATCH_ID),
-        icon: IconType.BatchId,
-        path: '/batch-id',
       },
     ],
     [deployments, occurrences]

@@ -1,3 +1,18 @@
+export enum BatchStatus {
+  Running,
+  Stopped,
+}
+
+export interface BatchData {
+  complete: number
+  description: string
+  id: string
+  queued: number
+  status: BatchStatus
+  statusLabel: string
+  unprocessed: number
+}
+
 export interface Deployment {
   id: string
   name: string

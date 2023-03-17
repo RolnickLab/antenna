@@ -1,4 +1,5 @@
 import { NavigationBar } from 'design-system/components/navigation/navigation-bar'
+import { BatchId } from 'pages/batch-id/batch-id'
 import { Deployments } from 'pages/deployments/deployments'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Sessions } from 'pages/sessions/sessions'
@@ -29,6 +30,7 @@ export const App = () => {
       <div className={styles.page}>
         <main className={styles.content}>
           <Routes>
+            <Route path="/batch-id" element={<BatchId />} />
             <Route path="/deployments" element={<Deployments />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/occurrences" element={<Occurrences />} />
