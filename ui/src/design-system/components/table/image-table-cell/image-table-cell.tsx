@@ -49,6 +49,7 @@ const BasicImageTableCell = ({
   </div>
 )
 
+const DURATION = 10000 // Change image every 10 second
 const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
   const [paused, setPaused] = useState(false)
   const [slideIndex, setSlideIndex] = useState(0)
@@ -61,7 +62,7 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
       if (!pausedRef.current) {
         showNext(slideIndexRef.current)
       }
-    }, 5000)
+    }, DURATION)
 
     return () => clearInterval(interval)
   }, [])

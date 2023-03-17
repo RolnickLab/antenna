@@ -9,6 +9,6 @@ export const useDeployments = (): Deployment[] => {
     name: deployment.name,
     numDetections: deployment.num_detections,
     numEvents: deployment.num_events,
-    numSourceImages: deployment.num_source_images,
+    numImages: deployment.num_source_images,
   }))
 }

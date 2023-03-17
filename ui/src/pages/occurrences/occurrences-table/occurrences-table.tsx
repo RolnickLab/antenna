@@ -14,7 +14,7 @@ import { STRING, translate } from 'utils/language'
 
 const columns: TableColumn<Occurrence>[] = [
   {
-    id: 'image',
+    id: 'snapshots',
     name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
     sortable: true,
     field: 'timestamp',
@@ -89,7 +89,10 @@ export const OccurrencesTable = () => {
     <Table
       items={occurrences}
       columns={columns}
-      defaultSortSettings={{ columnId: 'image', orderBy: OrderBy.Descending }}
+      defaultSortSettings={{
+        columnId: 'snapshots',
+        orderBy: OrderBy.Descending,
+      }}
     ></Table>
   )
 }

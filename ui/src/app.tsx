@@ -1,6 +1,7 @@
 import { NavigationBar } from 'design-system/components/navigation/navigation-bar'
 import { Deployments } from 'pages/deployments/deployments'
 import { Occurrences } from 'pages/occurrences/occurrences'
+import { Sessions } from 'pages/sessions/sessions'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import React from 'react'
 import { Route, Routes, useNavigate } from 'react-router-dom'
@@ -12,9 +13,8 @@ export const App = () => {
   const { navItems, activeNavItemId } = useNavItems()
 
   return (
-    <>
-      <header className={styles.header}></header>
-      <div className={styles.page}>
+    <div className={styles.wrapper}>
+      <header className={styles.header}>
         <NavigationBar
           items={navItems}
           activeItemId={activeNavItemId}
@@ -25,14 +25,17 @@ export const App = () => {
             }
           }}
         />
-        <main>
+      </header>
+      <div className={styles.page}>
+        <main className={styles.content}>
           <Routes>
             <Route path="/deployments" element={<Deployments />} />
+            <Route path="/sessions" element={<Sessions />} />
             <Route path="/occurrences" element={<Occurrences />} />
             <Route path="*" element={<UnderConstruction />} />
           </Routes>
         </main>
       </div>
-    </>
+    </div>
   )
 }

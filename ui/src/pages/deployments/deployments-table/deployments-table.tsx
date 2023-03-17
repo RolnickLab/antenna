@@ -33,15 +33,13 @@ const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'images',
-    field: 'numSourceImages',
+    field: 'numImages',
     name: translate(STRING.TABLE_COLUMN_IMAGES),
     sortable: true,
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.numSourceImages} />
-    ),
+    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
   },
   {
     id: 'detections',
