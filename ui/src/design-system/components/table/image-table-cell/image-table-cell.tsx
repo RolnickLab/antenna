@@ -1,5 +1,9 @@
 import classNames from 'classnames'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
+import {
+  IconButton,
+  IconButtonShape,
+  IconButtonTheme,
+} from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { useEffect, useRef, useState } from 'react'
 import { ImageCellTheme } from '../types'
@@ -106,7 +110,9 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
           })}
         >
           <IconButton
-            iconType={IconType.ToggleLeft}
+            icon={IconType.ToggleLeft}
+            shape={IconButtonShape.Round}
+            theme={IconButtonTheme.Success}
             onClick={() => showPrev(slideIndex)}
           />
         </div>
@@ -143,7 +149,9 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
           })}
         >
           <IconButton
-            iconType={IconType.ToggleRight}
+            icon={IconType.ToggleRight}
+            shape={IconButtonShape.Round}
+            theme={IconButtonTheme.Success}
             onClick={() => showNext(slideIndex)}
           />
         </div>

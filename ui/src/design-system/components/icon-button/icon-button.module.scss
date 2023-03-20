@@ -2,13 +2,34 @@
 @import 'design-system/variables/typography.scss';
 
 .iconButton {
-  width: 24px;
-  height: 24px;
-  background-color: $color-success-500;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid $color-neutral-100;
+  background-color: $color-generic-white;
+  box-sizing: border-box;
+
+  &.square {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+  }
+
+  &.round {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+  }
+
+  &.neutral {
+    background-color: $color-neutral-500;
+    border-color: $color-neutral-500;
+  }
+
+  &.success {
+    background-color: $color-success-500;
+    border-color: $color-success-500;
+  }
 
   &:hover {
     cursor: pointer;

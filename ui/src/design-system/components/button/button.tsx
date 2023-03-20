@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import React from 'react'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './button.module.scss'
 
@@ -11,27 +12,28 @@ interface ButtonProps {
   label: string
   icon?: IconType
   theme?: ButtonTheme
-  onClick: () => void
+  onClick?: () => void
 }
 
-export const Button = ({
-  label,
-  icon,
-  theme = ButtonTheme.Default,
-  onClick,
-}: ButtonProps) => {
-  const iconTheme =
-    theme === ButtonTheme.Success ? IconTheme.Light : IconTheme.Primary
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ ...props }, forwardedRef) => {
+    const { label, icon, theme = ButtonTheme.Default, onClick, ...rest } = props
 
-  return (
-    <button
-      className={classNames(styles.button, {
-        [styles.success]: theme === ButtonTheme.Success,
-      })}
-      onClick={onClick}
-    >
-      {icon && <Icon type={icon} theme={iconTheme} size={16} />}
-      <span>{label}</span>
-    </button>
-  )
-}
+    const iconTheme =
+      theme === ButtonTheme.Success ? IconTheme.Light : IconTheme.Primary
+
+    return (
+      <button
+        ref={forwardedRef}
+        className={classNames(styles.button, {
+          [styles.success]: theme === ButtonTheme.Success,
+        })}
+        onClick={onClick}
+        {...rest}
+      >
+        {icon && <Icon type={icon} theme={iconTheme} size={16} />}
+        <span>{label}</span>
+      </button>
+    )
+  }
+)

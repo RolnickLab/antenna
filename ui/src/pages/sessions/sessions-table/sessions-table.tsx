@@ -13,7 +13,7 @@ import {
 import React from 'react'
 import { STRING, translate } from 'utils/language'
 
-const columns: TableColumn<Session>[] = [
+export const columns: TableColumn<Session>[] = [
   {
     id: 'snapshots',
     field: 'timestamp',
@@ -117,13 +117,20 @@ const columns: TableColumn<Session>[] = [
   },
 ]
 
-export const SessionsTable = () => {
+interface SessionsTableProps {
+  columnSettings: {
+    [id: string]: boolean
+  }
+}
+
+export const SessionsTable = ({ columnSettings }: SessionsTableProps) => {
   const sessions = useSessions()
+  const activeColumns = columns.filter((column) => columnSettings[column.id])
 
   return (
     <Table
       items={sessions}
-      columns={columns}
+      columns={activeColumns}
       defaultSortSettings={{
         columnId: 'snapshots',
         orderBy: OrderBy.Descending,

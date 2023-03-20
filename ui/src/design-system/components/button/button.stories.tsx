@@ -16,17 +16,16 @@ export const Default: Meta = {
   },
 }
 
-export const WithSuccessTheme: Meta = {
+export const WithIcon: Meta = {
   args: {
-    label: 'Lorem ipsum',
-    theme: ButtonTheme.Success,
+    ...Default.args,
+    icon: IconType.Identifiers,
   },
 }
 
-export const WithIcon: Meta = {
+export const WithSuccessTheme: Meta = {
   args: {
-    label: 'Lorem ipsum',
-    icon: IconType.Identifiers,
-    theme: ButtonTheme.Default,
+    ...Default.args,
+    theme: ButtonTheme.Success,
   },
 }

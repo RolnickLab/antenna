@@ -39,7 +39,9 @@ export enum STRING {
   TABLE_COLUMN_UNPROCESSED,
 
   /* OTHER */
+  CLOSE,
   RUNNING,
+  SHOW_COLUMNS,
   STOPPED,
 }
 
@@ -84,7 +86,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TABLE_COLUMN_UNPROCESSED]: 'Unprocessed',
 
   /* OTHER */
+  [STRING.CLOSE]: 'Close',
   [STRING.RUNNING]: 'Running',
+  [STRING.SHOW_COLUMNS]: 'Show columns',
   [STRING.STOPPED]: 'Stopped',
 }
 
