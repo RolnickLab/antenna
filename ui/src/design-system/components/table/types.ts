@@ -3,6 +3,11 @@ export enum CellTheme {
   Primary = 'primary',
 }
 
+export enum ImageCellTheme {
+  Default = 'default',
+  Light = 'light',
+}
+
 export enum TextAlign {
   Left = 'left',
   Right = 'right',
@@ -18,8 +23,12 @@ export interface TableColumn<T> {
   field?: string
   name: string
   sortable?: boolean
-  textAlign?: TextAlign
-  renderCell: (item: T) => JSX.Element
+  styles?: {
+    textAlign?: TextAlign
+    padding?: string
+  }
+  visuallyHidden?: boolean
+  renderCell: (item: T, rowIndex: number, columnIndex: number) => JSX.Element
 }
 
 export interface TableSortSettings {

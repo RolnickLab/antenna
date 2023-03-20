@@ -16,6 +16,7 @@ import { ReactComponent as Overview } from './assets/overview.svg'
 import { ReactComponent as PlayButton } from './assets/play-button.svg'
 import { ReactComponent as Sessions } from './assets/sessions.svg'
 import { ReactComponent as Sort } from './assets/sort.svg'
+import { ReactComponent as Species } from './assets/species.svg'
 import { ReactComponent as TableView } from './assets/table-view.svg'
 import { ReactComponent as ToggleLeft } from './assets/toggle-left.svg'
 import { ReactComponent as ToggleRight } from './assets/toggle-right.svg'
@@ -39,6 +40,7 @@ export enum IconType {
   PlayButton = 'play-button',
   Sessions = 'sessions',
   Sort = 'sort',
+  Species = 'species',
   TableView = 'table-view',
   ToggleLeft = 'toggle-left',
   ToggleRight = 'toggle-right',
@@ -48,6 +50,8 @@ export enum IconTheme {
   Light = 'light',
   Neutral = 'neutral',
   Dark = 'dark',
+  Primary = 'primary',
+  Success = 'success',
 }
 
 const COMPONENT_MAP = {
@@ -68,6 +72,7 @@ const COMPONENT_MAP = {
   [IconType.PlayButton]: PlayButton,
   [IconType.Sessions]: Sessions,
   [IconType.Sort]: Sort,
+  [IconType.Species]: Species,
   [IconType.TableView]: TableView,
   [IconType.ToggleLeft]: ToggleLeft,
   [IconType.ToggleRight]: ToggleRight,
@@ -76,18 +81,31 @@ const COMPONENT_MAP = {
 interface IconProps {
   type: IconType
   theme?: IconTheme
+  size?: number
 }
 
-export const Icon = ({ type, theme = IconTheme.Dark }: IconProps) => {
+export const Icon = ({ type, theme = IconTheme.Dark, size }: IconProps) => {
   const Component = COMPONENT_MAP[type]
+  const fixedSized = size !== undefined
 
   return (
     <div
       className={classNames(styles.wrapper, {
         [styles.light]: theme === IconTheme.Light,
-        [styles.neutral]: theme === IconTheme.Neutral,
         [styles.dark]: theme === IconTheme.Dark,
+        [styles.neutral]: theme === IconTheme.Neutral,
+        [styles.primary]: theme === IconTheme.Primary,
+        [styles.success]: theme === IconTheme.Success,
+        [styles.fixedSized]: fixedSized,
       })}
+      style={
+        fixedSized
+          ? {
+              width: `${size}px`,
+              height: `${size}px`,
+            }
+          : undefined
+      }
     >
       <Component />
     </div>

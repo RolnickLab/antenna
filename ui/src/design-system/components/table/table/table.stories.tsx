@@ -6,7 +6,7 @@ interface Item {
   name: string
   numDetections: number
   numEvents: number
-  numSourceImages: number
+  numImages: number
 }
 
 const items: Item[] = [
@@ -14,19 +14,19 @@ const items: Item[] = [
     name: 'Newfoundland-Warren',
     numDetections: 23,
     numEvents: 1,
-    numSourceImages: 1557,
+    numImages: 1557,
   },
   {
     name: 'Panama',
     numDetections: 63,
     numEvents: 1,
-    numSourceImages: 3,
+    numImages: 3,
   },
   {
     name: 'Vermont-Snapshots-Sample',
     numDetections: 172,
     numEvents: 5,
-    numSourceImages: 178,
+    numImages: 178,
   },
 ]
 
@@ -43,21 +43,27 @@ const columns: TableColumn<Item>[] = [
     id: 'sessions',
     field: 'numEvents',
     name: 'Sessions',
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Item) => <BasicTableCell value={item.numEvents} />,
   },
   {
     id: 'images',
-    field: 'numSourceImages',
+    field: 'numImages',
     name: 'Images',
-    textAlign: TextAlign.Right,
-    renderCell: (item: Item) => <BasicTableCell value={item.numSourceImages} />,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Item) => <BasicTableCell value={item.numImages} />,
   },
   {
     id: 'detections',
     field: 'numDetections',
     name: 'Detections',
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Item) => <BasicTableCell value={item.numDetections} />,
   },
 ]

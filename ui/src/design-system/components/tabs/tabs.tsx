@@ -1,5 +1,6 @@
 import * as Tabs from '@radix-ui/react-tabs'
 import { ReactNode } from 'react'
+import { Icon, IconType } from '../icon/icon'
 import styles from './tabs.module.scss'
 
 const Root = ({
@@ -26,9 +27,18 @@ const List = ({
   </Tabs.List>
 )
 
-const Trigger = ({ value, label }: { value: string; label: string }) => (
+const Trigger = ({
+  value,
+  label,
+  icon,
+}: {
+  value: string
+  label: string
+  icon?: IconType
+}) => (
   <Tabs.Trigger value={value} className={styles.tabsTrigger}>
-    {label}
+    {icon && <Icon type={icon} />}
+    <span>{label}</span>
   </Tabs.Trigger>
 )
 

@@ -13,6 +13,7 @@ interface CheckboxProps {
   id: string
   label: string
   theme?: CheckboxTheme
+  onCheckedChange?: (checked: boolean) => void
   defaultChecked?: boolean
 }
 
@@ -20,6 +21,7 @@ export const Checkbox = ({
   id,
   label,
   theme = CheckboxTheme.Default,
+  onCheckedChange,
   defaultChecked,
 }: CheckboxProps) => {
   return (
@@ -28,6 +30,7 @@ export const Checkbox = ({
         id={id}
         className={styles.checkboxRoot}
         defaultChecked={defaultChecked}
+        onCheckedChange={onCheckedChange}
       >
         <_Checkbox.Indicator className={styles.checkboxIndicator}>
           <Icon type={IconType.Checkmark} theme={IconTheme.Light} />

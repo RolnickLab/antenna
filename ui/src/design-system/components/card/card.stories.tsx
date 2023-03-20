@@ -14,7 +14,6 @@ export const Default: Meta = {
     subTitle: 'Lorem ipsum dolor sit amet',
     image: {
       src: 'https://placekitten.com/600/400',
-      alt: '',
     },
     maxWidth: '320px',
   },

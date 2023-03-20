@@ -7,7 +7,6 @@
 
   tbody,
   td,
-  th,
   thead,
   tr {
     all: unset;
@@ -15,10 +14,6 @@
 
   thead {
     display: table-header-group;
-  }
-
-  th {
-    display: table-cell;
   }
 
   tbody {
@@ -36,5 +31,6 @@
   td {
     display: table-cell;
     white-space: nowrap;
+    vertical-align: middle;
   }
 }

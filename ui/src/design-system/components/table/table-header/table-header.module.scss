@@ -2,6 +2,10 @@
 @import 'design-system/variables/typography.scss';
 
 .tableHeader {
+  all: unset;
+  display: table-cell;
+  white-space: nowrap;
+  vertical-align: middle;
   border-bottom: 2px solid $color-neutral-200;
 
   &.active {
@@ -58,4 +62,11 @@
   &.ascending {
     transform: translate(100%, -50%) rotate(180deg);
   }
+}
+
+.visuallyHidden {
+  width: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
 }

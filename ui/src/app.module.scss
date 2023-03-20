@@ -1,23 +1,26 @@
 @import 'design-system/variables/colors.scss';
 
 .header {
-  background-color: $color-generic-white;
-  height: 64px;
-  border-bottom: 1px solid $color-neutral-200;
-  box-sizing: border-box;
-}
-
-.backdrop {
-  background-color: $color-neutral-200;
-  height: 380px;
-  border-radius: 0px 0px 16px 16px;
-  margin-bottom: 32px;
+  position: sticky;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background-color: $color-neutral-50;
+  padding: 0 100px;
+  height: 120px;
 }
 
 .page {
-  background-color: $color-neutral-100;
-  height: calc(100vh - 64px);
-  padding: 0 100px;
+  background-color: $color-neutral-50;
+  width: 100%;
+  height: calc(100vh - 120px);
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
+  position: relative;
+}
+
+.content {
+  margin: 50px 100px;
+  display: inline-block;
 }

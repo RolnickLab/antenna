@@ -9,12 +9,13 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import React from 'react'
+import { STRING, translate } from 'utils/language'
 
 const columns: TableColumn<Deployment>[] = [
   {
     id: 'deployment',
     field: 'name',
-    name: 'Deployment',
+    name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortable: true,
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.name} theme={CellTheme.Primary} />
@@ -23,27 +24,31 @@ const columns: TableColumn<Deployment>[] = [
   {
     id: 'sessions',
     field: 'numEvents',
-    name: 'Sessions',
+    name: translate(STRING.TABLE_COLUMN_SESSIONS),
     sortable: true,
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Deployment) => <BasicTableCell value={item.numEvents} />,
   },
   {
     id: 'images',
-    field: 'numSourceImages',
-    name: 'Images',
+    field: 'numImages',
+    name: translate(STRING.TABLE_COLUMN_IMAGES),
     sortable: true,
-    textAlign: TextAlign.Right,
-    renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.numSourceImages} />
-    ),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
   },
   {
     id: 'detections',
     field: 'numDetections',
-    name: 'Detections',
+    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
     sortable: true,
-    textAlign: TextAlign.Right,
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.numDetections} />
     ),

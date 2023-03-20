@@ -1,6 +1,10 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+.wrapper {
+  width: 100%;
+}
+
 .items {
   display: flex;
   align-items: flex-end;
@@ -46,6 +50,10 @@
   align-items: center;
   justify-content: flex-start;
   margin-bottom: 4px;
+
+  :not(:last-child) {
+    margin-right: 8px;
+  }
 }
 
 .itemCount {

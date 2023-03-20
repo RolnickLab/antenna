@@ -10,12 +10,22 @@
 }
 
 .tabsTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   @include paragraph-small();
   font-weight: 600;
   background-color: transparent;
-  color: $color-primary-1-600;
   padding: 6px 16px;
   border-radius: 16px;
+
+  :not(:last-child) {
+    margin-right: 6px;
+  }
+
+  > * {
+    color: $color-primary-1-600 !important;
+  }
 
   &:hover {
     opacity: 0.7;
@@ -28,7 +38,10 @@
 
   &[data-state='active'] {
     background-color: $color-neutral-600;
-    color: $color-generic-white;
+
+    > * {
+      color: $color-generic-white !important;
+    }
   }
 }
 

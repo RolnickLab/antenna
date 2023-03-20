@@ -14,15 +14,14 @@ export default {
   },
   argTypes: {
     defaultValue: {
-      options: ['tab1', 'tab2', 'tab3'],
-      control: { type: 'select' },
+      control: { type: 'disable' },
     },
   },
 } as Meta
 
-const TabsTemplate: Story = (args) => (
-  <Tabs.Root {...args}>
-    <Tabs.List ariaLabel="Example">
+const TabsTemplate: Story = () => (
+  <Tabs.Root defaultValue="tab1">
+    <Tabs.List>
       <Tabs.Trigger value="tab1" label="One" />
       <Tabs.Trigger value="tab2" label="Two" />
       <Tabs.Trigger value="tab3" label="Three" />
@@ -34,4 +33,3 @@ const TabsTemplate: Story = (args) => (
 )
 
 export const Default = TabsTemplate.bind({})
-Default.args = { defaultValue: 'tab1' }
