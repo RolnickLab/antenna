@@ -592,14 +592,14 @@ test = ["anyio[trio] (>=3.2.1,<4.0.0)", "black (==22.10.0)", "coverage[toml] (>=
 
 [[package]]
 name = "fastapi-users"
-version = "10.3.0"
+version = "10.4.1"
 description = "Ready-to-use and customizable users management for FastAPI"
 category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "fastapi_users-10.3.0-py3-none-any.whl", hash = "sha256:54596acad3df21bc3a06b7e67584d0e087186d726b99c7629e82f66da94aea91"},
-    {file = "fastapi_users-10.3.0.tar.gz", hash = "sha256:ab9dd218db088bc2d04474ec5fd0040971cea027186041d6d33979f990917d9a"},
+    {file = "fastapi_users-10.4.1-py3-none-any.whl", hash = "sha256:42e24cd7dab59989c40b4beae970292d9a380ada234334d9d656488e533adc0f"},
+    {file = "fastapi_users-10.4.1.tar.gz", hash = "sha256:cbc589278ce35b4e6218ec00987c64bb4dfbfbde39c192d8327b51eda171b9f1"},
 ]
 
 [package.dependencies]
@@ -609,11 +609,11 @@ fastapi-users-db-sqlalchemy = {version = ">=4.0.0", optional = true, markers = "
 makefun = ">=1.11.2,<2.0.0"
 passlib = {version = "1.7.4", extras = ["bcrypt"]}
 pyjwt = {version = "2.6.0", extras = ["crypto"]}
-python-multipart = "0.0.5"
+python-multipart = "0.0.6"
 
 [package.extras]
 beanie = ["fastapi-users-db-beanie (>=1.0.0)"]
-oauth = ["httpx-oauth (>=0.4,<0.11)"]
+oauth = ["httpx-oauth (>=0.4,<0.12)"]
 redis = ["redis (>=4.3.3,<5.0.0)"]
 sqlalchemy = ["fastapi-users-db-sqlalchemy (>=4.0.0)"]
 
@@ -1357,17 +1357,18 @@ testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtuale
 
 [[package]]
 name = "python-multipart"
-version = "0.0.5"
+version = "0.0.6"
 description = "A streaming multipart parser for Python"
 category = "main"
 optional = false
-python-versions = "*"
+python-versions = ">=3.7"
 files = [
-    {file = "python-multipart-0.0.5.tar.gz", hash = "sha256:f7bb5f611fc600d15fa47b3974c8aa16e93724513b49b5f95c81e6624c83fa43"},
+    {file = "python_multipart-0.0.6-py3-none-any.whl", hash = "sha256:ee698bab5ef148b0a760751c261902cd096e57e10558e11aca17646b74ee1c18"},
+    {file = "python_multipart-0.0.6.tar.gz", hash = "sha256:e9925a80bb668529f1b67c7fdb0a5dacdd7cbfc6fb0bff3ea443fe22bdd62132"},
 ]
 
-[package.dependencies]
-six = ">=1.4.0"
+[package.extras]
+dev = ["atomicwrites (==1.2.1)", "attrs (==19.2.0)", "coverage (==6.5.0)", "hatch", "invoke (==1.7.3)", "more-itertools (==4.3.0)", "pbr (==4.3.0)", "pluggy (==1.0.0)", "py (==1.11.0)", "pytest (==7.2.0)", "pytest-cov (==4.0.0)", "pytest-timeout (==2.1.0)", "pyyaml (==5.1)"]
 
 [[package]]
 name = "requests"
@@ -1430,7 +1431,7 @@ testing-integration = ["build[virtualenv]", "filelock (>=3.4.0)", "jaraco.envs (
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 files = [
@@ -1653,4 +1654,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "d869e7342d14e26c21b0625ab25ab7701a2a85ab74b49e58f439389ff738a13c"
+content-hash = "159ca0e1f2e50f0b1305e673c2d41b2682f47f4c432e3fe2cbb60e936c65cd96"
