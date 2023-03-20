@@ -1,3 +1,4 @@
+import _ from 'lodash'
 import { getCompactDatespanString } from 'utils/getCompactDatespanString'
 import detections from './example-data/detections.json'
 import events from './example-data/events.json'
@@ -13,6 +14,7 @@ export const useOccurrences = (): Occurrence[] => {
       appearanceDuration: '[WIP] Appearance duration',
       appearanceTimespan: '[WIP] Appearance timespan',
       categoryLabel: detection.category_label,
+      categoryScore: _.round(detection.category_score, 2),
       deployment: detection.deployment,
       deploymentLocation: '[WIP] Deployment location',
       familyLabel: '[WIP] Family',

@@ -40,7 +40,10 @@ const columns: TableColumn<Occurrence>[] = [
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.categoryLabel}
-        details={item.familyLabel}
+        details={[
+          item.familyLabel,
+          `${translate(STRING.SCORE)}: ${item.categoryScore}`,
+        ]}
         theme={CellTheme.Primary}
       />
     ),
@@ -53,7 +56,7 @@ const columns: TableColumn<Occurrence>[] = [
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.deployment}
-        details={item.deploymentLocation}
+        details={[item.deploymentLocation]}
         theme={CellTheme.Primary}
       />
     ),
@@ -64,7 +67,7 @@ const columns: TableColumn<Occurrence>[] = [
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.sessionId}
-        details={item.sessionTimespan}
+        details={[item.sessionTimespan]}
         theme={CellTheme.Primary}
       />
     ),
@@ -75,7 +78,7 @@ const columns: TableColumn<Occurrence>[] = [
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.appearanceTimespan}
-        details={item.appearanceDuration}
+        details={[item.appearanceDuration]}
         theme={CellTheme.Primary}
       />
     ),

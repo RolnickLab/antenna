@@ -25,6 +25,7 @@ export interface Occurrence {
   appearanceDuration: string
   appearanceTimespan: string
   categoryLabel: string
+  categoryScore: number
   deployment: string
   deploymentLocation: string
   familyLabel: string

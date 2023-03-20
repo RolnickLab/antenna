@@ -6,7 +6,7 @@ import { ReactNode } from 'react'
 
 interface BasicTableCellProps {
   value?: string | number
-  details?: string
+  details?: string[]
   theme?: CellTheme
   children?: ReactNode
 }
@@ -28,7 +28,12 @@ export const BasicTableCell = ({
       style={{ textAlign }}
     >
       {label && <span className={styles.label}>{label}</span>}
-      {details && <span className={styles.details}>{details}</span>}
+      {details &&
+        details.map((detail, index) => (
+          <span key={index} className={styles.details}>
+            {detail}
+          </span>
+        ))}
       {children}
     </div>
   )
