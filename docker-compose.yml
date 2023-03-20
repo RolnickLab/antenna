@@ -22,7 +22,17 @@ services:
       postgres:
         condition: service_healthy
 
-  frontend:
+  ui:
+    build:
+      context: ui
+    ports:
+      - "3000:80"
+    volumes:
+      - ./ui:/app:delegated
+    environment:
+      - NODE_ENV=production
+
+  admin:
     build:
       context: frontend
     ports:
