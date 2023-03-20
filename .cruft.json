@@ -1,6 +1,6 @@
 {
   "template": "https://github.com/gaganpreet/fastapi-starter",
-  "commit": "cf0109f8e887a88eca2119adf3fb9a6d8ac4ce91",
+  "commit": "dac633162dd7d021a117d6da0376db26dbf0c770",
   "checkout": null,
   "context": {
     "cookiecutter": {
