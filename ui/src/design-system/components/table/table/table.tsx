@@ -55,6 +55,7 @@ export const Table = <T extends { id: string }>({
               key={column.id}
               column={column}
               sortSettings={sortSettings}
+              visuallyHidden={column.visuallyHidden}
               onSortClick={() => onSortClick(column)}
             />
           ))}

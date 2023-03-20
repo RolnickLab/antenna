@@ -12,6 +12,7 @@ const columns: TableColumn<BatchData>[] = [
   {
     id: 'description',
     name: translate(STRING.TABLE_COLUMN_DESCRIPTION),
+    visuallyHidden: true,
     renderCell: (item: BatchData) => (
       <BasicTableCell value={item.description} />
     ),
@@ -52,6 +53,7 @@ const columns: TableColumn<BatchData>[] = [
   {
     id: 'actions',
     name: translate(STRING.TABLE_COLUMN_ACTIONS),
+    visuallyHidden: true,
     renderCell: (item) => {
       const showQueueUnprocessedButton = item.unprocessed > 0
       const showDequeueButton = item.queued > 0

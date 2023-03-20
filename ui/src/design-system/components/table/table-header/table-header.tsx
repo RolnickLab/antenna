@@ -6,22 +6,25 @@ import styles from './table-header.module.scss'
 interface TableHeaderProps<T> {
   column: TableColumn<T>
   sortSettings?: TableSortSettings
+  visuallyHidden?: boolean
   onSortClick: () => void
 }
 
 export const TableHeader = <T,>({
   column,
   sortSettings,
+  visuallyHidden,
   onSortClick,
 }: TableHeaderProps<T>) => {
   if (!column.sortable) {
-    return <BasicTableHeader column={column} />
+    return <BasicTableHeader column={column} visuallyHidden={visuallyHidden} />
   }
 
   return (
     <SortableTableHeader
       column={column}
       sortSettings={sortSettings}
+      visuallyHidden={visuallyHidden}
       onSortClick={onSortClick}
     />
   )
@@ -29,13 +32,19 @@ export const TableHeader = <T,>({
 
 const BasicTableHeader = <T,>({
   column,
+  visuallyHidden,
 }: Omit<TableHeaderProps<T>, 'sortSettings' | 'onSortClick'>) => (
   <th
     key={column.id}
     style={{ textAlign: column.styles?.textAlign }}
     className={styles.tableHeader}
   >
-    <div className={styles.content} style={{ padding: column.styles?.padding }}>
+    <div
+      className={classNames(styles.content, {
+        [styles.visuallyHidden]: visuallyHidden,
+      })}
+      style={{ padding: column.styles?.padding }}
+    >
       <div className={styles.columnName}>
         <span>{column.name}</span>
       </div>
@@ -46,6 +55,7 @@ const BasicTableHeader = <T,>({
 const SortableTableHeader = <T,>({
   column,
   sortSettings,
+  visuallyHidden,
   onSortClick,
 }: TableHeaderProps<T>) => {
   const sortActive = sortSettings?.columnId === column.id
@@ -69,7 +79,9 @@ const SortableTableHeader = <T,>({
       })}
     >
       <button
-        className={classNames(styles.content, styles.sortButton)}
+        className={classNames(styles.content, styles.sortButton, {
+          [styles.visuallyHidden]: visuallyHidden,
+        })}
         style={{ padding: column.styles?.padding }}
         onClick={onSortClick}
       >
