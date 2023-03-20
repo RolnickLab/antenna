@@ -63,7 +63,7 @@ const columns: TableColumn<BatchData>[] = [
           <div className={styles.actionCellContent}>
             {showQueueUnprocessedButton && (
               <Button
-                label={translate(STRING.QUEUE_UNPROCESSED)}
+                label={translate(STRING.QUEUE_ALL)}
                 theme={ButtonTheme.Success}
                 onClick={() => console.log('')}
               />

@@ -1,7 +1,7 @@
 export enum STRING {
   /* BUTTON */
   DEQUE_ALL,
-  QUEUE_UNPROCESSED,
+  QUEUE_ALL,
 
   /* NAV_ITEM */
   NAV_ITEM_BATCH_ID,
@@ -49,7 +49,7 @@ export enum STRING {
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
   [STRING.DEQUE_ALL]: 'Deque all',
-  [STRING.QUEUE_UNPROCESSED]: 'Queue unprocessed',
+  [STRING.QUEUE_ALL]: 'Queue all',
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_BATCH_ID]: 'Batch ID',

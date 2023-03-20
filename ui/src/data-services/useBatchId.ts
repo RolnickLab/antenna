@@ -20,7 +20,7 @@ const batchData: BatchData[] = [
     complete: 166,
     description: 'Detected objects',
     id: 'detected',
-    queued: 0,
+    queued: 12,
     status: BatchStatus.Stopped,
     statusLabel: batchStatusLabels[BatchStatus.Stopped],
     unprocessed: 0,
