@@ -1,0 +1,58 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.dialogOverlay {
+  background-color: rgba(0, 0, 0, 0.2);
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+.dialogContent {
+  border-radius: 4px;
+  background-color: $color-generic-white;
+  box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  padding: 32px;
+}
+
+.dialogTitle {
+  all: unset;
+  display: block;
+  @include heading-5();
+  margin-bottom: 8px;
+}
+
+.dialogDescription {
+  all: unset;
+  display: block;
+  @include paragraph-small();
+  margin-bottom: 8px;
+}
+
+.dialogClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+
+  span {
+    display: block;
+    padding: 0 4px;
+    @include paragraph-small();
+    font-weight: 600;
+    color: $color-neutral-500;
+  }
+
+  &:hover {
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+}
