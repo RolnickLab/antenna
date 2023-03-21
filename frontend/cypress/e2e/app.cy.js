@@ -17,7 +17,7 @@ describe("Test register, login and item", () => {
   });
 
   it("Creates a new account", () => {
-    cy.get("div").last().contains("Register").click();
+    cy.get("a").last().contains("Register").click();
 
     cy.get("input").first().type(username);
     cy.get("input").last().type(defaultPassword);
@@ -64,7 +64,14 @@ describe("Test register, login and item", () => {
     cy.get('button[aria-label^="Profile"]').click();
     cy.contains("My Profile").click();
     const newUsername = `abc${new Date().getTime()}@example.com`;
-    cy.get(`input[value='${username}']`)
+    // Need to use {force: true} for following operations because
+    // the custom app bar doesn't hide itself when the Profile button is clicked
+    // Possible solution, but useUserMenu() returns undefined:
+    // https://github.com/marmelab/react-admin/blob/master/packages/ra-ui-materialui/src/layout/useUserMenu.ts
+    cy.get('input[id="email"]', { timeout: 1000 })
+      .should("have.value", username)
+      .click({ force: true });
+    cy.get(`input[id="email"]`)
       .clear({ force: true })
       .type(newUsername, { force: true });
     cy.contains("Save").click({ force: true });
