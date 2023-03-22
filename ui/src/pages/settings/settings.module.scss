@@ -1,13 +1,17 @@
+@import 'design-system/variables/device-sizes.scss';
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
 .content {
   padding: 32px;
+  width: 720px;
+  max-width: 100%;
+  box-sizing: border-box;
   box-sizing: border-box;
 }
 
 .section {
-  width: 720px;
+  width: 100%;
   display: grid;
   gap: 48px;
   grid-template-columns: 1fr 1fr;
@@ -24,7 +28,24 @@
   align-items: center;
   justify-content: center;
 
-  :not(:last-child) {
-    margin-right: 10px;
+  > * {
+    margin-left: 10px;
+  }
+}
+
+@media only screen and (max-width: $device-size-mobile) {
+  .content {
+    width: 480px;
+    max-width: unset;
+  }
+
+  .section {
+    gap: 32px;
+    grid-template-columns: 1fr;
+    padding-bottom: 32px;
+
+    &:not(:last-child) {
+      margin-bottom: 32px;
+    }
   }
 }

@@ -1,7 +1,18 @@
-.settingsWrapper {
-  width: calc(100vw - 200px);
+.tableContent {
+  position: relative;
+  padding: 16px 0;
+}
+
+.galleryContent {
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  margin-bottom: 16px;
+  align-items: flex-start;
+  padding: 16px;
+}
+
+.settingsWrapper {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 1;
+  transform: rotate(90deg);
 }

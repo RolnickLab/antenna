@@ -60,12 +60,14 @@
   display: block;
   @include heading-6();
   color: $color-primary-1-600;
+  white-space: nowrap;
 }
 
 .itemTitle {
   display: block;
   @include label();
   color: $color-neutral-500;
+  white-space: nowrap;
 }
 
 .line {

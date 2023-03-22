@@ -44,10 +44,10 @@ export enum STRING {
   CLOSE,
   RUNNING,
   SCORE,
+  SELECT_COLUMNS,
   SELECT_PATH,
   SELECT_VALUE,
   SETTINGS,
-  SHOW_COLUMNS,
   STOPPED,
 }
 
@@ -97,10 +97,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CLOSE]: 'Close',
   [STRING.RUNNING]: 'Running',
   [STRING.SCORE]: 'Score',
+  [STRING.SELECT_COLUMNS]: 'Select columns',
   [STRING.SELECT_PATH]: 'Select a path',
   [STRING.SELECT_VALUE]: 'Select a value',
   [STRING.SETTINGS]: 'Settings',
-  [STRING.SHOW_COLUMNS]: 'Show columns',
   [STRING.STOPPED]: 'Stopped',
 }
 

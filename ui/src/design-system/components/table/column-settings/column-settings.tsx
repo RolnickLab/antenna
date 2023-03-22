@@ -27,7 +27,7 @@ export const ColumnSettings = ({
     >
       <div className={styles.wrapper}>
         <span className={styles.description}>
-          {translate(STRING.SHOW_COLUMNS)}
+          {translate(STRING.SELECT_COLUMNS)}
         </span>
         <div className={styles.settings}>
           {columns.map((column) => (

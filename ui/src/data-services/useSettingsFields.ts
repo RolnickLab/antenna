@@ -19,7 +19,7 @@ export const useSettingsFields = (): SettingsField[] => {
       description: field.description,
       type,
       section: field.section,
-      options: type === 'options' ? mockOptions : undefined,
+      selectOptions: type === 'options' ? mockOptions : undefined,
     }
   })
 }

@@ -31,17 +31,15 @@ export const App = () => {
           }}
         />
       </header>
-      <div className={styles.page}>
-        <main className={styles.content}>
-          <Routes>
-            <Route path="/batch-id" element={<BatchId />} />
-            <Route path="/deployments" element={<Deployments />} />
-            <Route path="/sessions" element={<Sessions />} />
-            <Route path="/occurrences" element={<Occurrences />} />
-            <Route path="*" element={<UnderConstruction />} />
-          </Routes>
-        </main>
-      </div>
+      <main className={styles.content}>
+        <Routes>
+          <Route path="/batch-id" element={<BatchId />} />
+          <Route path="/deployments" element={<Deployments />} />
+          <Route path="/sessions" element={<Sessions />} />
+          <Route path="/occurrences" element={<Occurrences />} />
+          <Route path="*" element={<UnderConstruction />} />
+        </Routes>
+      </main>
     </div>
   )
 }

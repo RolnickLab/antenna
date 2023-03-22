@@ -60,9 +60,7 @@ export const NavigationBar = ({
                     <span className={styles.itemCount}>{item.count}</span>
                   )}
                 </div>
-                <div>
-                  <span className={styles.itemTitle}>{item.title}</span>
-                </div>
+                <span className={styles.itemTitle}>{item.title}</span>
               </div>
             </li>
           )
