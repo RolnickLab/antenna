@@ -1,10 +1,10 @@
-import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
-import React, { useState } from 'react'
-import { columns, SessionsTable } from './sessions-table/sessions-table'
-import * as Tabs from 'design-system/components/tabs/tabs'
-import styles from './sessions.module.scss'
-import { STRING, translate } from 'utils/language'
 import { IconType } from 'design-system/components/icon/icon'
+import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
+import * as Tabs from 'design-system/components/tabs/tabs'
+import React, { useState } from 'react'
+import { STRING, translate } from 'utils/language'
+import { columns, SessionsTable } from './sessions-table/sessions-table'
+import styles from './sessions.module.scss'
 
 export const Sessions = () => {
   const [columnSettings, setColumnSettings] = useState<{
@@ -46,10 +46,7 @@ export const Sessions = () => {
         </div>
       </Tabs.Content>
       <Tabs.Content value="gallery">
-        <div className={styles.galleryContent}>
-          <div className={styles.sidebar}></div>
-          <div className={styles.gallery}></div>
-        </div>
+        <div className={styles.galleryContent}></div>
       </Tabs.Content>
     </Tabs.Root>
   )
