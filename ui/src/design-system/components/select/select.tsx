@@ -6,7 +6,7 @@ import styles from './select.module.scss'
 interface SelectProps {
   label: string
   placeholder?: string
-  options: {
+  options?: {
     value: string
     label: string
   }[]
@@ -16,7 +16,7 @@ interface SelectProps {
 export const Select = ({
   label,
   placeholder,
-  options,
+  options = [],
   description,
 }: SelectProps) => (
   <div>

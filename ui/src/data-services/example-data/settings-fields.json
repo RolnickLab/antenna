@@ -44,7 +44,7 @@
   "classification_threshold": {
     "title": "Classification threshold",
     "description": "Only show results with a confidence score greater or equal to this value.",
-    "type": "numeric",
+    "type": "slider",
     "section": "models"
   },
   "localization_batch_size": {

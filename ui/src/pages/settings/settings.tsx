@@ -4,6 +4,7 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { Input, PathInput } from 'design-system/components/input/input'
 import { Select } from 'design-system/components/select/select'
+import { Slider } from 'design-system/components/slider/slider'
 import React, { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './settings.module.scss'
@@ -79,8 +80,16 @@ const SettingsFieldComponent = ({ field }: { field: SettingsField }) => {
         <Select
           label={field.title}
           placeholder={translate(STRING.SELECT_VALUE)}
-          options={field.options ?? []}
+          options={field.selectOptions}
           description={field.description}
+        />
+      )
+    case 'slider':
+      return (
+        <Slider
+          label={field.title}
+          description={field.description}
+          settings={field.sliderSettings}
         />
       )
   }
