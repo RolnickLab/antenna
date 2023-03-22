@@ -1,4 +1,4 @@
-@import 'design-system/variables/device-sizes.scss';
+@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
@@ -83,7 +83,7 @@
   }
 }
 
-@media only screen and (max-width: $device-size-tablet) {
+@media only screen and (max-width: $medium-screen-breakpoint) {
   .dialog {
     max-height: calc(100vh - 64px);
     max-width: calc(100% - 64px);

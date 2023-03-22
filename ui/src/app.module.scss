@@ -1,4 +1,4 @@
-@import 'design-system/variables/device-sizes.scss';
+@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
 
 .wrapper {
@@ -40,7 +40,7 @@
   display: inline-block;
 }
 
-@media only screen and (max-width: $device-size-tablet) {
+@media only screen and (max-width: $medium-screen-breakpoint) {
   .header {
     padding: 0 32px;
   }

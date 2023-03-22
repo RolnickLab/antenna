@@ -1,0 +1,13 @@
+/* 
+ * Screen size definitions:
+ * Small screen:    <= 720px
+ * Medium screen:   > 720px && <= 1024px
+ * Large screen:    > 1024px
+ */
+
+$small-screen-breakpoint: 720px;
+$medium-screen-breakpoint: 1024px;
+
+/* Other */
+
+$page-min-width: 720px;
