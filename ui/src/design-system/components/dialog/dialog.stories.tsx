@@ -19,8 +19,17 @@ const DialogTemplate: Story = () => (
     <Dialog.Trigger>
       <Button label="Click me!" />
     </Dialog.Trigger>
-    <Dialog.Content title="Title" ariaCloselabel="Close">
-      <div style={{ width: '320px', height: '160px' }}>Dialog content</div>
+    <Dialog.Content ariaCloselabel="Close">
+      <Dialog.Header title="Title" />
+      <div
+        style={{
+          width: '320px',
+          padding: '32px',
+          boxSizing: 'border-box',
+        }}
+      >
+        Dialog content
+      </div>
     </Dialog.Content>
   </Dialog.Root>
 )
