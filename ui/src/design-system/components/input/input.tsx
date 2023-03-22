@@ -18,7 +18,7 @@ export const Input = ({
   const hintName = `hint-${name}`
 
   return (
-    <>
+    <div>
       <label className={styles.label} htmlFor={name}>
         {label}
       </label>
@@ -32,7 +32,7 @@ export const Input = ({
       <span className={styles.description} id={hintName}>
         {description}
       </span>
-    </>
+    </div>
   )
 }
 
@@ -45,7 +45,7 @@ export const PathInput = ({
   const hintName = `hint-${name}`
 
   return (
-    <>
+    <div>
       <label className={styles.label} htmlFor={name}>
         {label}
       </label>
@@ -61,6 +61,6 @@ export const PathInput = ({
       <span className={styles.description} id={hintName}>
         {description}
       </span>
-    </>
+    </div>
   )
 }

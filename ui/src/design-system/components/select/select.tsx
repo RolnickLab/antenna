@@ -19,7 +19,7 @@ export const Select = ({
   options,
   description,
 }: SelectProps) => (
-  <>
+  <div>
     <label className={styles.label}>{label}</label>
     <_Select.Root>
       <_Select.Trigger className={styles.selectTrigger}>
@@ -53,7 +53,7 @@ export const Select = ({
       </_Select.Portal>
     </_Select.Root>
     <span className={styles.description}>{description}</span>
-  </>
+  </div>
 )
 
 interface SelectItemProps {

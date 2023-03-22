@@ -25,6 +25,11 @@
     border-color: $color-success-500;
   }
 
+  &.plain {
+    background-color: transparent;
+    border-color: transparent;
+  }
+
   &:hover {
     cursor: pointer;
     opacity: 0.7;

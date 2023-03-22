@@ -6,6 +6,7 @@ import styles from './button.module.scss'
 export enum ButtonTheme {
   Default = 'default',
   Success = 'success',
+  Plain = 'plain',
 }
 
 interface ButtonProps {
@@ -27,6 +28,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={forwardedRef}
         className={classNames(styles.button, {
           [styles.success]: theme === ButtonTheme.Success,
+          [styles.plain]: theme === ButtonTheme.Plain,
         })}
         onClick={onClick}
         {...rest}

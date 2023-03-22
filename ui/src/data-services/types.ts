@@ -51,3 +51,14 @@ export interface Session {
   timespan: string
   timestamp: Date
 }
+
+export type SettingsFieldType = 'path' | 'string' | 'options' | 'numeric'
+
+export interface SettingsField {
+  id: string
+  title: string
+  description: string
+  type: SettingsFieldType
+  section: string
+  options?: { label: string; value: string }[]
+}
