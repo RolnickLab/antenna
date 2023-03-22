@@ -9,6 +9,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 const columns: TableColumn<Deployment>[] = [
@@ -18,7 +19,9 @@ const columns: TableColumn<Deployment>[] = [
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortable: true,
     renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      <Link to={`/deployments/deployment-id`}>
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {

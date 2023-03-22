@@ -37,6 +37,38 @@ export const App = () => {
           <Route path="/deployments" element={<Deployments />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/occurrences" element={<Occurrences />} />
+
+          {/* Work in progress pages */}
+          <Route
+            path="/overview"
+            element={
+              <UnderConstruction message="Overview is under construction!" />
+            }
+          />
+          <Route
+            path="/species"
+            element={
+              <UnderConstruction message="Species is under construction!" />
+            }
+          />
+          <Route
+            path="/deployments/:id"
+            element={
+              <UnderConstruction message="Deployment details is under construction!" />
+            }
+          />
+          <Route
+            path="/sessions/:id"
+            element={
+              <UnderConstruction message="Session details is under construction!" />
+            }
+          />
+          <Route
+            path="/occurrences/:id"
+            element={
+              <UnderConstruction message="Occurrence details is under construction!" />
+            }
+          />
           <Route path="*" element={<UnderConstruction />} />
         </Routes>
       </main>

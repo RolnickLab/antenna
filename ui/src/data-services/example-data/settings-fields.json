@@ -36,7 +36,7 @@
     "section": "models"
   },
   "tracking_algorithm": {
-    "title": "Occurrence tracking algorithm (de-duplication)",
+    "title": "Occurrence tracking algorithm",
     "description": "Method of identifying and tracking the same individual moth across multiple images.",
     "type": "options",
     "section": "models"

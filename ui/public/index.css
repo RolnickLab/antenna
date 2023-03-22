@@ -45,3 +45,11 @@ li,
 ul {
   all: unset;
 }
+
+a {
+  all: unset;
+}
+a:hover {
+  cursor: pointer;
+  opacity: 0.7;
+}

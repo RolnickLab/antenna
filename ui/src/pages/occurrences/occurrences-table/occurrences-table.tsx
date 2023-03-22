@@ -10,6 +10,7 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 const columns: TableColumn<Occurrence>[] = [
@@ -38,14 +39,16 @@ const columns: TableColumn<Occurrence>[] = [
     sortable: true,
     field: 'categoryLabel',
     renderCell: (item: Occurrence) => (
-      <BasicTableCell
-        value={item.categoryLabel}
-        details={[
-          item.familyLabel,
-          `${translate(STRING.SCORE)}: ${item.categoryScore}`,
-        ]}
-        theme={CellTheme.Primary}
-      />
+      <Link to={`/occurrences/occurrence-id`}>
+        <BasicTableCell
+          value={item.categoryLabel}
+          details={[
+            item.familyLabel,
+            `${translate(STRING.SCORE)}: ${item.categoryScore}`,
+          ]}
+          theme={CellTheme.Primary}
+        />
+      </Link>
     ),
   },
   {
@@ -54,22 +57,26 @@ const columns: TableColumn<Occurrence>[] = [
     sortable: true,
     field: 'deployment',
     renderCell: (item: Occurrence) => (
-      <BasicTableCell
-        value={item.deployment}
-        details={[item.deploymentLocation]}
-        theme={CellTheme.Primary}
-      />
+      <Link to={`/deployments/deployment-id`}>
+        <BasicTableCell
+          value={item.deployment}
+          details={[item.deploymentLocation]}
+          theme={CellTheme.Primary}
+        />
+      </Link>
     ),
   },
   {
     id: 'session',
     name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Occurrence) => (
-      <BasicTableCell
-        value={item.sessionId}
-        details={[item.sessionTimespan]}
-        theme={CellTheme.Primary}
-      />
+      <Link to={`/sessions/session-id`}>
+        <BasicTableCell
+          value={item.sessionId}
+          details={[item.sessionTimespan]}
+          theme={CellTheme.Primary}
+        />
+      </Link>
     ),
   },
   {
