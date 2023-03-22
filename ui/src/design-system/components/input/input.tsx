@@ -1,5 +1,4 @@
 import classNames from 'classnames'
-import { useState } from 'react'
 import styles from './input.module.scss'
 
 interface InputProps {
@@ -7,25 +6,15 @@ interface InputProps {
   label: string
   placeholder?: string
   description?: string
-  type?: 'text' | 'number' | 'file'
 }
 
-export const Input = (props: InputProps) => {
-  switch (props.type) {
-    case 'file':
-      return <FileInput {...props} />
-    default:
-      return <ValueInput {...props} />
-  }
-}
-
-const ValueInput = ({
+export const Input = ({
   name,
   label,
   placeholder,
   description,
   type,
-}: InputProps) => {
+}: InputProps & { type?: 'text' | 'number' }) => {
   const hintName = `hint-${name}`
 
   return (
@@ -34,21 +23,25 @@ const ValueInput = ({
         {label}
       </label>
       <input
+        aria-describedby={hintName}
         className={styles.valueInput}
         id={name}
-        type={type}
-        aria-describedby={hintName}
         placeholder={placeholder}
+        type={type}
       />
-      <span id={hintName} className={styles.description}>
+      <span className={styles.description} id={hintName}>
         {description}
       </span>
     </>
   )
 }
 
-const FileInput = ({ name, label, placeholder, description }: InputProps) => {
-  const [value, setValue] = useState<string>()
+export const PathInput = ({
+  name,
+  label,
+  placeholder,
+  description,
+}: InputProps) => {
   const hintName = `hint-${name}`
 
   return (
@@ -56,21 +49,16 @@ const FileInput = ({ name, label, placeholder, description }: InputProps) => {
       <label className={styles.label} htmlFor={name}>
         {label}
       </label>
-      <label className={styles.fileInputWrapper}>
-        <input
-          id={name}
-          type="file"
-          onChange={(e) => setValue(e.currentTarget.value)}
-        />
-        <span
-          data-content={value ?? placeholder}
-          className={classNames(styles.customInput, {
-            [styles.placeholder]: !value,
-          })}
-          aria-hidden="true"
-        />
-      </label>
-      <span id={hintName} className={styles.description}>
+      <button
+        aria-describedby={hintName}
+        className={classNames(styles.pathInput, {
+          [styles.placeholder]: true,
+        })}
+        data-content={placeholder}
+        id={name}
+        onClick={() => alert('Selecting a path is WIP.')}
+      />
+      <span className={styles.description} id={hintName}>
         {description}
       </span>
     </>

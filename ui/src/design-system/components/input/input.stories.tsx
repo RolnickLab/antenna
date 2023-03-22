@@ -32,11 +32,3 @@ export const NumberInput: Meta = {
     name: 'number-input',
   },
 }
-
-export const FileInput: Meta = {
-  args: {
-    ...Default.args,
-    type: 'file',
-    name: 'file-input',
-  },
-}
