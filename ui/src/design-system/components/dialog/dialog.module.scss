@@ -85,7 +85,14 @@
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
   .dialog {
-    max-height: calc(100vh - 64px);
     max-width: calc(100% - 64px);
+    max-height: calc(100vh - 64px);
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .dialog {
+    max-width: 100%;
+    max-height: 100vh;
   }
 }

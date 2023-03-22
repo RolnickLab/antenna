@@ -38,6 +38,7 @@
   @include paragraph-small();
   color: $color-neutral-500;
   font-style: italic;
+  word-break: break-word;
 }
 
 /* Value input styles */
