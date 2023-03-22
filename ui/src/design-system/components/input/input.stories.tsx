@@ -4,7 +4,7 @@ import { Input } from './input'
 type Meta = ComponentMeta<typeof Input>
 
 export default {
-  title: 'Components/Input',
+  title: 'Components/Form/Input',
   component: Input,
   decorators: [(Story) => <div style={{ maxWidth: '320px' }}>{Story()}</div>],
 } as Meta
