@@ -1,6 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import React from 'react'
-import { Button, ButtonTheme } from '../button/button'
 import styles from './dialog.module.scss'
 
 const Root = ({ children }: { children: React.ReactNode }) => (

@@ -65,6 +65,7 @@
 .pathInput {
   @include input-container();
   margin-bottom: 8px;
+  cursor: pointer;
 
   &.placeholder {
     color: $color-neutral-500;
