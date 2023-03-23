@@ -1,4 +1,4 @@
-import { useOccurrences } from 'data-services/useOccurrences'
+import { useOccurrences } from 'data-services/hooks/useOccurrences'
 import { Card } from 'design-system/components/card/card'
 import { IconType } from 'design-system/components/icon/icon'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -8,7 +8,7 @@ import { OccurrencesTable } from './occurrences-table/occurrences-table'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
-  const occurrences = useOccurrences()
+  const { occurrences, isLoading } = useOccurrences()
 
   return (
     <Tabs.Root defaultValue="table">
@@ -26,7 +26,7 @@ export const Occurrences = () => {
       </Tabs.List>
       <Tabs.Content value="table">
         <div className={styles.occurrencesContent}>
-          <OccurrencesTable />
+          <OccurrencesTable occurrences={occurrences} isLoading={isLoading} />
         </div>
       </Tabs.Content>
       <Tabs.Content value="gallery">

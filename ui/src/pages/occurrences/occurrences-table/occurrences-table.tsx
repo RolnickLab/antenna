@@ -1,5 +1,4 @@
-import { Occurrence } from 'data-services/types'
-import { useOccurrences } from 'data-services/useOccurrences'
+import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import { Table } from 'design-system/components/table/table/table'
@@ -92,17 +91,22 @@ const columns: TableColumn<Occurrence>[] = [
   },
 ]
 
-export const OccurrencesTable = () => {
-  const occurrences = useOccurrences()
-
-  return (
-    <Table
-      items={occurrences}
-      columns={columns}
-      defaultSortSettings={{
-        columnId: 'snapshots',
-        orderBy: OrderBy.Descending,
-      }}
-    ></Table>
-  )
+interface OccurrencesTableProps {
+  occurrences: Occurrence[]
+  isLoading: boolean
 }
+
+export const OccurrencesTable = ({
+  occurrences,
+  isLoading,
+}: OccurrencesTableProps) => (
+  <Table
+    items={occurrences}
+    isLoading={isLoading}
+    columns={columns}
+    defaultSortSettings={{
+      columnId: 'snapshots',
+      orderBy: OrderBy.Descending,
+    }}
+  ></Table>
+)
