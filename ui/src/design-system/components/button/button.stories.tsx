@@ -29,3 +29,10 @@ export const WithSuccessTheme: Meta = {
     theme: ButtonTheme.Success,
   },
 }
+
+export const WithPlainTheme: Meta = {
+  args: {
+    ...Default.args,
+    theme: ButtonTheme.Plain,
+  },
+}

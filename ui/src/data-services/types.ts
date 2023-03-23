@@ -51,3 +51,25 @@ export interface Session {
   timespan: string
   timestamp: Date
 }
+
+export type SettingsFieldType =
+  | 'path'
+  | 'string'
+  | 'options'
+  | 'numeric'
+  | 'slider'
+
+export interface SettingsField {
+  id: string
+  title: string
+  description: string
+  type: SettingsFieldType
+  section: string
+  selectOptions?: { label: string; value: string }[]
+  sliderSettings?: {
+    min: number
+    max: number
+    step: number
+    defaultValue: number
+  }
+}

@@ -11,6 +11,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Session>[] = [
@@ -39,7 +40,9 @@ export const columns: TableColumn<Session>[] = [
     name: translate(STRING.TABLE_COLUMN_SESSION),
     sortable: true,
     renderCell: (item: Session) => (
-      <BasicTableCell value={item.id} theme={CellTheme.Primary} />
+      <Link to={`/sessions/session-id`}>
+        <BasicTableCell value={item.id} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {
@@ -48,7 +51,9 @@ export const columns: TableColumn<Session>[] = [
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortable: true,
     renderCell: (item: Session) => (
-      <BasicTableCell value={item.deployment} theme={CellTheme.Primary} />
+      <Link to={`/deployments/deployment-id`}>
+        <BasicTableCell value={item.deployment} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {

@@ -12,6 +12,7 @@ interface NavigatinonItem {
   icon?: IconType
   count?: number
   path: string
+  matchPath?: string
 }
 
 export const useNavItems = () => {
@@ -40,6 +41,7 @@ export const useNavItems = () => {
         icon: IconType.Deployments,
         count: deployments.length,
         path: '/deployments',
+        matchPath: '/deployments/*',
       },
       {
         id: 'sessions',
@@ -47,6 +49,7 @@ export const useNavItems = () => {
         icon: IconType.Sessions,
         count: sessions.length,
         path: '/sessions',
+        matchPath: '/sessions/*',
       },
       {
         id: 'occurrences',
@@ -54,6 +57,7 @@ export const useNavItems = () => {
         icon: IconType.Occurrences,
         count: occurrences.length,
         path: '/occurrences',
+        matchPath: '/occurrences/*',
       },
       {
         id: 'species',
@@ -61,14 +65,17 @@ export const useNavItems = () => {
         icon: IconType.Species,
         count: 0,
         path: '/species',
+        matchPath: '/species/*',
       },
     ],
     [deployments, occurrences]
   )
 
   const activeNavItem =
-    navItems.find((navItem) => !!matchPath(navItem.path, location.pathname)) ??
-    navItems[0]
+    navItems.find(
+      (navItem) =>
+        !!matchPath(navItem.matchPath ?? navItem.path, location.pathname)
+    ) ?? navItems[0]
 
   return { navItems, activeNavItemId: activeNavItem.id }
 }

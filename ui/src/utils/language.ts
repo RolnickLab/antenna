@@ -2,6 +2,8 @@ export enum STRING {
   /* BUTTON */
   DEQUE_ALL,
   QUEUE_ALL,
+  RESET,
+  SAVE_CHANGES,
 
   /* NAV_ITEM */
   NAV_ITEM_BATCH_ID,
@@ -42,7 +44,10 @@ export enum STRING {
   CLOSE,
   RUNNING,
   SCORE,
-  SHOW_COLUMNS,
+  SELECT_COLUMNS,
+  SELECT_PATH,
+  SELECT_VALUE,
+  SETTINGS,
   STOPPED,
 }
 
@@ -50,6 +55,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
   [STRING.DEQUE_ALL]: 'Deque all',
   [STRING.QUEUE_ALL]: 'Queue all',
+  [STRING.RESET]: 'Reset',
+  [STRING.SAVE_CHANGES]: 'Save changes',
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_BATCH_ID]: 'Batch ID',
@@ -90,7 +97,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CLOSE]: 'Close',
   [STRING.RUNNING]: 'Running',
   [STRING.SCORE]: 'Score',
-  [STRING.SHOW_COLUMNS]: 'Show columns',
+  [STRING.SELECT_COLUMNS]: 'Select columns',
+  [STRING.SELECT_PATH]: 'Select a path',
+  [STRING.SELECT_VALUE]: 'Select a value',
+  [STRING.SETTINGS]: 'Settings',
   [STRING.STOPPED]: 'Stopped',
 }
 
