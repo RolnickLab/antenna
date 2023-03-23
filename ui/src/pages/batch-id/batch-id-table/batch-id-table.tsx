@@ -1,5 +1,5 @@
-import { BatchData } from 'data-services/types'
-import { useBatchData } from 'data-services/useBatchId'
+import { useQueues } from 'data-services/hooks/useQueues'
+import { Queue } from 'data-services/models/queue'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { Table } from 'design-system/components/table/table/table'
@@ -8,14 +8,12 @@ import React from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './batch-id-table.module.scss'
 
-const columns: TableColumn<BatchData>[] = [
+const columns: TableColumn<Queue>[] = [
   {
     id: 'description',
     name: translate(STRING.TABLE_COLUMN_DESCRIPTION),
     visuallyHidden: true,
-    renderCell: (item: BatchData) => (
-      <BasicTableCell value={item.description} />
-    ),
+    renderCell: (item: Queue) => <BasicTableCell value={item.description} />,
   },
   {
     id: 'unprocessed',
@@ -23,9 +21,7 @@ const columns: TableColumn<BatchData>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: BatchData) => (
-      <BasicTableCell value={item.unprocessed} />
-    ),
+    renderCell: (item: Queue) => <BasicTableCell value={item.unprocessed} />,
   },
   {
     id: 'queued',
@@ -33,7 +29,7 @@ const columns: TableColumn<BatchData>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: BatchData) => <BasicTableCell value={item.queued} />,
+    renderCell: (item: Queue) => <BasicTableCell value={item.queued} />,
   },
   {
     id: 'complete',
@@ -41,14 +37,12 @@ const columns: TableColumn<BatchData>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: BatchData) => <BasicTableCell value={item.complete} />,
+    renderCell: (item: Queue) => <BasicTableCell value={item.complete} />,
   },
   {
     id: 'status',
     name: translate(STRING.TABLE_COLUMN_STATUS),
-    renderCell: (item: BatchData) => (
-      <BasicTableCell value={item.statusLabel} />
-    ),
+    renderCell: (item: Queue) => <BasicTableCell value={item.statusLabel} />,
   },
   {
     id: 'actions',
@@ -82,7 +76,7 @@ const columns: TableColumn<BatchData>[] = [
 ]
 
 export const BatchIdTable = () => {
-  const batchData = useBatchData()
+  const { queues, isLoading } = useQueues()
 
-  return <Table items={batchData} columns={columns}></Table>
+  return <Table items={queues} isLoading={isLoading} columns={columns}></Table>
 }
