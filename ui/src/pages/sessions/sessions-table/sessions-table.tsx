@@ -1,5 +1,4 @@
-import { Session } from 'data-services/types'
-import { useSessions } from 'data-services/useSessions'
+import { Session } from 'data-services/models/session'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import { Table } from 'design-system/components/table/table/table'
@@ -52,19 +51,26 @@ export const columns: TableColumn<Session>[] = [
     sortable: true,
     renderCell: (item: Session) => (
       <Link to={`/deployments/deployment-id`}>
-        <BasicTableCell value={item.deployment} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.deploymentLabel}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },
   {
     id: 'date',
     name: translate(STRING.TABLE_COLUMN_DATE),
-    renderCell: (item: Session) => <BasicTableCell value={item.datespan} />,
+    renderCell: (item: Session) => (
+      <BasicTableCell value={item.datespanLabel} />
+    ),
   },
   {
     id: 'time',
     name: translate(STRING.TABLE_COLUMN_TIME),
-    renderCell: (item: Session) => <BasicTableCell value={item.timespan} />,
+    renderCell: (item: Session) => (
+      <BasicTableCell value={item.timespanLabel} />
+    ),
   },
   {
     id: 'duration',
@@ -118,23 +124,29 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'avg-temp',
     name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
-    renderCell: (item: Session) => <BasicTableCell value={item.avgTemp} />,
+    renderCell: (item: Session) => <BasicTableCell value={item.avgTempLabel} />,
   },
 ]
 
 interface SessionsTableProps {
+  sessions: Session[]
+  isLoading: boolean
   columnSettings: {
     [id: string]: boolean
   }
 }
 
-export const SessionsTable = ({ columnSettings }: SessionsTableProps) => {
-  const sessions = useSessions()
+export const SessionsTable = ({
+  sessions,
+  isLoading,
+  columnSettings,
+}: SessionsTableProps) => {
   const activeColumns = columns.filter((column) => columnSettings[column.id])
 
   return (
     <Table
       items={sessions}
+      isLoading={isLoading}
       columns={activeColumns}
       defaultSortSettings={{
         columnId: 'snapshots',

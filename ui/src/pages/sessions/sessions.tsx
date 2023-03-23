@@ -1,3 +1,4 @@
+import { useSessions } from 'data-services/hooks/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -7,6 +8,7 @@ import { columns, SessionsTable } from './sessions-table/sessions-table'
 import styles from './sessions.module.scss'
 
 export const Sessions = () => {
+  const { sessions, isLoading } = useSessions()
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -42,7 +44,11 @@ export const Sessions = () => {
               onColumnSettingsChange={setColumnSettings}
             />
           </div>
-          <SessionsTable columnSettings={columnSettings} />
+          <SessionsTable
+            sessions={sessions}
+            isLoading={isLoading}
+            columnSettings={columnSettings}
+          />
         </div>
       </Tabs.Content>
       <Tabs.Content value="gallery">
