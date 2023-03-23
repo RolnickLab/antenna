@@ -1,6 +1,3 @@
-import { useDeployments } from 'data-services/useDeployments'
-import { useOccurrences } from 'data-services/useOccurrences'
-import { useSessions } from 'data-services/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { useMemo } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
@@ -17,9 +14,6 @@ interface NavigatinonItem {
 
 export const useNavItems = () => {
   const location = useLocation()
-  const deployments = useDeployments()
-  const sessions = useSessions()
-  const occurrences = useOccurrences()
 
   const navItems: NavigatinonItem[] = useMemo(
     () => [
@@ -39,7 +33,7 @@ export const useNavItems = () => {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
-        count: deployments.length,
+        count: 0,
         path: '/deployments',
         matchPath: '/deployments/*',
       },
@@ -47,7 +41,7 @@ export const useNavItems = () => {
         id: 'sessions',
         title: translate(STRING.NAV_ITEM_SESSIONS),
         icon: IconType.Sessions,
-        count: sessions.length,
+        count: 0,
         path: '/sessions',
         matchPath: '/sessions/*',
       },
@@ -55,7 +49,7 @@ export const useNavItems = () => {
         id: 'occurrences',
         title: translate(STRING.NAV_ITEM_OCCURRENCES),
         icon: IconType.Occurrences,
-        count: occurrences.length,
+        count: 0,
         path: '/occurrences',
         matchPath: '/occurrences/*',
       },
@@ -68,7 +62,7 @@ export const useNavItems = () => {
         matchPath: '/species/*',
       },
     ],
-    [deployments, occurrences]
+    []
   )
 
   const activeNavItem =
