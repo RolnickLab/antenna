@@ -19,8 +19,10 @@
   tbody {
     display: table-row-group;
 
-    tr:nth-child(odd) {
-      background-color: $color-generic-white;
+    &:not(.loading) {
+      tr:nth-child(odd) {
+        background-color: $color-generic-white;
+      }
     }
   }
 

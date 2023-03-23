@@ -1,3 +1,5 @@
+import classNames from 'classnames'
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import _ from 'lodash'
 import { useEffect, useState } from 'react'
 import { TableHeader } from '../table-header/table-header'
@@ -7,12 +9,14 @@ import styles from './table.module.scss'
 
 interface TableProps<T> {
   items: T[]
+  isLoading?: boolean
   columns: TableColumn<T>[]
   defaultSortSettings?: TableSortSettings
 }
 
 export const Table = <T extends { id: string }>({
   items,
+  isLoading,
   columns,
   defaultSortSettings,
 }: TableProps<T>) => {
@@ -30,7 +34,7 @@ export const Table = <T extends { id: string }>({
     }
 
     setSortedItems(items)
-  }, [sortSettings])
+  }, [items, sortSettings])
 
   const onSortClick = (column: TableColumn<T>) => {
     if (column.id !== sortSettings?.columnId) {
@@ -66,17 +70,25 @@ export const Table = <T extends { id: string }>({
           />
         </tr>
       </thead>
-      <tbody>
-        {sortedItems.map((item, rowIndex) => (
-          <tr key={item.id}>
-            {columns.map((column, columnIndex) => (
-              <td key={column.id}>
-                {column.renderCell(item, rowIndex, columnIndex)}
-              </td>
-            ))}
-            <td aria-hidden="true" />
+      <tbody className={classNames({ [styles.loading]: isLoading })}>
+        {isLoading ? (
+          <tr>
+            <td colSpan={columns.length + 1}>
+              <LoadingSpinner />
+            </td>
           </tr>
-        ))}
+        ) : (
+          sortedItems.map((item, rowIndex) => (
+            <tr key={item.id}>
+              {columns.map((column, columnIndex) => (
+                <td key={column.id}>
+                  {column.renderCell(item, rowIndex, columnIndex)}
+                </td>
+              ))}
+              <td aria-hidden="true" />
+            </tr>
+          ))
+        )}
       </tbody>
     </table>
   )

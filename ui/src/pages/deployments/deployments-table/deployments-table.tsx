@@ -1,5 +1,5 @@
-import { Deployment } from 'data-services/types'
-import { useDeployments } from 'data-services/useDeployments'
+import { useDeployments } from 'data-services/hooks/useDeployments'
+import { Deployment } from 'data-services/models/deployment'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { Table } from 'design-system/components/table/table/table'
 import {
@@ -59,11 +59,12 @@ const columns: TableColumn<Deployment>[] = [
 ]
 
 export const DeploymentsTable = () => {
-  const deployments = useDeployments()
+  const { deployments, isLoading } = useDeployments()
 
   return (
     <Table
       items={deployments}
+      isLoading={isLoading}
       columns={columns}
       defaultSortSettings={{
         columnId: 'deployment',

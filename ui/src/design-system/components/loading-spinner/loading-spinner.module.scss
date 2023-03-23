@@ -1,0 +1,23 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.loadingSpinner {
+  padding: 64px;
+  text-align: center;
+
+  span {
+    font-size: 48px;
+    line-height: 100%;
+    display: inline-block;
+    animation: rotation 1s infinite linear;
+  }
+}
+
+@keyframes rotation {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
