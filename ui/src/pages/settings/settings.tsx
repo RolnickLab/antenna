@@ -1,29 +1,16 @@
-import { SettingsField } from 'data-services/types'
-import { useSettingsFields } from 'data-services/useSettingsFields'
+import { useSettings } from 'data-services/hooks/useSettings'
+import { SettingsField } from 'data-services/models/settings'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { Input, PathInput } from 'design-system/components/input/input'
 import { Select } from 'design-system/components/select/select'
 import { Slider } from 'design-system/components/slider/slider'
-import React, { useMemo } from 'react'
+import React from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './settings.module.scss'
 
 export const Settings = () => {
-  const settingsFields = useSettingsFields()
-
-  const sections = useMemo(
-    () =>
-      settingsFields.reduce<{
-        [section: string]: SettingsField[]
-      }>((sections, field) => {
-        const section = sections[field.section] ?? []
-        section.push(field)
-        sections[field.section] = section
-        return sections
-      }, {}),
-    [settingsFields]
-  )
+  const settings = useSettings()
 
   return (
     <Dialog.Root>
@@ -41,11 +28,12 @@ export const Settings = () => {
           </div>
         </Dialog.Header>
         <div className={styles.content}>
-          {Object.entries(sections).map(([section, fields]) => (
+          {Object.entries(settings.sections).map(([section, fieldIds]) => (
             <div key={section} className={styles.section}>
-              {fields.map((field) => (
-                <SettingsFieldComponent key={field.id} field={field} />
-              ))}
+              {fieldIds.map((fieldId) => {
+                const field = settings.fields[fieldId]
+                return <SettingsFieldComponent key={field.id} field={field} />
+              })}
             </div>
           ))}
         </div>
@@ -80,8 +68,8 @@ const SettingsFieldComponent = ({ field }: { field: SettingsField }) => {
         <Select
           label={field.title}
           placeholder={translate(STRING.SELECT_VALUE)}
-          options={field.selectOptions}
           description={field.description}
+          options={field.options}
         />
       )
     case 'slider':
@@ -89,7 +77,7 @@ const SettingsFieldComponent = ({ field }: { field: SettingsField }) => {
         <Slider
           label={field.title}
           description={field.description}
-          settings={field.sliderSettings}
+          settings={field.settings}
         />
       )
   }
