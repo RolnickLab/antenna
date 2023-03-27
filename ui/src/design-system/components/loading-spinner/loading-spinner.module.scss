@@ -2,22 +2,17 @@
 @import 'design-system/variables/typography.scss';
 
 .loadingSpinner {
-  padding: 64px;
-  text-align: center;
-
-  span {
-    font-size: 48px;
-    line-height: 100%;
-    display: inline-block;
-    animation: rotation 1s infinite linear;
-  }
+  display: inline-block;
+  width: 56px;
+  height: 56px;
+  border: 7px solid $color-primary-2-500;
+  border-radius: 50%;
+  border-top-color: $color-primary-2-50;
+  animation: spin 0.7s ease-in-out infinite;
 }
 
-@keyframes rotation {
-  from {
-    transform: rotate(0deg);
-  }
+@keyframes spin {
   to {
-    transform: rotate(360deg);
+    -webkit-transform: rotate(360deg);
   }
 }

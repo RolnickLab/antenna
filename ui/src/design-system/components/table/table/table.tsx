@@ -36,34 +36,28 @@ export const Table = <T extends { id: string }>({
   }
 
   return (
-    <table className={styles.table}>
-      <thead>
-        <tr>
-          {columns.map((column) => (
-            <TableHeader
-              key={column.id}
-              column={column}
-              sortSettings={sortSettings}
-              visuallyHidden={column.visuallyHidden}
-              onSortClick={() => onSortClick(column)}
-            />
-          ))}
-          <th
-            aria-hidden="true"
-            className={tableHeaderStyles.tableHeader}
-            style={{ width: '100%' }}
-          />
-        </tr>
-      </thead>
-      <tbody className={classNames({ [styles.loading]: isLoading })}>
-        {isLoading ? (
+    <div className={styles.wrapper}>
+      <table className={styles.table}>
+        <thead>
           <tr>
-            <td colSpan={columns.length + 1}>
-              <LoadingSpinner />
-            </td>
+            {columns.map((column) => (
+              <TableHeader
+                key={column.id}
+                column={column}
+                sortSettings={sortSettings}
+                visuallyHidden={column.visuallyHidden}
+                onSortClick={() => onSortClick(column)}
+              />
+            ))}
+            <th
+              aria-hidden="true"
+              className={tableHeaderStyles.tableHeader}
+              style={{ width: '100%' }}
+            />
           </tr>
-        ) : (
-          items.map((item, rowIndex) => (
+        </thead>
+        <tbody className={classNames({ [styles.loading]: isLoading })}>
+          {items.map((item, rowIndex) => (
             <tr key={item.id}>
               {columns.map((column, columnIndex) => (
                 <td key={column.id}>
@@ -72,9 +66,14 @@ export const Table = <T extends { id: string }>({
               ))}
               <td aria-hidden="true" />
             </tr>
-          ))
-        )}
-      </tbody>
-    </table>
+          ))}
+        </tbody>
+      </table>
+      {isLoading && (
+        <div className={styles.loadingWrapper}>
+          <LoadingSpinner />
+        </div>
+      )}
+    </div>
   )
 }
