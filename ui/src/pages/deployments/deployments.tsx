@@ -16,6 +16,7 @@ export const Deployments = () => {
       items={sortedItems}
       isLoading={isLoading}
       columns={columns}
+      sortable
       sortSettings={sort}
       onSortSettingsChange={setSort}
     />

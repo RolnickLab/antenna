@@ -9,6 +9,7 @@ interface TableProps<T> {
   items: T[]
   isLoading?: boolean
   columns: TableColumn<T>[]
+  sortable?: boolean
   sortSettings?: TableSortSettings
   onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
 }
@@ -17,6 +18,7 @@ export const Table = <T extends { id: string }>({
   items,
   isLoading,
   columns,
+  sortable,
   sortSettings,
   onSortSettingsChange,
 }: TableProps<T>) => {
@@ -44,6 +46,7 @@ export const Table = <T extends { id: string }>({
               <TableHeader
                 key={column.id}
                 column={column}
+                sortable={sortable}
                 sortSettings={sortSettings}
                 visuallyHidden={column.visuallyHidden}
                 onSortClick={() => onSortClick(column)}

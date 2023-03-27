@@ -37,6 +37,7 @@ export const Occurrences = () => {
               items={occurrences}
               isLoading={isLoading}
               columns={columns}
+              sortable
               sortSettings={sort}
               onSortSettingsChange={setSort}
             />

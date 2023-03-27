@@ -55,6 +55,7 @@ export const Sessions = () => {
               items={sessions}
               isLoading={isLoading}
               columns={columns.filter((column) => !!columnSettings[column.id])}
+              sortable
               sortSettings={sort}
               onSortSettingsChange={setSort}
             />

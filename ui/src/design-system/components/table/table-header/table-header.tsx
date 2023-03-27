@@ -5,6 +5,7 @@ import styles from './table-header.module.scss'
 
 interface TableHeaderProps<T> {
   column: TableColumn<T>
+  sortable?: boolean
   sortSettings?: TableSortSettings
   visuallyHidden?: boolean
   onSortClick: () => void
@@ -12,11 +13,12 @@ interface TableHeaderProps<T> {
 
 export const TableHeader = <T,>({
   column,
+  sortable,
   sortSettings,
   visuallyHidden,
   onSortClick,
 }: TableHeaderProps<T>) => {
-  if (!column.sortField) {
+  if (!sortable || !column.sortField) {
     return <BasicTableHeader column={column} visuallyHidden={visuallyHidden} />
   }
 
