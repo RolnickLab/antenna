@@ -1,5 +1,5 @@
 import { BasicTableCell } from '../basic-table-cell/basic-table-cell'
-import { CellTheme, OrderBy, TableColumn, TextAlign } from '../types'
+import { CellTheme, TableColumn, TextAlign } from '../types'
 import { Table } from './table'
 
 interface Item {
@@ -33,7 +33,6 @@ const items: Item[] = [
 const columns: TableColumn<Item>[] = [
   {
     id: 'deployment',
-    field: 'name',
     name: 'Deployment',
     renderCell: (item: Item) => (
       <BasicTableCell value={item.name} theme={CellTheme.Primary} />
@@ -41,7 +40,6 @@ const columns: TableColumn<Item>[] = [
   },
   {
     id: 'sessions',
-    field: 'numEvents',
     name: 'Sessions',
     styles: {
       textAlign: TextAlign.Right,
@@ -50,7 +48,6 @@ const columns: TableColumn<Item>[] = [
   },
   {
     id: 'images',
-    field: 'numImages',
     name: 'Images',
     styles: {
       textAlign: TextAlign.Right,
@@ -59,7 +56,6 @@ const columns: TableColumn<Item>[] = [
   },
   {
     id: 'detections',
-    field: 'numDetections',
     name: 'Detections',
     styles: {
       textAlign: TextAlign.Right,
@@ -67,11 +63,6 @@ const columns: TableColumn<Item>[] = [
     renderCell: (item: Item) => <BasicTableCell value={item.numDetections} />,
   },
 ]
-
-const sortableColumns = columns.map((column) => ({
-  ...column,
-  sortable: true,
-}))
 
 export default {
   title: 'Components/Table/Table',
@@ -94,20 +85,9 @@ export default {
   },
 }
 
-export const Basic = {
+export const Default = {
   args: {
     items,
     columns,
-  },
-}
-
-export const Sortable = {
-  args: {
-    items,
-    columns: sortableColumns,
-    defaultSortSettings: {
-      columnId: 'deployment',
-      orderBy: OrderBy.Descending,
-    },
   },
 }

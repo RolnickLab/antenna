@@ -1,6 +1,10 @@
+import { useQueues } from 'data-services/hooks/useQueues'
+import { Table } from 'design-system/components/table/table/table'
 import React from 'react'
-import { BatchIdTable } from './batch-id-table/batch-id-table'
+import { columns } from './batch-id-columns'
 
 export const BatchId = () => {
-  return <BatchIdTable />
+  const { queues, isLoading } = useQueues()
+
+  return <Table items={queues} isLoading={isLoading} columns={columns} />
 }

@@ -8,7 +8,7 @@ export const useDeployments = (): {
   isLoading: boolean
 } => {
   const { data, isLoading } = useGetList<ServerDeployment, Deployment>(
-    'deployments',
+    { collection: 'deployments' },
     convertServerRecord
   )
 

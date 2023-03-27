@@ -1,10 +1,7 @@
-import { useDeployments } from 'data-services/hooks/useDeployments'
 import { Deployment } from 'data-services/models/deployment'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { Table } from 'design-system/components/table/table/table'
 import {
   CellTheme,
-  OrderBy,
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
@@ -12,12 +9,11 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
-const columns: TableColumn<Deployment>[] = [
+export const columns: TableColumn<Deployment>[] = [
   {
     id: 'deployment',
-    field: 'name',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
-    sortable: true,
+    sortField: 'name',
     renderCell: (item: Deployment) => (
       <Link to={`/deployments/deployment-id`}>
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
@@ -26,9 +22,8 @@ const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'sessions',
-    field: 'numEvents',
     name: translate(STRING.TABLE_COLUMN_SESSIONS),
-    sortable: true,
+    sortField: 'numEvents',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -36,9 +31,8 @@ const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'images',
-    field: 'numImages',
     name: translate(STRING.TABLE_COLUMN_IMAGES),
-    sortable: true,
+    sortField: 'numImages',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -46,9 +40,8 @@ const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'detections',
-    field: 'numDetections',
     name: translate(STRING.TABLE_COLUMN_DETECTIONS),
-    sortable: true,
+    sortField: 'numDetections',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -57,19 +50,3 @@ const columns: TableColumn<Deployment>[] = [
     ),
   },
 ]
-
-export const DeploymentsTable = () => {
-  const { deployments, isLoading } = useDeployments()
-
-  return (
-    <Table
-      items={deployments}
-      isLoading={isLoading}
-      columns={columns}
-      defaultSortSettings={{
-        columnId: 'deployment',
-        orderBy: OrderBy.Descending,
-      }}
-    ></Table>
-  )
-}

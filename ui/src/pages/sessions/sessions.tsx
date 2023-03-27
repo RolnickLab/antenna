@@ -1,14 +1,16 @@
 import { useSessions } from 'data-services/hooks/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
+import { Table } from 'design-system/components/table/table/table'
+import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
+import { getFetchSettings } from 'utils/getFetchSettings'
 import { STRING, translate } from 'utils/language'
-import { columns, SessionsTable } from './sessions-table/sessions-table'
+import { columns } from './session-columns'
 import styles from './sessions.module.scss'
 
 export const Sessions = () => {
-  const { sessions, isLoading } = useSessions()
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -20,6 +22,12 @@ export const Sessions = () => {
     occurrences: true,
     species: true,
   })
+  const [sortSettings, setSortSettings] = useState<TableSortSettings>()
+  const fetchSettings = useMemo(
+    () => getFetchSettings({ columns, sortSettings }),
+    [sortSettings]
+  )
+  const { sessions, isLoading } = useSessions(fetchSettings)
 
   return (
     <Tabs.Root defaultValue="table">
@@ -44,10 +52,12 @@ export const Sessions = () => {
               onColumnSettingsChange={setColumnSettings}
             />
           </div>
-          <SessionsTable
-            sessions={sessions}
+          <Table
+            items={sessions}
             isLoading={isLoading}
-            columnSettings={columnSettings}
+            columns={columns.filter((column) => !!columnSettings[column.id])}
+            sortSettings={sortSettings}
+            onSortSettingsChange={setSortSettings}
           />
         </div>
       </Tabs.Content>

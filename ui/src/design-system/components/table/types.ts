@@ -13,16 +13,10 @@ export enum TextAlign {
   Right = 'right',
 }
 
-export enum OrderBy {
-  Ascending = 'asc',
-  Descending = 'desc',
-}
-
 export interface TableColumn<T> {
   id: string
-  field?: string
   name: string
-  sortable?: boolean
+  sortField?: string
   styles?: {
     textAlign?: TextAlign
     padding?: string
@@ -33,5 +27,5 @@ export interface TableColumn<T> {
 
 export interface TableSortSettings {
   columnId: string
-  orderBy: OrderBy
+  orderBy: 'asc' | 'desc'
 }

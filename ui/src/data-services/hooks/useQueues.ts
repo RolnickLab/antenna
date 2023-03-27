@@ -5,7 +5,7 @@ const convertServerRecord = (record: ServerQueue) => new Queue(record)
 
 export const useQueues = (): { queues: Queue[]; isLoading: boolean } => {
   const { data, isLoading } = useGetList<ServerQueue, Queue>(
-    'queues',
+    { collection: 'queues' },
     convertServerRecord
   )
 

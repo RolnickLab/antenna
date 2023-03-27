@@ -1,6 +1,6 @@
 import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { OrderBy, TableColumn, TableSortSettings } from '../types'
+import { TableColumn, TableSortSettings } from '../types'
 import styles from './table-header.module.scss'
 
 interface TableHeaderProps<T> {
@@ -16,7 +16,7 @@ export const TableHeader = <T,>({
   visuallyHidden,
   onSortClick,
 }: TableHeaderProps<T>) => {
-  if (!column.sortable) {
+  if (!column.sortField) {
     return <BasicTableHeader column={column} visuallyHidden={visuallyHidden} />
   }
 
@@ -64,9 +64,7 @@ const SortableTableHeader = <T,>({
     if (!sortActive) {
       return undefined
     }
-    return sortSettings?.orderBy === OrderBy.Ascending
-      ? 'ascending'
-      : 'descending'
+    return sortSettings?.orderBy === 'asc' ? 'ascending' : 'descending'
   })()
 
   return (
@@ -90,8 +88,7 @@ const SortableTableHeader = <T,>({
           <div
             className={classNames(styles.iconWrapper, {
               [styles.visible]: sortActive,
-              [styles.ascending]:
-                sortActive && sortSettings?.orderBy === OrderBy.Ascending,
+              [styles.ascending]: sortActive && sortSettings?.orderBy === 'asc',
             })}
           >
             <Icon type={IconType.Sort} theme={IconTheme.Neutral} />

@@ -1,14 +1,23 @@
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
+import { FetchSettings } from 'data-services/types'
 import { Card } from 'design-system/components/card/card'
 import { IconType } from 'design-system/components/icon/icon'
+import { Table } from 'design-system/components/table/table/table'
+import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import React from 'react'
+import React, { useMemo, useState } from 'react'
+import { getFetchSettings } from 'utils/getFetchSettings'
 import { STRING, translate } from 'utils/language'
-import { OccurrencesTable } from './occurrences-table/occurrences-table'
+import { columns } from './occurrence-columns'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
-  const { occurrences, isLoading } = useOccurrences()
+  const [sortSettings, setSortSettings] = useState<TableSortSettings>()
+  const fetchSettings = useMemo(
+    () => getFetchSettings({ columns, sortSettings }),
+    [sortSettings]
+  )
+  const { occurrences, isLoading } = useOccurrences(fetchSettings)
 
   return (
     <Tabs.Root defaultValue="table">
@@ -26,7 +35,13 @@ export const Occurrences = () => {
       </Tabs.List>
       <Tabs.Content value="table">
         <div className={styles.occurrencesContent}>
-          <OccurrencesTable occurrences={occurrences} isLoading={isLoading} />
+          <Table
+            items={occurrences}
+            isLoading={isLoading}
+            columns={columns}
+            sortSettings={sortSettings}
+            onSortSettingsChange={setSortSettings}
+          />
         </div>
       </Tabs.Content>
       <Tabs.Content value="gallery">

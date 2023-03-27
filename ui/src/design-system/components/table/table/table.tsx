@@ -1,51 +1,32 @@
 import classNames from 'classnames'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import _ from 'lodash'
-import { useEffect, useState } from 'react'
 import { TableHeader } from '../table-header/table-header'
 import tableHeaderStyles from '../table-header/table-header.module.scss'
-import { OrderBy, TableColumn, TableSortSettings } from '../types'
+import { TableColumn, TableSortSettings } from '../types'
 import styles from './table.module.scss'
 
 interface TableProps<T> {
   items: T[]
   isLoading?: boolean
   columns: TableColumn<T>[]
-  defaultSortSettings?: TableSortSettings
+  sortSettings?: TableSortSettings
+  onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
 }
 
 export const Table = <T extends { id: string }>({
   items,
   isLoading,
   columns,
-  defaultSortSettings,
+  sortSettings,
+  onSortSettingsChange,
 }: TableProps<T>) => {
-  const [sortedItems, setSortedItems] = useState(items)
-  const [sortSettings, setSortSettings] = useState(defaultSortSettings)
-
-  useEffect(() => {
-    if (sortSettings) {
-      const column = columns.find((c) => c.id === sortSettings?.columnId)
-      if (column) {
-        return setSortedItems(
-          _.orderBy(items, column.field, sortSettings.orderBy)
-        )
-      }
-    }
-
-    setSortedItems(items)
-  }, [items, sortSettings])
-
   const onSortClick = (column: TableColumn<T>) => {
     if (column.id !== sortSettings?.columnId) {
-      setSortSettings({ columnId: column.id, orderBy: OrderBy.Descending })
+      onSortSettingsChange?.({ columnId: column.id, orderBy: 'desc' })
     } else {
-      setSortSettings({
+      onSortSettingsChange?.({
         columnId: column.id,
-        orderBy:
-          sortSettings.orderBy === OrderBy.Ascending
-            ? OrderBy.Descending
-            : OrderBy.Ascending,
+        orderBy: sortSettings.orderBy === 'asc' ? 'desc' : 'asc',
       })
     }
   }
@@ -78,7 +59,7 @@ export const Table = <T extends { id: string }>({
             </td>
           </tr>
         ) : (
-          sortedItems.map((item, rowIndex) => (
+          items.map((item, rowIndex) => (
             <tr key={item.id}>
               {columns.map((column, columnIndex) => (
                 <td key={column.id}>

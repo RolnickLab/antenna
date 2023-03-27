@@ -1,14 +1,12 @@
-import { useQueues } from 'data-services/hooks/useQueues'
 import { Queue } from 'data-services/models/queue'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { Table } from 'design-system/components/table/table/table'
 import { TableColumn, TextAlign } from 'design-system/components/table/types'
 import React from 'react'
 import { STRING, translate } from 'utils/language'
-import styles from './batch-id-table.module.scss'
+import styles from './batch-id.module.scss'
 
-const columns: TableColumn<Queue>[] = [
+export const columns: TableColumn<Queue>[] = [
   {
     id: 'description',
     name: translate(STRING.TABLE_COLUMN_DESCRIPTION),
@@ -74,9 +72,3 @@ const columns: TableColumn<Queue>[] = [
     },
   },
 ]
-
-export const BatchIdTable = () => {
-  const { queues, isLoading } = useQueues()
-
-  return <Table items={queues} isLoading={isLoading} columns={columns}></Table>
-}
