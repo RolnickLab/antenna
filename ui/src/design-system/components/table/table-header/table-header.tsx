@@ -64,7 +64,7 @@ const SortableTableHeader = <T,>({
     if (!sortActive) {
       return undefined
     }
-    return sortSettings?.orderBy === 'asc' ? 'ascending' : 'descending'
+    return sortSettings?.order === 'asc' ? 'ascending' : 'descending'
   })()
 
   return (
@@ -88,7 +88,7 @@ const SortableTableHeader = <T,>({
           <div
             className={classNames(styles.iconWrapper, {
               [styles.visible]: sortActive,
-              [styles.ascending]: sortActive && sortSettings?.orderBy === 'asc',
+              [styles.ascending]: sortActive && sortSettings?.order === 'asc',
             })}
           >
             <Icon type={IconType.Sort} theme={IconTheme.Neutral} />

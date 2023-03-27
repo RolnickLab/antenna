@@ -27,5 +27,10 @@ export interface TableColumn<T> {
 
 export interface TableSortSettings {
   columnId: string
-  orderBy: 'asc' | 'desc'
+  order: 'asc' | 'desc'
+}
+
+export interface TablePaginationSettings {
+  page: number
+  perPage: number
 }

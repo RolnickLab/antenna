@@ -13,7 +13,7 @@ export const Deployments = () => {
       columns={columns}
       defaultSortSettings={{
         columnId: 'deployment',
-        orderBy: 'desc',
+        order: 'desc',
       }}
     />
   )

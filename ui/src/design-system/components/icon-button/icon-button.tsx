@@ -18,6 +18,7 @@ interface IconButtonProps {
   icon: IconType
   shape?: IconButtonShape
   theme?: IconButtonTheme
+  disabled?: boolean
   onClick?: () => void
 }
 
@@ -27,6 +28,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       icon,
       shape = IconButtonShape.Square,
       theme = IconButtonTheme.Default,
+      disabled,
       onClick,
       ...rest
     } = props
@@ -42,7 +44,9 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
           [styles.square]: shape === IconButtonShape.Square,
           [styles.neutral]: theme === IconButtonTheme.Neutral,
           [styles.success]: theme === IconButtonTheme.Success,
+          [styles.disabled]: disabled,
         })}
+        disabled={disabled}
         onClick={onClick}
         {...rest}
       >

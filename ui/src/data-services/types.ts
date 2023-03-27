@@ -1,4 +1,4 @@
-export interface FetchSettings {
+export interface FetchParams {
   pagination?: { page: number; perPage: number }
   sort?: { field: string; order: 'asc' | 'desc' }
 }

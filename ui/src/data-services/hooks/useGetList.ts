@@ -1,5 +1,5 @@
 import { API_URL } from 'data-services/constants'
-import { FetchSettings } from 'data-services/types'
+import { FetchParams } from 'data-services/types'
 import { useEffect, useState } from 'react'
 
 const fetchData = async <T>(url: string): Promise<T[]> => {
@@ -8,21 +8,21 @@ const fetchData = async <T>(url: string): Promise<T[]> => {
   return await response.json()
 }
 
-const createFetchListUrl = ({
+const getUrl = ({
   collection,
-  settings,
+  params,
 }: {
   collection: string
-  settings?: FetchSettings
+  params?: FetchParams
 }) => {
   const queryParams: { [key: string]: string } = {}
-  if (settings?.sort) {
-    queryParams[`${settings.sort.field}_order`] = settings.sort?.order
+  if (params?.sort) {
+    queryParams[`${params.sort.field}_order`] = params.sort?.order
   }
-  if (settings?.pagination) {
-    queryParams.limit = `${settings?.pagination.perPage}`
+  if (params?.pagination) {
+    queryParams.limit = `${params?.pagination.perPage}`
     queryParams.offset = `${
-      settings?.pagination.perPage * settings?.pagination.page
+      params?.pagination.perPage * params?.pagination.page
     }`
   }
 
@@ -39,14 +39,14 @@ const createFetchListUrl = ({
 export const useGetList = <T1, T2>(
   args: {
     collection: string
-    settings?: FetchSettings
+    params?: FetchParams
   },
   convertServerRecord: (record: T1) => T2
 ) => {
   const [data, setData] = useState<T2[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const url = createFetchListUrl(args)
+  const url = getUrl(args)
 
   useEffect(() => {
     setIsLoading(true)

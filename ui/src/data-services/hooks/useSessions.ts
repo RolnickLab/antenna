@@ -1,19 +1,21 @@
-import { FetchSettings } from 'data-services/types'
+import { FetchParams } from 'data-services/types'
+import { number } from 'prop-types'
 import { ServerEvent, Session } from '../models/session'
 import { useGetList } from './useGetList'
 
 const convertServerRecord = (record: ServerEvent) => new Session(record)
 
 export const useSessions = (
-  settings?: FetchSettings
-): { sessions: Session[]; isLoading: boolean } => {
+  params?: FetchParams
+): { sessions: Session[]; total: number; isLoading: boolean } => {
   const { data, isLoading } = useGetList<ServerEvent, Session>(
-    { collection: 'events', settings },
+    { collection: 'events', params },
     convertServerRecord
   )
 
   return {
     sessions: data,
+    total: 5, // Hard coded until we get this in response
     isLoading,
   }
 }

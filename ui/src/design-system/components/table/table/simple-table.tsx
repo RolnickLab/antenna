@@ -23,7 +23,7 @@ export const SimpleTable = <T extends { id: string }>({
     if (sortSettings) {
       const column = columns.find((c) => c.id === sortSettings?.columnId)
       if (column?.sortField) {
-        setSortedItems(_.orderBy(items, column.sortField, sortSettings.orderBy))
+        setSortedItems(_.orderBy(items, column.sortField, sortSettings.order))
         return
       }
     }
