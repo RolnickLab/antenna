@@ -3,19 +3,18 @@ import { Card } from 'design-system/components/card/card'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
+import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import React from 'react'
+import React, { useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { useTableSettings } from 'utils/useTableSettings'
+import { usePagination } from 'utils/usePagination'
 import { columns } from './occurrence-columns'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
-  const { sort, setSort, pagination, setPagination, fetchParams } =
-    useTableSettings({
-      columns,
-    })
-  const { occurrences, total, isLoading } = useOccurrences(fetchParams)
+  const [sort, setSort] = useState<TableSortSettings>()
+  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { occurrences, total, isLoading } = useOccurrences({ pagination, sort })
 
   return (
     <>
@@ -64,18 +63,8 @@ export const Occurrences = () => {
         page={pagination.page}
         perPage={pagination.perPage}
         total={total}
-        onPrevClick={() =>
-          setPagination({
-            ...pagination,
-            page: pagination.page - 1,
-          })
-        }
-        onNextClick={() =>
-          setPagination({
-            ...pagination,
-            page: pagination.page + 1,
-          })
-        }
+        onPrevClick={setPrevPage}
+        onNextClick={setNextPage}
       />
     </>
   )

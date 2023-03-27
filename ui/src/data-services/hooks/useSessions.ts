@@ -1,5 +1,4 @@
 import { FetchParams } from 'data-services/types'
-import { number } from 'prop-types'
 import { ServerEvent, Session } from '../models/session'
 import { useGetList } from './useGetList'
 

@@ -57,14 +57,10 @@ export const columns: TableColumn<Queue>[] = [
               <Button
                 label={translate(STRING.QUEUE_ALL)}
                 theme={ButtonTheme.Success}
-                onClick={() => console.log('')}
               />
             )}
             {showDequeueButton && (
-              <Button
-                label={translate(STRING.DEQUE_ALL)}
-                onClick={() => console.log('')}
-              />
+              <Button label={translate(STRING.DEQUE_ALL)} />
             )}
           </div>
         </BasicTableCell>

@@ -26,7 +26,7 @@ export interface TableColumn<T> {
 }
 
 export interface TableSortSettings {
-  columnId: string
+  field: string
   order: 'asc' | 'desc'
 }
 

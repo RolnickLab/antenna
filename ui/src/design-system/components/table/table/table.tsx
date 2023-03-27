@@ -21,11 +21,15 @@ export const Table = <T extends { id: string }>({
   onSortSettingsChange,
 }: TableProps<T>) => {
   const onSortClick = (column: TableColumn<T>) => {
-    if (column.id !== sortSettings?.columnId) {
-      onSortSettingsChange?.({ columnId: column.id, order: 'desc' })
+    if (!column.sortField) {
+      return
+    }
+
+    if (column.sortField !== sortSettings?.field) {
+      onSortSettingsChange?.({ field: column.sortField, order: 'desc' })
     } else {
       onSortSettingsChange?.({
-        columnId: column.id,
+        field: column.sortField,
         order: sortSettings.order === 'asc' ? 'desc' : 'asc',
       })
     }

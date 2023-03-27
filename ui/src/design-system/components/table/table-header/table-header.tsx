@@ -58,7 +58,7 @@ const SortableTableHeader = <T,>({
   visuallyHidden,
   onSortClick,
 }: TableHeaderProps<T>) => {
-  const sortActive = sortSettings?.columnId === column.id
+  const sortActive = sortSettings?.field === column.sortField
 
   const ariaSort = (() => {
     if (!sortActive) {
