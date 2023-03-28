@@ -1,6 +1,22 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+.wrapper {
+  position: relative;
+  min-height: 320px;
+}
+
+.loadingWrapper {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .table {
   display: table;
   all: unset;
@@ -21,6 +37,10 @@
 
     tr:nth-child(odd) {
       background-color: $color-generic-white;
+    }
+
+    &.loading {
+      opacity: 0.5;
     }
   }
 

@@ -1,83 +1,82 @@
-import _ from 'lodash'
-import { useEffect, useState } from 'react'
+import classNames from 'classnames'
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { TableHeader } from '../table-header/table-header'
 import tableHeaderStyles from '../table-header/table-header.module.scss'
-import { OrderBy, TableColumn, TableSortSettings } from '../types'
+import { TableColumn, TableSortSettings } from '../types'
 import styles from './table.module.scss'
 
 interface TableProps<T> {
   items: T[]
+  isLoading?: boolean
   columns: TableColumn<T>[]
-  defaultSortSettings?: TableSortSettings
+  sortable?: boolean
+  sortSettings?: TableSortSettings
+  onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
 }
 
 export const Table = <T extends { id: string }>({
   items,
+  isLoading,
   columns,
-  defaultSortSettings,
+  sortable,
+  sortSettings,
+  onSortSettingsChange,
 }: TableProps<T>) => {
-  const [sortedItems, setSortedItems] = useState(items)
-  const [sortSettings, setSortSettings] = useState(defaultSortSettings)
-
-  useEffect(() => {
-    if (sortSettings) {
-      const column = columns.find((c) => c.id === sortSettings?.columnId)
-      if (column) {
-        return setSortedItems(
-          _.orderBy(items, column.field, sortSettings.orderBy)
-        )
-      }
+  const onSortClick = (column: TableColumn<T>) => {
+    if (!column.sortField) {
+      return
     }
 
-    setSortedItems(items)
-  }, [sortSettings])
-
-  const onSortClick = (column: TableColumn<T>) => {
-    if (column.id !== sortSettings?.columnId) {
-      setSortSettings({ columnId: column.id, orderBy: OrderBy.Descending })
+    if (column.sortField !== sortSettings?.field) {
+      onSortSettingsChange?.({ field: column.sortField, order: 'desc' })
     } else {
-      setSortSettings({
-        columnId: column.id,
-        orderBy:
-          sortSettings.orderBy === OrderBy.Ascending
-            ? OrderBy.Descending
-            : OrderBy.Ascending,
+      onSortSettingsChange?.({
+        field: column.sortField,
+        order: sortSettings.order === 'asc' ? 'desc' : 'asc',
       })
     }
   }
 
   return (
-    <table className={styles.table}>
-      <thead>
-        <tr>
-          {columns.map((column) => (
-            <TableHeader
-              key={column.id}
-              column={column}
-              sortSettings={sortSettings}
-              visuallyHidden={column.visuallyHidden}
-              onSortClick={() => onSortClick(column)}
-            />
-          ))}
-          <th
-            aria-hidden="true"
-            className={tableHeaderStyles.tableHeader}
-            style={{ width: '100%' }}
-          />
-        </tr>
-      </thead>
-      <tbody>
-        {sortedItems.map((item, rowIndex) => (
-          <tr key={item.id}>
-            {columns.map((column, columnIndex) => (
-              <td key={column.id}>
-                {column.renderCell(item, rowIndex, columnIndex)}
-              </td>
+    <div className={styles.wrapper}>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <TableHeader
+                key={column.id}
+                column={column}
+                sortable={sortable}
+                sortSettings={sortSettings}
+                visuallyHidden={column.visuallyHidden}
+                onSortClick={() => onSortClick(column)}
+              />
             ))}
-            <td aria-hidden="true" />
+            <th
+              aria-hidden="true"
+              className={tableHeaderStyles.tableHeader}
+              style={{ width: '100%' }}
+            />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody className={classNames({ [styles.loading]: isLoading })}>
+          {items.map((item, rowIndex) => (
+            <tr key={item.id}>
+              {columns.map((column, columnIndex) => (
+                <td key={column.id}>
+                  {column.renderCell(item, rowIndex, columnIndex)}
+                </td>
+              ))}
+              <td aria-hidden="true" />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {isLoading && (
+        <div className={styles.loadingWrapper}>
+          <LoadingSpinner />
+        </div>
+      )}
+    </div>
   )
 }

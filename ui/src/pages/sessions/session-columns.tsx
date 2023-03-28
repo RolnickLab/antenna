@@ -1,12 +1,9 @@
-import { Session } from 'data-services/types'
-import { useSessions } from 'data-services/useSessions'
+import { Session } from 'data-services/models/session'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
-import { Table } from 'design-system/components/table/table/table'
 import {
   CellTheme,
   ImageCellTheme,
-  OrderBy,
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
@@ -17,9 +14,8 @@ import { STRING, translate } from 'utils/language'
 export const columns: TableColumn<Session>[] = [
   {
     id: 'snapshots',
-    field: 'timestamp',
     name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
-    sortable: true,
+    sortField: 'start_time',
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -36,9 +32,8 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'session',
-    field: 'id',
     name: translate(STRING.TABLE_COLUMN_SESSION),
-    sortable: true,
+    sortField: 'id',
     renderCell: (item: Session) => (
       <Link to={`/sessions/session-id`}>
         <BasicTableCell value={item.id} theme={CellTheme.Primary} />
@@ -47,39 +42,41 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'deployment',
-    field: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
-    sortable: true,
+    sortField: 'deployment',
     renderCell: (item: Session) => (
       <Link to={`/deployments/deployment-id`}>
-        <BasicTableCell value={item.deployment} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.deploymentLabel}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },
   {
     id: 'date',
     name: translate(STRING.TABLE_COLUMN_DATE),
-    renderCell: (item: Session) => <BasicTableCell value={item.datespan} />,
+    renderCell: (item: Session) => (
+      <BasicTableCell value={item.datespanLabel} />
+    ),
   },
   {
     id: 'time',
     name: translate(STRING.TABLE_COLUMN_TIME),
-    renderCell: (item: Session) => <BasicTableCell value={item.timespan} />,
+    renderCell: (item: Session) => (
+      <BasicTableCell value={item.timespanLabel} />
+    ),
   },
   {
     id: 'duration',
-    field: 'durationMinutes',
     name: translate(STRING.TABLE_COLUMN_DURATION),
-    sortable: true,
     renderCell: (item: Session) => (
       <BasicTableCell value={item.durationLabel} />
     ),
   },
   {
     id: 'images',
-    field: 'numImages',
     name: translate(STRING.TABLE_COLUMN_IMAGES),
-    sortable: true,
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -87,9 +84,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'detections',
-    field: 'numDetections',
     name: translate(STRING.TABLE_COLUMN_DETECTIONS),
-    sortable: true,
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -118,28 +113,6 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'avg-temp',
     name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
-    renderCell: (item: Session) => <BasicTableCell value={item.avgTemp} />,
+    renderCell: (item: Session) => <BasicTableCell value={item.avgTempLabel} />,
   },
 ]
-
-interface SessionsTableProps {
-  columnSettings: {
-    [id: string]: boolean
-  }
-}
-
-export const SessionsTable = ({ columnSettings }: SessionsTableProps) => {
-  const sessions = useSessions()
-  const activeColumns = columns.filter((column) => columnSettings[column.id])
-
-  return (
-    <Table
-      items={sessions}
-      columns={activeColumns}
-      defaultSortSettings={{
-        columnId: 'snapshots',
-        orderBy: OrderBy.Descending,
-      }}
-    ></Table>
-  )
-}
