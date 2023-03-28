@@ -7,12 +7,12 @@
     "@testing-library/react": "^12.1.5",
     "@testing-library/user-event": "^14.4.3",
     "@types/jest": "^29.5.0",
-    "@types/node": "^18.15.3",
+    "@types/node": "^18.15.10",
     "@types/react": "^17.0.24",
     "@types/react-dom": "^17.0.0",
     "axios": "^0.21.4",
-    "ra-data-json-server": "^4.8.4",
-    "ra-data-simple-rest": "^4.8.4",
+    "ra-data-json-server": "^4.9.0",
+    "ra-data-simple-rest": "^4.9.0",
     "react": "^17.0.2",
     "react-admin": "^4.8.4",
     "react-dom": "^17.0.2",
@@ -56,6 +56,6 @@
     "cypress": "^12.8.1",
     "cypress-localstorage-commands": "^2.2.2",
     "eslint-plugin-cypress": "^2.12.1",
-    "prettier": "^2.8.5"
+    "prettier": "^2.8.7"
   }
 }

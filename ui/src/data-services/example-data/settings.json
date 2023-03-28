@@ -1,0 +1,102 @@
+{
+  "image_base_path": {
+    "title": "Trap images",
+    "description": "The root folder containing images from all nights that will be processed. It is recommended to start with a small sample.",
+    "type": "path",
+    "section": "paths"
+  },
+  "database_url": {
+    "title": "Database connection string",
+    "description": "Defaults to a local SQLite database that will automatically be created. Supports PostgreSQL.",
+    "type": "string",
+    "section": "paths"
+  },
+  "user_data_path": {
+    "title": "Local directory for models, thumbnails & reports",
+    "description": "Model weights are between 100-200Mb and will be downloaded the first time a model is used.",
+    "type": "path",
+    "section": "paths"
+  },
+  "localization_model": {
+    "title": "Localization model",
+    "description": "Model & settings to use for object detection in original images from camera trap.",
+    "type": "options",
+    "options": [
+      "FasterRCNN for AMI Moth Traps 2021",
+      "Pre-trained FasterRCNN with MobileNet backend"
+    ],
+    "section": "models"
+  },
+  "binary_classification_model": {
+    "title": "Binary classification model",
+    "description": "Model & settings to use for moth / non-moth classification of cropped images after object detection.",
+    "type": "options",
+    "options": ["Moth / Non-Moth Classifier"],
+    "section": "models"
+  },
+  "species_classification_model": {
+    "title": "Species classification model",
+    "description": "Model & settings to use for fine-grained species or taxon-level classification of cropped images after moth/non-moth detection.",
+    "type": "options",
+    "options": [
+      "Quebec & Vermont Species Classifier - Mixed Resolution",
+      "Quebec & Vermont Species Classifier - Low Resolution",
+      "Panama Species Classifier - Mixed Resolution",
+      "Quebec & Vermont Species Classifier",
+      "UK & Denmark Species Classifier"
+    ],
+    "section": "models"
+  },
+  "tracking_algorithm": {
+    "title": "Occurrence tracking algorithm",
+    "description": "Method of identifying and tracking the same individual moth across multiple images.",
+    "type": "options",
+    "options": [
+      "Features from Quebec/Vermont species model",
+      "Features from general Moth/Non-Moth model"
+    ],
+    "section": "models"
+  },
+  "classification_threshold": {
+    "title": "Classification threshold",
+    "description": "Only show results with a confidence score greater or equal to this value.",
+    "type": "slider",
+    "settings": {
+      "default": 0.6,
+      "minimum": 0,
+      "maximum": 1,
+      "step": 0.01
+    },
+    "section": "models"
+  },
+  "localization_batch_size": {
+    "title": "Localization batch size",
+    "description": "Number of images to process per-batch during localization. These are large images (e.g. 4096x2160px), smaller batch sizes are appropriate (1-10). Reduce this if you run out of memory.",
+    "type": "slider",
+    "settings": {
+      "default": 1,
+      "minimum": 0,
+      "maximum": 20,
+      "step": 1
+    },
+    "section": "performance"
+  },
+  "classification_batch_size": {
+    "title": "Classification batch size",
+    "description": "Number of images to process per-batch during classification. These are small images (e.g. 50x100px), larger batch sizes are appropriate (10-200). Reduce this if you run out of memory.",
+    "type": "slider",
+    "settings": {
+      "default": 20,
+      "minimum": 0,
+      "maximum": 400,
+      "step": 1
+    },
+    "section": "performance"
+  },
+  "num_workers": {
+    "title": "Number of workers",
+    "description": "Number of parallel workers for the PyTorch dataloader. See https://pytorch.org/docs/stable/data.html",
+    "type": "numeric",
+    "section": "performance"
+  }
+}

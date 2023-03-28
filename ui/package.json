@@ -4,7 +4,10 @@
   "private": true,
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.0.3",
+    "@radix-ui/react-dialog": "^1.0.3",
     "@radix-ui/react-popover": "^1.0.5",
+    "@radix-ui/react-select": "^1.2.1",
+    "@radix-ui/react-slider": "^1.1.1",
     "@radix-ui/react-tabs": "^1.0.3",
     "@testing-library/jest-dom": "^5.14.1",
     "@testing-library/react": "^13.0.0",

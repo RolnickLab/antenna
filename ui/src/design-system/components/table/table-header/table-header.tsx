@@ -1,10 +1,11 @@
 import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { OrderBy, TableColumn, TableSortSettings } from '../types'
+import { TableColumn, TableSortSettings } from '../types'
 import styles from './table-header.module.scss'
 
 interface TableHeaderProps<T> {
   column: TableColumn<T>
+  sortable?: boolean
   sortSettings?: TableSortSettings
   visuallyHidden?: boolean
   onSortClick: () => void
@@ -12,11 +13,12 @@ interface TableHeaderProps<T> {
 
 export const TableHeader = <T,>({
   column,
+  sortable,
   sortSettings,
   visuallyHidden,
   onSortClick,
 }: TableHeaderProps<T>) => {
-  if (!column.sortable) {
+  if (!sortable || !column.sortField) {
     return <BasicTableHeader column={column} visuallyHidden={visuallyHidden} />
   }
 
@@ -58,15 +60,13 @@ const SortableTableHeader = <T,>({
   visuallyHidden,
   onSortClick,
 }: TableHeaderProps<T>) => {
-  const sortActive = sortSettings?.columnId === column.id
+  const sortActive = sortSettings?.field === column.sortField
 
   const ariaSort = (() => {
     if (!sortActive) {
       return undefined
     }
-    return sortSettings?.orderBy === OrderBy.Ascending
-      ? 'ascending'
-      : 'descending'
+    return sortSettings?.order === 'asc' ? 'ascending' : 'descending'
   })()
 
   return (
@@ -90,8 +90,7 @@ const SortableTableHeader = <T,>({
           <div
             className={classNames(styles.iconWrapper, {
               [styles.visible]: sortActive,
-              [styles.ascending]:
-                sortActive && sortSettings?.orderBy === OrderBy.Ascending,
+              [styles.ascending]: sortActive && sortSettings?.order === 'asc',
             })}
           >
             <Icon type={IconType.Sort} theme={IconTheme.Neutral} />

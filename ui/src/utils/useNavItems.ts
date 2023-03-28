@@ -1,6 +1,3 @@
-import { useDeployments } from 'data-services/useDeployments'
-import { useOccurrences } from 'data-services/useOccurrences'
-import { useSessions } from 'data-services/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { useMemo } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
@@ -12,13 +9,11 @@ interface NavigatinonItem {
   icon?: IconType
   count?: number
   path: string
+  matchPath?: string
 }
 
 export const useNavItems = () => {
   const location = useLocation()
-  const deployments = useDeployments()
-  const sessions = useSessions()
-  const occurrences = useOccurrences()
 
   const navItems: NavigatinonItem[] = useMemo(
     () => [
@@ -38,22 +33,25 @@ export const useNavItems = () => {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
-        count: deployments.length,
+        count: 0,
         path: '/deployments',
+        matchPath: '/deployments/*',
       },
       {
         id: 'sessions',
         title: translate(STRING.NAV_ITEM_SESSIONS),
         icon: IconType.Sessions,
-        count: sessions.length,
+        count: 0,
         path: '/sessions',
+        matchPath: '/sessions/*',
       },
       {
         id: 'occurrences',
         title: translate(STRING.NAV_ITEM_OCCURRENCES),
         icon: IconType.Occurrences,
-        count: occurrences.length,
+        count: 0,
         path: '/occurrences',
+        matchPath: '/occurrences/*',
       },
       {
         id: 'species',
@@ -61,14 +59,17 @@ export const useNavItems = () => {
         icon: IconType.Species,
         count: 0,
         path: '/species',
+        matchPath: '/species/*',
       },
     ],
-    [deployments, occurrences]
+    []
   )
 
   const activeNavItem =
-    navItems.find((navItem) => !!matchPath(navItem.path, location.pathname)) ??
-    navItems[0]
+    navItems.find(
+      (navItem) =>
+        !!matchPath(navItem.matchPath ?? navItem.path, location.pathname)
+    ) ?? navItems[0]
 
   return { navItems, activeNavItemId: activeNavItem.id }
 }

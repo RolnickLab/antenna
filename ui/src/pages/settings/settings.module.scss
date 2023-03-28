@@ -1,0 +1,45 @@
+@import 'design-system/variables/variables.scss';
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.content {
+  padding: 32px;
+  width: 720px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.section {
+  width: 100%;
+  display: grid;
+  gap: 48px;
+  grid-template-columns: 1fr 1fr;
+  padding-bottom: 48px;
+
+  &:not(:last-child) {
+    margin-bottom: 48px;
+    border-bottom: 2px solid $color-neutral-100;
+  }
+}
+
+.buttonWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  > * {
+    margin-left: 10px;
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .section {
+    gap: 32px;
+    grid-template-columns: 1fr;
+    padding-bottom: 32px;
+
+    &:not(:last-child) {
+      margin-bottom: 32px;
+    }
+  }
+}
