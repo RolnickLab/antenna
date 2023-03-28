@@ -98,9 +98,7 @@ export const columns: TableColumn<Session>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Session) => (
-      <BasicTableCell value={item.numOccurrences} />
-    ),
+    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
   },
   {
     id: 'species',
@@ -108,11 +106,11 @@ export const columns: TableColumn<Session>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Session) => <BasicTableCell value={item.numSpecies} />,
+    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
   },
   {
     id: 'avg-temp',
     name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
-    renderCell: (item: Session) => <BasicTableCell value={item.avgTempLabel} />,
+    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
   },
 ]

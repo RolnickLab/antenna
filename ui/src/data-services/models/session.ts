@@ -10,10 +10,6 @@ export class Session {
     this._event = event
   }
 
-  get avgTempLabel(): string {
-    return '[WIP] Avg temp'
-  }
-
   get datespanLabel(): string {
     return getCompactDatespanString({
       date1: new Date(this._event.start_time),
@@ -34,6 +30,10 @@ export class Session {
   }
 
   get id(): string {
+    return `${this._event.id}`
+  }
+
+  get idLabel(): string {
     return `#${this._event.id}`
   }
 
@@ -57,14 +57,6 @@ export class Session {
 
   get numImages(): number {
     return this._event.num_source_images
-  }
-
-  get numOccurrences(): number {
-    return 0
-  }
-
-  get numSpecies(): number {
-    return 0
   }
 
   get timespanLabel(): string {

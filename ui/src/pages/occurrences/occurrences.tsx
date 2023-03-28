@@ -60,13 +60,15 @@ export const Occurrences = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-      <PaginationBar
-        page={pagination.page}
-        perPage={pagination.perPage}
-        total={total}
-        onPrevClick={setPrevPage}
-        onNextClick={setNextPage}
-      />
+      {occurrences.length ? (
+        <PaginationBar
+          page={pagination.page}
+          perPage={pagination.perPage}
+          total={total}
+          onPrevClick={setPrevPage}
+          onNextClick={setNextPage}
+        />
+      ) : null}
     </>
   )
 }

@@ -65,13 +65,15 @@ export const Sessions = () => {
           <div className={styles.galleryContent}></div>
         </Tabs.Content>
       </Tabs.Root>
-      <PaginationBar
-        page={pagination.page}
-        perPage={pagination.perPage}
-        total={total}
-        onPrevClick={setPrevPage}
-        onNextClick={setNextPage}
-      />
+      {sessions.length ? (
+        <PaginationBar
+          page={pagination.page}
+          perPage={pagination.perPage}
+          total={total}
+          onPrevClick={setPrevPage}
+          onNextClick={setNextPage}
+        />
+      ) : null}
     </>
   )
 }
