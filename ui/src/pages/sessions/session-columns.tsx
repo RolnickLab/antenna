@@ -15,7 +15,6 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'snapshots',
     name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
-    sortField: 'start_time',
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -36,14 +35,13 @@ export const columns: TableColumn<Session>[] = [
     sortField: 'id',
     renderCell: (item: Session) => (
       <Link to={`/sessions/session-id`}>
-        <BasicTableCell value={item.id} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.idLabel} theme={CellTheme.Primary} />
       </Link>
     ),
   },
   {
     id: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
-    sortField: 'deployment',
     renderCell: (item: Session) => (
       <Link to={`/deployments/deployment-id`}>
         <BasicTableCell
@@ -113,6 +111,6 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'avg-temp',
     name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
-    renderCell: (item: Session) => <BasicTableCell value={item.avgTempLabel} />,
+    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
   },
 ]

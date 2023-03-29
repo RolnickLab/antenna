@@ -71,8 +71,4 @@ export class Session {
       date2: new Date(this._event.end_time),
     })
   }
-
-  get timestamp(): Date {
-    return new Date(this._event.start_time)
-  }
 }
