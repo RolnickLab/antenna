@@ -1,4 +1,5 @@
 import { FetchParams } from 'data-services/types'
+import { useMemo } from 'react'
 import { ServerEvent, Session } from '../models/session'
 import { useGetList } from './useGetList'
 
@@ -12,9 +13,27 @@ export const useSessions = (
     convertServerRecord
   )
 
+  // This extra fetch is only until we have a real API
+  const { data: captures, isLoading: capturesAreLoading } = useGetList<
+    any,
+    any
+  >({ collection: 'captures' }, (record: any) => record)
+  const sessions = useMemo(
+    () =>
+      data.map((session) => {
+        if (captures.length) {
+          session.images = captures
+            .filter((capture) => `${capture.event}` === session.id)
+            .map((capture) => ({ src: capture.source_image }))
+        }
+        return session
+      }),
+    [data, captures]
+  )
+
   return {
-    sessions: data,
+    sessions,
     total: 5, // Hard coded until we get this in response
-    isLoading,
+    isLoading: isLoading || capturesAreLoading,
   }
 }

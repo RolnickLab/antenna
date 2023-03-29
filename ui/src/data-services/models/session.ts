@@ -5,6 +5,7 @@ export type ServerEvent = any // TODO: Update this type
 
 export class Session {
   private readonly _event: ServerEvent
+  private _images: { src: string }[] = []
 
   public constructor(event: ServerEvent) {
     this._event = event
@@ -34,21 +35,18 @@ export class Session {
   }
 
   get id(): string {
-    return `#${this._event.id}`
+    return `${this._event.id}`
+  }
+
+  get idLabel(): string {
+    return `#${this.id}`
   }
 
   get images(): { src: string }[] {
-    return [
-      {
-        src: 'https://placekitten.com/240/240',
-      },
-      {
-        src: 'https://placekitten.com/240/160',
-      },
-      {
-        src: 'https://placekitten.com/160/240',
-      },
-    ]
+    return this._images
+  }
+  set images(value: { src: string }[]) {
+    this._images = value
   }
 
   get numDetections(): number {
@@ -60,11 +58,11 @@ export class Session {
   }
 
   get numOccurrences(): number {
-    return 0
+    return this._event.num_occurrences
   }
 
   get numSpecies(): number {
-    return 0
+    return this._event.num_species
   }
 
   get timespanLabel(): string {
@@ -72,9 +70,5 @@ export class Session {
       date1: new Date(this._event.start_time),
       date2: new Date(this._event.end_time),
     })
-  }
-
-  get timestamp(): Date {
-    return new Date(this._event.start_time)
   }
 }

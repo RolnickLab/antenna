@@ -5,6 +5,7 @@ import { ColumnSettings } from 'design-system/components/table/column-settings/c
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { UnderConstruction } from 'pages/under-construction/under-construction'
 import React, { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
@@ -16,8 +17,7 @@ export const Sessions = () => {
     [id: string]: boolean
   }>({
     snapshots: true,
-    session: true,
-    deployment: true,
+    images: true,
     date: true,
     duration: true,
     occurrences: true,
@@ -62,16 +62,20 @@ export const Sessions = () => {
           </div>
         </Tabs.Content>
         <Tabs.Content value="gallery">
-          <div className={styles.galleryContent}></div>
+          <div className={styles.galleryContent}>
+            <UnderConstruction message="Gallery is under construction!" />
+          </div>
         </Tabs.Content>
       </Tabs.Root>
-      <PaginationBar
-        page={pagination.page}
-        perPage={pagination.perPage}
-        total={total}
-        onPrevClick={setPrevPage}
-        onNextClick={setNextPage}
-      />
+      {sessions.length ? (
+        <PaginationBar
+          page={pagination.page}
+          perPage={pagination.perPage}
+          total={total}
+          onPrevClick={setPrevPage}
+          onNextClick={setNextPage}
+        />
+      ) : null}
     </>
   )
 }

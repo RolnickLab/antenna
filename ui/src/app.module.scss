@@ -14,7 +14,6 @@
   position: sticky;
   top: 0;
   left: 0;
-  min-width: $page-min-width;
   height: 140px;
   padding: 0 100px;
   display: flex;
@@ -34,10 +33,10 @@
 }
 
 .content {
-  margin: 50px 100px;
+  padding: 50px 100px;
+  width: 100%;
   min-width: $page-min-width;
   box-sizing: border-box;
-  display: inline-block;
 }
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
@@ -47,5 +46,7 @@
 
   .content {
     margin: 32px;
+    padding-left: 0px;
+    padding-right: 66px;
   }
 }

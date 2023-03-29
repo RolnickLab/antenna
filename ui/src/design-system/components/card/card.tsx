@@ -13,7 +13,9 @@ interface CardProps {
 export const Card = ({ title, subTitle, image, maxWidth }: CardProps) => {
   return (
     <div className={styles.container} style={{ maxWidth }}>
-      <img src={image.src} alt={image.alt} className={styles.image} />
+      <div className={styles.square}>
+        <img src={image.src} alt={image.alt} className={styles.image} />
+      </div>
       <div className={styles.footer}>
         <span className={styles.title}>{title}</span>
         <span className={styles.subTitle}>{subTitle}</span>

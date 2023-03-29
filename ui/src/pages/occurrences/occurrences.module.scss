@@ -1,8 +1,9 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
-.occurrencesContent {
+.tableContent {
   padding: 16px 0;
+  position: relative;
 }
 
 .galleryContent {
@@ -11,15 +12,17 @@
   padding: 16px;
 }
 
+.settingsWrapper {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 1;
+  transform: rotate(90deg);
+}
+
 .sidebar {
   width: 262px;
   background-color: $color-neutral-200;
   height: 400px;
   margin-right: 16px;
-}
-
-.gallery {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 1fr 1fr;
 }
