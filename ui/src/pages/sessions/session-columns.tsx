@@ -111,6 +111,6 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'avg-temp',
     name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
-    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
+    renderCell: () => <BasicTableCell value="WIP" />,
   },
 ]

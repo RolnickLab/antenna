@@ -71,7 +71,7 @@ export const columns: TableColumn<Occurrence>[] = [
   {
     id: 'appearance',
     name: translate(STRING.TABLE_COLUMN_APPEARANCE),
-    renderCell: (item: Occurrence) => (
+    renderCell: () => (
       <BasicTableCell
         value={'WIP'}
         details={['WIP']}

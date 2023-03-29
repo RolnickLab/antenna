@@ -1,5 +1,4 @@
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
-import { Card } from 'design-system/components/card/card'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
