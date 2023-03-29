@@ -17,8 +17,7 @@ export const Sessions = () => {
     [id: string]: boolean
   }>({
     snapshots: true,
-    session: true,
-    deployment: true,
+    images: true,
     date: true,
     duration: true,
     occurrences: true,
