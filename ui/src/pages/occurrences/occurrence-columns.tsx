@@ -36,10 +36,7 @@ export const columns: TableColumn<Occurrence>[] = [
       <Link to={`/occurrences/occurrence-id`}>
         <BasicTableCell
           value={item.categoryLabel}
-          details={[
-            item.familyLabel,
-            `${translate(STRING.SCORE)}: ${item.categoryScore}`,
-          ]}
+          details={['WIP', `${translate(STRING.SCORE)}: ${item.categoryScore}`]}
           theme={CellTheme.Primary}
         />
       </Link>
@@ -52,7 +49,7 @@ export const columns: TableColumn<Occurrence>[] = [
       <Link to={`/deployments/deployment-id`}>
         <BasicTableCell
           value={item.deployment}
-          details={[item.deploymentLocation]}
+          details={['WIP']}
           theme={CellTheme.Primary}
         />
       </Link>
@@ -62,9 +59,9 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'session',
     name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Occurrence) => (
-      <Link to={`/sessions/session-id`}>
+      <Link to={`/sessions/${item.sessionId}`}>
         <BasicTableCell
-          value={item.sessionId}
+          value={item.sessionLabel}
           details={[item.sessionTimespan]}
           theme={CellTheme.Primary}
         />
@@ -76,8 +73,8 @@ export const columns: TableColumn<Occurrence>[] = [
     name: translate(STRING.TABLE_COLUMN_APPEARANCE),
     renderCell: (item: Occurrence) => (
       <BasicTableCell
-        value={item.appearanceTimespan}
-        details={[item.appearanceDuration]}
+        value={'WIP'}
+        details={['WIP']}
         theme={CellTheme.Primary}
       />
     ),

@@ -5,69 +5,47 @@ export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
   private readonly _occurrence: ServerOccurrence
+  private _images: { src: string }[] = []
 
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
   }
 
-  get appearanceDuration(): string {
-    return '[WIP] Appearance duration'
-  }
-
-  get appearanceTimespan(): string {
-    return '[WIP] Appearance timespan'
-  }
-
   get categoryLabel(): string {
-    return this._occurrence.category_label
+    return this._occurrence.label
   }
 
   get categoryScore(): number {
-    return _.round(this._occurrence.category_score, 2)
+    return _.round(Number(this._occurrence.best_score), 2)
   }
 
   get deployment(): string {
     return this._occurrence.deployment
   }
 
-  get deploymentLocation(): string {
-    return '[WIP] Deployment location'
-  }
-
-  get familyLabel(): string {
-    return '[WIP] Family'
-  }
-
   get id(): string {
-    return `#${this._occurrence.id}`
+    return this._occurrence.id
   }
 
   get images(): { src: string }[] {
-    return [
-      {
-        src: 'https://placekitten.com/240/240',
-      },
-      {
-        src: 'https://placekitten.com/240/160',
-      },
-      {
-        src: 'https://placekitten.com/160/240',
-      },
-    ]
+    return this._images
+  }
+  set images(value: { src: string }[]) {
+    this._images = value
   }
 
   get sessionId(): string {
-    return '[WIP] Session ID'
+    return this._occurrence.event
+  }
+
+  get sessionLabel(): string {
+    return `Session ${this.sessionId}`
   }
 
   get sessionTimespan(): string {
     return getCompactDatespanString({
-      date1: new Date(),
-      date2: new Date(),
+      date1: new Date(this._occurrence.start_time),
+      date2: new Date(this._occurrence.end_time),
     })
-  }
-
-  get timestamp(): Date {
-    return new Date(this._occurrence.timestamp)
   }
 }
