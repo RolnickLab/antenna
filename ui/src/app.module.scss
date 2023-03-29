@@ -34,10 +34,10 @@
 }
 
 .content {
-  margin: 50px 100px;
+  padding: 50px 100px;
+  width: 100%;
   min-width: $page-min-width;
   box-sizing: border-box;
-  display: inline-block;
 }
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
