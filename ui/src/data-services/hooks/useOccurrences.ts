@@ -12,13 +12,26 @@ export const useOccurrences = (
   isLoading: boolean
 } => {
   const { data, isLoading } = useGetList<ServerOccurrence, Occurrence>(
-    { collection: 'detections', params },
+    { collection: 'occurrences', params },
     convertServerRecord
   )
 
+  // This extra fetch is only until we have a real API
+  const { data: examples, isLoading: examplesIsLoading } = useGetList<any, any>(
+    { collection: 'examples' },
+    (record: any) => record
+  )
+
   return {
-    occurrences: data,
-    total: 10, // Hard coded until we get this in response
-    isLoading,
+    occurrences: data.map((occurrence) => {
+      if (examples.length) {
+        occurrence.images = examples
+          .filter((example) => example.sequence_id === occurrence.id)
+          .map((example) => ({ src: example.cropped_image_path }))
+      }
+      return occurrence
+    }),
+    total: 16, // Hard coded until we get this in response
+    isLoading: isLoading || examplesIsLoading,
   }
 }

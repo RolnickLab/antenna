@@ -1,17 +1,26 @@
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
-import { Card } from 'design-system/components/card/card'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
+import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import React, { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { Gallery } from './gallery/gallery'
 import { columns } from './occurrence-columns'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
+  const [columnSettings, setColumnSettings] = useState<{
+    [id: string]: boolean
+  }>({
+    snapshots: true,
+    id: true,
+    deployment: true,
+    session: true,
+  })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { occurrences, total, isLoading } = useOccurrences({ pagination, sort })
@@ -32,11 +41,18 @@ export const Occurrences = () => {
           />
         </Tabs.List>
         <Tabs.Content value="table">
-          <div className={styles.occurrencesContent}>
+          <div className={styles.tableContent}>
+            <div className={styles.settingsWrapper}>
+              <ColumnSettings
+                columns={columns}
+                columnSettings={columnSettings}
+                onColumnSettingsChange={setColumnSettings}
+              />
+            </div>
             <Table
               items={occurrences}
               isLoading={isLoading}
-              columns={columns}
+              columns={columns.filter((column) => !!columnSettings[column.id])}
               sortable
               sortSettings={sort}
               onSortSettingsChange={setSort}
@@ -46,17 +62,7 @@ export const Occurrences = () => {
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
             <div className={styles.sidebar}></div>
-            <div className={styles.gallery}>
-              {occurrences.map((occurrence) => (
-                <Card
-                  key={occurrence.id}
-                  title={occurrence.categoryLabel}
-                  subTitle={occurrence.familyLabel}
-                  image={occurrence.images[0]}
-                  maxWidth="262px"
-                />
-              ))}
-            </div>
+            <Gallery occurrences={occurrences} isLoading={isLoading} />
           </div>
         </Tabs.Content>
       </Tabs.Root>

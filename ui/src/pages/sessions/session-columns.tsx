@@ -15,7 +15,6 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'snapshots',
     name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
-    sortField: 'start_time',
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -43,7 +42,6 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
-    sortField: 'deployment',
     renderCell: (item: Session) => (
       <Link to={`/deployments/deployment-id`}>
         <BasicTableCell
@@ -98,7 +96,9 @@ export const columns: TableColumn<Session>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
+    renderCell: (item: Session) => (
+      <BasicTableCell value={item.numOccurrences} />
+    ),
   },
   {
     id: 'species',
@@ -106,11 +106,11 @@ export const columns: TableColumn<Session>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
+    renderCell: (item: Session) => <BasicTableCell value={item.numSpecies} />,
   },
   {
     id: 'avg-temp',
     name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
-    renderCell: (_item: Session) => <BasicTableCell value="WIP" />,
+    renderCell: () => <BasicTableCell value="WIP" />,
   },
 ]

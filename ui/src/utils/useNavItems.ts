@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
 import { STRING, translate } from './language'
 
-interface NavigatinonItem {
+interface NavigationItem {
   id: string
   title: string
   icon?: IconType
@@ -15,7 +15,7 @@ interface NavigatinonItem {
 export const useNavItems = () => {
   const location = useLocation()
 
-  const navItems: NavigatinonItem[] = useMemo(
+  const navItems: NavigationItem[] = useMemo(
     () => [
       {
         id: 'overview',
