@@ -42,3 +42,36 @@ export const Slider = ({
     </div>
   )
 }
+
+interface PlaybackSliderProps {
+  settings?: {
+    min: number
+    max: number
+    step: number
+    defaultValue: number
+  }
+}
+
+export const PlaybackSlider = ({
+  settings = { min: 0, max: 1, step: 0.01, defaultValue: 0.5 },
+}: PlaybackSliderProps) => {
+  const [value, setValue] = useState<number>(settings.defaultValue)
+
+  return (
+    <div>
+      <_Slider.Root
+        className={styles.playbackSliderRoot}
+        defaultValue={[settings.defaultValue]}
+        min={settings.min}
+        max={settings.max}
+        step={settings.step}
+        onValueChange={(values) => setValue(values[0])}
+      >
+        <_Slider.Track className={styles.sliderTrack}>
+          <_Slider.Range className={styles.sliderRange} />
+        </_Slider.Track>
+        <_Slider.Thumb className={styles.sliderThumb} />
+      </_Slider.Root>
+    </div>
+  )
+}

@@ -2,6 +2,7 @@ import { NavigationBar } from 'design-system/components/navigation/navigation-ba
 import { BatchId } from 'pages/batch-id/batch-id'
 import { Deployments } from 'pages/deployments/deployments'
 import { Occurrences } from 'pages/occurrences/occurrences'
+import { SessionDetails } from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Settings } from 'pages/settings/settings'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
@@ -36,6 +37,7 @@ export const App = () => {
           <Route path="/batch-id" element={<BatchId />} />
           <Route path="/deployments" element={<Deployments />} />
           <Route path="/sessions" element={<Sessions />} />
+          <Route path="/sessions/:id" element={<SessionDetails />} />
           <Route path="/occurrences" element={<Occurrences />} />
 
           {/* Work in progress pages */}
@@ -57,12 +59,7 @@ export const App = () => {
               <UnderConstruction message="Deployment details is under construction!" />
             }
           />
-          <Route
-            path="/sessions/:id"
-            element={
-              <UnderConstruction message="Session details is under construction!" />
-            }
-          />
+
           <Route
             path="/occurrences/:id"
             element={

@@ -1,0 +1,17 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.wrapper {
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.controls {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background-color: $color-neutral-800;
+}

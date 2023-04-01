@@ -69,3 +69,29 @@
   color: $color-neutral-800;
   margin-top: 8px;
 }
+
+.playbackSliderRoot {
+  all: unset;
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 24px;
+  cursor: pointer;
+
+  .sliderTrack,
+  .sliderRange {
+    background-color: $color-neutral-600;
+  }
+
+  .sliderThumb {
+    width: 32px;
+    height: 32px;
+    background-color: $color-neutral-300;
+    border: none;
+
+    &:focus {
+      box-shadow: none;
+    }
+  }
+}
