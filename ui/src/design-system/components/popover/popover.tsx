@@ -1,5 +1,6 @@
 import * as Popover from '@radix-ui/react-popover'
 import React from 'react'
+import { Icon, IconType } from '../icon/icon'
 import styles from './popover.module.scss'
 
 const Root = ({ children }: { children: React.ReactNode }) => (
@@ -33,7 +34,7 @@ const Content = ({
         className={styles.popoverClose}
         aria-label={ariaCloselabel}
       >
-        <span>x</span>
+        <Icon type={IconType.Close} size={12} />
       </Popover.Close>
       <Popover.Arrow className={styles.popoverArrow} />
     </Popover.Content>
