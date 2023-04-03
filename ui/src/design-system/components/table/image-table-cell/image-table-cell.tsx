@@ -4,7 +4,7 @@ import {
   IconButtonShape,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { Icon, IconType } from 'design-system/components/icon/icon'
 import { useEffect, useRef, useState } from 'react'
 import { ImageCellTheme } from '../types'
 import styles from './image-table-cell.module.scss'
@@ -156,12 +156,17 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
           />
         </div>
       </div>
-      <span
-        className={classNames(styles.info, styles.control, {
-          [styles.visible]: paused,
-        })}
-      >
-        {slideIndex + 1} / {images.length}
+      <span className={styles.info}>
+        <>
+          <Icon type={IconType.Detections} size={12} />
+          {paused ? (
+            <span>
+              {slideIndex + 1} / {images.length}
+            </span>
+          ) : (
+            <span>{images.length}</span>
+          )}
+        </>
       </span>
     </div>
   )
