@@ -1,17 +1,28 @@
-import React, { useCallback } from 'react'
+import classNames from 'classnames'
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import styles from './frame.module.scss'
 
-export const Frame = ({
-  src,
-  width,
-  height,
-  detections,
-}: {
+interface FrameProps {
   src: string
   width: number
   height: number
   detections: { id: number; bbox: number[] }[]
-}) => {
+}
+
+export const Frame = ({ src, width, height, detections }: FrameProps) => {
+  const imageRef = useRef<HTMLImageElement>(null)
+  const [isLoading, setIsLoading] = useState<boolean>()
+
+  useEffect(() => {
+    if (!imageRef.current) {
+      return
+    }
+    setIsLoading(true)
+    imageRef.current.src = src
+    imageRef.current.onload = () => setIsLoading(false)
+  }, [src])
+
   const getBoxStyles = useCallback(
     (
       bbox: number[]
@@ -32,15 +43,14 @@ export const Frame = ({
 
   return (
     <div
-      className={styles.wrapper}
+      className={classNames(styles.wrapper)}
       style={{ paddingBottom: `${(height / width) * 100}%` }}
     >
-      <img src={src} className={styles.bg} />
-      <div className={styles.overlay} />
-      <img src={src} className={styles.detections} />
-      <svg className={styles.svg}>
+      <img ref={imageRef} className={styles.image} />
+      <svg className={styles.overlay}>
         <defs>
-          <clipPath id="boxes">
+          <mask id="holes">
+            <rect width="100%" height="100%" fill="white" />
             {detections.map((detection) => {
               const boxStyles = getBoxStyles(detection.bbox)
 
@@ -51,12 +61,19 @@ export const Frame = ({
                   y={boxStyles.top}
                   width={boxStyles.width}
                   height={boxStyles.height}
+                  fill="black"
                 />
               )
             })}
-          </clipPath>
+          </mask>
         </defs>
+        <rect fill="black" width="100%" height="100%" mask="url(#holes)" />
       </svg>
+      {isLoading && (
+        <div className={styles.loadingWrapper}>
+          <LoadingSpinner />
+        </div>
+      )}
     </div>
   )
 }

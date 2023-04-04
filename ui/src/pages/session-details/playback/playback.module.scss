@@ -17,4 +17,18 @@
   padding: 16px;
   box-sizing: border-box;
   background-color: $color-neutral-800;
+
+  :not(:last-child) {
+    margin-right: 16px;
+  }
+}
+
+.buttonWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  :not(:last-child) {
+    margin-right: 8px;
+  }
 }

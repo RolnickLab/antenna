@@ -23,11 +23,13 @@ export const SessionDetails = () => {
   }
 
   return (
-    <div className={styles.wrapper}>
+    <>
       <div className={styles.main}>
         <div className={styles.container}>
           <div className={styles.content}>
-            <SessionInfo session={session} />
+            <div className={styles.info}>
+              <SessionInfo session={session} />
+            </div>
           </div>
           <div className={styles.playback}>
             <Playback />
@@ -56,6 +58,6 @@ export const SessionDetails = () => {
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

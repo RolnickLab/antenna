@@ -9,6 +9,7 @@
   background-color: $color-generic-white;
   box-sizing: border-box;
 
+  // Shape
   &.square {
     width: 28px;
     height: 28px;
@@ -21,9 +22,21 @@
     border-radius: 50%;
   }
 
+  &.roundLarge {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+  }
+
+  // Theme
   &.neutral {
     background-color: $color-neutral-500;
     border-color: $color-neutral-500;
+  }
+
+  &.primary {
+    background-color: $color-primary-2-500;
+    border-color: $color-primary-2-500;
   }
 
   &.success {
@@ -31,6 +44,7 @@
     border-color: $color-success-500;
   }
 
+  // Other
   &.disabled {
     opacity: 0.5;
   }

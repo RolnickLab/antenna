@@ -44,6 +44,9 @@ export const Slider = ({
 }
 
 interface PlaybackSliderProps {
+  value: number
+  onValueChange: (value: number) => void
+  onValueCommit: (value: number) => void
   settings?: {
     min: number
     max: number
@@ -53,9 +56,12 @@ interface PlaybackSliderProps {
 }
 
 export const PlaybackSlider = ({
+  value,
+  onValueChange,
+  onValueCommit,
   settings = { min: 0, max: 1, step: 0.01, defaultValue: 0.5 },
 }: PlaybackSliderProps) => {
-  const [value, setValue] = useState<number>(settings.defaultValue)
+  const [active, setActive] = useState(false)
 
   return (
     <div>
@@ -65,7 +71,16 @@ export const PlaybackSlider = ({
         min={settings.min}
         max={settings.max}
         step={settings.step}
-        onValueChange={(values) => setValue(values[0])}
+        value={[value]}
+        onValueChange={(values) => onValueChange(values[0])}
+        onValueCommit={(values) => onValueCommit(values[0])}
+        onPointerDown={() => setActive(true)}
+        onPointerUp={() => setActive(false)}
+        onPointerLeave={() => {
+          if (active) {
+            onValueCommit(value)
+          }
+        }}
       >
         <_Slider.Track className={styles.sliderTrack}>
           <_Slider.Range className={styles.sliderRange} />
