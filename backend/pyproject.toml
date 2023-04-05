@@ -15,7 +15,7 @@ psycopg2-binary = "^2.9.5"
 asyncpg = "^0.27.0"
 SQLAlchemy = "^2.0.8"
 gunicorn = "^20.1.0"
-fastapi-users = {extras = ["sqlalchemy"], version = "^10.4.1"}
+fastapi-users = { extras = ["sqlalchemy"], version = "^10.4.1" }
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"
@@ -28,6 +28,9 @@ pytest-asyncio = "^0.21.0"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+profile = "black"
 
 [tool.cruft]
 skip = [".env"]
