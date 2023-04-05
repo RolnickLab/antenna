@@ -4,7 +4,7 @@ import {
   IconButtonShape,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { Icon, IconType } from 'design-system/components/icon/icon'
 import { useEffect, useRef, useState } from 'react'
 import { ImageCellTheme } from '../types'
 import styles from './image-table-cell.module.scss'
@@ -15,11 +15,13 @@ interface ImageTableCellProps {
     alt?: string
   }[]
   theme?: ImageCellTheme
+  autoPlay?: boolean
 }
 
 export const ImageTableCell = ({
   images,
   theme = ImageCellTheme.Default,
+  autoPlay,
 }: ImageTableCellProps) => {
   if (!images.length) {
     return <div className={styles.container} />
@@ -29,7 +31,13 @@ export const ImageTableCell = ({
     return <BasicImageTableCell image={images[0]} theme={theme} />
   }
 
-  return <SlideshowImageTableCell images={images} theme={theme} />
+  return (
+    <SlideshowImageTableCell
+      images={images}
+      theme={theme}
+      autoPlay={autoPlay}
+    />
+  )
 }
 
 const BasicImageTableCell = ({
@@ -54,7 +62,12 @@ const BasicImageTableCell = ({
 )
 
 const DURATION = 10000 // Change image every 10 second
-const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
+
+const SlideshowImageTableCell = ({
+  images,
+  theme,
+  autoPlay,
+}: ImageTableCellProps) => {
   const [paused, setPaused] = useState(false)
   const [slideIndex, setSlideIndex] = useState(0)
 
@@ -62,6 +75,10 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
   const pausedRef = useRef(paused)
 
   useEffect(() => {
+    if (!autoPlay) {
+      return
+    }
+
     const interval = setInterval(() => {
       if (!pausedRef.current) {
         showNext(slideIndexRef.current)
@@ -69,7 +86,7 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
     }, DURATION)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [autoPlay])
 
   useEffect(() => {
     slideIndexRef.current = slideIndex
@@ -156,12 +173,17 @@ const SlideshowImageTableCell = ({ images, theme }: ImageTableCellProps) => {
           />
         </div>
       </div>
-      <span
-        className={classNames(styles.info, styles.control, {
-          [styles.visible]: paused,
-        })}
-      >
-        {slideIndex + 1} / {images.length}
+      <span className={styles.info}>
+        <>
+          <Icon type={IconType.Detections} size={12} />
+          {paused ? (
+            <span>
+              {slideIndex + 1} / {images.length}
+            </span>
+          ) : (
+            <span>{images.length}</span>
+          )}
+        </>
       </span>
     </div>
   )

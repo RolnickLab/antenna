@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import React from 'react'
+import { Icon, IconType } from '../icon/icon'
 import styles from './dialog.module.scss'
 
 const Root = ({ children }: { children: React.ReactNode }) => (
@@ -22,7 +23,7 @@ const Content = ({
     <Dialog.Content className={styles.dialog}>
       <div className={styles.dialogContent}>{children}</div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
-        <span>x</span>
+        <Icon type={IconType.Close} size={12} />
       </Dialog.Close>
     </Dialog.Content>
   </Dialog.Portal>

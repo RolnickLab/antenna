@@ -1,0 +1,38 @@
+@import 'design-system/variables/variables.scss';
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.content {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.title {
+  @include paragraph-large();
+  font-weight: 600;
+  color: $color-neutral-800;
+  margin: 0 0 16px 0;
+}
+
+.fieldGroup {
+  margin: 0 0 16px 0;
+}
+
+.fieldLabel {
+  display: block;
+  @include label();
+  font-weight: 600;
+  color: $color-neutral-500;
+}
+
+.fieldValue {
+  display: block;
+  @include paragraph-medium();
+  color: $color-neutral-800;
+}
+
+@media only screen and (max-width: $medium-screen-breakpoint) {
+  .content {
+    grid-template-columns: 1fr 1fr;
+  }
+}

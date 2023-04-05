@@ -2,6 +2,7 @@ import { useSettings } from 'data-services/hooks/useSettings'
 import { SettingsField } from 'data-services/models/settings'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
+import { IconType } from 'design-system/components/icon/icon'
 import { Input, PathInput } from 'design-system/components/input/input'
 import { Select } from 'design-system/components/select/select'
 import { Slider } from 'design-system/components/slider/slider'
@@ -15,7 +16,11 @@ export const Settings = () => {
   return (
     <Dialog.Root>
       <Dialog.Trigger>
-        <Button label={translate(STRING.SETTINGS)} theme={ButtonTheme.Plain} />
+        <Button
+          label={translate(STRING.SETTINGS)}
+          icon={IconType.Settings}
+          theme={ButtonTheme.Plain}
+        />
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         <Dialog.Header title={translate(STRING.SETTINGS)}>

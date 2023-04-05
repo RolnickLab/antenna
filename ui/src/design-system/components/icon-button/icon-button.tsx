@@ -6,11 +6,13 @@ import styles from './icon-button.module.scss'
 export enum IconButtonShape {
   Square = 'square',
   Round = 'round',
+  RoundLarge = 'round-large',
 }
 
 export enum IconButtonTheme {
   Default = 'default',
   Neutral = 'neutral',
+  Primary = 'primary',
   Success = 'success',
 }
 
@@ -40,10 +42,17 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       <button
         ref={forwardedRef}
         className={classNames(styles.iconButton, {
-          [styles.round]: shape === IconButtonShape.Round,
+          // Shape
           [styles.square]: shape === IconButtonShape.Square,
+          [styles.round]: shape === IconButtonShape.Round,
+          [styles.roundLarge]: shape === IconButtonShape.RoundLarge,
+
+          // Theme
           [styles.neutral]: theme === IconButtonTheme.Neutral,
+          [styles.primary]: theme === IconButtonTheme.Primary,
           [styles.success]: theme === IconButtonTheme.Success,
+
+          // Other
           [styles.disabled]: disabled,
         })}
         disabled={disabled}

@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import { ReactComponent as BatchId } from './assets/batch-id.svg'
 import { ReactComponent as Checkmark } from './assets/checkmark.svg'
+import { ReactComponent as Close } from './assets/close.svg'
 import { ReactComponent as Deployments } from './assets/deployments.svg'
 import { ReactComponent as Detections } from './assets/detections.svg'
 import { ReactComponent as Download } from './assets/download.svg'
@@ -15,6 +16,7 @@ import { ReactComponent as Options } from './assets/options.svg'
 import { ReactComponent as Overview } from './assets/overview.svg'
 import { ReactComponent as PlayButton } from './assets/play-button.svg'
 import { ReactComponent as Sessions } from './assets/sessions.svg'
+import { ReactComponent as Settings } from './assets/settings.svg'
 import { ReactComponent as Sort } from './assets/sort.svg'
 import { ReactComponent as Species } from './assets/species.svg'
 import { ReactComponent as TableView } from './assets/table-view.svg'
@@ -25,6 +27,7 @@ import styles from './icon.module.scss'
 export enum IconType {
   BatchId = 'batch-id',
   Checkmark = 'checkmark',
+  Close = 'close',
   Deployments = 'deployments',
   Detections = 'detections',
   Download = 'download',
@@ -39,6 +42,7 @@ export enum IconType {
   Overview = 'overview',
   PlayButton = 'play-button',
   Sessions = 'sessions',
+  Settings = 'settings',
   Sort = 'sort',
   Species = 'species',
   TableView = 'table-view',
@@ -57,6 +61,7 @@ export enum IconTheme {
 const COMPONENT_MAP = {
   [IconType.BatchId]: BatchId,
   [IconType.Checkmark]: Checkmark,
+  [IconType.Close]: Close,
   [IconType.Deployments]: Deployments,
   [IconType.Detections]: Detections,
   [IconType.Download]: Download,
@@ -71,6 +76,7 @@ const COMPONENT_MAP = {
   [IconType.Overview]: Overview,
   [IconType.PlayButton]: PlayButton,
   [IconType.Sessions]: Sessions,
+  [IconType.Settings]: Settings,
   [IconType.Sort]: Sort,
   [IconType.Species]: Species,
   [IconType.TableView]: TableView,

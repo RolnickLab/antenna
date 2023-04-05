@@ -11,10 +11,6 @@ export class Session {
     this._event = event
   }
 
-  get avgTempLabel(): string {
-    return '[WIP] Avg temp'
-  }
-
   get datespanLabel(): string {
     return getCompactDatespanString({
       date1: new Date(this._event.start_time),
