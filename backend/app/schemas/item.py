@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class ItemCreate(BaseModel):
     value: str
+    name: str
 
 
 class ItemUpdate(ItemCreate):

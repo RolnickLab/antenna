@@ -26,5 +26,11 @@ export interface ItemUpdate {
      * @memberof ItemUpdate
      */
     'value': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ItemUpdate
+     */
+    'name': string;
 }
 

@@ -26,5 +26,11 @@ export interface ItemCreate {
      * @memberof ItemCreate
      */
     'value': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ItemCreate
+     */
+    'name': string;
 }
 

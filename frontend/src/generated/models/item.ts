@@ -28,6 +28,12 @@ export interface Item {
     'value': string;
     /**
      * 
+     * @type {string}
+     * @memberof Item
+     */
+    'name': string;
+    /**
+     * 
      * @type {number}
      * @memberof Item
      */

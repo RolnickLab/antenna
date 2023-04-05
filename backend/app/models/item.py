@@ -6,7 +6,7 @@ from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql.functions import func
 from sqlalchemy.sql.schema import ForeignKey
-from sqlalchemy.sql.sqltypes import DateTime
+from sqlalchemy.sql.sqltypes import DateTime, String
 
 from app.db import Base
 
@@ -18,6 +18,7 @@ class Item(Base):
     __tablename__ = "items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
     user_id: Mapped[UUID] = mapped_column(GUID, ForeignKey("users.id"))
     user: Mapped["User"] = relationship(back_populates="items")
 
