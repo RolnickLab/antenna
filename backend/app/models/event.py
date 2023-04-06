@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, List
 from uuid import UUID
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -14,23 +14,23 @@ if TYPE_CHECKING:
     from app.models.user import User  # noqa: F401
     from app.models.deployment import Deployment  # noqa: F401
     from app.models.taxon import Taxon  # noqa: F401
-    from app.models.detection import Detection  # noqa: F401
+    from app.models.source_image import SourceImage  # noqa: F401 
 
 
-class Occurrence(Base):
-    __tablename__ = "occurrences"
+class Event(Base):
+    __tablename__ = "events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    name: Mapped[str]
 
-    detections: Mapped["Detection"] = relationship(back_populates="occurrence")
+    # Calculated from the detections
+    start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
-    taxon_id: Mapped[int] = mapped_column(ForeignKey("taxa.id"))
-    taxon: Mapped["Taxon"] = relationship(back_populates="occurrences")
+    source_images: Mapped[List["SourceImage"]] = relationship(back_populates="event")
 
     deployment_id: Mapped[int] = mapped_column(ForeignKey("deployments.id"))
-    deployment: Mapped["Deployment"] = relationship(back_populates="occurrences")
+    deployment: Mapped["Deployment"] = relationship(back_populates="events")
 
     created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -42,4 +42,10 @@ class Occurrence(Base):
     @hybrid_property
     def duration(self) -> timedelta:
         """Return the number of seconds the occurrence appeared."""
-        return self.last_seen - self.first_seen
+        return self.end - self.start
+
+    @hybrid_property
+    def num_images(self) -> int:
+        """Return the number of images in the event."""
+        return len(self.source_images)
+

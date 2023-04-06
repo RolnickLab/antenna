@@ -18,3 +18,7 @@ async_session_maker = async_sessionmaker(
 
 class Base(DeclarativeBase):
     id: Any
+
+# from eralchemy2 import render_er
+# Draw ERD diagram from SQLAlchemy models
+# render_er(Base, 'erd_from_sqlalchemy.png')

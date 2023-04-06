@@ -49,35 +49,6 @@ async def get_occurrences(
     return items
 
 
-@router.post("", response_model=OccurrenceSchema, status_code=201)
-async def create_occurrence(
-    item_in: OccurrenceCreate,
-    session: AsyncSession = Depends(get_async_session),
-) -> Any:
-    # @TODO: Check if user is allowed to create items for this deployment
-    item = Occurrence(**item_in.dict())
-    session.add(item)
-    await session.commit()
-    return item
-
-
-@router.put("/{item_id}", response_model=OccurrenceSchema)
-async def update_occurrence(
-    item_id: int,
-    item_in: OccurrenceUpdate,
-    session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_user),
-) -> Any:
-    # @TODO: Check if user is allowed to edit items for this deployment
-    item: Optional[Occurrence] = await session.get(Occurrence, item_id)
-    update_data = item_in.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(item, field, value)
-    session.add(item)
-    await session.commit()
-    return item
-
-
 @router.get("/{item_id}", response_model=OccurrenceSchema)
 async def get_occurrence(
     item_id: int,

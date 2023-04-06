@@ -7,30 +7,31 @@ from sqlalchemy.sql.functions import func
 from sqlalchemy.sql.schema import ForeignKey
 from sqlalchemy.sql.sqltypes import DateTime
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.types import JSON
 
 from app.db import Base
 
 if TYPE_CHECKING:
-    from app.models.user import User  # noqa: F401
     from app.models.deployment import Deployment  # noqa: F401
     from app.models.taxon import Taxon  # noqa: F401
-    from app.models.detection import Detection  # noqa: F401
 
 
-class Occurrence(Base):
-    __tablename__ = "occurrences"
+class Classification(Base):
+    __tablename__ = "classifications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-    detections: Mapped["Detection"] = relationship(back_populates="occurrence")
+    score: Mapped[float]
+    model: Mapped[str]
+    results: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
 
     taxon_id: Mapped[int] = mapped_column(ForeignKey("taxa.id"))
-    taxon: Mapped["Taxon"] = relationship(back_populates="occurrences")
+    taxon: Mapped["Taxon"] = relationship(back_populates="classifications")
+
+    detection_id: Mapped[int] = mapped_column(ForeignKey("detections.id"))
+    detection: Mapped["Deployment"] = relationship(back_populates="classifications")
 
     deployment_id: Mapped[int] = mapped_column(ForeignKey("deployments.id"))
-    deployment: Mapped["Deployment"] = relationship(back_populates="occurrences")
+    deployment: Mapped["Deployment"] = relationship(back_populates="classifications")
 
     created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -38,8 +39,3 @@ class Occurrence(Base):
     updated: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-
-    @hybrid_property
-    def duration(self) -> timedelta:
-        """Return the number of seconds the occurrence appeared."""
-        return self.last_seen - self.first_seen
