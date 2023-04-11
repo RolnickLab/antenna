@@ -1,6 +1,5 @@
 import { useSessionDetails } from 'data-services/hooks/useSessionDetails'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import React from 'react'
 import { useParams } from 'react-router'
 import { Playback } from './playback/playback'
 import styles from './session-details.module.scss'

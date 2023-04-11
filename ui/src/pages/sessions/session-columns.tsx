@@ -7,7 +7,6 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
-import React from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 

@@ -1,5 +1,5 @@
 import * as _Select from '@radix-ui/react-select'
-import React from 'react'
+import { forwardRef } from 'react'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './select.module.scss'
 
@@ -61,7 +61,7 @@ interface SelectItemProps {
   value: string
 }
 
-const SelectItem = React.forwardRef<HTMLDivElement, SelectItemProps>(
+const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
   ({ label, value, ...rest }, forwardedRef) => (
     <_Select.Item
       ref={forwardedRef}
