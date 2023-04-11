@@ -1,16 +1,26 @@
 import classNames from 'classnames'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styles from './frame.module.scss'
+import { BoxStyle, FrameDetection } from './types'
+import { useActiveDetections } from './useActiveDetections'
 
 interface FrameProps {
   src: string
   width: number
   height: number
-  detections: { id: number; bbox: number[] }[]
+  detections: FrameDetection[]
+  showOverlay?: boolean
 }
 
-export const Frame = ({ src, width, height, detections }: FrameProps) => {
+export const Frame = ({
+  src,
+  width,
+  height,
+  detections,
+  showOverlay,
+}: FrameProps) => {
   const imageRef = useRef<HTMLImageElement>(null)
   const [isLoading, setIsLoading] = useState<boolean>()
 
@@ -23,22 +33,23 @@ export const Frame = ({ src, width, height, detections }: FrameProps) => {
     imageRef.current.onload = () => setIsLoading(false)
   }, [src])
 
-  const getBoxStyles = useCallback(
-    (
-      bbox: number[]
-    ): { width: string; height: string; top: string; left: string } => {
-      const [boxLeft, boxTop, boxRight, boxBottom] = bbox
-      const boxWidth = boxRight - boxLeft
-      const boxHeight = boxBottom - boxTop
+  const boxStyles = useMemo(
+    () =>
+      detections.reduce((result: { [key: number]: BoxStyle }, detection) => {
+        const [boxLeft, boxTop, boxRight, boxBottom] = detection.bbox
+        const boxWidth = boxRight - boxLeft
+        const boxHeight = boxBottom - boxTop
 
-      return {
-        width: `${(boxWidth / width) * 100}%`,
-        height: `${(boxHeight / height) * 100}%`,
-        top: `${(boxTop / height) * 100}%`,
-        left: `${(boxLeft / width) * 100}%`,
-      }
-    },
-    [width, height]
+        result[detection.id] = {
+          width: `${(boxWidth / width) * 100}%`,
+          height: `${(boxHeight / height) * 100}%`,
+          top: `${(boxTop / height) * 100}%`,
+          left: `${(boxLeft / width) * 100}%`,
+        }
+
+        return result
+      }, {}),
+    [width, height, detections]
   )
 
   return (
@@ -47,35 +58,100 @@ export const Frame = ({ src, width, height, detections }: FrameProps) => {
       style={{ paddingBottom: `${(height / width) * 100}%` }}
     >
       <img ref={imageRef} className={styles.image} />
-      {!isLoading && (
-        <svg className={styles.overlay}>
-          <defs>
-            <mask id="holes">
-              <rect width="100%" height="100%" fill="white" />
-              {detections.map((detection) => {
-                const boxStyles = getBoxStyles(detection.bbox)
-
-                return (
-                  <rect
-                    key={detection.id}
-                    x={boxStyles.left}
-                    y={boxStyles.top}
-                    width={boxStyles.width}
-                    height={boxStyles.height}
-                    fill="black"
-                  />
-                )
-              })}
-            </mask>
-          </defs>
-          <rect fill="black" width="100%" height="100%" mask="url(#holes)" />
-        </svg>
-      )}
-      {isLoading && (
+      {!isLoading ? (
+        <div
+          className={classNames(styles.details, {
+            [styles.showOverlay]: showOverlay,
+          })}
+        >
+          <FrameOverlay boxStyles={boxStyles} />
+          <FrameDetections detections={detections} boxStyles={boxStyles} />
+        </div>
+      ) : (
         <div className={styles.loadingWrapper}>
           <LoadingSpinner />
         </div>
       )}
+    </div>
+  )
+}
+
+const FrameOverlay = ({
+  boxStyles,
+}: {
+  boxStyles: { [key: number]: BoxStyle }
+}) => (
+  <svg className={styles.overlay}>
+    <defs>
+      <mask id="holes">
+        <rect width="100%" height="100%" fill="white" />
+        {Object.entries(boxStyles).map(([id, style]) => (
+          <rect
+            key={id}
+            x={style.left}
+            y={style.top}
+            width={style.width}
+            height={style.height}
+            fill="black"
+          />
+        ))}
+      </mask>
+    </defs>
+    <rect
+      fill="black"
+      fillOpacity={0.2}
+      width="100%"
+      height="100%"
+      mask="url(#holes)"
+    />
+  </svg>
+)
+
+const FrameDetections = ({
+  detections,
+  boxStyles,
+}: {
+  detections: FrameDetection[]
+  boxStyles: { [key: number]: BoxStyle }
+}) => {
+  const containerRef = useRef(null)
+  const { activeDetections, setActiveDetections } = useActiveDetections()
+
+  const toggleActiveState = (id: string) => {
+    const isActive = activeDetections.includes(id)
+
+    if (isActive) {
+      setActiveDetections(
+        activeDetections.filter((activeDetection) => activeDetection !== id)
+      )
+    } else {
+      setActiveDetections([...activeDetections, id])
+    }
+  }
+
+  return (
+    <div className={styles.detections} ref={containerRef}>
+      {Object.entries(boxStyles).map(([id, style]) => {
+        const detection = detections.find((d) => `${d.id}` === id)
+        const isActive = activeDetections.includes(id)
+
+        return (
+          <Tooltip
+            key={id}
+            content={detection?.label ?? ''}
+            frame={containerRef.current}
+            open={isActive ? isActive : undefined}
+          >
+            <div
+              style={style}
+              className={classNames(styles.detection, {
+                [styles.active]: isActive,
+              })}
+              onClick={() => toggleActiveState(id)}
+            />
+          </Tooltip>
+        )
+      })}
     </div>
   )
 }
