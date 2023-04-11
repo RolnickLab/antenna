@@ -1,8 +1,10 @@
+@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
 .wrapper {
   width: 100%;
+  overflow: hidden;
 }
 
 .items {
@@ -77,4 +79,17 @@
   transform: translateY(100%);
   background-color: $color-success-700;
   transition: left 400ms ease, width 200ms ease;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .topContent {
+    :not(:last-child) {
+      margin-right: 0;
+    }
+  }
+
+  .itemTitle,
+  .itemCount {
+    display: none;
+  }
 }

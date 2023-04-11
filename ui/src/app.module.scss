@@ -48,3 +48,13 @@
     padding: 32px;
   }
 }
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .header {
+    padding: 0;
+  }
+
+  .content {
+    padding: 16px;
+  }
+}
