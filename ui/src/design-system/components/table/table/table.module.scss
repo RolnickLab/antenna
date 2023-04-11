@@ -3,6 +3,10 @@
 
 .wrapper {
   position: relative;
+}
+
+.tableWrapper {
+  position: relative;
   min-height: 320px;
   overflow-x: auto;
 }
@@ -16,6 +20,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.overflowFader {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 64px;
+  height: 100%;
+  background-image: linear-gradient(
+    to right,
+    rgba($color: $color-neutral-50, $alpha: 0),
+    rgba($color: $color-neutral-50, $alpha: 1)
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease-in-out;
+
+  &.visible {
+    opacity: 1;
+  }
 }
 
 .table {
@@ -34,6 +58,7 @@
   }
 
   tbody {
+    position: relative;
     display: table-row-group;
 
     tr:nth-child(odd) {
