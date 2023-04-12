@@ -1,5 +1,4 @@
 import { Session } from 'data-services/models/session'
-import React from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './session-info.module.scss'
 

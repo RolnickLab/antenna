@@ -9,6 +9,8 @@
 
 .image,
 .overlay,
+.details,
+.detections,
 .loadingWrapper {
   position: absolute;
   width: 100%;
@@ -16,16 +18,31 @@
   vertical-align: middle;
 }
 
-.overlay {
-  opacity: 0;
-  transition: opacity 250ms ease-in-out;
-
-  rect {
-    display: block;
+.details {
+  .overlay {
+    opacity: 0;
+    transition: opacity 250ms ease-in-out;
   }
 
+  &.showOverlay {
+    .overlay {
+      opacity: 1;
+    }
+  }
+}
+
+.detection {
+  position: absolute;
+  box-sizing: border-box;
+
   &:hover {
-    opacity: 0.2;
+    cursor: pointer;
+    opacity: 1;
+  }
+
+  &.active {
+    opacity: 1;
+    outline: 1px solid $color-success-500;
   }
 }
 

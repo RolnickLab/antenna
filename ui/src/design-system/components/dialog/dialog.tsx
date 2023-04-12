@@ -1,13 +1,13 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import React from 'react'
+import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import styles from './dialog.module.scss'
 
-const Root = ({ children }: { children: React.ReactNode }) => (
+const Root = ({ children }: { children: ReactNode }) => (
   <Dialog.Root>{children}</Dialog.Root>
 )
 
-const Trigger = ({ children }: { children: React.ReactNode }) => (
+const Trigger = ({ children }: { children: ReactNode }) => (
   <Dialog.Trigger asChild>{children}</Dialog.Trigger>
 )
 
@@ -16,7 +16,7 @@ const Content = ({
   children,
 }: {
   ariaCloselabel: string
-  children: React.ReactNode
+  children: ReactNode
 }) => (
   <Dialog.Portal>
     <Dialog.Overlay className={styles.dialogOverlay} />
@@ -34,7 +34,7 @@ const Header = ({
   children,
 }: {
   title: string
-  children?: React.ReactNode
+  children?: ReactNode
 }) => (
   <div className={styles.dialogHeader}>
     <Dialog.Title className={styles.dialogTitle}>{title}</Dialog.Title>

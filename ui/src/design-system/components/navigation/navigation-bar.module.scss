@@ -1,8 +1,10 @@
+@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
 .wrapper {
   width: 100%;
+  overflow: hidden;
 }
 
 .items {
@@ -11,9 +13,12 @@
   justify-content: flex-start;
   border-bottom: 2px solid $color-neutral-200;
   position: relative;
+  padding: 2px 2px 0;
 
-  :not(:last-child) {
-    margin-right: 2px;
+  li {
+    &:not(:last-child) {
+      margin-right: 2px;
+    }
   }
 }
 
@@ -77,4 +82,19 @@
   transform: translateY(100%);
   background-color: $color-success-700;
   transition: left 400ms ease, width 200ms ease;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .topContent {
+    margin-bottom: 0;
+
+    :not(:last-child) {
+      margin-right: 0;
+    }
+  }
+
+  .itemTitle,
+  .itemCount {
+    display: none;
+  }
 }

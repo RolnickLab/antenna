@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import React from 'react'
+import { forwardRef } from 'react'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './icon-button.module.scss'
 
@@ -24,7 +24,7 @@ interface IconButtonProps {
   onClick?: () => void
 }
 
-export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ ...props }, forwardedRef) => {
     const {
       icon,

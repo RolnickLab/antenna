@@ -1,6 +1,5 @@
 import { useDeployments } from 'data-services/hooks/useDeployments'
 import { Table } from 'design-system/components/table/table/table'
-import React from 'react'
 import { useClientSideSort } from 'utils/useClientSideSort'
 import { columns } from './deployment-columns'
 

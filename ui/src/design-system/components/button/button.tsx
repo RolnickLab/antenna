@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import React from 'react'
+import { forwardRef } from 'react'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './button.module.scss'
 
@@ -16,7 +16,7 @@ interface ButtonProps {
   onClick?: () => void
 }
 
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ ...props }, forwardedRef) => {
     const { label, icon, theme = ButtonTheme.Default, onClick, ...rest } = props
 

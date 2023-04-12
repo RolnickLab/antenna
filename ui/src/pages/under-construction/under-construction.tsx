@@ -1,4 +1,3 @@
-import React from 'react'
 import styles from './under-construction.module.scss'
 
 interface UnderConstructionProps {

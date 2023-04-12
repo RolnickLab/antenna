@@ -2,7 +2,6 @@ import classNames from 'classnames'
 import { Occurrence } from 'data-services/models/occurrence'
 import { Card } from 'design-system/components/card/card'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import React from 'react'
 import styles from './gallery.module.scss'
 
 export const Gallery = ({

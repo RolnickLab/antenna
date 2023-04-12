@@ -2,7 +2,6 @@ import { Queue } from 'data-services/models/queue'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { TableColumn, TextAlign } from 'design-system/components/table/types'
-import React from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './batch-id.module.scss'
 

@@ -1,5 +1,6 @@
 import * as _Slider from '@radix-ui/react-slider'
-import React, { useState } from 'react'
+import { useState } from 'react'
+import { Tooltip } from '../tooltip/tooltip'
 import styles from './slider.module.scss'
 
 interface SliderProps {
@@ -53,6 +54,7 @@ interface PlaybackSliderProps {
     step: number
     defaultValue: number
   }
+  tooltip: string
 }
 
 export const PlaybackSlider = ({
@@ -60,6 +62,7 @@ export const PlaybackSlider = ({
   onValueChange,
   onValueCommit,
   settings = { min: 0, max: 1, step: 0.01, defaultValue: 0.5 },
+  tooltip,
 }: PlaybackSliderProps) => {
   const [active, setActive] = useState(false)
 
@@ -85,7 +88,9 @@ export const PlaybackSlider = ({
         <_Slider.Track className={styles.sliderTrack}>
           <_Slider.Range className={styles.sliderRange} />
         </_Slider.Track>
-        <_Slider.Thumb className={styles.sliderThumb} />
+        <Tooltip content={tooltip}>
+          <_Slider.Thumb className={styles.sliderThumb} />
+        </Tooltip>
       </_Slider.Root>
     </div>
   )

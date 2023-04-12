@@ -6,7 +6,6 @@ import { IconType } from 'design-system/components/icon/icon'
 import { Input, PathInput } from 'design-system/components/input/input'
 import { Select } from 'design-system/components/select/select'
 import { Slider } from 'design-system/components/slider/slider'
-import React from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './settings.module.scss'
 

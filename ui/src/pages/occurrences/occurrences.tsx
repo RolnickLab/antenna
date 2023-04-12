@@ -5,7 +5,7 @@ import { ColumnSettings } from 'design-system/components/table/column-settings/c
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { Gallery } from './gallery/gallery'
