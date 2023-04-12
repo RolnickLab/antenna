@@ -1,5 +1,6 @@
 import { useSessionDetails } from 'data-services/hooks/useSessionDetails'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { Error } from 'pages/error/error'
 import { useParams } from 'react-router'
 import { Playback } from './playback/playback'
 import styles from './session-details.module.scss'
@@ -7,7 +8,7 @@ import { SessionInfo } from './session-info/session-info'
 
 export const SessionDetails = () => {
   const { id } = useParams()
-  const { session, isLoading } = useSessionDetails(id as string)
+  const { session, isLoading, error } = useSessionDetails(id as string)
 
   if (isLoading) {
     return (
@@ -17,8 +18,8 @@ export const SessionDetails = () => {
     )
   }
 
-  if (!session) {
-    return null // TODO: Show error state
+  if (!session || error) {
+    return <Error details={error} />
   }
 
   return (
