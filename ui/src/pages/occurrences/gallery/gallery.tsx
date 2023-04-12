@@ -16,9 +16,8 @@ export const Gallery = ({
       className={classNames(styles.gallery, { [styles.loading]: isLoading })}
     >
       {occurrences.map((occurrence) => (
-        <div className={styles.cardWrapper}>
+        <div key={occurrence.id} className={styles.cardWrapper}>
           <Card
-            key={occurrence.id}
             title={occurrence.categoryLabel}
             subTitle="WIP"
             image={occurrence.images[0]}
