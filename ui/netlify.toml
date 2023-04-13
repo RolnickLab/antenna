@@ -15,6 +15,14 @@ force = true
 headers = { X-From = "Netlify" }
 
 [[redirects]]
+# Serve the external images and static files from from /static/*
+from = "/static/*"
+to = "https://api.dev.insectai.org/static/:splat"
+status = 200
+force = true
+headers = { X-From = "Netlify" }
+
+[[redirects]]
 # Redirect all other paths to the root for React to handle
 from = "/*"
 to = "/"
