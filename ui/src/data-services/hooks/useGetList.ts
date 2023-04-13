@@ -7,7 +7,9 @@ const fetchData = async <T>(url: string): Promise<T[]> => {
 
   if (!response.ok) {
     throw new Error(
-      `${response.status} (${response.statusText ?? 'Server error'})`
+      `${response.status} (${
+        response.statusText?.length ? response.statusText : 'Server error'
+      })`
     )
   }
 
