@@ -1,3 +1,4 @@
+import { useStatus } from 'data-services/hooks/useStatus'
 import { IconType } from 'design-system/components/icon/icon'
 import { useMemo } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
@@ -14,6 +15,7 @@ interface NavigationItem {
 
 export const useNavItems = () => {
   const location = useLocation()
+  const { status } = useStatus()
 
   const navItems: NavigationItem[] = useMemo(
     () => [
@@ -33,7 +35,7 @@ export const useNavItems = () => {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
-        count: 0,
+        count: status?.numDeployments,
         path: '/deployments',
         matchPath: '/deployments/*',
       },
@@ -41,7 +43,7 @@ export const useNavItems = () => {
         id: 'sessions',
         title: translate(STRING.NAV_ITEM_SESSIONS),
         icon: IconType.Sessions,
-        count: 0,
+        count: status?.numSessions,
         path: '/sessions',
         matchPath: '/sessions/*',
       },
@@ -49,7 +51,7 @@ export const useNavItems = () => {
         id: 'occurrences',
         title: translate(STRING.NAV_ITEM_OCCURRENCES),
         icon: IconType.Occurrences,
-        count: 0,
+        count: status?.numOccurrences,
         path: '/occurrences',
         matchPath: '/occurrences/*',
       },
@@ -57,12 +59,12 @@ export const useNavItems = () => {
         id: 'species',
         title: translate(STRING.NAV_ITEM_SPECIES),
         icon: IconType.Species,
-        count: 0,
+        count: status?.numSpecies,
         path: '/species',
         matchPath: '/species/*',
       },
     ],
-    []
+    [status]
   )
 
   const activeNavItem =

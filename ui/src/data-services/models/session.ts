@@ -5,10 +5,15 @@ export type ServerEvent = any // TODO: Update this type
 
 export class Session {
   private readonly _event: ServerEvent
-  private _images: { src: string }[] = []
+  private readonly _images: { src: string }[] = []
 
   public constructor(event: ServerEvent) {
     this._event = event
+
+    this._images = event.example_captures.map((capture: any) => ({
+      // TODO: Can we get full URL from API?
+      src: `https://api.dev.insectai.org${capture.source_image}`,
+    }))
   }
 
   get datespanLabel(): string {
@@ -41,16 +46,13 @@ export class Session {
   get images(): { src: string }[] {
     return this._images
   }
-  set images(value: { src: string }[]) {
-    this._images = value
-  }
 
   get numDetections(): number {
     return this._event.num_detections
   }
 
-  get numImages(): number {
-    return this._event.num_source_images
+  get numImages(): string {
+    return 'WIP'
   }
 
   get numOccurrences(): number {

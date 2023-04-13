@@ -5,6 +5,7 @@ import { ColumnSettings } from 'design-system/components/table/column-settings/c
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { Error } from 'pages/error/error'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -26,7 +27,14 @@ export const Sessions = () => {
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { sessions, total, isLoading } = useSessions({ sort, pagination })
+  const { sessions, total, isLoading, error } = useSessions({
+    sort,
+    pagination,
+  })
+
+  if (error) {
+    return <Error details={error} />
+  }
 
   return (
     <>

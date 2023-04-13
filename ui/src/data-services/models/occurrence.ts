@@ -5,10 +5,15 @@ export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
   private readonly _occurrence: ServerOccurrence
-  private _images: { src: string }[] = []
+  private readonly _images: { src: string }[] = []
 
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
+
+    this._images = occurrence.examples.map((example: any) => ({
+      // TODO: Can we get full URL from API?
+      src: `https://api.dev.insectai.org${example.cropped_image_path}`,
+    }))
   }
 
   get categoryLabel(): string {
@@ -30,16 +35,9 @@ export class Occurrence {
   get images(): { src: string }[] {
     return this._images
   }
-  set images(value: { src: string }[]) {
-    this._images = value
-  }
-
-  get sessionId(): string {
-    return this._occurrence.event
-  }
 
   get sessionLabel(): string {
-    return `Session ${this.sessionId}`
+    return `Session ${this._occurrence.event}`
   }
 
   get sessionTimespan(): string {
