@@ -58,7 +58,7 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'session',
     name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Occurrence) => (
-      <Link to={'/sessions/session-id'}>
+      <Link to={`/sessions/${item.sessionId}`}>
         <BasicTableCell
           value={item.sessionLabel}
           details={[item.sessionTimespan]}

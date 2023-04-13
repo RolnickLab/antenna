@@ -36,8 +36,12 @@ export class Occurrence {
     return this._images
   }
 
+  get sessionId(): number {
+    return this._occurrence.event.id
+  }
+
   get sessionLabel(): string {
-    return `Session ${this._occurrence.event}`
+    return `Session ${this._occurrence.event.day}`
   }
 
   get sessionTimespan(): string {
