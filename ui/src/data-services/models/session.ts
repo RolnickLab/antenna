@@ -12,7 +12,7 @@ export class Session {
 
     this._images = event.example_captures.map((capture: any) => ({
       // TODO: Can we get full URL from API?
-      src: `https://api.dev.insectai.org${capture.source_image}`,
+      src: `https://api.dev.insectai.org${capture.path}`,
     }))
   }
 
@@ -51,8 +51,8 @@ export class Session {
     return this._event.num_detections
   }
 
-  get numImages(): string {
-    return 'WIP'
+  get numImages(): number {
+    return this._event.num_captures
   }
 
   get numOccurrences(): number {
