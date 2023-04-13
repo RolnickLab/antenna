@@ -248,3 +248,6 @@ dmypy.json
 
 # profiling data
 .prof
+
+# Local Netlify folder
+.netlify
