@@ -16,8 +16,16 @@ headers = { X-From = "Netlify" }
 
 [[redirects]]
 # Serve the external images from from /static/images/*
-from = "/static/images/*"
-to = "https://api.dev.insectai.org/static/:splat"
+from = "/static/captures/*"
+to = "https://api.dev.insectai.org/static/captures/:splat"
+status = 200
+force = true
+headers = { X-From = "Netlify" }
+
+[[redirects]]
+# Serve the external images from from /static/images/*
+from = "/static/crops/*"
+to = "https://api.dev.insectai.org/static/crops/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
