@@ -1,13 +1,13 @@
+import { Occurrence } from 'data-services/models/occurrence'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Popover from 'design-system/components/popover/popover'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { Error } from 'pages/error/error'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
 
 const mockData = {
-  label: 'Meropleon diversicolor',
-  family: 'WIP',
   taxonomy:
     'https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Meropleon_diversicolor_-_Multicolored_Sedgeminer_Moth_%289810621354%29.jpg/440px-Meropleon_diversicolor_-_Multicolored_Sedgeminer_Moth_%289810621354%29.jpg',
   taxonomyDescription:
@@ -18,12 +18,32 @@ const mockData = {
   ],
 }
 
-export const OccurrenceDetails = () => {
+export const OccurrenceDetails = ({
+  occurrence,
+}: {
+  occurrence?: Occurrence
+}) => {
   const [showTaxonomy, setShowTaxonomy] = useState(false)
 
+  if (!occurrence) {
+    return (
+      <div className={styles.content}>
+        <div className={styles.info}>
+          <Error />
+        </div>
+      </div>
+    )
+  }
+
   const fields = [
-    { label: translate(STRING.DETAILS_LABEL_DEPLOYMENT), value: 'WIP' },
-    { label: translate(STRING.DETAILS_LABEL_SESSION), value: 'WIP' },
+    {
+      label: translate(STRING.DETAILS_LABEL_DEPLOYMENT),
+      value: occurrence.deployment,
+    },
+    {
+      label: translate(STRING.DETAILS_LABEL_SESSION),
+      value: occurrence.sessionLabel,
+    },
     { label: translate(STRING.DETAILS_LABEL_APPEARANCE), value: 'WIP' },
     { label: translate(STRING.DETAILS_LABEL_ELEVATION), value: 'WIP' },
     { label: translate(STRING.DETAILS_LABEL_AVG_TEMP), value: 'WIP' },
@@ -44,7 +64,7 @@ export const OccurrenceDetails = () => {
               onMouseEnter={() => setShowTaxonomy(true)}
               onMouseLeave={() => setShowTaxonomy(false)}
             >
-              <span className={styles.title}>{mockData.label}</span>
+              <span className={styles.title}>{occurrence.categoryLabel}</span>
             </Popover.Trigger>
             <Popover.Content
               ariaCloselabel={translate(STRING.CLOSE)}
@@ -60,7 +80,7 @@ export const OccurrenceDetails = () => {
               </div>
             </Popover.Content>
           </Popover.Root>
-          <span className={styles.details}>{mockData.family}</span>
+          <span className={styles.details}>WIP</span>
         </div>
         <div className={styles.info}>
           <Tabs.Root defaultValue="fields">
@@ -89,12 +109,12 @@ export const OccurrenceDetails = () => {
       </div>
       <div className={styles.column}>
         <div className={styles.images}>
-          {mockData.images.map((src, index) => (
+          {occurrence.images.slice(0, 2).map((image, index) => (
             <div
               key={index}
               className={styles.imageWrapper}
               style={{
-                backgroundImage: `url(${src})`,
+                backgroundImage: `url(${image.src})`,
               }}
             ></div>
           ))}

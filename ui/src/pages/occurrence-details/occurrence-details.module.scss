@@ -18,7 +18,9 @@
 }
 
 .info {
+  width: 100%;
   padding: 20px 24px 24px;
+  box-sizing: border-box;
 }
 
 .fields {
@@ -63,7 +65,7 @@
 }
 
 .taxonomyPopover {
-  width: 320px;
+  width: 480px;
   overflow: hidden;
 
   img {
