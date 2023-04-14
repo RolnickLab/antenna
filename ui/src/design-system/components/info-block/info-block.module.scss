@@ -1,0 +1,23 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.field {
+  margin: 0;
+
+  &:not(:last-child) {
+    margin-bottom: 16px;
+  }
+}
+
+.fieldLabel {
+  display: block;
+  @include label();
+  font-weight: 600;
+  color: $color-neutral-500;
+}
+
+.fieldValue {
+  display: block;
+  @include paragraph-medium();
+  color: $color-neutral-800;
+}

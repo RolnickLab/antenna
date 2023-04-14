@@ -3,8 +3,18 @@ import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import styles from './dialog.module.scss'
 
-const Root = ({ children }: { children: ReactNode }) => (
-  <Dialog.Root>{children}</Dialog.Root>
+const Root = ({
+  children,
+  open,
+  onOpenChange,
+}: {
+  children: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) => (
+  <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    {children}
+  </Dialog.Root>
 )
 
 const Trigger = ({ children }: { children: ReactNode }) => (

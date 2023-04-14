@@ -15,6 +15,15 @@
   letter-spacing: -0.02em;
 }
 
+@mixin heading-4-italic {
+  font-family: 'AzoSans';
+  font-style: normal;
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 32px;
+  font-style: italic;
+}
+
 @mixin paragraph-xx-small {
   font-family: 'AzoSans';
   font-style: normal;

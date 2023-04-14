@@ -1,0 +1,88 @@
+@import 'design-system/variables/variables.scss';
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.content {
+  width: 720px;
+  max-width: 100%;
+  display: flex;
+}
+
+.column {
+  flex: 1;
+}
+
+.header {
+  padding: 24px;
+  background: $color-neutral-100;
+}
+
+.info {
+  padding: 20px 24px 24px;
+}
+
+.fields {
+  min-height: 314px;
+}
+
+.images {
+  height: 100%;
+  display: grid;
+  gap: 2px;
+  padding-left: 2px;
+
+  .imageWrapper {
+    background-repeat: no-repeat;
+    background-position-x: center;
+    background-size: cover;
+  }
+}
+
+.copyright {
+  display: block;
+  @include paragraph-xx-small();
+  margin-bottom: 16px;
+  color: $color-neutral-600;
+}
+
+.title {
+  display: block;
+  @include heading-4-italic();
+  color: $color-primary-1-600;
+}
+
+.details {
+  display: block;
+  @include paragraph-x-small();
+  color: $color-neutral-600;
+}
+
+@media only screen and (max-width: $medium-screen-breakpoint) {
+  .content {
+    width: 480px;
+    height: 100%;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+  }
+
+  .images {
+    height: 240px;
+    padding: 0;
+
+    .imageWrapper:not(:first-child) {
+      display: none;
+    }
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .content {
+    width: 100%;
+    height: 100%;
+    min-width: 320px;
+  }
+
+  .column {
+    flex: 0;
+  }
+}
