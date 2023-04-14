@@ -5,10 +5,8 @@
   border-radius: 4px;
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
-
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
-  }
+  outline: none;
+  z-index: 3;
 }
 
 .popoverClose {

@@ -24,13 +24,15 @@ const Trigger = ({ children }: { children: ReactNode }) => (
 const Content = ({
   ariaCloselabel,
   children,
+  onOpenAutoFocus,
 }: {
   ariaCloselabel: string
   children: ReactNode
+  onOpenAutoFocus?: (event: Event) => void
 }) => (
   <Dialog.Portal>
     <Dialog.Overlay className={styles.dialogOverlay} />
-    <Dialog.Content className={styles.dialog}>
+    <Dialog.Content className={styles.dialog} onOpenAutoFocus={onOpenAutoFocus}>
       <div className={styles.dialogContent}>{children}</div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
         <Icon type={IconType.Close} size={12} />

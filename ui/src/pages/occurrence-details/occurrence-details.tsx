@@ -1,11 +1,17 @@
 import { InfoBlock } from 'design-system/components/info-block/info-block'
+import * as Popover from 'design-system/components/popover/popover'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
 
 const mockData = {
   label: 'Meropleon diversicolor',
   family: 'WIP',
+  taxonomy:
+    'https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Meropleon_diversicolor_-_Multicolored_Sedgeminer_Moth_%289810621354%29.jpg/440px-Meropleon_diversicolor_-_Multicolored_Sedgeminer_Moth_%289810621354%29.jpg',
+  taxonomyDescription:
+    'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum sodales cursus porta. Proin nec quam turpis.',
   images: [
     'https://api.dev.insectai.org/static/crops/43ee45ae97381dce5e9147e34f90b1c7.jpg',
     'https://api.dev.insectai.org/static/crops/77d106412b6c81a6257a81e25abe59ea.jpg',
@@ -13,6 +19,8 @@ const mockData = {
 }
 
 export const OccurrenceDetails = () => {
+  const [showTaxonomy, setShowTaxonomy] = useState(false)
+
   const fields = [
     { label: translate(STRING.DETAILS_LABEL_DEPLOYMENT), value: 'WIP' },
     { label: translate(STRING.DETAILS_LABEL_SESSION), value: 'WIP' },
@@ -31,7 +39,27 @@ export const OccurrenceDetails = () => {
     <div className={styles.content}>
       <div className={styles.column}>
         <div className={styles.header}>
-          <span className={styles.title}>{mockData.label}</span>
+          <Popover.Root open={showTaxonomy} onOpenChange={setShowTaxonomy}>
+            <Popover.Trigger
+              onMouseEnter={() => setShowTaxonomy(true)}
+              onMouseLeave={() => setShowTaxonomy(false)}
+            >
+              <span className={styles.title}>{mockData.label}</span>
+            </Popover.Trigger>
+            <Popover.Content
+              ariaCloselabel={translate(STRING.CLOSE)}
+              align="start"
+              side="bottom"
+              hideClose
+            >
+              <div className={styles.taxonomyPopover}>
+                <img src={mockData.taxonomy} />
+                <div className={styles.taxonomyContent}>
+                  <p>{mockData.taxonomyDescription}</p>
+                </div>
+              </div>
+            </Popover.Content>
+          </Popover.Root>
           <span className={styles.details}>{mockData.family}</span>
         </div>
         <div className={styles.info}>
