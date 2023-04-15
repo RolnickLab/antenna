@@ -8,6 +8,7 @@ import { Overview } from 'pages/overview/overview'
 import { SessionDetails } from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Settings } from 'pages/settings/settings'
+import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useContext, useEffect } from 'react'
 import { Link, Route, Routes, useNavigate } from 'react-router-dom'
@@ -54,14 +55,9 @@ export const App = () => {
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/sessions/:id" element={<SessionDetails />} />
             <Route path="/occurrences" element={<Occurrences />} />
+            <Route path="/species" element={<Species />} />
 
             {/* Work in progress pages */}
-            <Route
-              path="/species"
-              element={
-                <UnderConstruction message="Species is under construction!" />
-              }
-            />
             <Route
               path="/deployments/:id"
               element={
@@ -72,6 +68,12 @@ export const App = () => {
               path="/occurrences/:id"
               element={
                 <UnderConstruction message="Occurrence details is under construction!" />
+              }
+            />
+            <Route
+              path="/species/:id"
+              element={
+                <UnderConstruction message="Species details is under construction!" />
               }
             />
             <Route path="*" element={<UnderConstruction />} />
