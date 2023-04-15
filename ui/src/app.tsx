@@ -2,6 +2,7 @@ import { NavigationBar } from 'design-system/components/navigation/navigation-ba
 import { BatchId } from 'pages/batch-id/batch-id'
 import { Deployments } from 'pages/deployments/deployments'
 import { Occurrences } from 'pages/occurrences/occurrences'
+import { Overview } from 'pages/overview/overview'
 import { SessionDetails } from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Settings } from 'pages/settings/settings'
@@ -40,12 +41,7 @@ export const App = () => {
           <Route path="/occurrences" element={<Occurrences />} />
 
           {/* Work in progress pages */}
-          <Route
-            path="/overview"
-            element={
-              <UnderConstruction message="Overview is under construction!" />
-            }
-          />
+          <Route path="/overview" element={<Overview />} />
           <Route
             path="/species"
             element={
