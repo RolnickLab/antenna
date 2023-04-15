@@ -1,22 +1,26 @@
+@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
 .section {
   background: $color-generic-white;
+  width: 100%;
   padding: 24px;
   border-radius: 8px;
   border: 1px solid $color-neutral-100;
+  box-sizing: border-box;
   overflow-x: auto;
+}
+
+.content {
+  display: inline-block;
+  min-width: 100%;
 }
 
 .plots {
   display: grid;
-  gap: 16px;
   grid-template-columns: 1fr 1fr 1fr;
-}
-
-.plotWrapper {
-  margin-right: 32px;
+  gap: 16px;
 }
 
 .title {
@@ -25,4 +29,10 @@
   font-weight: 600;
   color: $color-neutral-500;
   margin-bottom: 32px;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .plots {
+    grid-template-columns: 1fr;
+  }
 }

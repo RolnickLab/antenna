@@ -11,15 +11,11 @@ export const Overview = () => {
   return (
     <>
       <div className={styles.section}>
-        <span className={styles.title}>Graph examples</span>
-        <div className={styles.plots}>
-          <div className={styles.plotWrapper}>
+        <div className={styles.content}>
+          <span className={styles.title}>Example plots</span>
+          <div className={styles.plots}>
             <Plot title="19 Jun" data={data} />
-          </div>
-          <div className={styles.plotWrapper}>
             <Plot title="20 Jun" data={data} type="scatter" />
-          </div>
-          <div className={styles.plotWrapper}>
             <Plot
               title="21 Jun"
               data={data}
