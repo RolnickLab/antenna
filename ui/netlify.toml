@@ -31,6 +31,13 @@ force = true
 headers = { X-From = "Netlify" }
 
 [[redirects]]
+# Redirect root to overview page
+from = "/"
+to = "/overview"
+status = 302
+force = false
+
+[[redirects]]
 # Redirect all other paths to the root for React to handle
 from = "/*"
 to = "/"
