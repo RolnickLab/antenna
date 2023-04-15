@@ -3,18 +3,24 @@
 
 .gallery {
   position: relative;
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
   min-height: 320px;
+  margin: -8px;
 
   &.loading {
-    opacity: 0.5;
+    margin: 0;
+
+    .cardWrapper {
+      opacity: 0.5;
+    }
   }
 }
 
 .cardWrapper {
   width: 160px;
+  margin: 8px;
 }
 
 .loadingWrapper {

@@ -5,6 +5,7 @@ import { ColumnSettings } from 'design-system/components/table/column-settings/c
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { Error } from 'pages/error/error'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
@@ -23,7 +24,14 @@ export const Occurrences = () => {
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { occurrences, total, isLoading } = useOccurrences({ pagination, sort })
+  const { occurrences, total, isLoading, error } = useOccurrences({
+    pagination,
+    sort,
+  })
+
+  if (error) {
+    return <Error details={error} />
+  }
 
   return (
     <>
@@ -61,7 +69,6 @@ export const Occurrences = () => {
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
-            <div className={styles.sidebar}></div>
             <Gallery occurrences={occurrences} isLoading={isLoading} />
           </div>
         </Tabs.Content>

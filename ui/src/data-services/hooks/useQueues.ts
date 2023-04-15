@@ -3,11 +3,15 @@ import { useGetList } from './useGetList'
 
 const convertServerRecord = (record: ServerQueue) => new Queue(record)
 
-export const useQueues = (): { queues: Queue[]; isLoading: boolean } => {
-  const { data, isLoading } = useGetList<ServerQueue, Queue>(
-    { collection: 'queues' },
+export const useQueues = (): {
+  queues: Queue[]
+  isLoading: boolean
+  error?: string
+} => {
+  const { data, isLoading, error } = useGetList<ServerQueue, Queue>(
+    { collection: 'status/queues' },
     convertServerRecord
   )
 
-  return { queues: data, isLoading }
+  return { queues: data, isLoading, error }
 }

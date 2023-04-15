@@ -16,7 +16,7 @@ export const Settings = () => {
     <Dialog.Root>
       <Dialog.Trigger>
         <Button
-          label={translate(STRING.SETTINGS)}
+          label={translate(STRING.NAV_ITEM_SETTINGS)}
           icon={IconType.Settings}
           theme={ButtonTheme.Plain}
         />

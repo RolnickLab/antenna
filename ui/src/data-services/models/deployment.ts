@@ -8,7 +8,7 @@ export class Deployment {
   }
 
   get id(): string {
-    return `#${this._deployment.id}`
+    return `${this._deployment.id}`
   }
 
   get name(): string {
