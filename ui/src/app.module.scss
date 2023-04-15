@@ -1,5 +1,6 @@
 @import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
 
 .wrapper {
   position: relative;
@@ -29,7 +30,32 @@
   height: 64px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+
+  :not(:last-child) {
+    margin-right: 8px;
+  }
+}
+
+.breadcrumb {
+  display: block;
+  @include paragraph-x-small();
+  font-weight: 600;
+  color: $color-neutral-800;
+
+  &.link {
+    color: $color-primary-1-600;
+
+    &:focus-visible {
+      box-shadow: 0 0 0 2px $color-generic-black;
+    }
+  }
 }
 
 .content {
@@ -52,6 +78,10 @@
 @media only screen and (max-width: $small-screen-breakpoint) {
   .header {
     padding: 0;
+  }
+
+  .topBar {
+    padding-left: 16px;
   }
 
   .content {
