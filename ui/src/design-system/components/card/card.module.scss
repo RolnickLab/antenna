@@ -38,6 +38,7 @@
   @include paragraph-small();
   color: $color-neutral-800;
   font-style: italic;
+  word-break: break-word;
 }
 
 .subTitle {

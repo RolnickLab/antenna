@@ -1,13 +1,14 @@
+@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
 .gallery {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  gap: 16px;
   width: 100%;
   min-height: 320px;
-  margin: -8px;
 
   &.loading {
     margin: 0;
@@ -16,11 +17,6 @@
       opacity: 0.5;
     }
   }
-}
-
-.cardWrapper {
-  width: 160px;
-  margin: 8px;
 }
 
 .loadingWrapper {
@@ -32,4 +28,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .gallery {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
 }
