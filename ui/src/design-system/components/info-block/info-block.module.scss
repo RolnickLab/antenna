@@ -20,4 +20,8 @@
   display: block;
   @include paragraph-medium();
   color: $color-neutral-800;
+
+  &.link {
+    color: $color-primary-1-600;
+  }
 }

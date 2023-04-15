@@ -28,10 +28,12 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.DETAILS_LABEL_DEPLOYMENT),
       value: occurrence.deployment,
+      to: '/deployments/deployment-id',
     },
     {
       label: translate(STRING.DETAILS_LABEL_SESSION),
       value: occurrence.sessionLabel,
+      to: `/sessions/${occurrence.sessionId}`,
     },
     { label: translate(STRING.DETAILS_LABEL_APPEARANCE), value: 'WIP' },
     { label: translate(STRING.DETAILS_LABEL_ELEVATION), value: 'WIP' },
@@ -100,7 +102,7 @@ export const OccurrenceDetails = ({
         <div className={styles.images}>
           <div className={styles.imagesContent}>
             {occurrence.images.map((image, index) => (
-              <img alt="" src={image.src} />
+              <img key={index} src={image.src} alt="" />
             ))}
           </div>
         </div>

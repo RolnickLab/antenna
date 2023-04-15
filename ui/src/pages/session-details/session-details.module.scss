@@ -34,7 +34,9 @@
 }
 
 .content {
+  width: 20%;
   padding: 24px;
+  box-sizing: border-box;
   overflow: auto;
 }
 
@@ -56,6 +58,10 @@
   }
 
   .playback {
+    width: 100%;
+  }
+
+  .content {
     width: 100%;
   }
 }
