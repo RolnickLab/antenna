@@ -32,7 +32,7 @@ export const columns: TableColumn<Occurrence>[] = [
     sortField: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Occurrence) => (
-      <Link to={`/occurrences/occurrence-id`}>
+      <Link to={`/occurrences/${item.id}`}>
         <BasicTableCell
           value={item.categoryLabel}
           details={['WIP', `${translate(STRING.SCORE)}: ${item.categoryScore}`]}

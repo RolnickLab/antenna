@@ -1,4 +1,5 @@
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
+import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
@@ -6,7 +7,9 @@ import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
+import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { Gallery } from './gallery/gallery'
@@ -14,6 +17,8 @@ import { columns } from './occurrence-columns'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
+  const { id } = useParams()
+  const navigate = useNavigate()
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -32,6 +37,8 @@ export const Occurrences = () => {
   if (error) {
     return <Error details={error} />
   }
+
+  const occurence = occurrences.find((o) => o.id === id)
 
   return (
     <>
@@ -82,6 +89,12 @@ export const Occurrences = () => {
           onNextClick={setNextPage}
         />
       ) : null}
+
+      <Dialog.Root open={!!id} onOpenChange={() => navigate('/occurrences')}>
+        <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
+          <OccurrenceDetails occurrence={occurence} />
+        </Dialog.Content>
+      </Dialog.Root>
     </>
   )
 }

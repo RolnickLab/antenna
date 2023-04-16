@@ -3,8 +3,18 @@ import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import styles from './dialog.module.scss'
 
-const Root = ({ children }: { children: ReactNode }) => (
-  <Dialog.Root>{children}</Dialog.Root>
+const Root = ({
+  children,
+  open,
+  onOpenChange,
+}: {
+  children: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) => (
+  <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    {children}
+  </Dialog.Root>
 )
 
 const Trigger = ({ children }: { children: ReactNode }) => (
@@ -14,13 +24,15 @@ const Trigger = ({ children }: { children: ReactNode }) => (
 const Content = ({
   ariaCloselabel,
   children,
+  onOpenAutoFocus,
 }: {
   ariaCloselabel: string
   children: ReactNode
+  onOpenAutoFocus?: (event: Event) => void
 }) => (
   <Dialog.Portal>
     <Dialog.Overlay className={styles.dialogOverlay} />
-    <Dialog.Content className={styles.dialog}>
+    <Dialog.Content className={styles.dialog} onOpenAutoFocus={onOpenAutoFocus}>
       <div className={styles.dialogContent}>{children}</div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
         <Icon type={IconType.Close} size={12} />

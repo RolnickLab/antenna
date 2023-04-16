@@ -1,4 +1,6 @@
+import classNames from 'classnames'
 import { Session } from 'data-services/models/session'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import styles from './session-info.module.scss'
 
@@ -12,7 +14,11 @@ export const SessionInfo = ({ session }: { session: Session }) => (
         <span className={styles.fieldLabel}>
           {translate(STRING.DETAILS_LABEL_DEPLOYMENT)}
         </span>
-        <span className={styles.fieldValue}>{session.deploymentLabel}</span>
+        <Link to="`/deployments/deployment-id`">
+          <span className={classNames(styles.fieldValue, styles.link)}>
+            {session.deploymentLabel}
+          </span>
+        </Link>
       </p>
       <p className={styles.fieldGroup}>
         <span className={styles.fieldLabel}>

@@ -3,12 +3,36 @@ import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import styles from './popover.module.scss'
 
-const Root = ({ children }: { children: ReactNode }) => (
-  <Popover.Root>{children}</Popover.Root>
+const Root = ({
+  children,
+  open,
+  onOpenChange,
+}: {
+  children: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) => (
+  <Popover.Root open={open} onOpenChange={onOpenChange}>
+    {children}
+  </Popover.Root>
 )
 
-const Trigger = ({ children }: { children: ReactNode }) => (
-  <Popover.Trigger asChild>{children}</Popover.Trigger>
+const Trigger = ({
+  children,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  children: ReactNode
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
+}) => (
+  <Popover.Trigger
+    asChild
+    onMouseEnter={onMouseEnter}
+    onMouseLeave={onMouseLeave}
+  >
+    {children}
+  </Popover.Trigger>
 )
 
 const Content = ({
@@ -16,11 +40,13 @@ const Content = ({
   align,
   side,
   children,
+  hideClose,
 }: {
   ariaCloselabel: string
   align?: 'start' | 'center' | 'end'
   side?: 'top' | 'right' | 'bottom' | 'left'
   children: ReactNode
+  hideClose?: boolean
 }) => (
   <Popover.Portal>
     <Popover.Content
@@ -30,12 +56,14 @@ const Content = ({
       sideOffset={6}
     >
       {children}
-      <Popover.Close
-        className={styles.popoverClose}
-        aria-label={ariaCloselabel}
-      >
-        <Icon type={IconType.Close} size={12} />
-      </Popover.Close>
+      {!hideClose && (
+        <Popover.Close
+          className={styles.popoverClose}
+          aria-label={ariaCloselabel}
+        >
+          <Icon type={IconType.Close} size={12} />
+        </Popover.Close>
+      )}
       <Popover.Arrow className={styles.popoverArrow} />
     </Popover.Content>
   </Popover.Portal>
