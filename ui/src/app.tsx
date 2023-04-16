@@ -4,9 +4,11 @@ import { NavigationBar } from 'design-system/components/navigation/navigation-ba
 import { BatchId } from 'pages/batch-id/batch-id'
 import { Deployments } from 'pages/deployments/deployments'
 import { Occurrences } from 'pages/occurrences/occurrences'
+import { Overview } from 'pages/overview/overview'
 import { SessionDetails } from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Settings } from 'pages/settings/settings'
+import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useContext, useEffect } from 'react'
 import { Link, Route, Routes, useNavigate } from 'react-router-dom'
@@ -47,36 +49,39 @@ export const App = () => {
         </header>
         <main className={styles.content}>
           <Routes>
+            <Route path="/overview" element={<Overview />} />
             <Route path="/batch-id" element={<BatchId />} />
             <Route path="/deployments" element={<Deployments />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/sessions/:id" element={<SessionDetails />} />
             <Route path="/occurrences/:id?" element={<Occurrences />} />
+            <Route path="/occurrences" element={<Occurrences />} />
+            <Route path="/species" element={<Species />} />
 
             {/* Work in progress pages */}
-            <Route
-              path="/overview"
-              element={
-                <UnderConstruction message="Overview is under construction!" />
-              }
-            />
-            <Route
-              path="/species"
-              element={
-                <UnderConstruction message="Species is under construction!" />
-              }
-            />
             <Route
               path="/deployments/:id"
               element={
                 <UnderConstruction message="Deployment details is under construction!" />
               }
             />
+            <Route
+              path="/occurrences/:id"
+              element={
+                <UnderConstruction message="Occurrence details is under construction!" />
+              }
+            />
+            <Route
+              path="/species/:id"
+              element={
+                <UnderConstruction message="Species details is under construction!" />
+              }
+            />
             <Route path="*" element={<UnderConstruction />} />
-          </Routes>
-        </main>
-      </div>
-    </BreadcrumbContextProvider>
+          </Routes >
+        </main >
+      </div >
+    </BreadcrumbContextProvider >
   )
 }
 
