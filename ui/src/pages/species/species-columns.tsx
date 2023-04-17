@@ -61,4 +61,19 @@ export const columns: TableColumn<Species>[] = [
       <BasicTableCell value={item.numOccurrences} />
     ),
   },
+  {
+    id: 'training-images',
+    name: 'Training Images',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <Link to={`https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${item.name}`} target='_blank'>
+        <BasicTableCell
+          value={'GBIF'}
+          theme={CellTheme.Primary}
+        />
+      </Link>
+    ),
+  },
 ]
