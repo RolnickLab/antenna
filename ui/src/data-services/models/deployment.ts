@@ -20,7 +20,7 @@ export class Deployment {
   }
 
   get numEvents(): number {
-    return this._deployment.num_sessions
+    return this._deployment.num_events
   }
 
   get numImages(): number {
