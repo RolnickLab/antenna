@@ -2,7 +2,7 @@ import { TablePaginationSettings } from 'design-system/components/table/types'
 import { useCallback, useState } from 'react'
 
 export const usePagination = ({
-  defaultPagination = { page: 0, perPage: 100 },
+  defaultPagination = { page: 0, perPage: 20 },
 }: {
   defaultPagination?: TablePaginationSettings
 } = {}) => {
