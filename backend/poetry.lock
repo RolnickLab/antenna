@@ -667,18 +667,18 @@ test = ["anyio[trio] (>=3.2.1,<4.0.0)", "black (==23.1.0)", "coverage[toml] (>=6
 
 [[package]]
 name = "fastapi-users"
-version = "10.4.1"
+version = "11.0.0"
 description = "Ready-to-use and customizable users management for FastAPI"
 category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "fastapi_users-10.4.1-py3-none-any.whl", hash = "sha256:42e24cd7dab59989c40b4beae970292d9a380ada234334d9d656488e533adc0f"},
-    {file = "fastapi_users-10.4.1.tar.gz", hash = "sha256:cbc589278ce35b4e6218ec00987c64bb4dfbfbde39c192d8327b51eda171b9f1"},
+    {file = "fastapi_users-11.0.0-py3-none-any.whl", hash = "sha256:434d69df432039681aa0fc938ac42eb1a373307ac8862ec19b8fb8b14084b54f"},
+    {file = "fastapi_users-11.0.0.tar.gz", hash = "sha256:f4a8319a2f72121355ceb8d36e4c48672a62444792cd6889c4e5f89c9111d5a5"},
 ]
 
 [package.dependencies]
-email-validator = ">=1.1.0,<1.4"
+email-validator = ">=1.1.0,<2.1"
 fastapi = ">=0.65.2"
 fastapi-users-db-sqlalchemy = {version = ">=4.0.0", optional = true, markers = "extra == \"sqlalchemy\""}
 makefun = ">=1.11.2,<2.0.0"
@@ -1763,4 +1763,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "a00978b18d541c47374a66cb80c78e969ed215dbd32b8dd212528a954d984bd6"
+content-hash = "0a9207ea99f492f4bcf5c08d16751d5593d382b784cade4876cd0fbe894b314b"
