@@ -38,7 +38,11 @@ export const Breadcrumbs = ({
     <div className={styles.breadcrumbs}>
       {breadcrumbs.map((breadcrumb, index) => {
         if (index === breadcrumbs.length - 1) {
-          return <span className={styles.breadcrumb}>{breadcrumb.title}</span>
+          return (
+            <span key={index} className={styles.breadcrumb}>
+              {breadcrumb.title}
+            </span>
+          )
         }
         return (
           <>
