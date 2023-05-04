@@ -9,7 +9,7 @@ import { Sessions } from 'pages/sessions/sessions'
 import { Settings } from 'pages/settings/settings'
 import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
-import { Route, Routes, useNavigate } from 'react-router-dom'
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { BreadcrumbContextProvider } from 'utils/breadcrumbContext'
 import { useNavItems } from 'utils/useNavItems'
 import styles from './app.module.scss'
@@ -42,6 +42,7 @@ export const App = () => {
         </header>
         <main className={styles.content}>
           <Routes>
+            <Route path="/" element={<Navigate to="/overview" />} />
             <Route path="/overview" element={<Overview />} />
             <Route path="/batch-id" element={<BatchId />} />
             <Route path="/deployments" element={<Deployments />} />
