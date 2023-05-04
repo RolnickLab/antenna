@@ -1,4 +1,6 @@
-import { useGetListItem } from './useGetListItem'
+import { useQuery } from '@tanstack/react-query'
+import axios from 'axios'
+import { API_URL } from 'data-services/constants'
 
 type ServerStatus = any // TODO: Update this type
 
@@ -23,16 +25,21 @@ const convertServerRecord = (record: ServerStatus): Status => ({
 export const useStatus = (): {
   status?: Status
   isLoading: boolean
-  error?: string
+  isFetching: boolean
+  error?: unknown
 } => {
-  const { data, isLoading, error } = useGetListItem<any, any>(
-    { collection: 'status', id: 'summary' },
-    convertServerRecord
-  )
+  const { data, isLoading, error, isFetching } = useQuery({
+    queryKey: ['status'],
+    queryFn: () =>
+      axios
+        .get<ServerStatus>(`${API_URL}/status/summary`)
+        .then((res) => convertServerRecord(res.data)),
+  })
 
   return {
     status: data,
     isLoading,
+    isFetching,
     error,
   }
 }
