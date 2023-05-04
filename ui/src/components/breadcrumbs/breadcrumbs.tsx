@@ -1,6 +1,6 @@
 import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { useContext, useEffect } from 'react'
+import { Fragment, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Breadcrumb, BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
@@ -45,9 +45,8 @@ export const Breadcrumbs = ({
           )
         }
         return (
-          <>
+          <Fragment key={index}>
             <Link
-              key={index}
               to={breadcrumb.path}
               className={classNames(styles.breadcrumb, styles.link)}
             >
@@ -58,7 +57,7 @@ export const Breadcrumbs = ({
               theme={IconTheme.Neutral}
               size={8}
             />
-          </>
+          </Fragment>
         )
       })}
     </div>
