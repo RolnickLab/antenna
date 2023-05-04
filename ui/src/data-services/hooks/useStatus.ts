@@ -22,6 +22,8 @@ const convertServerRecord = (record: ServerStatus): Status => ({
   numSpecies: record.num_species,
 })
 
+const REFETCH_INTERVAL = 5000 // Refetch every 5 second
+
 export const useStatus = (): {
   status?: Status
   isLoading: boolean
@@ -34,6 +36,7 @@ export const useStatus = (): {
       axios
         .get<ServerStatus>(`${API_URL}/status/summary`)
         .then((res) => convertServerRecord(res.data)),
+    refetchInterval: REFETCH_INTERVAL,
   })
 
   return {
