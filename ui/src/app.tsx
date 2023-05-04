@@ -1,5 +1,4 @@
-import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { Breadcrumbs } from 'components/breadcrumbs'
 import { NavigationBar } from 'design-system/components/navigation/navigation-bar'
 import { BatchId } from 'pages/batch-id/batch-id'
 import { Deployments } from 'pages/deployments/deployments'
@@ -10,14 +9,8 @@ import { Sessions } from 'pages/sessions/sessions'
 import { Settings } from 'pages/settings/settings'
 import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
-import { useContext, useEffect } from 'react'
-import { Link, Route, Routes, useNavigate } from 'react-router-dom'
-import {
-  Breadcrumb,
-  BreadcrumbContext,
-  BreadcrumbContextProvider,
-} from 'utils/breadcrumbContext'
-import { STRING, translate } from 'utils/language'
+import { Route, Routes, useNavigate } from 'react-router-dom'
+import { BreadcrumbContextProvider } from 'utils/breadcrumbContext'
 import { useNavItems } from 'utils/useNavItems'
 import styles from './app.module.scss'
 
@@ -78,64 +71,9 @@ export const App = () => {
               }
             />
             <Route path="*" element={<UnderConstruction />} />
-          </Routes >
-        </main >
-      </div >
-    </BreadcrumbContextProvider >
-  )
-}
-
-const Breadcrumbs = ({
-  navItems,
-  activeNavItemId,
-}: {
-  navItems: { id: string; title: string; path: string }[]
-  activeNavItemId: string
-}) => {
-  const { mainBreadcrumb, detailBreadcrumb, setMainBreadcrumb } =
-    useContext(BreadcrumbContext)
-
-  useEffect(() => {
-    const activeNavItem =
-      activeNavItemId !== 'overview' &&
-      navItems.find((navItem) => navItem.id === activeNavItemId)
-
-    setMainBreadcrumb(
-      activeNavItem
-        ? { title: activeNavItem.title, path: activeNavItem.path }
-        : undefined
-    )
-  }, [navItems, activeNavItemId])
-
-  const breadcrumbs = [
-    { title: translate(STRING.NAV_ITEM_PROJECT), path: '/' },
-    mainBreadcrumb,
-    detailBreadcrumb,
-  ].filter((breadcrumb) => !!breadcrumb) as Breadcrumb[]
-
-  return (
-    <div className={styles.breadcrumbs}>
-      {breadcrumbs.map((breadcrumb, index) => {
-        if (index === breadcrumbs.length - 1) {
-          return <span className={styles.breadcrumb}>{breadcrumb.title}</span>
-        }
-        return (
-          <>
-            <Link
-              key={index}
-              to={breadcrumb.path}
-              className={classNames(styles.breadcrumb, styles.link)}
-            >
-              <span>{breadcrumb.title}</span>
-            </Link>
-            <Icon
-              type={IconType.ToggleRight}
-              theme={IconTheme.Neutral}
-              size={8}
-            />
-          </>
-        )
-      })}
-    </div>
+          </Routes>
+        </main>
+      </div>
+    </BreadcrumbContextProvider>
   )
 }

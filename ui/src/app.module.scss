@@ -34,30 +34,6 @@
   box-sizing: border-box;
 }
 
-.breadcrumbs {
-  display: flex;
-  align-items: center;
-
-  :not(:last-child) {
-    margin-right: 8px;
-  }
-}
-
-.breadcrumb {
-  display: block;
-  @include paragraph-x-small();
-  font-weight: 600;
-  color: $color-neutral-800;
-
-  &.link {
-    color: $color-primary-1-600;
-
-    &:focus-visible {
-      box-shadow: 0 0 0 2px $color-generic-black;
-    }
-  }
-}
-
 .content {
   padding: 50px 100px;
   width: 100%;
