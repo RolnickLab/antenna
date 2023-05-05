@@ -1,3 +1,4 @@
+import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSpecies } from 'data-services/hooks/useSpecies'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
@@ -15,7 +16,7 @@ import styles from './species.module.scss'
 export const Species = () => {
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { species, total, isLoading, error } = useSpecies({
+  const { species, total, isLoading, isFetching, error } = useSpecies({
     sort,
     pagination,
   })
@@ -26,6 +27,11 @@ export const Species = () => {
 
   return (
     <>
+      {!isLoading && isFetching && (
+        <div className={styles.fetchInfoWrapper}>
+          <FetchInfo />
+        </div>
+      )}
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger

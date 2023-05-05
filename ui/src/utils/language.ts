@@ -58,6 +58,7 @@ export enum STRING {
 
   /* OTHER */
   CLOSE,
+  LOADING_DATA,
   RUNNING,
   SCORE,
   SELECT_COLUMNS,
@@ -128,6 +129,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* OTHER */
   [STRING.CLOSE]: 'Close',
+  [STRING.LOADING_DATA]: 'Loading data',
   [STRING.RUNNING]: 'Running',
   [STRING.SCORE]: 'Score',
   [STRING.SELECT_COLUMNS]: 'Select columns',

@@ -1,3 +1,4 @@
+import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessions } from 'data-services/hooks/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
@@ -27,7 +28,7 @@ export const Sessions = () => {
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { sessions, total, isLoading, error } = useSessions({
+  const { sessions, total, isLoading, isFetching, error } = useSessions({
     sort,
     pagination,
   })
@@ -38,6 +39,11 @@ export const Sessions = () => {
 
   return (
     <>
+      {!isLoading && isFetching && (
+        <div className={styles.fetchInfoWrapper}>
+          <FetchInfo />
+        </div>
+      )}
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger

@@ -1,0 +1,20 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.wrapper {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+
+  :not(:last-child) {
+    margin-right: 6px;
+  }
+
+  span {
+    @include paragraph-x-small();
+    font-weight: 600;
+    color: $color-neutral-500;
+  }
+}

@@ -10,21 +10,25 @@
   overflow-y: auto;
 }
 
-.content {
+.main {
   padding: 50px 100px;
   width: 100%;
   min-width: $page-min-width;
   box-sizing: border-box;
 }
 
+.content {
+  position: relative;
+}
+
 @media only screen and (max-width: $medium-screen-breakpoint) {
-  .content {
+  .main {
     padding: 32px;
   }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .content {
+  .main {
     padding: 16px;
   }
 }

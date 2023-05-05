@@ -1,3 +1,4 @@
+import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -29,7 +30,7 @@ export const Occurrences = () => {
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { occurrences, total, isLoading, error } = useOccurrences({
+  const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     pagination,
     sort,
   })
@@ -42,6 +43,11 @@ export const Occurrences = () => {
 
   return (
     <>
+      {!isLoading && isFetching && (
+        <div className={styles.fetchInfoWrapper}>
+          <FetchInfo />
+        </div>
+      )}
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger

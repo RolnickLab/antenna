@@ -1,6 +1,10 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+.tabsRoot {
+  position: relative;
+}
+
 .tabsList {
   margin-bottom: 16px;
 

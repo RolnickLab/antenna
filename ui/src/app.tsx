@@ -22,39 +22,41 @@ export const App = () => {
       <BreadcrumbContextProvider>
         <div className={styles.wrapper}>
           <Header />
-          <main className={styles.content}>
-            <Routes>
-              <Route path="/" element={<Navigate to="/overview" />} />
-              <Route path="/overview" element={<Overview />} />
-              <Route path="/batch-id" element={<BatchId />} />
-              <Route path="/deployments" element={<Deployments />} />
-              <Route path="/sessions" element={<Sessions />} />
-              <Route path="/sessions/:id" element={<SessionDetails />} />
-              <Route path="/occurrences/:id?" element={<Occurrences />} />
-              <Route path="/occurrences" element={<Occurrences />} />
-              <Route path="/species" element={<Species />} />
+          <main className={styles.main}>
+            <div className={styles.content}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/overview" />} />
+                <Route path="/overview" element={<Overview />} />
+                <Route path="/batch-id" element={<BatchId />} />
+                <Route path="/deployments" element={<Deployments />} />
+                <Route path="/sessions" element={<Sessions />} />
+                <Route path="/sessions/:id" element={<SessionDetails />} />
+                <Route path="/occurrences/:id?" element={<Occurrences />} />
+                <Route path="/occurrences" element={<Occurrences />} />
+                <Route path="/species" element={<Species />} />
 
-              {/* Work in progress pages */}
-              <Route
-                path="/deployments/:id"
-                element={
-                  <UnderConstruction message="Deployment details is under construction!" />
-                }
-              />
-              <Route
-                path="/occurrences/:id"
-                element={
-                  <UnderConstruction message="Occurrence details is under construction!" />
-                }
-              />
-              <Route
-                path="/species/:id"
-                element={
-                  <UnderConstruction message="Species details is under construction!" />
-                }
-              />
-              <Route path="*" element={<UnderConstruction />} />
-            </Routes>
+                {/* Work in progress pages */}
+                <Route
+                  path="/deployments/:id"
+                  element={
+                    <UnderConstruction message="Deployment details is under construction!" />
+                  }
+                />
+                <Route
+                  path="/occurrences/:id"
+                  element={
+                    <UnderConstruction message="Occurrence details is under construction!" />
+                  }
+                />
+                <Route
+                  path="/species/:id"
+                  element={
+                    <UnderConstruction message="Species details is under construction!" />
+                  }
+                />
+                <Route path="*" element={<UnderConstruction />} />
+              </Routes>
+            </div>
           </main>
         </div>
       </BreadcrumbContextProvider>

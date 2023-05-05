@@ -1,13 +1,11 @@
 @import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
 
 .loadingSpinner {
   display: inline-block;
-  width: 56px;
-  height: 56px;
-  border: 7px solid $color-primary-2-500;
-  border-radius: 50%;
+  border-style: solid;
+  border-color: $color-primary-2-500;
   border-top-color: $color-primary-2-50;
+  border-radius: 50%;
   animation: spin 0.7s ease-in-out infinite;
 }
 
