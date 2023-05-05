@@ -1,10 +1,10 @@
-export type ServerEvent = any // TODO: Update this type
+export type ServerSpecies = any // TODO: Update this type
 
 export class Species {
-  private readonly _species: ServerEvent
+  private readonly _species: ServerSpecies
   private readonly _images: { src: string }[] = []
 
-  public constructor(species: ServerEvent) {
+  public constructor(species: ServerSpecies) {
     this._species = species
 
     this._images = species.examples.map((example: any) => ({
@@ -14,7 +14,7 @@ export class Species {
   }
 
   get id(): string {
-    return this._species.id
+    return this._species.name // TODO: Update when BE is returning an ID
   }
 
   get images(): { src: string }[] {

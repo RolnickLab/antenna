@@ -9,8 +9,8 @@ import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
-import styles from './species.module.scss'
 import { columns } from './species-columns'
+import styles from './species.module.scss'
 
 export const Species = () => {
   const [sort, setSort] = useState<TableSortSettings>()
@@ -21,7 +21,7 @@ export const Species = () => {
   })
 
   if (error) {
-    return <Error details={error} />
+    return <Error />
   }
 
   return (
@@ -57,7 +57,7 @@ export const Species = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-      {species.length ? (
+      {species?.length ? (
         <PaginationBar
           page={pagination.page}
           perPage={pagination.perPage}

@@ -7,7 +7,7 @@ export const BatchId = () => {
   const { queues, isLoading, error } = useQueues()
 
   if (error) {
-    return <Error details={error} />
+    return <Error />
   }
 
   return <Table items={queues} isLoading={isLoading} columns={columns} />

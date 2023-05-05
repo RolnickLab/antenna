@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { API_URL } from 'data-services/constants'
+import { getFetchUrl } from 'data-services/utils'
 
 type ServerStatus = any // TODO: Update this type
 
@@ -13,6 +13,9 @@ interface Status {
   numSpecies: number
 }
 
+const COLLECTION = 'status/summary'
+const REFETCH_INTERVAL = 10000 // Refetch every 10 second
+
 const convertServerRecord = (record: ServerStatus): Status => ({
   numDeployments: record.num_deployments,
   numCaptures: record.num_captures,
@@ -22,19 +25,19 @@ const convertServerRecord = (record: ServerStatus): Status => ({
   numSpecies: record.num_species,
 })
 
-const REFETCH_INTERVAL = 5000 // Refetch every 5 second
-
 export const useStatus = (): {
   status?: Status
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
+  const fetchUrl = getFetchUrl({ collection: COLLECTION })
+
   const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: ['status'],
+    queryKey: [COLLECTION],
     queryFn: () =>
       axios
-        .get<ServerStatus>(`${API_URL}/status/summary`)
+        .get<ServerStatus>(fetchUrl)
         .then((res) => convertServerRecord(res.data)),
     refetchInterval: REFETCH_INTERVAL,
   })

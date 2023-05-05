@@ -9,14 +9,14 @@ export const Gallery = ({
   occurrences,
   isLoading,
 }: {
-  occurrences: Occurrence[]
+  occurrences?: Occurrence[]
   isLoading: boolean
 }) => {
   return (
     <div
       className={classNames(styles.gallery, { [styles.loading]: isLoading })}
     >
-      {occurrences.map((occurrence) => (
+      {occurrences?.map((occurrence) => (
         <Link to={`/occurrences/${occurrence.id}`}>
           <Card
             key={occurrence.id}

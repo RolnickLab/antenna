@@ -33,7 +33,7 @@ export const Sessions = () => {
   })
 
   if (error) {
-    return <Error details={error} />
+    return <Error />
   }
 
   return (
@@ -76,7 +76,7 @@ export const Sessions = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-      {sessions.length ? (
+      {sessions?.length ? (
         <PaginationBar
           page={pagination.page}
           perPage={pagination.perPage}

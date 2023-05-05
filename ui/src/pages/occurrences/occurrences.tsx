@@ -35,10 +35,10 @@ export const Occurrences = () => {
   })
 
   if (error) {
-    return <Error details={error} />
+    return <Error />
   }
 
-  const occurence = occurrences.find((o) => o.id === id)
+  const occurence = occurrences?.find((o) => o.id === id)
 
   return (
     <>
@@ -80,7 +80,7 @@ export const Occurrences = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-      {occurrences.length ? (
+      {occurrences?.length ? (
         <PaginationBar
           page={pagination.page}
           perPage={pagination.perPage}

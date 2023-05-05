@@ -1,30 +1,37 @@
+import { useQuery } from '@tanstack/react-query'
+import axios from 'axios'
 import { FetchParams } from 'data-services/types'
+import { getFetchUrl } from 'data-services/utils'
 import { Occurrence, ServerOccurrence } from '../models/occurrence'
-import { useGetList } from './useGetList'
+
+const COLLECTION = 'occurrences'
 
 const convertServerRecord = (record: ServerOccurrence) => new Occurrence(record)
 
 export const useOccurrences = (
   params?: FetchParams
 ): {
-  occurrences: Occurrence[]
+  occurrences?: Occurrence[]
   total: number
   isLoading: boolean
-  error?: string
+  isFetching: boolean
+  error?: unknown
 } => {
-  const {
-    data: occurrences,
-    isLoading,
-    error,
-  } = useGetList<ServerOccurrence, Occurrence>(
-    { collection: 'occurrences', params },
-    convertServerRecord
-  )
+  const fetchUrl = getFetchUrl({ collection: COLLECTION, params })
+
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: [COLLECTION, params],
+    queryFn: () =>
+      axios
+        .get<ServerOccurrence[]>(fetchUrl)
+        .then((res) => res.data.map(convertServerRecord)),
+  })
 
   return {
-    occurrences,
-    total: occurrences.length, // TODO: Until we get total in response
+    occurrences: data,
+    total: data?.length ?? 0, // TODO: Until we get total in response
     isLoading,
+    isFetching,
     error,
   }
 }

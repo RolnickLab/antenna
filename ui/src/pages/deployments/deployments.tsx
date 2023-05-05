@@ -12,7 +12,7 @@ export const Deployments = () => {
   })
 
   if (error) {
-    return <Error details={error} />
+    return <Error />
   }
 
   return (

@@ -1,17 +1,28 @@
+import { useQuery } from '@tanstack/react-query'
+import axios from 'axios'
+import { getFetchUrl } from 'data-services/utils'
+import { ServerOccurrence } from '../models/occurrence'
 import { Queue, ServerQueue } from '../models/queue'
-import { useGetList } from './useGetList'
+
+const COLLECTION = 'status/queues'
 
 const convertServerRecord = (record: ServerQueue) => new Queue(record)
 
 export const useQueues = (): {
-  queues: Queue[]
+  queues?: Queue[]
   isLoading: boolean
-  error?: string
+  isFetching: boolean
+  error?: unknown
 } => {
-  const { data, isLoading, error } = useGetList<ServerQueue, Queue>(
-    { collection: 'status/queues' },
-    convertServerRecord
-  )
+  const fetchUrl = getFetchUrl({ collection: COLLECTION })
 
-  return { queues: data, isLoading, error }
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: [COLLECTION],
+    queryFn: () =>
+      axios
+        .get<ServerOccurrence[]>(fetchUrl)
+        .then((res) => res.data.map(convertServerRecord)),
+  })
+
+  return { queues: data, isLoading, isFetching, error }
 }

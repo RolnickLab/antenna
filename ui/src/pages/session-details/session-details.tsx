@@ -31,7 +31,7 @@ export const SessionDetails = () => {
   }
 
   if (!session || error) {
-    return <Error details={error} />
+    return <Error />
   }
 
   return (
