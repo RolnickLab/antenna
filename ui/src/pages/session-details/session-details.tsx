@@ -1,3 +1,4 @@
+import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessionDetails } from 'data-services/hooks/useSessionDetails'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Error } from 'pages/error/error'
@@ -12,7 +13,9 @@ export const SessionDetails = () => {
   const location = useLocation()
   const { id } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { session, isLoading, error } = useSessionDetails(id as string)
+  const { session, isLoading, isFetching, error } = useSessionDetails(
+    id as string
+  )
 
   useEffect(() => {
     setDetailBreadcrumb({ title: `Session #${id}`, path: location.pathname })
@@ -31,12 +34,17 @@ export const SessionDetails = () => {
   }
 
   if (!session || error) {
-    return <Error details={error} />
+    return <Error />
   }
 
   return (
     <>
       <div className={styles.main}>
+        {isFetching && (
+          <div className={styles.fetchInfoWrapper}>
+            <FetchInfo isLoading={isLoading} />
+          </div>
+        )}
         <div className={styles.container}>
           <div className={styles.content}>
             <div className={styles.info}>

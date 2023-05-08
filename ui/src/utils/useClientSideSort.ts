@@ -6,17 +6,17 @@ export const useClientSideSort = <T>({
   items,
   defaultSort,
 }: {
-  items: T[]
+  items?: T[]
   defaultSort?: TableSortSettings
 }) => {
-  const [sortedItems, setSortedItems] = useState(items)
+  const [sortedItems, setSortedItems] = useState(items ?? [])
   const [sort, setSort] = useState<TableSortSettings | undefined>(defaultSort)
 
   useEffect(() => {
     if (sort) {
       setSortedItems(_.orderBy(items, sort.field, sort.order))
     } else {
-      setSortedItems(items)
+      setSortedItems(items ?? [])
     }
   }, [items, sort])
 

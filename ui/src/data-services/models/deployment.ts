@@ -8,7 +8,7 @@ export class Deployment {
   }
 
   get id(): string {
-    return `${this._deployment.id}`
+    return this._deployment.name // TODO: Update when BE is returning an ID
   }
 
   get name(): string {

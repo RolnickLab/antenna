@@ -1,6 +1,12 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+.fetchInfoWrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
 .tableContent {
   padding: 16px 0;
   position: relative;

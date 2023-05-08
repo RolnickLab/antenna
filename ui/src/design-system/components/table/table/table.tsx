@@ -8,7 +8,7 @@ import styles from './table.module.scss'
 import { useScrollFader } from './useScrollFader'
 
 interface TableProps<T> {
-  items: T[]
+  items?: T[]
   isLoading?: boolean
   columns: TableColumn<T>[]
   sortable?: boolean
@@ -17,7 +17,7 @@ interface TableProps<T> {
 }
 
 export const Table = <T extends { id: string }>({
-  items,
+  items = [],
   isLoading,
   columns,
   sortable,

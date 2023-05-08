@@ -1,3 +1,4 @@
+import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSpecies } from 'data-services/hooks/useSpecies'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
@@ -9,23 +10,28 @@ import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
-import styles from './species.module.scss'
 import { columns } from './species-columns'
+import styles from './species.module.scss'
 
 export const Species = () => {
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { species, total, isLoading, error } = useSpecies({
+  const { species, total, isLoading, isFetching, error } = useSpecies({
     sort,
     pagination,
   })
 
-  if (error) {
-    return <Error details={error} />
+  if (!isLoading && error) {
+    return <Error />
   }
 
   return (
     <>
+      {!isLoading && isFetching && (
+        <div className={styles.fetchInfoWrapper}>
+          <FetchInfo isLoading={isLoading} />
+        </div>
+      )}
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger
@@ -57,7 +63,7 @@ export const Species = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-      {species.length ? (
+      {species?.length ? (
         <PaginationBar
           page={pagination.page}
           perPage={pagination.perPage}

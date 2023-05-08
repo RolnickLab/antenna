@@ -1,6 +1,5 @@
 @import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
 
 .wrapper {
   position: relative;
@@ -11,80 +10,25 @@
   overflow-y: auto;
 }
 
-.header {
-  position: sticky;
-  top: 0;
-  left: 0;
-  height: 140px;
-  padding: 0 100px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  background-color: $color-neutral-50;
-  z-index: 2;
-}
-
-.topBar {
-  width: 100%;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-sizing: border-box;
-}
-
-.breadcrumbs {
-  display: flex;
-  align-items: center;
-
-  :not(:last-child) {
-    margin-right: 8px;
-  }
-}
-
-.breadcrumb {
-  display: block;
-  @include paragraph-x-small();
-  font-weight: 600;
-  color: $color-neutral-800;
-
-  &.link {
-    color: $color-primary-1-600;
-
-    &:focus-visible {
-      box-shadow: 0 0 0 2px $color-generic-black;
-    }
-  }
-}
-
-.content {
+.main {
   padding: 50px 100px;
   width: 100%;
   min-width: $page-min-width;
   box-sizing: border-box;
 }
 
-@media only screen and (max-width: $medium-screen-breakpoint) {
-  .header {
-    padding: 0 32px;
-  }
+.content {
+  position: relative;
+}
 
-  .content {
+@media only screen and (max-width: $medium-screen-breakpoint) {
+  .main {
     padding: 32px;
   }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .header {
-    padding: 0;
-  }
-
-  .topBar {
-    padding-left: 16px;
-  }
-
-  .content {
+  .main {
     padding: 16px;
   }
 }
