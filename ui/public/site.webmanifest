@@ -1,6 +1,6 @@
 {
+  "name": "AMI",
   "short_name": "AMI",
-  "name": "AMI Platform",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
@@ -13,8 +13,8 @@
       "type": "image/png"
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
   "theme_color": "#ffffff",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "start_url": "."
 }
