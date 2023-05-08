@@ -39,9 +39,9 @@ export const Sessions = () => {
 
   return (
     <>
-      {!isLoading && isFetching && (
+      {isFetching && (
         <div className={styles.fetchInfoWrapper}>
-          <FetchInfo />
+          <FetchInfo isLoading={isLoading} />
         </div>
       )}
       <Tabs.Root defaultValue="table">

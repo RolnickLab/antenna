@@ -19,9 +19,9 @@ export const Deployments = () => {
 
   return (
     <>
-      {!isLoading && isFetching && (
+      {isFetching && (
         <div className={styles.fetchInfoWrapper}>
-          <FetchInfo />
+          <FetchInfo isLoading={isLoading} />
         </div>
       )}
       <Table

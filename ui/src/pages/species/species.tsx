@@ -29,7 +29,7 @@ export const Species = () => {
     <>
       {!isLoading && isFetching && (
         <div className={styles.fetchInfoWrapper}>
-          <FetchInfo />
+          <FetchInfo isLoading={isLoading} />
         </div>
       )}
       <Tabs.Root defaultValue="table">

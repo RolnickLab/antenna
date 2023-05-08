@@ -67,6 +67,7 @@ export enum STRING {
   SESSION,
   SETTINGS,
   STOPPED,
+  UPDATING_DATA,
 }
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
@@ -138,6 +139,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SESSION]: 'Session',
   [STRING.SETTINGS]: 'Settings',
   [STRING.STOPPED]: 'Stopped',
+  [STRING.UPDATING_DATA]: 'Updating data',
 }
 
 // When we have more translations available, this function could return a value based on current language settings.

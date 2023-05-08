@@ -2,13 +2,23 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { STRING, translate } from 'utils/language'
 import styles from './fetch-info.module.scss'
 
-export const FetchInfo = ({ message: _message }: { message?: string }) => {
-  const message = _message ?? `${translate(STRING.LOADING_DATA)}...`
+enum FetchInfoType {
+  Loading = 'loading',
+  Updating = 'updating',
+}
+
+const messages: { [key in FetchInfoType]: string } = {
+  [FetchInfoType.Loading]: translate(STRING.LOADING_DATA),
+  [FetchInfoType.Updating]: translate(STRING.UPDATING_DATA),
+}
+
+export const FetchInfo = ({ isLoading }: { isLoading?: boolean }) => {
+  const type = isLoading ? FetchInfoType.Loading : FetchInfoType.Updating
 
   return (
     <div className={styles.wrapper}>
       <LoadingSpinner size={12} />
-      <span>{message}</span>
+      <span>{messages[type]}...</span>
     </div>
   )
 }

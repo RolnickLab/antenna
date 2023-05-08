@@ -40,9 +40,9 @@ export const SessionDetails = () => {
   return (
     <>
       <div className={styles.main}>
-        {!isLoading && isFetching && (
+        {isFetching && (
           <div className={styles.fetchInfoWrapper}>
-            <FetchInfo />
+            <FetchInfo isLoading={isLoading} />
           </div>
         )}
         <div className={styles.container}>
