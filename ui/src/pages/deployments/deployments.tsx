@@ -13,7 +13,7 @@ export const Deployments = () => {
     defaultSort: { field: 'name', order: 'desc' },
   })
 
-  if (error) {
+  if (!isLoading && error) {
     return <Error />
   }
 

@@ -35,7 +35,7 @@ export const Occurrences = () => {
     sort,
   })
 
-  if (error) {
+  if (!isLoading && error) {
     return <Error />
   }
 

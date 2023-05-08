@@ -21,7 +21,7 @@ export const Species = () => {
     pagination,
   })
 
-  if (error) {
+  if (!isLoading && error) {
     return <Error />
   }
 

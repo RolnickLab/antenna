@@ -33,7 +33,7 @@ export const Sessions = () => {
     pagination,
   })
 
-  if (error) {
+  if (!isLoading && error) {
     return <Error />
   }
 

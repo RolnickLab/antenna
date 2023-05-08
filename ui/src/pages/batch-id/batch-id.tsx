@@ -8,7 +8,7 @@ import styles from './batch-id.module.scss'
 export const BatchId = () => {
   const { queues, isLoading, isFetching, error } = useQueues()
 
-  if (error) {
+  if (!isLoading && error) {
     return <Error />
   }
 
