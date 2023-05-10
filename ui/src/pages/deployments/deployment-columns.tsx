@@ -14,7 +14,7 @@ export const columns: TableColumn<Deployment>[] = [
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortField: 'name',
     renderCell: (item: Deployment) => (
-      <Link to={`/deployments/deployment-id`}>
+      <Link to={`/deployments/${item.id}`}>
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),

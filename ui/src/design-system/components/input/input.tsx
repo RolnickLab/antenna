@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import _ from 'lodash'
 import styles from './input.module.scss'
 
 interface InputProps {
@@ -61,6 +62,23 @@ export const PathInput = ({
       <span className={styles.description} id={hintName}>
         {description}
       </span>
+    </div>
+  )
+}
+
+export const InputValue = ({
+  label,
+  value: _value,
+}: {
+  label: string
+  value: string | number
+}) => {
+  const value = _.isNumber(_value) ? _value.toLocaleString() : _value
+
+  return (
+    <div>
+      <span className={styles.label}>{label}</span>
+      <span className={styles.value}>{value}</span>
     </div>
   )
 }
