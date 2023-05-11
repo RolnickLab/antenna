@@ -3,18 +3,25 @@ import _ from 'lodash'
 import styles from './input.module.scss'
 
 interface InputProps {
-  name: string
-  label: string
-  placeholder?: string
   description?: string
+  label: string
+  name: string
+
+  placeholder?: string
+  value?: string | number
+  onBlur?: () => void
+  onChange?: (value: string | number) => void
 }
 
 export const Input = ({
-  name,
-  label,
-  placeholder,
   description,
+  label,
+  name,
+  placeholder,
   type,
+  value,
+  onBlur,
+  onChange,
 }: InputProps & { type?: 'text' | 'number' }) => {
   const hintName = `hint-${name}`
 
@@ -29,6 +36,9 @@ export const Input = ({
         id={name}
         placeholder={placeholder}
         type={type}
+        value={value}
+        onChange={(e) => onChange?.(e.currentTarget.value)}
+        onBlur={() => onBlur?.()}
       />
       <span className={styles.description} id={hintName}>
         {description}
@@ -38,10 +48,10 @@ export const Input = ({
 }
 
 export const PathInput = ({
-  name,
-  label,
-  placeholder,
   description,
+  label,
+  name,
+  placeholder,
 }: InputProps) => {
   const hintName = `hint-${name}`
 
