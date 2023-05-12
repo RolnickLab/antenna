@@ -1,17 +1,16 @@
 import * as L from 'leaflet'
-import icon from 'leaflet/dist/images/marker-icon.png'
-import iconShadow from 'leaflet/dist/images/marker-shadow.png'
-import 'leaflet/dist/leaflet.css'
 import { useEffect, useMemo, useRef } from 'react'
 import { MapContainer, Marker, TileLayer } from 'react-leaflet'
-import { ATTRIBUTION, TILE_LAYER_URL } from './constants'
+import {
+  ATTRIBUTION,
+  MAX_BOUNDS,
+  MIN_ZOOM,
+  setup,
+  TILE_LAYER_URL,
+} from './setup'
 import styles from './styles.module.scss'
 
-const DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-})
-L.Marker.prototype.options.icon = DefaultIcon
+setup()
 
 export const MultipleMarkerMap = ({
   markerPositions,
@@ -38,6 +37,8 @@ export const MultipleMarkerMap = ({
       <MapContainer
         center={bounds.getCenter()}
         className={styles.mapContainer}
+        maxBounds={MAX_BOUNDS}
+        minZoom={MIN_ZOOM}
         ref={mapRef}
         scrollWheelZoom={false}
       >
