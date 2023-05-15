@@ -23,7 +23,7 @@ export const MultipleMarkerMap = ({
     const _bounds = new L.LatLngBounds([])
     markerPositions.forEach((mp) => _bounds.extend(mp))
 
-    return _bounds
+    return _bounds.pad(0.1)
   }, [markerPositions])
 
   useEffect(() => {
