@@ -1,6 +1,7 @@
 import * as L from 'leaflet'
 import { useEffect, useMemo, useRef } from 'react'
 import { MapContainer, Marker, TileLayer } from 'react-leaflet'
+import { MinimapControl } from './minimap-control'
 import {
   ATTRIBUTION,
   DEFAULT_ZOOM,
@@ -64,10 +65,12 @@ export const Map = ({
           <Marker
             draggable={markerDraggable}
             eventHandlers={eventHandlers}
+            interactive={markerDraggable}
             position={markerPosition}
             ref={markerRef}
           />
         )}
+        <MinimapControl />
       </MapContainer>
     </div>
   )

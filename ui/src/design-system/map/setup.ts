@@ -1,7 +1,6 @@
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import pin from './pin.svg'
-import styles from './styles.module.scss'
 
 export const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -19,7 +18,6 @@ const DefaultIcon = L.icon({
   iconUrl: pin,
   iconSize: [27, 32],
   iconAnchor: [27 / 2, 32],
-  className: styles.icon,
 })
 
 export const setup = () => {

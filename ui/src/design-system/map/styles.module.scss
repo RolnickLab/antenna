@@ -14,13 +14,3 @@
   width: 100%;
   height: 320px;
 }
-
-.icon {
-  &:focus {
-    outline: none;
-  }
-
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
-  }
-}

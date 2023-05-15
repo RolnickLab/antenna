@@ -76,18 +76,26 @@ const DeploymentMap = ({ editable }: { editable?: boolean }) => {
   const markerPosition = new MarkerPosition(52.30767, 5.04011)
 
   if (!editable) {
-    return (
-      <>
-        <div className={styles.sectionRow}>
-          <InputValue label="Latitude" value={markerPosition.lat} />
-          <InputValue label="Longitude" value={markerPosition.lng} />
-        </div>
-        <Map center={markerPosition} markerPosition={markerPosition} />
-      </>
-    )
+    return <StaticDeploymentMap markerPosition={markerPosition} />
   }
 
   return <EditableDeploymentMap defaultValue={markerPosition} />
+}
+
+const StaticDeploymentMap = ({
+  markerPosition,
+}: {
+  markerPosition: MarkerPosition
+}) => {
+  return (
+    <>
+      <div className={styles.sectionRow}>
+        <InputValue label="Latitude" value={markerPosition.lat} />
+        <InputValue label="Longitude" value={markerPosition.lng} />
+      </div>
+      <Map center={markerPosition} markerPosition={markerPosition} />
+    </>
+  )
 }
 
 const EditableDeploymentMap = ({

@@ -1,6 +1,7 @@
 import * as L from 'leaflet'
 import { useEffect, useMemo, useRef } from 'react'
 import { MapContainer, Marker, TileLayer } from 'react-leaflet'
+import { MinimapControl } from './minimap-control'
 import {
   ATTRIBUTION,
   MAX_BOUNDS,
@@ -46,6 +47,7 @@ export const MultipleMarkerMap = ({
         {markerPositions.map((markerPosition, index) => (
           <Marker key={index} position={markerPosition} />
         ))}
+        <MinimapControl />
       </MapContainer>
     </div>
   )
