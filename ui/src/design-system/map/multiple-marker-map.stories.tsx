@@ -5,9 +5,9 @@ type Meta = ComponentMeta<typeof MultipleMarkerMap>
 type Story = ComponentStory<typeof MultipleMarkerMap>
 
 const DEFAULT_MARKER_POSITIONS = [
-  new MarkerPosition(52.30767, 5.04011),
-  new MarkerPosition(52.31767, 5.06011),
-  new MarkerPosition(52.32767, 5.09011),
+  { position: new MarkerPosition(52.30767, 5.04011) },
+  { position: new MarkerPosition(52.31767, 5.06011) },
+  { position: new MarkerPosition(52.32767, 5.09011) },
 ]
 
 export default {
@@ -16,5 +16,5 @@ export default {
 } as Meta
 
 export const Default: Story = () => (
-  <MultipleMarkerMap markerPositions={DEFAULT_MARKER_POSITIONS} />
+  <MultipleMarkerMap markers={DEFAULT_MARKER_POSITIONS} />
 )

@@ -1,6 +1,6 @@
 import * as L from 'leaflet'
 import { useEffect, useMemo, useRef } from 'react'
-import { MapContainer, Marker, TileLayer } from 'react-leaflet'
+import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import { MinimapControl } from './minimap-control'
 import {
   ATTRIBUTION,
@@ -14,18 +14,18 @@ import styles from './styles.module.scss'
 setup()
 
 export const MultipleMarkerMap = ({
-  markerPositions,
+  markers,
 }: {
-  markerPositions: L.LatLng[]
+  markers: { position: L.LatLng; popupContent?: JSX.Element }[]
 }) => {
   const mapRef = useRef<L.Map>(null)
 
   const bounds = useMemo(() => {
     const _bounds = new L.LatLngBounds([])
-    markerPositions.forEach((mp) => _bounds.extend(mp))
+    markers.forEach((marker) => _bounds.extend(marker.position))
 
     return _bounds.pad(0.1)
-  }, [markerPositions])
+  }, [markers])
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -44,8 +44,16 @@ export const MultipleMarkerMap = ({
         scrollWheelZoom={false}
       >
         <TileLayer attribution={ATTRIBUTION} url={TILE_LAYER_URL} />
-        {markerPositions.map((markerPosition, index) => (
-          <Marker key={index} position={markerPosition} />
+        {markers.map((marker, index) => (
+          <Marker
+            key={index}
+            position={marker.position}
+            interactive={!!marker.popupContent}
+          >
+            {marker.popupContent ? (
+              <Popup offset={[0, -32]}>{marker.popupContent}</Popup>
+            ) : null}
+          </Marker>
         ))}
         <MinimapControl />
       </MapContainer>

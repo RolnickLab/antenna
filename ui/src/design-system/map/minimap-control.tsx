@@ -60,7 +60,9 @@ export const MinimapControl = () => {
   const [renderMinimap, setRenderMinimap] = useState(false)
 
   useEffect(() => {
-    setRenderMinimap(!!parentMap)
+    window.requestAnimationFrame(() => {
+      setRenderMinimap(!!parentMap)
+    })
   }, [parentMap])
 
   if (!renderMinimap) {
@@ -68,7 +70,7 @@ export const MinimapControl = () => {
   }
 
   return (
-    <div className="leaflet-top leaflet-right">
+    <div className="leaflet-bottom leaflet-left">
       <div className="leaflet-control leaflet-bar">
         <MapContainer
           attributionControl={false}

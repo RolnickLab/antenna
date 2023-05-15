@@ -22,9 +22,19 @@
 }
 
 .about {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
+  display: flex;
+}
+
+.aboutImage {
+  flex: 1;
+  background-color: $color-generic-white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aboutInfo {
+  max-width: 600px;
 }
 
 .plots {
@@ -55,6 +65,16 @@
   color: $color-neutral-800;
   margin-bottom: 16px;
   margin: 0 0 16px;
+}
+
+@media only screen and (max-width: $medium-screen-breakpoint) {
+  .aboutImage {
+    display: none;
+  }
+
+  .aboutInfo {
+    max-width: none;
+  }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
