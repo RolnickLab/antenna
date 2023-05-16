@@ -1,4 +1,5 @@
 import { MarkerPosition } from 'design-system/map/multiple-marker-map'
+import { STRING, translate } from 'utils/language'
 
 export const EXAMPLE_DATA = {
   y: [18, 45, 98, 120, 109, 113, 43],
@@ -14,11 +15,11 @@ export const EXAMPLE_POPUP_CONTENT = (
       </a>
     </p>
     <p>
-      <span>Sessions: 1</span>
+      <span>{translate(STRING.DETAILS_LABEL_SESSIONS)}: 1</span>
       <br />
-      <span>Images: 18</span>
+      <span>{translate(STRING.DETAILS_LABEL_IMAGES)}: 18</span>
       <br />
-      <span>Detections: 24</span>
+      <span>{translate(STRING.DETAILS_LABEL_DETECTIONS)}: 24</span>
     </p>
   </>
 )

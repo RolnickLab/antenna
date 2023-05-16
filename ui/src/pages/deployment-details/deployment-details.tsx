@@ -18,7 +18,9 @@ export const DeploymentDetailsDialog = ({
 }) => (
   <Dialog.Root open={open} onOpenChange={onOpenChange}>
     <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-      <Dialog.Header title="Deployment details" />
+      <Dialog.Header
+        title={translate(STRING.DETAILS_LABEL_DEPLOYMENT_DETAILS)}
+      />
       <DeploymentDetails deployment={deployment} />
     </Dialog.Content>
   </Dialog.Root>
@@ -34,37 +36,71 @@ const DeploymentDetails = ({ deployment }: { deployment?: Deployment }) => {
       <div className={styles.section}>
         <div className={styles.sectionContent}>
           <div className={styles.sectionRow}>
-            <InputValue label="Deployment ID" value={deployment.id} />
-            <InputValue label="Name" value={deployment.name} />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_DEPLOYMENT_ID)}
+              value={deployment.id}
+            />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_NAME)}
+              value={deployment.name}
+            />
           </div>
           <div className={styles.sectionRow}>
-            <InputValue label="Device" value="WIP" />
-            <InputValue label="Site" value="WIP" />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_DEVICE)}
+              value="WIP"
+            />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_SITE)}
+              value="WIP"
+            />
           </div>
         </div>
       </div>
 
       <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Location</h2>
+        <h2 className={styles.sectionTitle}>
+          {translate(STRING.DETAILS_LABEL_LOCATION)}
+        </h2>
         <div className={styles.sectionContent}>
           <DeploymentMap />
         </div>
       </div>
 
       <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Source images</h2>
+        <h2 className={styles.sectionTitle}>
+          {translate(STRING.DETAILS_LABEL_SOURCE_IMAGES)}
+        </h2>
         <div className={styles.sectionContent}>
           <div className={styles.sectionRow}>
-            <InputValue label="Path" value="WIP" />
-            <InputValue label="Connection status" value="WIP" />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_PATH)}
+              value="WIP"
+            />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_CONNECTION_STATUS)}
+              value="WIP"
+            />
           </div>
           <div className={styles.sectionRow}>
-            <InputValue label="Images" value={deployment.numImages} />
-            <InputValue label="Sessions" value={deployment.numEvents} />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_IMAGES)}
+              value={deployment.numImages}
+            />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_SESSIONS)}
+              value={deployment.numEvents}
+            />
           </div>
           <div className={styles.sectionRow}>
-            <InputValue label="Occurrences" value="WIP" />
-            <InputValue label="Detections" value={deployment.numDetections} />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_OCCURRENCES)}
+              value="WIP"
+            />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_DETECTIONS)}
+              value={deployment.numDetections}
+            />
           </div>
         </div>
       </div>
@@ -90,8 +126,14 @@ const StaticDeploymentMap = ({
   return (
     <>
       <div className={styles.sectionRow}>
-        <InputValue label="Latitude" value={markerPosition.lat} />
-        <InputValue label="Longitude" value={markerPosition.lng} />
+        <InputValue
+          label={translate(STRING.DETAILS_LABEL_LATITUDE)}
+          value={markerPosition.lat}
+        />
+        <InputValue
+          label={translate(STRING.DETAILS_LABEL_LONGITUDE)}
+          value={markerPosition.lng}
+        />
       </div>
       <Map center={markerPosition} markerPosition={markerPosition} />
     </>
@@ -112,7 +154,7 @@ const EditableDeploymentMap = ({
       <div className={styles.sectionRow}>
         <Input
           name="latitude"
-          label="Latitude"
+          label={translate(STRING.DETAILS_LABEL_LATITUDE)}
           type="number"
           value={lat}
           onChange={(lat) => setLat(lat as number)}
@@ -120,7 +162,7 @@ const EditableDeploymentMap = ({
         />
         <Input
           name="longitude"
-          label="Longitude"
+          label={translate(STRING.DETAILS_LABEL_LONGITUDE)}
           type="number"
           value={lng}
           onChange={(lng) => setLng(lng as number)}
