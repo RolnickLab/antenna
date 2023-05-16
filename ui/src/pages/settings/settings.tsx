@@ -26,7 +26,7 @@ export const Settings = () => {
           <div className={styles.buttonWrapper}>
             <Button label={translate(STRING.RESET)} />
             <Button
-              label={translate(STRING.SAVE_CHANGES)}
+              label={translate(STRING.SAVE)}
               theme={ButtonTheme.Success}
             />
           </div>

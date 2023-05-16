@@ -1,7 +1,7 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useDeployments } from 'data-services/hooks/useDeployments'
 import { Table } from 'design-system/components/table/table/table'
-import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details'
+import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { Error } from 'pages/error/error'
 import { useNavigate, useParams } from 'react-router'
 import { useClientSideSort } from 'utils/useClientSideSort'
