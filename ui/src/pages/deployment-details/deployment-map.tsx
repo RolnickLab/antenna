@@ -54,7 +54,10 @@ const EditableDeploymentMap = ({
           label={translate(STRING.DETAILS_LABEL_LATITUDE)}
           type="number"
           value={lat}
-          onChange={(lat) => setLat(lat as number)}
+          onChange={(e) => {
+            const lat = _.toNumber(e.currentTarget.value)
+            setLat(lat)
+          }}
           onBlur={() => setMarkerPosition(new MarkerPosition(lat, lng))}
         />
         <Input
@@ -62,7 +65,10 @@ const EditableDeploymentMap = ({
           label={translate(STRING.DETAILS_LABEL_LONGITUDE)}
           type="number"
           value={lng}
-          onChange={(lng) => setLng(lng as number)}
+          onChange={(e) => {
+            const lng = _.toNumber(e.currentTarget.value)
+            setLat(lng)
+          }}
           onBlur={() => setMarkerPosition(new MarkerPosition(lat, lng))}
         />
       </div>

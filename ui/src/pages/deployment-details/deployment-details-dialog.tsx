@@ -19,17 +19,19 @@ export const DeploymentDetailsDialog = ({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-        {!isEditing ? (
-          <DeploymentDetails
-            deployment={deployment}
-            onEditClick={() => setIsEditing(true)}
-          />
-        ) : (
-          <DeploymentDetailsForm
-            deployment={deployment}
-            onCancelClick={() => setIsEditing(false)}
-          />
-        )}
+        {deployment ? (
+          !isEditing ? (
+            <DeploymentDetails
+              deployment={deployment}
+              onEditClick={() => setIsEditing(true)}
+            />
+          ) : (
+            <DeploymentDetailsForm
+              deployment={deployment}
+              onCancelClick={() => setIsEditing(false)}
+            />
+          )
+        ) : null}
       </Dialog.Content>
     </Dialog.Root>
   )

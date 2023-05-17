@@ -36,6 +36,10 @@ export enum STRING {
   DETAILS_LABEL_SOURCE_IMAGES,
   DETAILS_LABEL_TIME,
 
+  /* MESSAGE */
+  MESSAGE_VALUE_INVALID,
+  MESSAGE_VALUE_MISSING,
+
   /* NAV_ITEM */
   NAV_ITEM_BATCH_ID,
   NAV_ITEM_DEPLOYMENTS,
@@ -80,7 +84,6 @@ export enum STRING {
   RUNNING,
   SCORE,
   SELECT_COLUMNS,
-  SELECT_PATH,
   SELECT_VALUE,
   SESSION,
   SETTINGS,
@@ -126,6 +129,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DETAILS_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.DETAILS_LABEL_TIME]: 'Time',
 
+  /* MESSAGE */
+  [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
+  [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
+
   /* NAV_ITEM */
   [STRING.NAV_ITEM_BATCH_ID]: 'Batch ID',
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
@@ -170,7 +177,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.RUNNING]: 'Running',
   [STRING.SCORE]: 'Score',
   [STRING.SELECT_COLUMNS]: 'Select columns',
-  [STRING.SELECT_PATH]: 'Select a path',
   [STRING.SELECT_VALUE]: 'Select a value',
   [STRING.SESSION]: 'Session',
   [STRING.SETTINGS]: 'Settings',
