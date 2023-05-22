@@ -2,8 +2,8 @@ import { Deployment } from 'data-services/models/deployment'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { DeploymentDetails } from './deployment-details'
-import { DeploymentDetailsForm } from './deployment-details-form/deployment-details-form'
+import { DeploymentDetailsForm } from './deployment-details-form'
+import { DeploymentDetailsInfo } from './deployment-details-info'
 
 export const DeploymentDetailsDialog = ({
   deployment,
@@ -12,7 +12,7 @@ export const DeploymentDetailsDialog = ({
 }: {
   deployment?: Deployment
   open: boolean
-  onOpenChange: () => void
+  onOpenChange: (open: boolean) => void
 }) => {
   const [isEditing, setIsEditing] = useState(false)
 
@@ -21,14 +21,20 @@ export const DeploymentDetailsDialog = ({
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         {deployment ? (
           !isEditing ? (
-            <DeploymentDetails
+            <DeploymentDetailsInfo
               deployment={deployment}
+              title={translate(STRING.DETAILS_LABEL_DEPLOYMENT_DETAILS)}
               onEditClick={() => setIsEditing(true)}
             />
           ) : (
             <DeploymentDetailsForm
               deployment={deployment}
+              title={translate(STRING.DETAILS_LABEL_EDIT_DEPLOYMENT)}
               onCancelClick={() => setIsEditing(false)}
+              onSubmit={(data) => {
+                console.log('onSubmit: ', data)
+                onOpenChange(false)
+              }}
             />
           )
         ) : null}

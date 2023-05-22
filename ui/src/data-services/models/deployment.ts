@@ -1,7 +1,12 @@
 export type ServerDeployment = any // TODO: Update this type
 
-const DUMMY_DATA = {
-  location: { lat: 52.30767, lng: 5.04011 },
+export interface DeploymentFieldValues {
+  device: string
+  name: string
+  latitude: number
+  longitude: number
+  path: string
+  site: string
 }
 
 export class Deployment {
@@ -12,11 +17,15 @@ export class Deployment {
   }
 
   get id(): string {
-    return this._deployment.name // TODO: Update when BE is returning an ID
+    return this._deployment.id ?? this._deployment.name // TODO: Update when BE is returning an ID
   }
 
-  get location(): { lat: number; lng: number } {
-    return DUMMY_DATA.location // TODO: Update when BE is returning a location
+  get latitude(): number {
+    return 52.30767 // TODO: Update when BE is returning latitude
+  }
+
+  get longitude(): number {
+    return 5.04011 // TODO: Update when BE is returning longitude
   }
 
   get name(): string {

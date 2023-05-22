@@ -65,7 +65,7 @@ export const InputValue = ({
   return (
     <div>
       <span className={styles.label}>{label}</span>
-      <span className={styles.value}>{value}</span>
+      <span className={styles.value}>{value?.length ? value : '-'}</span>
     </div>
   )
 }

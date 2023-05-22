@@ -2,6 +2,7 @@ import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useDeployments } from 'data-services/hooks/useDeployments'
 import { Table } from 'design-system/components/table/table/table'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
+import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
 import { Error } from 'pages/error/error'
 import { useNavigate, useParams } from 'react-router'
 import { useClientSideSort } from 'utils/useClientSideSort'
@@ -38,6 +39,7 @@ export const Deployments = () => {
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
+      <NewDeploymentDialog />
       <DeploymentDetailsDialog
         deployment={deployment}
         open={!!deployment}

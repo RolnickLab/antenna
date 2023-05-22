@@ -13,12 +13,20 @@ interface ButtonProps {
   label: string
   icon?: IconType
   theme?: ButtonTheme
+  type?: 'submit' | 'button'
   onClick?: () => void
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ ...props }, forwardedRef) => {
-    const { label, icon, theme = ButtonTheme.Default, onClick, ...rest } = props
+    const {
+      label,
+      icon,
+      theme = ButtonTheme.Default,
+      onClick,
+      type = 'button',
+      ...rest
+    } = props
 
     const iconTheme =
       theme === ButtonTheme.Success ? IconTheme.Light : IconTheme.Primary
@@ -30,6 +38,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           [styles.success]: theme === ButtonTheme.Success,
           [styles.plain]: theme === ButtonTheme.Plain,
         })}
+        type={type}
         onClick={onClick}
         {...rest}
       >
