@@ -3,7 +3,7 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { DeploymentDetails } from './deployment-details'
-import { DeploymentDetailsForm } from './deployment-details-form'
+import { DeploymentDetailsForm } from './deployment-details-form/deployment-details-form'
 
 export const DeploymentDetailsDialog = ({
   deployment,

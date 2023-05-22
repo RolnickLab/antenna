@@ -15,12 +15,12 @@ import styles from './styles.module.scss'
 setup()
 
 export const Map = ({
-  center,
+  center = new L.LatLng(0, 0),
   markerPosition,
   markerDraggable,
   onMarkerPositionChange,
 }: {
-  center: L.LatLng
+  center?: L.LatLng
   markerPosition?: L.LatLng
   markerDraggable?: boolean
   onMarkerPositionChange?: (markerPosition: L.LatLng) => void

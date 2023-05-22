@@ -2,9 +2,10 @@ import { Deployment } from 'data-services/models/deployment'
 import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
+import { Map, MarkerPosition } from 'design-system/map/map'
+import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './deployment-details.module.scss'
-import { DeploymentMap } from './deployment-map'
 
 export const DeploymentDetails = ({
   deployment,
@@ -50,7 +51,17 @@ export const DeploymentDetails = ({
           {translate(STRING.DETAILS_LABEL_LOCATION)}
         </h2>
         <div className={styles.sectionContent}>
-          <DeploymentMap />
+          <div className={styles.sectionRow}>
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_LATITUDE)}
+              value={deployment.location.lat}
+            />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_LONGITUDE)}
+              value={deployment.location.lng}
+            />
+          </div>
+          <DeploymentMap deployment={deployment} />
         </div>
       </div>
 
@@ -94,3 +105,12 @@ export const DeploymentDetails = ({
     </div>
   </>
 )
+
+const DeploymentMap = ({ deployment }: { deployment: Deployment }) => {
+  const markerPosition = useMemo(
+    () => new MarkerPosition(deployment.location.lat, deployment.location.lng),
+    []
+  )
+
+  return <Map center={markerPosition} markerPosition={markerPosition} />
+}
