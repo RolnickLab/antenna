@@ -1,5 +1,5 @@
 import { Deployment } from 'data-services/models/deployment'
-import { Button } from 'design-system/components/button/button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -13,7 +13,10 @@ export const NewDeploymentDialog = () => {
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <Button label={translate(STRING.DETAILS_LABEL_NEW_DEPLOYMENT)} />
+        <Button
+          label={translate(STRING.DETAILS_LABEL_NEW_DEPLOYMENT)}
+          theme={ButtonTheme.Plain}
+        />
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         <DeploymentDetailsForm

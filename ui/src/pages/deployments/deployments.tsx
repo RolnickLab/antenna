@@ -23,6 +23,7 @@ export const Deployments = () => {
   }
 
   const deployment = deployments?.find((o) => o.id === id)
+  const detailsOpen = !!deployment
 
   return (
     <>
@@ -39,10 +40,10 @@ export const Deployments = () => {
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
-      <NewDeploymentDialog />
+      {!detailsOpen ? <NewDeploymentDialog /> : null}
       <DeploymentDetailsDialog
         deployment={deployment}
-        open={!!deployment}
+        open={detailsOpen}
         onOpenChange={() => navigate('/deployments')}
       />
     </>

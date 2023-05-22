@@ -28,9 +28,7 @@ export const FormField = <
       config={fieldConfig}
       render={({ field, fieldState }) => (
         <Input
-          value={field.value}
-          onChange={field.onChange}
-          name={field.name}
+          {...field}
           type={type}
           label={fieldConfig.label}
           error={fieldState.error?.message}
