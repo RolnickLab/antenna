@@ -17,7 +17,7 @@ interface InputProps {
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ ...props }, forwardedRef) => {
-    const { description, error, label, name, ...rest } = props
+    const { description, error, label, name, type, ...rest } = props
 
     const hasDescription = !!description?.length
     const descriptionId = hasDescription ? `description-${name}` : undefined
@@ -41,6 +41,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={name}
           name={name}
           ref={forwardedRef}
+          step={type === 'number' ? 'any' : undefined}
+          type={type}
           {...rest}
         />
         {hasDescription ? (

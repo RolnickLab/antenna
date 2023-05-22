@@ -6,23 +6,21 @@ import {
   FieldValues,
 } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
+import { FieldConfig } from './types'
 
 /* Helper component to simplify and streamline error handling in forms */
-export const FormField = <
+export const FormController = <
   TFieldValues extends FieldValues,
   TName extends FieldPath<TFieldValues>
 >({
-  rules = {},
+  name,
+  config,
   ...rest
 }: Omit<ControllerProps<TFieldValues, TName>, 'rules'> & {
-  rules?: {
-    required?: boolean
-    minLength?: number
-    maxLength?: number
-    min?: number
-    max?: number
-  }
+  config: FieldConfig
 }) => {
+  const { rules = {} } = config
+
   const controllerRules = useMemo(() => {
     const { required, minLength, maxLength, min, max } = rules
 
@@ -59,5 +57,5 @@ export const FormField = <
     }
   }, [rules])
 
-  return <Controller rules={controllerRules} {...rest} />
+  return <Controller name={name} rules={controllerRules} {...rest} />
 }

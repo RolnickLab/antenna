@@ -1,6 +1,6 @@
 import { Deployment } from 'data-services/models/deployment'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { DeploymentDetailsForm } from './deployment-details-form'
 import { DeploymentDetailsInfo } from './deployment-details-info'
@@ -15,6 +15,10 @@ export const DeploymentDetailsDialog = ({
   onOpenChange: (open: boolean) => void
 }) => {
   const [isEditing, setIsEditing] = useState(false)
+
+  useEffect(() => {
+    setIsEditing(false)
+  }, [deployment])
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>

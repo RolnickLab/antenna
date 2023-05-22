@@ -1,16 +1,17 @@
-import { FormField } from 'components/form-field'
+import { FormField } from 'components/form/form-field'
 import {
   Deployment,
   DeploymentFieldValues,
 } from 'data-services/models/deployment'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { Input, InputValue } from 'design-system/components/input/input'
+import { InputValue } from 'design-system/components/input/input'
 import { Map, MarkerPosition } from 'design-system/map/map'
 import _ from 'lodash'
 import { useState } from 'react'
 import { Control, useForm, UseFormSetValue } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
+import { config } from './config'
 import styles from './styles.module.scss'
 
 const DEFAULT_VALUES: DeploymentFieldValues = {
@@ -46,6 +47,7 @@ export const DeploymentDetailsForm = ({
         _.isUndefined
       ),
     },
+    mode: 'onBlur',
   })
 
   return (
@@ -93,42 +95,11 @@ const BaseSection = ({
           label={translate(STRING.DETAILS_LABEL_DEPLOYMENT_ID)}
           value={deployment.id}
         />
-        <FormField
-          name="name"
-          control={control}
-          rules={{ required: true }}
-          render={({ field, fieldState }) => (
-            <Input
-              {...field}
-              label={`${translate(STRING.DETAILS_LABEL_NAME)} *`}
-              error={fieldState.error?.message}
-            />
-          )}
-        />
+        <FormField name="name" control={control} config={config} />
       </div>
       <div className={styles.sectionRow}>
-        <FormField
-          name="device"
-          control={control}
-          render={({ field, fieldState }) => (
-            <Input
-              {...field}
-              label={translate(STRING.DETAILS_LABEL_DEVICE)}
-              error={fieldState.error?.message}
-            />
-          )}
-        />
-        <FormField
-          name="site"
-          control={control}
-          render={({ field, fieldState }) => (
-            <Input
-              {...field}
-              label={translate(STRING.DETAILS_LABEL_SITE)}
-              error={fieldState.error?.message}
-            />
-          )}
-        />
+        <FormField name="device" control={control} config={config} />
+        <FormField name="site" control={control} config={config} />
       </div>
     </div>
   </div>
@@ -157,40 +128,24 @@ const LocationSection = ({
           <FormField
             name="latitude"
             control={control}
-            rules={{ min: -90, max: 90 }}
-            render={({ field, fieldState }) => (
-              <Input
-                {...field}
-                type="number"
-                label={translate(STRING.DETAILS_LABEL_LATITUDE)}
-                error={fieldState.error?.message}
-                onBlur={(e) => {
-                  const lat = _.toNumber(e.currentTarget.value)
-                  setMarkerPosition(new MarkerPosition(lat, markerPosition.lng))
-                  setValue('latitude', lat)
-                  field.onBlur()
-                }}
-              />
-            )}
+            config={config}
+            type="number"
+            onBlur={(e) => {
+              const lat = _.toNumber(e.currentTarget.value)
+              setMarkerPosition(new MarkerPosition(lat, markerPosition.lng))
+              setValue('latitude', lat)
+            }}
           />
           <FormField
             name="longitude"
             control={control}
-            rules={{ min: -180, max: 180 }}
-            render={({ field, fieldState }) => (
-              <Input
-                {...field}
-                type="number"
-                label={translate(STRING.DETAILS_LABEL_LONGITUDE)}
-                error={fieldState.error?.message}
-                onBlur={(e) => {
-                  const lng = _.toNumber(e.currentTarget.value)
-                  setMarkerPosition(new MarkerPosition(markerPosition.lat, lng))
-                  setValue('longitude', lng)
-                  field.onBlur()
-                }}
-              />
-            )}
+            config={config}
+            type="number"
+            onBlur={(e) => {
+              const lng = _.toNumber(e.currentTarget.value)
+              setMarkerPosition(new MarkerPosition(markerPosition.lat, lng))
+              setValue('longitude', lng)
+            }}
           />
         </div>
         <Map
@@ -222,18 +177,7 @@ const SourceImageSection = ({
     </h2>
     <div className={styles.sectionContent}>
       <div className={styles.sectionRow}>
-        <FormField
-          name="path"
-          control={control}
-          rules={{ required: true }}
-          render={({ field, fieldState }) => (
-            <Input
-              {...field}
-              label={`${translate(STRING.DETAILS_LABEL_PATH)} *`}
-              error={fieldState.error?.message}
-            />
-          )}
-        />
+        <FormField name="path" control={control} config={config} />
       </div>
     </div>
   </div>
