@@ -96,8 +96,12 @@ export const SectionLocation = ({
           />
         </div>
         <div className={styles.formActions}>
-          <Button label="Back" onClick={onBack} />
-          <Button label="Next" type="submit" theme={ButtonTheme.Success} />
+          <Button label={translate(STRING.BACK)} onClick={onBack} />
+          <Button
+            label={translate(STRING.NEXT)}
+            type="submit"
+            theme={ButtonTheme.Success}
+          />
         </div>
       </div>
     </form>

@@ -3,7 +3,7 @@ import {
   Deployment,
   DeploymentFieldValues,
 } from 'data-services/models/deployment'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Button } from 'design-system/components/button/button'
 import _ from 'lodash'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -50,8 +50,7 @@ export const SectionSourceImages = ({
           </div>
         </div>
         <div className={styles.formActions}>
-          <Button label="Back" onClick={onBack} />
-          <Button label="Save" type="submit" theme={ButtonTheme.Success} />
+          <Button label={translate(STRING.BACK)} onClick={onBack} />
         </div>
       </div>
     </form>

@@ -14,12 +14,8 @@
 }
 
 .section {
-  padding: 32px;
+  margin: 32px;
   box-sizing: border-box;
-
-  &:not(:last-child) {
-    border-bottom: 1px solid $color-neutral-100;
-  }
 }
 
 .sectionTitle {

@@ -2,8 +2,9 @@ import {
   Deployment,
   DeploymentFieldValues,
 } from 'data-services/models/deployment'
-import { Button } from 'design-system/components/button/button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
+import { FormStepper } from 'design-system/components/form-stepper/form-stepper'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
@@ -26,7 +27,7 @@ export const DeploymentDetailsForm = ({
   deployment: Deployment
   title: string
   onCancelClick: () => void
-  onSubmit: (data: DeploymentFieldValues) => void
+  onSubmit: (data?: DeploymentFieldValues) => void
 }) => {
   const [currentSection, setCurrentSection] = useState(Section.General)
 
@@ -39,9 +40,34 @@ export const DeploymentDetailsForm = ({
             onClick={onCancelClick}
             type="button"
           />
+          <Button
+            label={translate(STRING.SAVE)}
+            onClick={() => onSubmit()}
+            theme={ButtonTheme.Success}
+          />
         </div>
       </Dialog.Header>
       <div className={styles.content}>
+        <div className={styles.section}>
+          <FormStepper
+            items={[
+              {
+                id: Section.General,
+                label: translate(STRING.DETAILS_LABEL_GENERAL),
+              },
+              {
+                id: Section.Location,
+                label: translate(STRING.DETAILS_LABEL_LOCATION),
+              },
+              {
+                id: Section.SourceImages,
+                label: translate(STRING.DETAILS_LABEL_SOURCE_IMAGES),
+              },
+            ]}
+            currentItem={currentSection}
+            setCurrentItem={(item) => setCurrentSection(item as Section)}
+          />
+        </div>
         <SectionContent
           currentSection={currentSection}
           setCurrentSection={setCurrentSection}

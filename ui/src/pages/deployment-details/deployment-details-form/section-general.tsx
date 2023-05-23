@@ -45,7 +45,9 @@ export const SectionGeneral = ({
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>General</h2>
+        <h2 className={styles.sectionTitle}>
+          {translate(STRING.DETAILS_LABEL_GENERAL)}
+        </h2>
         <div className={styles.sectionContent}>
           <div className={styles.sectionRow}>
             <InputValue
