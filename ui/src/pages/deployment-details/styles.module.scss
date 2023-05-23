@@ -33,12 +33,25 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+
+  &:not(:last-child) {
+    margin-bottom: 32px;
+  }
 }
 
 .sectionRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
+}
+
+.formActions {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  padding: 32px 0;
+  box-sizing: border-box;
+  border-top: 1px solid $color-neutral-100;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

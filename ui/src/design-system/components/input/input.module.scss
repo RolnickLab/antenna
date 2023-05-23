@@ -46,7 +46,10 @@
   color: $color-neutral-800;
   border: 1px solid $color-neutral-300;
   box-sizing: border-box;
-  margin-bottom: 8px;
+
+  &:not(:last-child) {
+    margin-bottom: 8px;
+  }
 
   &::placeholder {
     color: $color-neutral-500;

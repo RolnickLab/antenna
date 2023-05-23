@@ -16,7 +16,7 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  max-height: calc(100vh - 128px);
+  height: calc(100vh - 128px);
   max-width: calc(100% - 128px);
   border-radius: 4px;
   background-color: $color-generic-white;
@@ -30,7 +30,7 @@
 }
 
 .dialogContent {
-  max-height: inherit;
+  height: inherit;
   max-width: 100%;
   overflow-y: auto;
   overflow-x: auto;

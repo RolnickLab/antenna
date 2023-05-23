@@ -3,7 +3,7 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { DeploymentDetailsForm } from './deployment-details-form'
+import { DeploymentDetailsForm } from './deployment-details-form/deployment-details-form'
 
 const newDeployment = new Deployment({ id: 'new-deployment' })
 
