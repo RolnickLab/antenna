@@ -138,8 +138,8 @@ const FormStepper = () => {
           label: translate(STRING.DETAILS_LABEL_SOURCE_IMAGES),
         },
       ]}
-      currentItem={currentSection}
-      setCurrentItem={setCurrentSection}
+      currentItemId={currentSection}
+      setCurrentItemId={setCurrentSection}
     />
   )
 }

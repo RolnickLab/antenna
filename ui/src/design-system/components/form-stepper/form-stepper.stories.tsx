@@ -17,12 +17,12 @@ const items = [
 ]
 
 const FormStepperTemplate: Story = () => {
-  const [currentItem, setCurrentItem] = useState('general')
+  const [currentItemId, setCurrentItemId] = useState('general')
   return (
     <FormStepper
       items={items}
-      currentItem={currentItem}
-      setCurrentItem={setCurrentItem}
+      currentItemId={currentItemId}
+      setCurrentItemId={setCurrentItemId}
     />
   )
 }

@@ -1,19 +1,21 @@
 import classNames from 'classnames'
 import styles from './form-stepper.module.scss'
 
+type Item = {
+  id: string
+  label: string
+}
+
 interface FormStepperProps {
-  items: {
-    id: string
-    label: string
-  }[]
-  currentItem?: string
-  setCurrentItem: (item: string) => void
+  items: Item[]
+  currentItemId?: string
+  setCurrentItemId: (item: string) => void
 }
 
 export const FormStepper = ({
   items,
-  currentItem,
-  setCurrentItem,
+  currentItemId,
+  setCurrentItemId,
 }: FormStepperProps) => (
   <div className={styles.wrapper}>
     <div className={classNames(styles.item, styles.placeholder)}>
@@ -23,26 +25,50 @@ export const FormStepper = ({
       </div>
     </div>
     {items.map((item) => (
-      <button
+      <FormStepperItem
         key={item.id}
-        tabIndex={0}
-        className={classNames(styles.item, {
-          [styles.active]: currentItem === item.id,
-        })}
-        onClick={() => setCurrentItem(item.id)}
-      >
-        <span>{item.label}</span>
-        <div className={styles.itemContent}>
-          <div className={styles.line} />
-          <div className={styles.circle} />
-        </div>
-      </button>
+        active={currentItemId === item.id}
+        item={item}
+        onClick={() => setCurrentItemId(item.id)}
+      />
     ))}
     <div className={classNames(styles.item, styles.placeholder)}>
       <span />
       <div className={styles.itemContent}>
         <div className={styles.line} />
       </div>
+    </div>
+  </div>
+)
+
+const FormStepperItem = ({
+  active,
+  item,
+  onClick,
+}: {
+  active?: boolean
+  item: Item
+  onClick: () => void
+}) => (
+  <div
+    role="button"
+    key={item.id}
+    tabIndex={0}
+    className={classNames(styles.item, {
+      [styles.active]: active,
+    })}
+    onClick={onClick}
+    onKeyDown={(event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        onClick()
+      }
+    }}
+  >
+    <span>{item.label}</span>
+    <div className={styles.itemContent}>
+      <div className={styles.line} />
+      <div className={styles.circle} />
     </div>
   </div>
 )
