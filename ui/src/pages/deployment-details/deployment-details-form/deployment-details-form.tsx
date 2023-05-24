@@ -4,15 +4,16 @@ import {
 } from 'data-services/models/deployment'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { FormStepper } from 'design-system/components/form-stepper/form-stepper'
-import { useState } from 'react'
+import { FormStepper as _FormStepper } from 'design-system/components/form-stepper/form-stepper'
+import { useContext, useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
+import { FormContext, FormContextProvider } from './formContext'
 import { SectionGeneral } from './section-general'
 import { SectionLocation } from './section-location'
 import { SectionSourceImages } from './section-source-images'
 
-enum Section {
+export enum Section {
   General = 'general',
   Location = 'location',
   SourceImages = 'source-images',
@@ -20,102 +21,156 @@ enum Section {
 
 export const DeploymentDetailsForm = ({
   deployment,
+  startValid,
   title,
   onCancelClick,
   onSubmit,
 }: {
   deployment: Deployment
+  startValid?: boolean
   title: string
   onCancelClick: () => void
-  onSubmit: (data?: DeploymentFieldValues) => void
+  onSubmit: (data: DeploymentFieldValues) => void
+}) => (
+  <FormContextProvider
+    defaultSection={Section.General}
+    defaultFormState={{
+      [Section.General]: {
+        values: {
+          name: deployment.name,
+        },
+        isValid: startValid,
+      },
+      [Section.Location]: {
+        values: {
+          latitude: deployment.latitude,
+          longitude: deployment.longitude,
+        },
+        isValid: startValid,
+      },
+      [Section.SourceImages]: {
+        values: {
+          path: deployment.path,
+        },
+        isValid: startValid,
+      },
+    }}
+  >
+    <Dialog.Header title={title}>
+      <div className={styles.buttonWrapper}>
+        <Button
+          label={translate(STRING.CANCEL)}
+          onClick={onCancelClick}
+          type="button"
+        />
+        <SaveButton onSubmit={onSubmit} />
+      </div>
+    </Dialog.Header>
+    <div className={styles.content}>
+      <div className={styles.section}>
+        <FormStepper />
+      </div>
+      <SectionContent deployment={deployment} />
+    </div>
+  </FormContextProvider>
+)
+
+const SaveButton = ({
+  onSubmit,
+}: {
+  onSubmit: (data: DeploymentFieldValues) => void
 }) => {
-  const [currentSection, setCurrentSection] = useState(Section.General)
+  const { formState, submitFormSection } = useContext(FormContext)
+
+  const allValid = useMemo(() => {
+    const someInvalid = Object.values(formState).some(
+      (section) => !section.isValid
+    )
+    return !someInvalid
+  }, [formState])
+
+  const someDirty = useMemo(() => {
+    const someDirty = Object.values(formState).some(
+      (section) => section.isDirty
+    )
+    return someDirty
+  }, [formState])
 
   return (
-    <>
-      <Dialog.Header title={title}>
-        <div className={styles.buttonWrapper}>
-          <Button
-            label={translate(STRING.CANCEL)}
-            onClick={onCancelClick}
-            type="button"
-          />
-          <Button
-            label={translate(STRING.SAVE)}
-            onClick={() => onSubmit()}
-            theme={ButtonTheme.Success}
-          />
-        </div>
-      </Dialog.Header>
-      <div className={styles.content}>
-        <div className={styles.section}>
-          <FormStepper
-            items={[
-              {
-                id: Section.General,
-                label: translate(STRING.DETAILS_LABEL_GENERAL),
-              },
-              {
-                id: Section.Location,
-                label: translate(STRING.DETAILS_LABEL_LOCATION),
-              },
-              {
-                id: Section.SourceImages,
-                label: translate(STRING.DETAILS_LABEL_SOURCE_IMAGES),
-              },
-            ]}
-            currentItem={currentSection}
-            setCurrentItem={(item) => setCurrentSection(item as Section)}
-          />
-        </div>
-        <SectionContent
-          currentSection={currentSection}
-          setCurrentSection={setCurrentSection}
-          deployment={deployment}
-        />
-      </div>
-    </>
+    <Button
+      label={translate(STRING.SAVE)}
+      disabled={!allValid || !someDirty}
+      onClick={() => {
+        submitFormSection()
+        requestAnimationFrame(() => {
+          const data = Object.values(formState).reduce(
+            (result: any, section) => {
+              if (section.isValid) {
+                result = { ...result, ...section.values }
+              }
+              return result
+            },
+            {}
+          )
+          onSubmit(data)
+        })
+      }}
+      theme={ButtonTheme.Success}
+    />
   )
 }
 
-const SectionContent = ({
-  currentSection,
-  deployment,
-  setCurrentSection,
-}: {
-  currentSection: Section
-  deployment: Deployment
-  setCurrentSection: (section: Section) => void
-}) => {
+const FormStepper = () => {
+  const { currentSection, setCurrentSection } = useContext(FormContext)
+
+  return (
+    <_FormStepper
+      items={[
+        {
+          id: Section.General,
+          label: translate(STRING.DETAILS_LABEL_GENERAL),
+        },
+        {
+          id: Section.Location,
+          label: translate(STRING.DETAILS_LABEL_LOCATION),
+        },
+        {
+          id: Section.SourceImages,
+          label: translate(STRING.DETAILS_LABEL_SOURCE_IMAGES),
+        },
+      ]}
+      currentItem={currentSection}
+      setCurrentItem={setCurrentSection}
+    />
+  )
+}
+
+const SectionContent = ({ deployment }: { deployment: Deployment }) => {
+  const { currentSection, setCurrentSection, setFormSectionValues } =
+    useContext(FormContext)
+
   switch (currentSection) {
     case Section.General:
       return (
         <SectionGeneral
           deployment={deployment}
-          onSubmit={(sectionData) => {
-            console.log('sectionData: ', sectionData)
-            setCurrentSection(Section.Location)
-          }}
+          onNext={() => setCurrentSection(Section.Location)}
         />
       )
     case Section.Location:
       return (
         <SectionLocation
-          deployment={deployment}
           onBack={() => setCurrentSection(Section.General)}
-          onSubmit={(sectionData) => {
-            console.log('sectionData: ', sectionData)
-            setCurrentSection(Section.SourceImages)
-          }}
+          onNext={() => setCurrentSection(Section.SourceImages)}
         />
       )
     case Section.SourceImages:
       return (
         <SectionSourceImages
-          deployment={deployment}
           onBack={() => setCurrentSection(Section.Location)}
-          onSubmit={(sectionData) => console.log('sectionData: ', sectionData)}
         />
       )
+    default:
+      return null
   }
 }

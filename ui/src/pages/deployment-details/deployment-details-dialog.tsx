@@ -33,9 +33,11 @@ export const DeploymentDetailsDialog = ({
           ) : (
             <DeploymentDetailsForm
               deployment={deployment}
+              startValid
               title={translate(STRING.DETAILS_LABEL_EDIT_DEPLOYMENT)}
               onCancelClick={() => setIsEditing(false)}
               onSubmit={(data) => {
+                // TODO: Hook up with BE
                 console.log('onSubmit: ', data)
                 onOpenChange(false)
               }}

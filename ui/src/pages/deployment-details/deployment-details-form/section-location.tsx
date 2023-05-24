@@ -1,16 +1,16 @@
 import { FormField } from 'components/form/form-field'
-import {
-  Deployment,
-  DeploymentFieldValues,
-} from 'data-services/models/deployment'
+import { DeploymentFieldValues } from 'data-services/models/deployment'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Map, MarkerPosition } from 'design-system/map/map'
 import _ from 'lodash'
-import { useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { isEmpty } from 'utils/isEmpty'
 import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
 import { config } from './config'
+import { Section } from './deployment-details-form'
+import { FormContext } from './formContext'
 
 type SectionLocationFieldValues = Pick<
   DeploymentFieldValues,
@@ -23,35 +23,49 @@ const DEFAULT_VALUES: SectionLocationFieldValues = {
 }
 
 export const SectionLocation = ({
-  deployment,
   onBack,
-  onSubmit,
+  onNext,
 }: {
-  deployment: Deployment
   onBack: () => void
-  onSubmit: (data: SectionLocationFieldValues) => void
+  onNext: () => void
 }) => {
-  const { control, handleSubmit, setValue } =
-    useForm<SectionLocationFieldValues>({
-      defaultValues: {
-        ...DEFAULT_VALUES,
-        ..._.omitBy(
-          {
-            latitude: deployment.latitude,
-            longitude: deployment.longitude,
-          },
-          _.isUndefined
-        ),
-      },
-      mode: 'onBlur',
-    })
+  const {
+    formSectionRef,
+    formState,
+    setFormSectionStatus,
+    setFormSectionValues,
+  } = useContext(FormContext)
+
+  const defaultValues = {
+    ...DEFAULT_VALUES,
+    ..._.omitBy(formState[Section.Location].values, isEmpty),
+  }
+
+  const {
+    control,
+    handleSubmit,
+    formState: { isDirty, isValid },
+    setValue,
+  } = useForm<SectionLocationFieldValues>({
+    defaultValues,
+    mode: 'onBlur',
+  })
 
   const [markerPosition, setMarkerPosition] = useState(
-    new MarkerPosition(deployment.latitude, deployment.longitude)
+    new MarkerPosition(defaultValues.latitude, defaultValues.longitude)
   )
 
+  useEffect(() => {
+    setFormSectionStatus(Section.Location, { isDirty, isValid })
+  }, [isDirty, isValid])
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form
+      ref={formSectionRef}
+      onSubmit={handleSubmit((values) =>
+        setFormSectionValues(Section.Location, values)
+      )}
+    >
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>
           {translate(STRING.DETAILS_LABEL_LOCATION)}
@@ -99,7 +113,7 @@ export const SectionLocation = ({
           <Button label={translate(STRING.BACK)} onClick={onBack} />
           <Button
             label={translate(STRING.NEXT)}
-            type="submit"
+            onClick={onNext}
             theme={ButtonTheme.Success}
           />
         </div>

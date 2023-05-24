@@ -60,7 +60,7 @@ export const MinimapControl = () => {
   const [renderMinimap, setRenderMinimap] = useState(false)
 
   useEffect(() => {
-    window.requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
       setRenderMinimap(!!parentMap)
     })
   }, [parentMap])

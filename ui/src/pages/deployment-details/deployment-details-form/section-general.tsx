@@ -6,10 +6,14 @@ import {
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
+import { useContext, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
+import { isEmpty } from 'utils/isEmpty'
 import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
 import { config } from './config'
+import { Section } from './deployment-details-form'
+import { FormContext } from './formContext'
 
 type SectionGeneralFieldValues = Pick<
   DeploymentFieldValues,
@@ -24,26 +28,41 @@ const DEFAULT_VALUES: SectionGeneralFieldValues = {
 
 export const SectionGeneral = ({
   deployment,
-  onSubmit,
+  onNext,
 }: {
   deployment: Deployment
-  onSubmit: (data: SectionGeneralFieldValues) => void
+  onNext: () => void
 }) => {
-  const { control, handleSubmit } = useForm<SectionGeneralFieldValues>({
+  const {
+    formSectionRef,
+    formState,
+    setFormSectionStatus,
+    setFormSectionValues,
+  } = useContext(FormContext)
+
+  const {
+    control,
+    handleSubmit,
+    formState: { isDirty, isValid },
+  } = useForm<SectionGeneralFieldValues>({
     defaultValues: {
       ...DEFAULT_VALUES,
-      ..._.omitBy(
-        {
-          name: deployment.name,
-        },
-        _.isUndefined
-      ),
+      ..._.omitBy(formState[Section.General].values, isEmpty),
     },
     mode: 'onBlur',
   })
 
+  useEffect(() => {
+    setFormSectionStatus(Section.General, { isDirty, isValid })
+  }, [isDirty, isValid])
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form
+      ref={formSectionRef}
+      onSubmit={handleSubmit((values) =>
+        setFormSectionValues(Section.General, values)
+      )}
+    >
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>
           {translate(STRING.DETAILS_LABEL_GENERAL)}
@@ -62,7 +81,11 @@ export const SectionGeneral = ({
           </div>
         </div>
         <div className={styles.formActions}>
-          <Button label="Next" type="submit" theme={ButtonTheme.Success} />
+          <Button
+            label={translate(STRING.NEXT)}
+            onClick={onNext}
+            theme={ButtonTheme.Success}
+          />
         </div>
       </div>
     </form>
