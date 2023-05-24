@@ -5,10 +5,10 @@ import {
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper as _FormStepper } from 'design-system/components/form-stepper/form-stepper'
-import { useContext, useMemo } from 'react'
+import { useCallback, useContext, useMemo } from 'react'
+import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
-import { FormContext, FormContextProvider } from './formContext'
 import { SectionGeneral } from './section-general'
 import { SectionLocation } from './section-location'
 import { SectionSourceImages } from './section-source-images'
@@ -70,7 +70,7 @@ export const DeploymentDetailsForm = ({
       <div className={styles.section}>
         <FormStepper />
       </div>
-      <SectionContent deployment={deployment} />
+      <FormSection deployment={deployment} />
     </div>
   </FormContextProvider>
 )
@@ -96,25 +96,24 @@ const SaveButton = ({
     return someDirty
   }, [formState])
 
+  const onSaveClick = useCallback(() => {
+    submitFormSection()
+    requestAnimationFrame(() => {
+      const data = Object.values(formState).reduce((result: any, section) => {
+        if (section.isValid) {
+          result = { ...result, ...section.values }
+        }
+        return result
+      }, {})
+      onSubmit(data)
+    })
+  }, [formState, submitFormSection])
+
   return (
     <Button
       label={translate(STRING.SAVE)}
       disabled={!allValid || !someDirty}
-      onClick={() => {
-        submitFormSection()
-        requestAnimationFrame(() => {
-          const data = Object.values(formState).reduce(
-            (result: any, section) => {
-              if (section.isValid) {
-                result = { ...result, ...section.values }
-              }
-              return result
-            },
-            {}
-          )
-          onSubmit(data)
-        })
-      }}
+      onClick={onSaveClick}
       theme={ButtonTheme.Success}
     />
   )
@@ -145,9 +144,8 @@ const FormStepper = () => {
   )
 }
 
-const SectionContent = ({ deployment }: { deployment: Deployment }) => {
-  const { currentSection, setCurrentSection, setFormSectionValues } =
-    useContext(FormContext)
+const FormSection = ({ deployment }: { deployment: Deployment }) => {
+  const { currentSection, setCurrentSection } = useContext(FormContext)
 
   switch (currentSection) {
     case Section.General:

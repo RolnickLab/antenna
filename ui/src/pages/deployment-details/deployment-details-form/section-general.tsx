@@ -8,12 +8,12 @@ import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { useContext, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
-import { isEmpty } from 'utils/isEmpty'
+import { FormContext } from 'utils/formContext/formContext'
+import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
 import { config } from './config'
 import { Section } from './deployment-details-form'
-import { FormContext } from './formContext'
 
 type SectionGeneralFieldValues = Pick<
   DeploymentFieldValues,
