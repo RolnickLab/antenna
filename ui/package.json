@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.0.3",
-    "@radix-ui/react-dialog": "^1.0.3",
+    "@radix-ui/react-dialog": "^1.0.4-rc.9",
     "@radix-ui/react-popover": "^1.0.5",
     "@radix-ui/react-select": "^1.2.1",
     "@radix-ui/react-slider": "^1.1.1",
