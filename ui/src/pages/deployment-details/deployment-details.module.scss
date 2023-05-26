@@ -1,0 +1,43 @@
+@import 'design-system/variables/variables.scss';
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.content {
+  width: 720px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.section {
+  padding: 32px;
+  box-sizing: border-box;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid $color-neutral-100;
+  }
+}
+
+.sectionTitle {
+  @include paragraph-large();
+  color: $color-neutral-800;
+  font-weight: 600;
+  margin: 0 0 32px;
+}
+
+.sectionContent {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.sectionRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .sectionRow {
+    grid-template-columns: 1fr;
+  }
+}

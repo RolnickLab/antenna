@@ -1,12 +1,16 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useDeployments } from 'data-services/hooks/useDeployments'
 import { Table } from 'design-system/components/table/table/table'
+import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details'
 import { Error } from 'pages/error/error'
+import { useNavigate, useParams } from 'react-router'
 import { useClientSideSort } from 'utils/useClientSideSort'
 import { columns } from './deployment-columns'
 import styles from './deployments.module.scss'
 
 export const Deployments = () => {
+  const { id } = useParams()
+  const navigate = useNavigate()
   const { deployments, isLoading, isFetching, error } = useDeployments()
   const { sortedItems, sort, setSort } = useClientSideSort({
     items: deployments,
@@ -16,6 +20,8 @@ export const Deployments = () => {
   if (!isLoading && error) {
     return <Error />
   }
+
+  const deployment = deployments?.find((o) => o.id === id)
 
   return (
     <>
@@ -31,6 +37,11 @@ export const Deployments = () => {
         sortable
         sortSettings={sort}
         onSortSettingsChange={setSort}
+      />
+      <DeploymentDetailsDialog
+        deployment={deployment}
+        open={!!deployment}
+        onOpenChange={() => navigate('/deployments')}
       />
     </>
   )

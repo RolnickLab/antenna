@@ -10,11 +10,31 @@
   border: 1px solid $color-neutral-100;
   box-sizing: border-box;
   overflow-x: auto;
+
+  &:not(:last-child) {
+    margin-bottom: 32px;
+  }
 }
 
 .content {
   display: inline-block;
   min-width: 100%;
+}
+
+.about {
+  display: flex;
+}
+
+.aboutImage {
+  flex: 1;
+  background-color: $color-generic-white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aboutInfo {
+  max-width: 600px;
 }
 
 .plots {
@@ -23,12 +43,38 @@
   gap: 16px;
 }
 
-.title {
+.label {
   display: block;
   @include label();
   font-weight: 600;
   color: $color-neutral-500;
-  margin-bottom: 32px;
+  margin: 0 0 32px;
+}
+
+.title {
+  display: block;
+  @include paragraph-large();
+  font-weight: 600;
+  color: $color-neutral-800;
+  margin: 0 0 16px;
+}
+
+.text {
+  display: block;
+  @include paragraph-medium();
+  color: $color-neutral-800;
+  margin-bottom: 16px;
+  margin: 0 0 16px;
+}
+
+@media only screen and (max-width: $medium-screen-breakpoint) {
+  .aboutImage {
+    display: none;
+  }
+
+  .aboutInfo {
+    max-width: none;
+  }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

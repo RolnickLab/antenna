@@ -39,7 +39,7 @@ export const Occurrences = () => {
     return <Error />
   }
 
-  const occurence = occurrences?.find((o) => o.id === id)
+  const occurrence = occurrences?.find((o) => o.id === id)
 
   return (
     <>
@@ -98,7 +98,7 @@ export const Occurrences = () => {
 
       <Dialog.Root open={!!id} onOpenChange={() => navigate('/occurrences')}>
         <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-          <OccurrenceDetails occurrence={occurence} />
+          <OccurrenceDetails occurrence={occurrence} />
         </Dialog.Content>
       </Dialog.Root>
     </>

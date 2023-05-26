@@ -26,4 +26,8 @@ export class Deployment {
   get numImages(): number {
     return this._deployment.num_source_images
   }
+
+  get path(): string {
+    return this._deployment.image_base_path
+  }
 }
