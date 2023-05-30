@@ -17,6 +17,7 @@ export const DeploymentDetailsDialog = ({
   const [isEditing, setIsEditing] = useState(false)
 
   useEffect(() => {
+    // Reset to view mode when a new deployment is selected
     setIsEditing(false)
   }, [deployment?.id])
 

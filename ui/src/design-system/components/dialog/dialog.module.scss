@@ -2,6 +2,9 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+$dialog-padding-large: 64px;
+$dialog-padding-medium: 32px;
+
 .dialogOverlay {
   background-color: rgba(0, 0, 0, 0.2);
   position: fixed;
@@ -16,8 +19,8 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  height: calc(100vh - 128px);
-  max-width: calc(100% - 128px);
+  max-width: calc(100% - (2 * $dialog-padding-large));
+  height: calc(100vh - (2 * $dialog-padding-large));
   border-radius: 4px;
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
@@ -86,8 +89,8 @@
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
   .dialog {
-    max-width: calc(100% - 64px);
-    max-height: calc(100vh - 64px);
+    max-width: calc(100% - (2 * $dialog-padding-medium));
+    max-height: calc(100vh - (2 * $dialog-padding-medium));
   }
 }
 
