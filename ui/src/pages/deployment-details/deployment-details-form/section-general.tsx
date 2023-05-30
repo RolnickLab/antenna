@@ -6,7 +6,7 @@ import {
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
-import { useContext, useEffect } from 'react'
+import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
@@ -14,6 +14,7 @@ import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
 import { config } from './config'
 import { Section } from './deployment-details-form'
+import { useSyncSectionStatus } from './useSyncSectionStatus'
 
 type SectionGeneralFieldValues = Pick<
   DeploymentFieldValues,
@@ -33,18 +34,10 @@ export const SectionGeneral = ({
   deployment: Deployment
   onNext: () => void
 }) => {
-  const {
-    formSectionRef,
-    formState,
-    setFormSectionStatus,
-    setFormSectionValues,
-  } = useContext(FormContext)
+  const { formSectionRef, formState, setFormSectionValues } =
+    useContext(FormContext)
 
-  const {
-    control,
-    handleSubmit,
-    formState: { isDirty, isValid },
-  } = useForm<SectionGeneralFieldValues>({
+  const { control, handleSubmit } = useForm<SectionGeneralFieldValues>({
     defaultValues: {
       ...DEFAULT_VALUES,
       ..._.omitBy(formState[Section.General].values, isEmpty),
@@ -52,9 +45,7 @@ export const SectionGeneral = ({
     mode: 'onBlur',
   })
 
-  useEffect(() => {
-    setFormSectionStatus(Section.General, { isDirty, isValid })
-  }, [isDirty, isValid])
+  useSyncSectionStatus(Section.General, control)
 
   return (
     <form

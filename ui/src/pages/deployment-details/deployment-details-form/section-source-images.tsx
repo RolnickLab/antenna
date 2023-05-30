@@ -2,7 +2,7 @@ import { FormField } from 'components/form/form-field'
 import { DeploymentFieldValues } from 'data-services/models/deployment'
 import { Button } from 'design-system/components/button/button'
 import _ from 'lodash'
-import { useContext, useEffect } from 'react'
+import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
@@ -10,6 +10,7 @@ import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
 import { config } from './config'
 import { Section } from './deployment-details-form'
+import { useSyncSectionStatus } from './useSyncSectionStatus'
 
 type SectionSourceImagesFieldValues = Pick<DeploymentFieldValues, 'path'>
 
@@ -18,18 +19,10 @@ const DEFAULT_VALUES: SectionSourceImagesFieldValues = {
 }
 
 export const SectionSourceImages = ({ onBack }: { onBack: () => void }) => {
-  const {
-    formSectionRef,
-    formState,
-    setFormSectionStatus,
-    setFormSectionValues,
-  } = useContext(FormContext)
+  const { formSectionRef, formState, setFormSectionValues } =
+    useContext(FormContext)
 
-  const {
-    control,
-    handleSubmit,
-    formState: { isDirty, isValid },
-  } = useForm<SectionSourceImagesFieldValues>({
+  const { control, handleSubmit } = useForm<SectionSourceImagesFieldValues>({
     defaultValues: {
       ...DEFAULT_VALUES,
       ..._.omitBy(formState[Section.SourceImages].values, isEmpty),
@@ -37,9 +30,7 @@ export const SectionSourceImages = ({ onBack }: { onBack: () => void }) => {
     mode: 'onBlur',
   })
 
-  useEffect(() => {
-    setFormSectionStatus(Section.SourceImages, { isDirty, isValid })
-  }, [isDirty, isValid])
+  useSyncSectionStatus(Section.SourceImages, control)
 
   return (
     <form
