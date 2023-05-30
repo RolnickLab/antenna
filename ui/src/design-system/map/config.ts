@@ -8,7 +8,7 @@ export const ATTRIBUTION =
 export const TILE_LAYER_URL =
   'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
-export const DEFAULT_ZOOM = 13
+export const DEFAULT_ZOOM = 10
 
 export const MIN_ZOOM = 2
 

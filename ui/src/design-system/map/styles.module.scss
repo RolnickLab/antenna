@@ -1,16 +1,11 @@
-@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
 
-.wrapper {
+.mapContainer {
+  width: 100%;
+  height: 320px;
   border: 1px solid $color-neutral-100;
   border-radius: 4px;
   overflow: hidden;
   position: relative;
   z-index: 0;
-}
-
-.mapContainer {
-  width: 100%;
-  height: 320px;
 }
