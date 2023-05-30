@@ -1,4 +1,5 @@
-import { MarkerPosition } from 'design-system/map/multiple-marker-map'
+import { MarkerPosition } from 'design-system/map/types'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 export const EXAMPLE_DATA = {
@@ -10,9 +11,9 @@ export const EXAMPLE_DATA = {
 export const EXAMPLE_POPUP_CONTENT = (
   <>
     <p>
-      <a href="/deployments/vermont-luna-sample">
+      <Link to="/deployments/vermont-luna-sample">
         <span>vermont-luna-sample</span>
-      </a>
+      </Link>
     </p>
     <p>
       <span>{translate(STRING.DETAILS_LABEL_SESSIONS)}: 1</span>

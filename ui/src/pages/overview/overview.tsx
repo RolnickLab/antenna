@@ -1,5 +1,5 @@
 import { Plot } from 'design-system/components/plot/plot'
-import { MultipleMarkerMap } from 'design-system/map/multiple-marker-map'
+import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-map'
 import { EXAMPLE_DATA, EXAMPLE_MARKERS } from './example-data'
 import styles from './overview.module.scss'
 
@@ -19,7 +19,7 @@ export const Overview = () => {
                 Curabitur a sapien quis ligula suscipit tristique ullamcorper
                 porta tellus. Sed non quam lectus.
               </p>
-              <MultipleMarkerMap markers={EXAMPLE_MARKERS} />
+              <MultiMarkerMap markers={EXAMPLE_MARKERS} />
             </div>
           </div>
         </div>

@@ -21,11 +21,11 @@ export class Deployment {
   }
 
   get latitude(): number {
-    return 52.30767 // TODO: Update when BE is returning latitude
+    return 0 // TODO: Update when BE is returning latitude
   }
 
   get longitude(): number {
-    return 5.04011 // TODO: Update when BE is returning longitude
+    return 0 // TODO: Update when BE is returning longitude
   }
 
   get name(): string {

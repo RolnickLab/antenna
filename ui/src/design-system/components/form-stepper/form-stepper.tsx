@@ -58,9 +58,9 @@ const FormStepperItem = ({
       [styles.active]: active,
     })}
     onClick={onClick}
-    onKeyDown={(event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
+    onKeyDown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
         onClick()
       }
     }}
