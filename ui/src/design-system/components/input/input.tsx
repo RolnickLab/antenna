@@ -60,14 +60,14 @@ export const InputValue = ({
   value: _value,
 }: {
   label: string
-  value?: string | number
+  value: string | number
 }) => {
   const value = _.isNumber(_value) ? _value.toLocaleString() : _value
 
   return (
     <div>
       <span className={styles.label}>{label}</span>
-      <span className={styles.value}>{value?.length ? value : '-'}</span>
+      <span className={styles.value}>{value}</span>
     </div>
   )
 }
