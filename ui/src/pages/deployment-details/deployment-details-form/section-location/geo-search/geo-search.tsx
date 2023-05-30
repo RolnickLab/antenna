@@ -28,6 +28,7 @@ export const GeoSearch = ({
       items={items}
       label={translate(STRING.SEARCH_MAP)}
       searchString={searchString}
+      shouldFilter={false}
       onItemSelect={(id) => {
         const item = data?.find((i) => i.osmId === id)
         if (item) {

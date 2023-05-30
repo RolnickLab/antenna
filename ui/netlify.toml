@@ -31,6 +31,14 @@ force = true
 headers = { X-From = "Netlify" }
 
 [[redirects]]
+# Proxy /nominatim/ requests to Nominatim API (used for OSM search)
+from = "/nominatim/"
+to = "https://nominatim.openstreetmap.org/search/"
+status = 200
+force = true
+headers = { X-From = "Netlify" }
+
+[[redirects]]
 # Redirect root to overview page
 from = "/"
 to = "/overview"
