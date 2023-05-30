@@ -1,17 +1,18 @@
 import { FormField } from 'components/form/form-field'
 import { DeploymentFieldValues } from 'data-services/models/deployment'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { Map, MarkerPosition } from 'design-system/map/map'
+import { MarkerPosition } from 'design-system/map/types'
 import _ from 'lodash'
-import { useContext, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
-import styles from '../styles.module.scss'
-import { config } from './config'
-import { Section } from './deployment-details-form'
-import { useSyncSectionStatus } from './useSyncSectionStatus'
+import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
+import styles from '../../styles.module.scss'
+import { config } from '../config'
+import { Section } from '../types'
+import { LocationMap } from './location-map/location-map'
 
 type SectionLocationFieldValues = Pick<
   DeploymentFieldValues,
@@ -33,10 +34,18 @@ export const SectionLocation = ({
   const { formSectionRef, formState, setFormSectionValues } =
     useContext(FormContext)
 
-  const defaultValues = {
-    ...DEFAULT_VALUES,
-    ..._.omitBy(formState[Section.Location].values, isEmpty),
-  }
+  const defaultValues = useMemo(
+    () => ({
+      ...DEFAULT_VALUES,
+      ..._.omitBy(formState[Section.Location].values, isEmpty),
+    }),
+    [formState]
+  )
+
+  const defaultMarkerPosition = new MarkerPosition(
+    defaultValues.latitude,
+    defaultValues.longitude
+  )
 
   const { control, handleSubmit, setValue } =
     useForm<SectionLocationFieldValues>({
@@ -46,9 +55,7 @@ export const SectionLocation = ({
 
   useSyncSectionStatus(Section.Location, control)
 
-  const [markerPosition, setMarkerPosition] = useState(
-    new MarkerPosition(defaultValues.latitude, defaultValues.longitude)
-  )
+  const [markerPosition, setMarkerPosition] = useState(defaultMarkerPosition)
 
   return (
     <form
@@ -62,6 +69,27 @@ export const SectionLocation = ({
           {translate(STRING.DETAILS_LABEL_LOCATION)}
         </h2>
         <div className={styles.sectionContent}>
+          <LocationMap
+            center={markerPosition}
+            markerPosition={markerPosition}
+            resetTo={defaultMarkerPosition}
+            onMarkerPositionChange={(updatedMarkesPosition) => {
+              const updatedLat = _.round(updatedMarkesPosition.lat, 5)
+              const updatedLng = _.round(updatedMarkesPosition.lng, 5)
+
+              setValue('latitude', updatedLat, {
+                shouldDirty: true,
+                shouldTouch: true,
+              })
+
+              setValue('longitude', updatedLng, {
+                shouldDirty: true,
+                shouldTouch: true,
+              })
+
+              setMarkerPosition(new MarkerPosition(updatedLat, updatedLng))
+            }}
+          />
           <div className={styles.sectionRow}>
             <FormField
               name="latitude"
@@ -70,8 +98,8 @@ export const SectionLocation = ({
               type="number"
               onBlur={(e) => {
                 const lat = _.toNumber(e.currentTarget.value)
-                setMarkerPosition(new MarkerPosition(lat, markerPosition.lng))
                 setValue('latitude', lat)
+                setMarkerPosition(new MarkerPosition(lat, markerPosition.lng))
               }}
             />
             <FormField
@@ -81,24 +109,11 @@ export const SectionLocation = ({
               type="number"
               onBlur={(e) => {
                 const lng = _.toNumber(e.currentTarget.value)
-                setMarkerPosition(new MarkerPosition(markerPosition.lat, lng))
                 setValue('longitude', lng)
+                setMarkerPosition(new MarkerPosition(markerPosition.lat, lng))
               }}
             />
           </div>
-          <Map
-            center={markerPosition}
-            markerPosition={markerPosition}
-            markerDraggable
-            onMarkerPositionChange={(updatedMarkesPosition) => {
-              const updatedLat = _.round(updatedMarkesPosition.lat, 5)
-              const updatedLng = _.round(updatedMarkesPosition.lng, 5)
-
-              setValue('latitude', updatedLat)
-              setValue('longitude', updatedLng)
-              setMarkerPosition(new MarkerPosition(updatedLat, updatedLng))
-            }}
-          />
         </div>
         <div className={styles.formActions}>
           <Button label={translate(STRING.BACK)} onClick={onBack} />

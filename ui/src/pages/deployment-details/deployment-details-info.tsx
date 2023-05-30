@@ -2,7 +2,8 @@ import { Deployment } from 'data-services/models/deployment'
 import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
-import { Map, MarkerPosition } from 'design-system/map/map'
+import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-map'
+import { MarkerPosition } from 'design-system/map/types'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
@@ -53,6 +54,7 @@ export const DeploymentDetailsInfo = ({
           {translate(STRING.DETAILS_LABEL_LOCATION)}
         </h2>
         <div className={styles.sectionContent}>
+          <DeploymentMap deployment={deployment} />
           <div className={styles.sectionRow}>
             <InputValue
               label={translate(STRING.DETAILS_LABEL_LATITUDE)}
@@ -63,7 +65,6 @@ export const DeploymentDetailsInfo = ({
               value={deployment.longitude}
             />
           </div>
-          <DeploymentMap deployment={deployment} />
         </div>
       </div>
 
@@ -109,10 +110,14 @@ export const DeploymentDetailsInfo = ({
 )
 
 const DeploymentMap = ({ deployment }: { deployment: Deployment }) => {
-  const markerPosition = useMemo(
-    () => new MarkerPosition(deployment.latitude, deployment.longitude),
+  const markers = useMemo(
+    () => [
+      {
+        position: new MarkerPosition(deployment.latitude, deployment.longitude),
+      },
+    ],
     [deployment]
   )
 
-  return <Map center={markerPosition} markerPosition={markerPosition} />
+  return <MultiMarkerMap markers={markers} />
 }
