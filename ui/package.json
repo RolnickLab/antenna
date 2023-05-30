@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.0.3",
-    "@radix-ui/react-dialog": "^1.0.3",
+    "@radix-ui/react-dialog": "^1.0.4-rc.9",
     "@radix-ui/react-popover": "^1.0.5",
     "@radix-ui/react-select": "^1.2.1",
     "@radix-ui/react-slider": "^1.1.1",
@@ -26,6 +26,7 @@
     "plotly.js": "^2.20.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-hook-form": "^7.43.9",
     "react-leaflet": "^4.2.1",
     "react-plotly.js": "^2.6.0",
     "react-router-dom": "^6.8.2",

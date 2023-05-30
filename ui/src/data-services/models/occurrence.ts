@@ -1,5 +1,5 @@
 import _ from 'lodash'
-import { getCompactDatespanString } from 'utils/getCompactDatespanString'
+import { getCompactDatespanString } from 'utils/getCompactDatespanString/getCompactDatespanString'
 
 export type ServerOccurrence = any // TODO: Update this type
 

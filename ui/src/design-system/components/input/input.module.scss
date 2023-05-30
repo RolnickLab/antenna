@@ -1,28 +1,15 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
-/* Generic input styles */
+.container {
+  max-width: 100%;
+}
 
-@mixin input-container {
+.line {
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  border-radius: 4px;
-  padding: 8px 12px;
-  @include paragraph-small();
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
-  box-sizing: border-box;
-}
-
-@mixin input-container-hover {
-  opacity: 0.7;
-}
-
-@mixin input-container-focus {
-  border-color: $color-success-600;
-  box-shadow: 0 0 0 4px $color-success-100;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 4px;
 }
 
 .label {
@@ -30,7 +17,14 @@
   @include paragraph-small();
   font-weight: 600;
   color: $color-neutral-800;
-  margin-bottom: 4px;
+}
+
+.error {
+  display: block;
+  @include paragraph-x-small();
+  color: $color-destructive-600;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .value {
@@ -48,11 +42,21 @@
   word-break: break-word;
 }
 
-/* Value input styles */
+.input {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  border-radius: 4px;
+  padding: 8px 12px;
+  @include paragraph-small();
+  color: $color-neutral-800;
+  border: 1px solid $color-neutral-300;
+  box-sizing: border-box;
 
-.valueInput {
-  @include input-container();
-  margin-bottom: 8px;
+  &:not(:last-child) {
+    margin-bottom: 8px;
+  }
 
   &::placeholder {
     color: $color-neutral-500;
@@ -60,34 +64,26 @@
   }
 
   &:hover:not(:focus) {
-    @include input-container-hover();
+    opacity: 0.7;
   }
 
   &:focus {
-    @include input-container-focus();
+    border-color: $color-success-600;
+    box-shadow: 0 0 0 4px $color-success-100;
+  }
+
+  &[aria-invalid='true'] {
+    border-color: $color-destructive-600;
+
+    &:focus {
+      box-shadow: 0 0 0 4px $color-destructive-100;
+    }
   }
 }
 
-/* Path input styles */
-
-.pathInput {
-  @include input-container();
-  margin-bottom: 8px;
-  cursor: pointer;
-
-  &.placeholder {
-    color: $color-neutral-500;
-  }
-
-  &:before {
-    content: attr(data-content);
-  }
-
-  &:hover:not(:focus) {
-    @include input-container-hover();
-  }
-
-  &:focus {
-    @include input-container-focus();
-  }
+.value {
+  display: block;
+  @include paragraph-small();
+  color: $color-neutral-500;
+  margin: 8px 0;
 }

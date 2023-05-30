@@ -10,15 +10,25 @@ export enum ButtonTheme {
 }
 
 interface ButtonProps {
-  label: string
+  disabled?: boolean
   icon?: IconType
+  label: string
   theme?: ButtonTheme
+  type?: 'submit' | 'button'
   onClick?: () => void
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ ...props }, forwardedRef) => {
-    const { label, icon, theme = ButtonTheme.Default, onClick, ...rest } = props
+    const {
+      disabled,
+      icon,
+      label,
+      theme = ButtonTheme.Default,
+      type = 'button',
+      onClick,
+      ...rest
+    } = props
 
     const iconTheme =
       theme === ButtonTheme.Success ? IconTheme.Light : IconTheme.Primary
@@ -29,7 +39,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={classNames(styles.button, {
           [styles.success]: theme === ButtonTheme.Success,
           [styles.plain]: theme === ButtonTheme.Plain,
+          [styles.disabled]: disabled,
         })}
+        disabled={disabled}
+        type={type}
         onClick={onClick}
         {...rest}
       >

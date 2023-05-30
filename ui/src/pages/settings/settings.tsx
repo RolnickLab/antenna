@@ -3,7 +3,7 @@ import { SettingsField } from 'data-services/models/settings'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
-import { Input, PathInput } from 'design-system/components/input/input'
+import { Input } from 'design-system/components/input/input'
 import { Select } from 'design-system/components/select/select'
 import { Slider } from 'design-system/components/slider/slider'
 import { STRING, translate } from 'utils/language'
@@ -26,7 +26,7 @@ export const Settings = () => {
           <div className={styles.buttonWrapper}>
             <Button label={translate(STRING.RESET)} />
             <Button
-              label={translate(STRING.SAVE_CHANGES)}
+              label={translate(STRING.SAVE)}
               theme={ButtonTheme.Success}
             />
           </div>
@@ -60,11 +60,11 @@ const SettingsFieldComponent = ({ field }: { field: SettingsField }) => {
       )
     case 'path':
       return (
-        <PathInput
+        <Input
           name={field.id}
-          placeholder={translate(STRING.SELECT_PATH)}
           label={field.title}
           description={field.description}
+          type="text"
         />
       )
     case 'options':

@@ -1,80 +1,59 @@
-import classNames from 'classnames'
 import _ from 'lodash'
+import { ChangeEvent, FocusEvent, forwardRef } from 'react'
 import styles from './input.module.scss'
 
 interface InputProps {
   description?: string
+  error?: string
   label: string
   name: string
-
   placeholder?: string
   value?: string | number
-  onBlur?: () => void
-  onChange?: (value: string | number) => void
+  type?: 'text' | 'number'
+  onBlur?: (e: FocusEvent<HTMLInputElement>) => void
+  onChange?: (e: ChangeEvent<HTMLInputElement>) => void
+  onFocus?: (e: FocusEvent<HTMLInputElement>) => void
 }
 
-export const Input = ({
-  description,
-  label,
-  name,
-  placeholder,
-  type,
-  value,
-  onBlur,
-  onChange,
-}: InputProps & { type?: 'text' | 'number' }) => {
-  const hintName = `hint-${name}`
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+  ({ ...props }, forwardedRef) => {
+    const { description, error, label, name, type, ...rest } = props
 
-  return (
-    <div>
-      <label className={styles.label} htmlFor={name}>
-        {label}
-      </label>
-      <input
-        aria-describedby={hintName}
-        className={styles.valueInput}
-        id={name}
-        placeholder={placeholder}
-        type={type}
-        value={value}
-        onChange={(e) => onChange?.(e.currentTarget.value)}
-        onBlur={() => onBlur?.()}
-      />
-      <span className={styles.description} id={hintName}>
-        {description}
-      </span>
-    </div>
-  )
-}
+    const hasDescription = !!description?.length
+    const descriptionId = hasDescription ? `description-${name}` : undefined
 
-export const PathInput = ({
-  description,
-  label,
-  name,
-  placeholder,
-}: InputProps) => {
-  const hintName = `hint-${name}`
+    const hasError = !!error?.length
+    const errorId = error ? `error-${name}` : undefined
 
-  return (
-    <div>
-      <label className={styles.label} htmlFor={name}>
-        {label}
-      </label>
-      <button
-        aria-describedby={hintName}
-        className={classNames(styles.pathInput, {
-          [styles.placeholder]: true,
-        })}
-        data-content={placeholder}
-        id={name}
-        onClick={() => alert('Selecting a path is WIP.')}
-      />
-      <span className={styles.description} id={hintName}>
-        {description}
-      </span>
-    </div>
-  )
-}
+    return (
+      <div className={styles.container}>
+        <div className={styles.line}>
+          <label className={styles.label} htmlFor={name}>
+            {label}
+          </label>
+          {hasError ? <span className={styles.error}>{error}</span> : undefined}
+        </div>
+        <input
+          aria-describedby={descriptionId}
+          aria-errormessage={errorId}
+          aria-invalid={hasError}
+          className={styles.input}
+          id={name}
+          name={name}
+          ref={forwardedRef}
+          step={type === 'number' ? 'any' : undefined}
+          type={type}
+          {...rest}
+        />
+        {hasDescription ? (
+          <span className={styles.description} id={descriptionId}>
+            {description}
+          </span>
+        ) : undefined}
+      </div>
+    )
+  }
+)
 
 export const InputValue = ({
   label,

@@ -1,35 +1,27 @@
 import { Deployment } from 'data-services/models/deployment'
+import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
+import { Map, MarkerPosition } from 'design-system/map/map'
+import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
-import styles from './deployment-details.module.scss'
-import { DeploymentMap } from './deployment-map'
+import styles from './styles.module.scss'
 
-export const DeploymentDetailsDialog = ({
+export const DeploymentDetailsInfo = ({
   deployment,
-  open,
-  onOpenChange,
+  title,
+  onEditClick,
 }: {
-  deployment?: Deployment
-  open: boolean
-  onOpenChange: () => void
+  deployment: Deployment
+  title: string
+  onEditClick: () => void
 }) => (
-  <Dialog.Root open={open} onOpenChange={onOpenChange}>
-    <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-      <Dialog.Header
-        title={translate(STRING.DETAILS_LABEL_DEPLOYMENT_DETAILS)}
-      />
-      <DeploymentDetails deployment={deployment} />
-    </Dialog.Content>
-  </Dialog.Root>
-)
-
-const DeploymentDetails = ({ deployment }: { deployment?: Deployment }) => {
-  if (!deployment) {
-    return null
-  }
-
-  return (
+  <>
+    <Dialog.Header title={title}>
+      <div className={styles.buttonWrapper}>
+        <Button label={translate(STRING.EDIT)} onClick={onEditClick} />
+      </div>
+    </Dialog.Header>
     <div className={styles.content}>
       <div className={styles.section}>
         <div className={styles.sectionContent}>
@@ -61,7 +53,17 @@ const DeploymentDetails = ({ deployment }: { deployment?: Deployment }) => {
           {translate(STRING.DETAILS_LABEL_LOCATION)}
         </h2>
         <div className={styles.sectionContent}>
-          <DeploymentMap />
+          <div className={styles.sectionRow}>
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_LATITUDE)}
+              value={deployment.latitude}
+            />
+            <InputValue
+              label={translate(STRING.DETAILS_LABEL_LONGITUDE)}
+              value={deployment.longitude}
+            />
+          </div>
+          <DeploymentMap deployment={deployment} />
         </div>
       </div>
 
@@ -103,5 +105,14 @@ const DeploymentDetails = ({ deployment }: { deployment?: Deployment }) => {
         </div>
       </div>
     </div>
+  </>
+)
+
+const DeploymentMap = ({ deployment }: { deployment: Deployment }) => {
+  const markerPosition = useMemo(
+    () => new MarkerPosition(deployment.latitude, deployment.longitude),
+    [deployment]
   )
+
+  return <Map center={markerPosition} markerPosition={markerPosition} />
 }

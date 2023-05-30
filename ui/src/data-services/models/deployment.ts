@@ -1,5 +1,14 @@
 export type ServerDeployment = any // TODO: Update this type
 
+export interface DeploymentFieldValues {
+  device: string
+  name: string
+  latitude: number
+  longitude: number
+  path: string
+  site: string
+}
+
 export class Deployment {
   private readonly _deployment: ServerDeployment
 
@@ -8,7 +17,15 @@ export class Deployment {
   }
 
   get id(): string {
-    return this._deployment.name // TODO: Update when BE is returning an ID
+    return this._deployment.id ?? this._deployment.name // TODO: Update when BE is returning an ID
+  }
+
+  get latitude(): number {
+    return 52.30767 // TODO: Update when BE is returning latitude
+  }
+
+  get longitude(): number {
+    return 5.04011 // TODO: Update when BE is returning longitude
   }
 
   get name(): string {

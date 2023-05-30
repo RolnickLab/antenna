@@ -2,6 +2,11 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+.buttonWrapper {
+  display: flex;
+  gap: 16px;
+}
+
 .content {
   width: 720px;
   max-width: 100%;
@@ -9,12 +14,8 @@
 }
 
 .section {
-  padding: 32px;
+  margin: 32px;
   box-sizing: border-box;
-
-  &:not(:last-child) {
-    border-bottom: 1px solid $color-neutral-100;
-  }
 }
 
 .sectionTitle {
@@ -28,12 +29,25 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+
+  &:not(:last-child) {
+    margin-bottom: 32px;
+  }
 }
 
 .sectionRow {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
+}
+
+.formActions {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  padding: 32px 0;
+  box-sizing: border-box;
+  border-top: 1px solid $color-neutral-100;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
