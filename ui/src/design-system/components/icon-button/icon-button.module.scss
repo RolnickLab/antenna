@@ -34,6 +34,11 @@
     border-color: $color-neutral-500;
   }
 
+  &.plain {
+    background-color: transparent;
+    border-color: transparent;
+  }
+
   &.primary {
     background-color: $color-primary-2-500;
     border-color: $color-primary-2-500;
