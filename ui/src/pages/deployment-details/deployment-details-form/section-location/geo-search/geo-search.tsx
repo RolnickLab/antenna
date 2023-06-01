@@ -2,6 +2,7 @@ import { ComboBox } from 'design-system/components/combo-box/combo-box'
 import { MarkerPosition } from 'design-system/map/types'
 import { useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
+import { useDebounce } from 'utils/useDebounce'
 import { useGeoSearch } from './useGeoSearch'
 
 export const GeoSearch = ({
@@ -10,7 +11,8 @@ export const GeoSearch = ({
   onPositionChange: (position: MarkerPosition) => void
 }) => {
   const [searchString, setSearchString] = useState('')
-  const { data } = useGeoSearch(searchString)
+  const debouncedSearchString = useDebounce(searchString, 200)
+  const { data } = useGeoSearch(debouncedSearchString)
 
   const items = useMemo(() => {
     if (!data?.length) {

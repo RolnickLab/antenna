@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { MarkerPosition } from 'design-system/map/types'
 import _ from 'lodash'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SearchResult, ServerSearchResult } from './types'
 
 const API_URL = '/nominatim'
@@ -18,28 +18,27 @@ const convertServerResult = (result: ServerSearchResult): SearchResult => {
   }
 }
 
-const getFetchUrl = (searchString: string) =>
-  `${API_URL}?format=json&q=${searchString}`
+const getFetchUrl = (searchString: string) => {
+  if (searchString.length) {
+    return `${API_URL}?format=json&q=${searchString}`
+  }
+}
 
 export const useGeoSearch = (searchString: string) => {
-  const [fetchUrl, setFetchUrl] = useState<string>()
-  const debouncedSetFetchUrl = useCallback(_.debounce(setFetchUrl, 200), [
-    setFetchUrl,
-  ])
   const [data, setData] = useState<SearchResult[]>()
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState<boolean>()
   const [error, setError] = useState<Error>()
+  const fetchUrl = getFetchUrl(searchString)
 
   useEffect(() => {
-    debouncedSetFetchUrl(getFetchUrl(searchString))
-  }, [searchString])
+    setError(undefined)
 
-  useEffect(() => {
     if (!fetchUrl) {
+      setData(undefined)
+      setIsLoading(false)
       return
     }
 
-    setError(undefined)
     setIsLoading(true)
     axios
       .get<ServerSearchResult[]>(fetchUrl)
