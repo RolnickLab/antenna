@@ -8,7 +8,7 @@ import {
   useMap,
   useMapEvent,
 } from 'react-leaflet'
-import { MAX_BOUNDS, setup, TILE_LAYER_URL } from './setup'
+import { MAX_BOUNDS, setup, TILE_LAYER_URL } from './config'
 
 setup()
 

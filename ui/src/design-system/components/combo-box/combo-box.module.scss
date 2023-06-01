@@ -1,0 +1,65 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.content {
+  border-radius: 4px;
+  background-color: $color-generic-white;
+  box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  z-index: 2;
+  box-sizing: border-box;
+  padding: 8px;
+  max-width: 480px;
+}
+
+.arrow {
+  fill: $color-generic-white;
+}
+
+.input {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  border-radius: 4px;
+  padding: 8px 12px;
+  @include paragraph-small();
+  color: $color-neutral-800;
+  border: 1px solid $color-neutral-300;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+
+  &::placeholder {
+    color: $color-neutral-500;
+    opacity: 1; /* For Firefox */
+  }
+
+  &:focus {
+    border-color: $color-success-600;
+    box-shadow: 0 0 0 4px $color-success-100;
+  }
+}
+
+.item {
+  all: unset;
+  display: flex;
+  padding: 8px 12px;
+  border-radius: 4px;
+  align-items: center;
+  justify-content: space-between;
+  @include paragraph-small();
+  color: $color-neutral-800;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.7;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+
+  &[aria-selected='true'] {
+    background-color: $color-primary-2-50;
+  }
+}

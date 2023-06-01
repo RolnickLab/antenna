@@ -2,12 +2,14 @@ export enum STRING {
   /* BUTTON */
   BACK,
   CANCEL,
+  CURRENT_LOCATION,
   DEQUE_ALL,
   EDIT,
   NEXT,
   QUEUE_ALL,
   RESET,
   SAVE,
+  SEARCH_MAP,
 
   /* DETAILS_LABEL */
   DETAILS_LABEL_APPEARANCE,
@@ -43,6 +45,7 @@ export enum STRING {
   /* MESSAGE */
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
+  MESSAGE_NO_RESULTS,
 
   /* NAV_ITEM */
   NAV_ITEM_BATCH_ID,
@@ -99,12 +102,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
+  [STRING.CURRENT_LOCATION]: 'Use current location',
   [STRING.DEQUE_ALL]: 'Deque all',
   [STRING.EDIT]: 'Edit',
   [STRING.NEXT]: 'Next',
   [STRING.QUEUE_ALL]: 'Queue all',
   [STRING.RESET]: 'Reset',
   [STRING.SAVE]: 'Save',
+  [STRING.SEARCH_MAP]: 'Search on the map',
 
   /* DETAILS_LABEL */
   [STRING.DETAILS_LABEL_APPEARANCE]: 'Appearance',
@@ -140,6 +145,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* MESSAGE */
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
+  [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_BATCH_ID]: 'Batch ID',

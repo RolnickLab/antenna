@@ -9,15 +9,10 @@ import { useCallback, useContext, useMemo } from 'react'
 import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
 import styles from '../styles.module.scss'
-import { SectionGeneral } from './section-general'
-import { SectionLocation } from './section-location'
-import { SectionSourceImages } from './section-source-images'
-
-export enum Section {
-  General = 'general',
-  Location = 'location',
-  SourceImages = 'source-images',
-}
+import { SectionGeneral } from './section-general/section-general'
+import { SectionLocation } from './section-location/section-location'
+import { SectionSourceImages } from './section-source-images/section-source-images'
+import { Section } from './types'
 
 export const DeploymentDetailsForm = ({
   deployment,

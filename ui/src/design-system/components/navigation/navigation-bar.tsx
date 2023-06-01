@@ -44,7 +44,8 @@ export const NavigationBar = ({
                 })}
                 onClick={() => onItemClick(item.id)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
                     onItemClick(item.id)
                   }
                 }}

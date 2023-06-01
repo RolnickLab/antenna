@@ -13,6 +13,7 @@ interface ButtonProps {
   disabled?: boolean
   icon?: IconType
   label: string
+  loading?: boolean
   theme?: ButtonTheme
   type?: 'submit' | 'button'
   onClick?: () => void
@@ -24,6 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       icon,
       label,
+      loading,
       theme = ButtonTheme.Default,
       type = 'button',
       onClick,
@@ -39,15 +41,15 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={classNames(styles.button, {
           [styles.success]: theme === ButtonTheme.Success,
           [styles.plain]: theme === ButtonTheme.Plain,
-          [styles.disabled]: disabled,
+          [styles.disabled]: disabled ?? loading,
         })}
-        disabled={disabled}
+        disabled={disabled ?? loading}
         type={type}
         onClick={onClick}
         {...rest}
       >
         {icon && <Icon type={icon} theme={iconTheme} size={16} />}
-        <span>{label}</span>
+        <span>{!loading ? label : `${label}...`}</span>
       </button>
     )
   }

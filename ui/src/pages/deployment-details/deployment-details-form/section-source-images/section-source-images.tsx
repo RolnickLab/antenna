@@ -7,10 +7,10 @@ import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
-import styles from '../styles.module.scss'
-import { config } from './config'
-import { Section } from './deployment-details-form'
-import { useSyncSectionStatus } from './useSyncSectionStatus'
+import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
+import styles from '../../styles.module.scss'
+import { config } from '../config'
+import { Section } from '../types'
 
 type SectionSourceImagesFieldValues = Pick<DeploymentFieldValues, 'path'>
 

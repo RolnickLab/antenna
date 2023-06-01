@@ -1,8 +1,9 @@
 import { ComponentMeta, ComponentStory } from '@storybook/react'
-import { MarkerPosition, MultipleMarkerMap } from './multiple-marker-map'
+import { MarkerPosition } from '../types'
+import { MultiMarkerMap } from './multi-marker-map'
 
-type Meta = ComponentMeta<typeof MultipleMarkerMap>
-type Story = ComponentStory<typeof MultipleMarkerMap>
+type Meta = ComponentMeta<typeof MultiMarkerMap>
+type Story = ComponentStory<typeof MultiMarkerMap>
 
 const DEFAULT_MARKER_POSITIONS = [
   { position: new MarkerPosition(52.30767, 5.04011) },
@@ -11,10 +12,10 @@ const DEFAULT_MARKER_POSITIONS = [
 ]
 
 export default {
-  title: 'Components/MultipleMarkerMap',
-  component: MultipleMarkerMap,
+  title: 'Components/Map/MultiMarkerMap',
+  component: MultiMarkerMap,
 } as Meta
 
 export const Default: Story = () => (
-  <MultipleMarkerMap markers={DEFAULT_MARKER_POSITIONS} />
+  <MultiMarkerMap markers={DEFAULT_MARKER_POSITIONS} />
 )
