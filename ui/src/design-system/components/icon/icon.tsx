@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { FunctionComponent } from 'react'
 import { ReactComponent as BatchId } from './assets/batch-id.svg'
 import { ReactComponent as Checkmark } from './assets/checkmark.svg'
 import { ReactComponent as Close } from './assets/close.svg'
@@ -15,6 +16,9 @@ import { ReactComponent as Occurrences } from './assets/occurrences.svg'
 import { ReactComponent as Options } from './assets/options.svg'
 import { ReactComponent as Overview } from './assets/overview.svg'
 import { ReactComponent as PlayButton } from './assets/play-button.svg'
+import { ReactComponent as RadixCheck } from './assets/radix/check.svg'
+import { ReactComponent as RadixQuestionMark } from './assets/radix/question-mark.svg'
+import { ReactComponent as RadixUpdate } from './assets/radix/update.svg'
 import { ReactComponent as Sessions } from './assets/sessions.svg'
 import { ReactComponent as Settings } from './assets/settings.svg'
 import { ReactComponent as Sort } from './assets/sort.svg'
@@ -41,6 +45,9 @@ export enum IconType {
   Options = 'options',
   Overview = 'overview',
   PlayButton = 'play-button',
+  RadixCheck = 'radix-check',
+  RadixQuestionMark = 'radix-question-mark',
+  RadixUpdate = 'radix-update',
   Sessions = 'sessions',
   Settings = 'settings',
   Sort = 'sort',
@@ -58,7 +65,7 @@ export enum IconTheme {
   Success = 'success',
 }
 
-const COMPONENT_MAP = {
+const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.BatchId]: BatchId,
   [IconType.Checkmark]: Checkmark,
   [IconType.Close]: Close,
@@ -75,6 +82,9 @@ const COMPONENT_MAP = {
   [IconType.Options]: Options,
   [IconType.Overview]: Overview,
   [IconType.PlayButton]: PlayButton,
+  [IconType.RadixCheck]: RadixCheck,
+  [IconType.RadixQuestionMark]: RadixQuestionMark,
+  [IconType.RadixUpdate]: RadixUpdate,
   [IconType.Sessions]: Sessions,
   [IconType.Settings]: Settings,
   [IconType.Sort]: Sort,
