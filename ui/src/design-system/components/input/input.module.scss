@@ -5,7 +5,7 @@
   max-width: 100%;
 }
 
-.line {
+.labelRow {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -31,7 +31,6 @@
   display: block;
   @include paragraph-small();
   color: $color-neutral-500;
-  margin: 8px 0;
 }
 
 .description {
@@ -81,9 +80,6 @@
   }
 }
 
-.value {
-  display: block;
-  @include paragraph-small();
-  color: $color-neutral-500;
+.content {
   margin: 8px 0;
 }

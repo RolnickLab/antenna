@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import {
   Deployment,
@@ -71,13 +72,13 @@ export const SectionGeneral = ({
             <FormField name="site" control={control} config={config} />
           </div>
         </div>
-        <div className={styles.formActions}>
-          <Button
-            label={translate(STRING.NEXT)}
-            onClick={onNext}
-            theme={ButtonTheme.Success}
-          />
-        </div>
+      </div>
+      <div className={classNames(styles.section, styles.formActions)}>
+        <Button
+          label={translate(STRING.NEXT)}
+          onClick={onNext}
+          theme={ButtonTheme.Success}
+        />
       </div>
     </form>
   )

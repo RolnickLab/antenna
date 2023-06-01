@@ -20,3 +20,10 @@
   justify-content: flex-end;
   gap: 16px;
 }
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .mapControls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

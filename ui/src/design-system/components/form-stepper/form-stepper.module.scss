@@ -1,3 +1,4 @@
+@import 'design-system/variables/variables.scss';
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
@@ -6,6 +7,8 @@
   align-items: flex-start;
   justify-content: flex-start;
   position: relative;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .item {
@@ -87,6 +90,14 @@
 
     &:focus-visible {
       box-shadow: 0 0 0 2px $color-generic-black;
+    }
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .item {
+    span {
+      display: none;
     }
   }
 }

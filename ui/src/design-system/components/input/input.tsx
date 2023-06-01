@@ -1,5 +1,5 @@
 import _ from 'lodash'
-import { ChangeEvent, FocusEvent, forwardRef } from 'react'
+import { ChangeEvent, FocusEvent, forwardRef, ReactNode } from 'react'
 import styles from './input.module.scss'
 
 interface InputProps {
@@ -27,7 +27,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 
     return (
       <div className={styles.container}>
-        <div className={styles.line}>
+        <div className={styles.labelRow}>
           <label className={styles.label} htmlFor={name}>
             {label}
           </label>
@@ -65,9 +65,21 @@ export const InputValue = ({
   const value = _.isNumber(_value) ? _value.toLocaleString() : _value
 
   return (
-    <div>
-      <span className={styles.label}>{label}</span>
+    <InputContent label={label}>
       <span className={styles.value}>{value}</span>
-    </div>
+    </InputContent>
   )
 }
+
+export const InputContent = ({
+  label,
+  children,
+}: {
+  label: string
+  children?: ReactNode
+}) => (
+  <div className={styles.container}>
+    <span className={styles.label}>{label}</span>
+    <div className={styles.content}>{children}</div>
+  </div>
+)

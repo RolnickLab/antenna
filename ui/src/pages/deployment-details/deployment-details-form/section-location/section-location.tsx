@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { DeploymentFieldValues } from 'data-services/models/deployment'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
@@ -76,17 +77,14 @@ export const SectionLocation = ({
             onMarkerPositionChange={(updatedMarkesPosition) => {
               const updatedLat = _.round(updatedMarkesPosition.lat, 5)
               const updatedLng = _.round(updatedMarkesPosition.lng, 5)
-
               setValue('latitude', updatedLat, {
                 shouldDirty: true,
                 shouldTouch: true,
               })
-
               setValue('longitude', updatedLng, {
                 shouldDirty: true,
                 shouldTouch: true,
               })
-
               setMarkerPosition(new MarkerPosition(updatedLat, updatedLng))
             }}
           />
@@ -115,14 +113,14 @@ export const SectionLocation = ({
             />
           </div>
         </div>
-        <div className={styles.formActions}>
-          <Button label={translate(STRING.BACK)} onClick={onBack} />
-          <Button
-            label={translate(STRING.NEXT)}
-            onClick={onNext}
-            theme={ButtonTheme.Success}
-          />
-        </div>
+      </div>
+      <div className={classNames(styles.section, styles.formActions)}>
+        <Button label={translate(STRING.BACK)} onClick={onBack} />
+        <Button
+          label={translate(STRING.NEXT)}
+          onClick={onNext}
+          theme={ButtonTheme.Success}
+        />
       </div>
     </form>
   )

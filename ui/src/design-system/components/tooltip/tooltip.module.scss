@@ -9,6 +9,7 @@
   color: $color-neutral-800;
   @include paragraph-x-small();
   user-select: none;
+  z-index: 2;
 }
 
 .tooltipArrow {
