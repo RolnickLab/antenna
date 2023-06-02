@@ -160,6 +160,7 @@ const FormSection = ({ deployment }: { deployment: Deployment }) => {
     case Section.SourceImages:
       return (
         <SectionSourceImages
+          deployment={deployment}
           onBack={() => setCurrentSection(Section.Location)}
         />
       )

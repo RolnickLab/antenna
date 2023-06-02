@@ -1,11 +1,8 @@
+export { CarouselTheme as ImageCellTheme } from '../image-carousel/types'
+
 export enum CellTheme {
   Default = 'default',
   Primary = 'primary',
-}
-
-export enum ImageCellTheme {
-  Default = 'default',
-  Light = 'light',
 }
 
 export enum TextAlign {

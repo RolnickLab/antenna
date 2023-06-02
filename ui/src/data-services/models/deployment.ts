@@ -1,3 +1,5 @@
+import exampleCaptures from '../example-data/example_captures.json'
+
 export type ServerDeployment = any // TODO: Update this type
 
 export interface DeploymentFieldValues {
@@ -11,9 +13,19 @@ export interface DeploymentFieldValues {
 
 export class Deployment {
   private readonly _deployment: ServerDeployment
+  private readonly _exampleCaptures: { src: string }[] = []
 
   public constructor(deployment: ServerDeployment) {
     this._deployment = deployment
+
+    this._exampleCaptures = exampleCaptures.map((capture: any) => ({
+      // TODO: Can we get full URL from API?
+      src: `https://api.dev.insectai.org${capture.path}`,
+    }))
+  }
+
+  get exampleCaptures(): { src: string }[] {
+    return this._exampleCaptures
   }
 
   get id(): string {

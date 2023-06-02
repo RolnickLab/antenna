@@ -5,7 +5,10 @@ import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { DeploymentDetailsForm } from './deployment-details-form/deployment-details-form'
 
-const newDeployment = new Deployment({ id: 'new-deployment' })
+const newDeployment = new Deployment({
+  id: 'new-deployment',
+  num_source_images: 18,
+})
 
 export const NewDeploymentDialog = () => {
   const [isOpen, setIsOpen] = useState(false)
