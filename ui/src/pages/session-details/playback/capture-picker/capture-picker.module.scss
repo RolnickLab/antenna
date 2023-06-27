@@ -1,0 +1,55 @@
+@import 'design-system/variables/colors.scss';
+
+.captures {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  scroll-padding: 48px 0;
+  padding: 48px 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.scrollFader {
+  position: absolute;
+  height: 48px;
+  left: 0;
+
+  &.alignTop {
+    top: 0;
+    background-image: linear-gradient(
+      to top,
+      rgba($color: $color-neutral-800, $alpha: 0),
+      rgba($color: $color-neutral-800, $alpha: 1)
+    );
+  }
+
+  &.alignBottom {
+    bottom: 0;
+    background-image: linear-gradient(
+      to bottom,
+      rgba($color: $color-neutral-800, $alpha: 0),
+      rgba($color: $color-neutral-800, $alpha: 1)
+    );
+  }
+}
+
+.buttonContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+
+  &.alignTop {
+    top: 8px;
+  }
+
+  &.alignBottom {
+    bottom: 8px;
+  }
+}
