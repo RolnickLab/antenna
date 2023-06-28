@@ -22,7 +22,7 @@ export const Deployments = () => {
     return <Error />
   }
 
-  const deployment = deployments?.find((o) => o.id === id)
+  const deployment = deployments?.find((d) => d.id === id)
   const detailsOpen = !!deployment
 
   return (

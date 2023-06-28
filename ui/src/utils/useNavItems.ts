@@ -30,6 +30,7 @@ export const useNavItems = () => {
         title: translate(STRING.NAV_ITEM_JOBS),
         icon: IconType.BatchId,
         path: '/jobs',
+        matchPath: '/jobs/*',
       },
       {
         id: 'deployments',
