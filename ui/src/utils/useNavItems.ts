@@ -26,10 +26,10 @@ export const useNavItems = () => {
         path: '/overview',
       },
       {
-        id: 'batch-id',
-        title: translate(STRING.NAV_ITEM_BATCH_ID),
+        id: 'jobs',
+        title: translate(STRING.NAV_ITEM_JOBS),
         icon: IconType.BatchId,
-        path: '/batch-id',
+        path: '/jobs',
       },
       {
         id: 'deployments',

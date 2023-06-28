@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "description": "Quebec moth week batch #1",
+    "project": "Rolnick lab",
+    "total_images": 1254,
+    "job_started": "2022-01-23T12:04:00-07:00",
+    "status": 0
+  },
+  {
+    "id": 2,
+    "description": "Quebec moth week batch #2",
+    "project": "Rolnick lab",
+    "total_images": 1330,
+    "job_started": "2022-01-23T12:04:00-07:00",
+    "status": 1
+  },
+  {
+    "id": 3,
+    "description": "Quebec moth week batch #3",
+    "project": "Rolnick lab",
+    "total_images": 988,
+    "job_started": "2022-01-23T12:04:00-07:00",
+    "status": 2
+  }
+]

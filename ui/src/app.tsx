@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Header } from 'components/header/header'
-import { BatchId } from 'pages/batch-id/batch-id'
 import { Deployments } from 'pages/deployments/deployments'
+import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Overview } from 'pages/overview/overview'
 import { SessionDetails } from 'pages/session-details/session-details'
@@ -27,7 +27,7 @@ export const App = () => {
               <Routes>
                 <Route path="/" element={<Navigate to="/overview" />} />
                 <Route path="/overview" element={<Overview />} />
-                <Route path="/batch-id" element={<BatchId />} />
+                <Route path="/jobs" element={<Jobs />} />
                 <Route path="/deployments/:id?" element={<Deployments />} />
                 <Route path="/sessions" element={<Sessions />} />
                 <Route path="/sessions/:id" element={<SessionDetails />} />

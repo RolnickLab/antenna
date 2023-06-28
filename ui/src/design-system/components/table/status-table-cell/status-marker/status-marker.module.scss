@@ -1,0 +1,20 @@
+@import 'design-system/variables/colors.scss';
+
+.statusMarker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: $color-neutral-200;
+
+  &.success {
+    background-color: $color-success-500;
+  }
+
+  &.warning {
+    background-color: $color-warning-500;
+  }
+
+  &.error {
+    background-color: $color-destructive-500;
+  }
+}

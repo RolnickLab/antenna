@@ -1,5 +1,5 @@
-import { getCompactDatespanString } from 'utils/getCompactDatespanString/getCompactDatespanString'
-import { getCompactTimespanString } from 'utils/getCompactTimespanString'
+import { getCompactDatespanString } from 'utils/date/getCompactDatespanString/getCompactDatespanString'
+import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 
 export type ServerEvent = any // TODO: Update this type
 
