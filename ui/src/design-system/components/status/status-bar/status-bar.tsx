@@ -6,6 +6,7 @@ const statusClasses: { [key in Status]: string } = {
   [Status.Success]: styles.success,
   [Status.Warning]: styles.warning,
   [Status.Error]: styles.error,
+  [Status.Neutral]: styles.neutral,
 }
 
 export const StatusBar = ({

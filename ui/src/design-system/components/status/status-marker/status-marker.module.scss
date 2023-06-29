@@ -17,4 +17,8 @@
   &.error {
     background-color: $color-destructive-500;
   }
+
+  &.neutral {
+    background-color: $color-neutral-500;
+  }
 }
