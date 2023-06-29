@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { ServerOccurrence } from '../models/occurrence'
 import { ServerEvent, Session } from '../models/session'
 
 const COLLECTION = 'events'
@@ -24,7 +23,7 @@ export const useSessions = (
     queryKey: [COLLECTION, params],
     queryFn: () =>
       axios
-        .get<ServerOccurrence[]>(fetchUrl)
+        .get<ServerEvent[]>(fetchUrl)
         .then((res) => res.data.map(convertServerRecord)),
   })
 
