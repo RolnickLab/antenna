@@ -68,5 +68,6 @@ jobs:
     - name: Log docker status
       if: ${{ always() }}
       run: |
+        mv env-template .env
         docker-compose ps
         docker-compose logs -t
