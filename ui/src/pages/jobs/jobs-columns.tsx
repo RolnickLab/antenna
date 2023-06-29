@@ -11,13 +11,18 @@ import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Job>[] = [
   {
-    id: 'description',
-    name: translate(STRING.TABLE_COLUMN_DESCRIPTION),
+    id: 'id',
+    name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Job) => (
       <Link to={`/jobs/${item.id}`}>
-        <BasicTableCell value={item.description} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.idLabel} theme={CellTheme.Primary} />
       </Link>
     ),
+  },
+  {
+    id: 'description',
+    name: translate(STRING.TABLE_COLUMN_DESCRIPTION),
+    renderCell: (item: Job) => <BasicTableCell value={item.description} />,
   },
   {
     id: 'project',

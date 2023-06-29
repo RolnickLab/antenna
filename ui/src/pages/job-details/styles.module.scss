@@ -10,5 +10,32 @@
 .content {
   width: 720px;
   max-width: 100%;
-  box-sizing: border-box;
+}
+
+.section {
+  margin: 32px;
+}
+
+.sectionTitle {
+  @include paragraph-large();
+  color: $color-neutral-800;
+  margin: 0 0 16px;
+}
+
+.sectionContent {
+  border-radius: 4px;
+  border: 2px solid $color-neutral-100;
+  padding: 32px;
+}
+
+.sectionColumn {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+}
+
+.sectionRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
 }

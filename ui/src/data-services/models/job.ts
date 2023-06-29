@@ -18,6 +18,10 @@ export class Job {
     return this._job.id
   }
 
+  get idLabel(): string {
+    return `#${this.id}`
+  }
+
   get jobStarted(): string {
     return getFormatedDateString({ date: new Date(this._job.job_started) })
   }
