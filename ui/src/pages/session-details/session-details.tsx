@@ -7,7 +7,6 @@ import { useLocation, useParams } from 'react-router'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { Playback } from './playback/playback'
 import styles from './session-details.module.scss'
-import { SessionInfo } from './session-info/session-info'
 
 export const SessionDetails = () => {
   const location = useLocation()
@@ -46,11 +45,6 @@ export const SessionDetails = () => {
           </div>
         )}
         <div className={styles.container}>
-          <div className={styles.content}>
-            <div className={styles.info}>
-              <SessionInfo session={session} />
-            </div>
-          </div>
           <div className={styles.playback}>
             <Playback />
           </div>
