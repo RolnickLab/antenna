@@ -1,11 +1,5 @@
 export { CarouselTheme as ImageCellTheme } from '../image-carousel/types'
 
-export enum CellStatus {
-  Success = 'success',
-  Warning = 'warning',
-  Error = 'error',
-}
-
 export enum CellTheme {
   Default = 'default',
   Primary = 'primary',

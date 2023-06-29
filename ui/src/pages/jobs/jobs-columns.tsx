@@ -1,11 +1,8 @@
 import { Job } from 'data-services/models/job'
+import { Status } from 'design-system/components/status/types'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
-import {
-  CellStatus,
-  CellTheme,
-  TableColumn,
-} from 'design-system/components/table/types'
+import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
@@ -47,11 +44,11 @@ export const columns: TableColumn<Job>[] = [
         switch (item.status) {
           case 0:
           case 1:
-            return CellStatus.Warning
+            return Status.Warning
           case 2:
-            return CellStatus.Success
+            return Status.Success
           default:
-            return CellStatus.Error
+            return Status.Error
         }
       })()
 

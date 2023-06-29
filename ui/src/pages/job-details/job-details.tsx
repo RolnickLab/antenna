@@ -2,7 +2,9 @@ import { Job } from 'data-services/models/job'
 import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
-import { InputValue } from 'design-system/components/input/input'
+import { InputContent, InputValue } from 'design-system/components/input/input'
+import { StatusBar } from 'design-system/components/status/status-bar/status-bar'
+import { Status } from 'design-system/components/status/types'
 import {
   StatusBullet,
   StatusBulletTheme,
@@ -43,6 +45,13 @@ export const JobDetails = ({
 
 const JobSummary = ({ job }: { job: Job }) => (
   <div className={styles.sectionColumn}>
+    <InputContent label={translate(STRING.TABLE_COLUMN_STATUS)}>
+      <StatusBar
+        status={Status.Success}
+        progress={0.33}
+        description="33% completed, 3h 10min left."
+      />
+    </InputContent>
     <div className={styles.sectionRow}>
       <InputValue
         label={translate(STRING.TABLE_COLUMN_ID)}
