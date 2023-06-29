@@ -1,19 +1,37 @@
 {
-  "template": "https://github.com/gaganpreet/fastapi-starter",
-  "commit": "dac633162dd7d021a117d6da0376db26dbf0c770",
+  "template": "https://github.com/cookiecutter/cookiecutter-django",
+  "commit": "4ef180edb118ddf650261db8889c2b4704cab3a5",
   "checkout": null,
   "context": {
     "cookiecutter": {
-      "project_name": "AMI Data Manager",
+      "project_name": "Automated Monitoring of Insects ML Platform",
       "project_slug": "ami",
-      "backend_port": "8000",
-      "frontend_port": "3000",
-      "_copy_without_render": [
-        "*node_modules",
-        "*src/App.tsx",
-        "*pages/ProfileEdit.tsx"
-      ],
-      "_template": "https://github.com/gaganpreet/fastapi-starter"
+      "description": "Platform for processing and reviewing images from automated insect monitoring statoins using deep learning.",
+      "author_name": "Rolnick Lab",
+      "domain_name": "app.insectai.org",
+      "email": "michael.bunsen@mila.quebec",
+      "version": "0.1.0",
+      "open_source_license": "MIT",
+      "username_type": "email",
+      "timezone": "UTC",
+      "windows": "n",
+      "use_pycharm": "n",
+      "use_docker": "y",
+      "postgresql_version": "14",
+      "cloud_provider": "AWS",
+      "mail_service": "Mailgun",
+      "use_async": "y",
+      "use_drf": "y",
+      "frontend_pipeline": "None",
+      "use_celery": "y",
+      "use_mailhog": "y",
+      "use_sentry": "y",
+      "use_whitenoise": "y",
+      "use_heroku": "n",
+      "ci_tool": "Github",
+      "keep_local_envs_in_vcs": "y",
+      "debug": "n",
+      "_template": "https://github.com/cookiecutter/cookiecutter-django"
     }
   },
   "directory": null
