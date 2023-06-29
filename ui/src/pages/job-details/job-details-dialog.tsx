@@ -14,13 +14,7 @@ export const JobDetailsDialog = ({
 }) => (
   <Dialog.Root open={open} onOpenChange={onOpenChange}>
     <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-      {job ? (
-        <JobDetails
-          job={job}
-          title="Job details"
-          onCancelClick={() => onOpenChange(false)}
-        />
-      ) : null}
+      {job ? <JobDetails job={job} title="Job details" /> : null}
     </Dialog.Content>
   </Dialog.Root>
 )

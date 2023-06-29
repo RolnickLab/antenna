@@ -1,5 +1,4 @@
 import { Job } from 'data-services/models/job'
-import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
@@ -13,19 +12,11 @@ import * as Wizard from 'design-system/components/wizard/wizard'
 import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
 
-export const JobDetails = ({
-  job,
-  title,
-  onCancelClick,
-}: {
-  job: Job
-  title: string
-  onCancelClick: () => void
-}) => (
+export const JobDetails = ({ job, title }: { job: Job; title: string }) => (
   <>
     <Dialog.Header title={title}>
       <div className={styles.buttonWrapper}>
-        <Button label={translate(STRING.CANCEL)} onClick={onCancelClick} />
+        {/* Room for action buttons */}
       </div>
     </Dialog.Header>
     <div className={styles.content}>
