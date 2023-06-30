@@ -14,7 +14,7 @@ interface Status {
 }
 
 const COLLECTION = 'status/summary'
-const REFETCH_INTERVAL = 10000 // Refetch every 10 second
+const REFETCH_INTERVAL = undefined // TODO: Refetch every 10 second
 
 const convertServerRecord = (record: ServerStatus): Status => ({
   numDeployments: record.num_deployments,
@@ -40,6 +40,7 @@ export const useStatus = (): {
         .get<ServerStatus>(fetchUrl)
         .then((res) => convertServerRecord(res.data)),
     refetchInterval: REFETCH_INTERVAL,
+    retry: 0,
   })
 
   return {
