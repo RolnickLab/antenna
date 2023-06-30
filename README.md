@@ -1,118 +1,97 @@
-# AMI Data Manager
+# Automated Monitoring of Insects ML Platform
 
-## Features
+Platform for processing and reviewing images from automated insect monitoring stations.
 
-- FastAPI
-- React Admin
-- SQLAlchemy and Alembic
-- Pre-commit hooks (black, autoflake, isort, flake8, prettier)
-- Github Action
-- Dependabot config
-- Docker images
+[![Built with Cookiecutter Django](https://img.shields.io/badge/built%20with-Cookiecutter%20Django-ff69b4.svg?logo=cookiecutter)](https://github.com/cookiecutter/cookiecutter-django/)
+[![Black code style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
-## Good to know
+License: MIT
 
-The frontend of this project uses React Admin. Follow the quick tutorial to understand how [React Admin](https://marmelab.com/react-admin/Tutorial.html) works.
+## Settings
 
-## Step 1: Getting started
+Moved to [settings](http://cookiecutter-django.readthedocs.io/en/latest/settings.html).
 
-Start a local development instance with docker-compose
+## Basic Commands
 
-```bash
-docker-compose up -d
+### Setting Up Your Users
 
-# Run database migration
-docker-compose exec backend alembic upgrade head
+- To create a **normal user account**, just go to Sign Up and fill out the form. Once you submit it, you'll see a "Verify Your E-mail Address" page. Go to your console to see a simulated email verification message. Copy the link into your browser. Now the user's email should be verified and ready to go.
 
-# Create database used for testing
-docker-compose exec postgres createdb apptest -U postgres
-```
+- To create a **superuser account**, use this command:
 
-Now you can navigate to the following URLs:
+      $ python manage.py createsuperuser
 
-- Backend OpenAPI docs: http://localhost:8000/docs/
-- Frontend: http://localhost:3000
+For convenience, you can keep your normal user logged in on Chrome and your superuser logged in on Firefox (or similar), so that you can see how the site behaves for both kinds of users.
 
-### Step 2: Setup pre-commit hooks and database
+### Type checks
 
-Keep your code clean by using the configured pre-commit hooks. Follow the [instructions here to install pre-commit](https://pre-commit.com/). Once pre-commit is installed, run this command to install the hooks into your git repository:
+Running type checks with mypy:
 
-```bash
-pre-commit install
-```
+    $ mypy ami
 
-### Local development
+### Test coverage
 
-The backend setup of docker-compose is set to automatically reload the app whenever code is updated. However, for frontend it's easier to develop locally.
+To run the tests, check your test coverage, and generate an HTML coverage report:
 
-```bash
-docker-compose stop frontend
-cd frontend
-yarn
-yarn start
-```
+    $ coverage run -m pytest
+    $ coverage html
+    $ open htmlcov/index.html
 
-If you want to develop against something other than the default host, localhost:8000, you can set the `REACT_APP_API_BASE` environment variable:
+#### Running tests with pytest
+
+    $ pytest
+
+### Live reloading and Sass CSS compilation
+
+Moved to [Live reloading and SASS compilation](https://cookiecutter-django.readthedocs.io/en/latest/developing-locally.html#sass-compilation-live-reloading).
+
+### Celery
+
+This app comes with Celery.
+
+To run a celery worker:
 
 ```bash
-export REACT_APP_API_BASE=http://mydomain.name:8000
-yarn start
+cd ami
+celery -A config.celery_app worker -l info
 ```
 
-Don't forget to edit the `.env` file and update the `BACKEND_CORS_ORIGINS` value (add `http://mydomain:3000` to the allowed origins).
+Please note: For Celery's import magic to work, it is important _where_ the celery commands are run. If you are in the same folder with _manage.py_, you should be right.
 
-### Rebuilding containers
-
-If you add a dependency, you'll need to rebuild your containers like this:
+To run [periodic tasks](https://docs.celeryq.dev/en/stable/userguide/periodic-tasks.html), you'll need to start the celery beat scheduler service. You can start it as a standalone process:
 
 ```bash
-docker-compose up -d --build
+cd ami
+celery -A config.celery_app beat
 ```
 
-### Regenerate front-end API package
-
-Instead of writing frontend API client manually, OpenAPI Generator is used. Typescript bindings for the backend API can be recreated with this command:
+or you can embed the beat service inside a worker with the `-B` option (not recommended for production use):
 
 ```bash
-yarn genapi
+cd ami
+celery -A config.celery_app worker -B -l info
 ```
 
-### Database migrations
+### Email Server
 
-These two are the most used commands when working with alembic. For more info, follow through [Alembic's tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html).
+In development, it is often nice to be able to see emails that are being sent from your application. For that reason local SMTP server [MailHog](https://github.com/mailhog/MailHog) with a web interface is available as docker container.
 
-```bash
-# Auto generate a revision
-docker-compose exec backend alembic revision --autogenerate -m 'message'
+Container mailhog will start automatically when you will run all docker containers.
+Please check [cookiecutter-django Docker documentation](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html) for more details how to start all containers.
 
-# Apply latest changes
-docker-compose exec backend alembic upgrade head
-```
+With MailHog running, to view messages that are sent by your application, open your browser and go to `http://127.0.0.1:8025`
 
-### Backend tests
+### Sentry
 
-The `Backend` service uses a hardcoded database named `apptest`. First, ensure that it's created
+Sentry is an error logging aggregator service. You can sign up for a free account at <https://sentry.io/signup/?code=cookiecutter> or download and host it yourself.
+The system is set up with reasonable defaults, including 404 logging and integration with the WSGI application.
 
-```bash
-docker-compose exec postgres createdb apptest -U postgres
-```
+You must set the DSN url in production.
 
-Then you can run tests with this command:
+## Deployment
 
-```bash
-docker-compose run backend pytest --cov --cov-report term-missing
-```
+The following details how to deploy this application.
 
-### Single docker image
+### Docker
 
-There's a monolith/single docker image that uses FastAPI to serve static assets. You can use this image to deploy directly to Heroku, Fly.io or anywhere where you can run a Dockerfile without having to build a complicated setup out of separate frontend and backend images.
-
-## Recipes
-
-#### Build and upload docker images to a repository
-
-Configure the [**build-push-action**](https://github.com/marketplace/actions/build-and-push-docker-images) in `.github/workflows/test.yaml`.
-
-## Credits
-
-Created with [FastAPI Starter](https://github.com/gaganpreet/fastapi-starter)
+See detailed [cookiecutter-django Docker documentation](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html).
