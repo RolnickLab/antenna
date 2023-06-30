@@ -15,7 +15,10 @@ export const columns: TableColumn<Deployment>[] = [
     sortField: 'name',
     renderCell: (item: Deployment) => (
       <Link to={`/deployments/${item.id}`}>
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.name.toLocaleLowerCase()}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },

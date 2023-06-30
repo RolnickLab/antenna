@@ -1,0 +1,15 @@
+@import 'design-system/variables/variables.scss';
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 2px;
+  background-color: $color-primary-2-50;
+  @include paragraph-x-small();
+  color: $color-neutral-800;
+}

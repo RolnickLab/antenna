@@ -1,0 +1,23 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background-color: $color-primary-2-600;
+  @include paragraph-x-small();
+  font-weight: 600;
+  color: $color-generic-white;
+
+  &.success {
+    background-color: $color-success-500;
+  }
+
+  &.neutral {
+    background-color: $color-neutral-500;
+  }
+}

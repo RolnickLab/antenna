@@ -1,0 +1,89 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.accordionRoot {
+  border: 2px solid $color-neutral-100;
+  border-radius: 4px;
+}
+
+.accordionItem {
+  position: relative;
+
+  &:not(:last-child) {
+    border-bottom: 2px solid $color-neutral-100;
+  }
+}
+
+.accordionHeader {
+  all: unset;
+  display: block;
+  @include paragraph-medium();
+  color: $color-neutral-500;
+  font-weight: 600;
+  position: relative;
+
+  &[data-state='open'] {
+    color: $color-neutral-800;
+  }
+
+  .extra {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 64px;
+    height: 100%;
+  }
+}
+
+.accordionTrigger {
+  width: 100%;
+  display: block;
+  padding: 32px 64px;
+  box-sizing: border-box;
+
+  &:hover {
+    cursor: pointer;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+}
+
+.accordionContent {
+  overflow: hidden;
+
+  &[data-state='open'] {
+    animation: slideDown 300ms ease-out;
+  }
+
+  &[data-state='closed'] {
+    animation: slideUp 300ms ease-out;
+  }
+}
+
+.content {
+  padding: 0 64px 32px 64px;
+  box-sizing: border-box;
+}
+
+@keyframes slideDown {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
