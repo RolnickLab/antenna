@@ -1,6 +1,6 @@
 import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
-import { DeploymentFieldValues } from 'data-services/models/deployment'
+import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { MarkerPosition } from 'design-system/map/types'
 import _ from 'lodash'

@@ -19,8 +19,8 @@ export const useDeployments = (): {
     queryKey: [COLLECTION],
     queryFn: () =>
       axios
-        .get<ServerDeployment[]>(fetchUrl)
-        .then((res) => res.data.map(convertServerRecord)),
+        .get<{ results: ServerDeployment[] }>(fetchUrl)
+        .then((res) => res.data.results.map(convertServerRecord)),
   })
 
   return {

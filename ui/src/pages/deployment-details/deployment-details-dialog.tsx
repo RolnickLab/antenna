@@ -1,4 +1,4 @@
-import { Deployment } from 'data-services/models/deployment'
+import { DeploymentDetails } from 'data-services/models/deployment-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -10,7 +10,7 @@ export const DeploymentDetailsDialog = ({
   open,
   onOpenChange,
 }: {
-  deployment?: Deployment
+  deployment?: DeploymentDetails
   open: boolean
   onOpenChange: (open: boolean) => void
 }) => {

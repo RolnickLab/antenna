@@ -1,7 +1,7 @@
 import {
-  Deployment,
+  DeploymentDetails,
   DeploymentFieldValues,
-} from 'data-services/models/deployment'
+} from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper as _FormStepper } from 'design-system/components/form-stepper/form-stepper'
@@ -21,7 +21,7 @@ export const DeploymentDetailsForm = ({
   onCancelClick,
   onSubmit,
 }: {
-  deployment: Deployment
+  deployment: DeploymentDetails
   startValid?: boolean
   title: string
   onCancelClick: () => void
@@ -139,7 +139,7 @@ const FormStepper = () => {
   )
 }
 
-const FormSection = ({ deployment }: { deployment: Deployment }) => {
+const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
   const { currentSection, setCurrentSection } = useContext(FormContext)
 
   switch (currentSection) {

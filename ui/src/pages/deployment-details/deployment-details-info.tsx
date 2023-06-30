@@ -1,4 +1,4 @@
-import { Deployment } from 'data-services/models/deployment'
+import { DeploymentDetails } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
@@ -16,7 +16,7 @@ export const DeploymentDetailsInfo = ({
   title,
   onEditClick,
 }: {
-  deployment: Deployment
+  deployment: DeploymentDetails
   title: string
   onEditClick: () => void
 }) => {

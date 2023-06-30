@@ -1,9 +1,9 @@
 import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import {
-  Deployment,
+  DeploymentDetails,
   DeploymentFieldValues,
-} from 'data-services/models/deployment'
+} from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
@@ -32,7 +32,7 @@ export const SectionGeneral = ({
   deployment,
   onNext,
 }: {
-  deployment: Deployment
+  deployment: DeploymentDetails
   onNext: () => void
 }) => {
   const { formSectionRef, formState, setFormSectionValues } =
