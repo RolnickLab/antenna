@@ -99,7 +99,9 @@ class Command(BaseCommand):
                 )
                 if created:
                     self.stdout.write(self.style.SUCCESS('Successfully created detection "%s"' % detection))
-                taxon, created = Taxon.objects.get_or_create(name=example["label"], rank="SPECIES")
+                taxon, created = Taxon.objects.get_or_create(
+                    name=example["label"], rank="SPECIES", parent=taxon_parent
+                )
                 one_day_later = datetime.timedelta(seconds=60 * 60 * 24)
                 classification, created = Classification.objects.get_or_create(
                     score=example["score"],
