@@ -1,5 +1,10 @@
+from typing import TYPE_CHECKING
+
 from .base import *  # noqa
 from .base import env
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest  # noqa: F401 # Check wemake template about why this is needed
 
 # GENERAL
 # ------------------------------------------------------------------------------
