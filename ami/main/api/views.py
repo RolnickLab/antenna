@@ -1,4 +1,3 @@
-from django.contrib.auth.models import Group, User
 from django.db import models
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
@@ -13,14 +12,12 @@ from .serializers import (
     DetectionSerializer,
     EventListSerializer,
     EventSerializer,
-    GroupSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
     TaxonSerializer,
-    UserSerializer,
 )
 
 # def index(request: HttpRequest) -> HttpResponse:
@@ -43,26 +40,6 @@ class DefaultViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "updated_at"]
     search_fields = []
     permission_classes = [permissions.AllowAny]
-
-
-class UserViewSet(DefaultViewSet):
-    """
-    API endpoint that allows users to be viewed or edited.
-    """
-
-    queryset = User.objects.all().order_by("-date_joined")
-    serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-
-class GroupViewSet(DefaultViewSet):
-    """
-    API endpoint that allows groups to be viewed or edited.
-    """
-
-    queryset = Group.objects.all()
-    serializer_class = GroupSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
 
 class ProjectViewSet(DefaultViewSet):
