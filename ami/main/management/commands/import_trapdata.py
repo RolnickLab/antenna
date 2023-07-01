@@ -43,7 +43,7 @@ class Command(BaseCommand):
     ]
     """
 
-    help = "Import trap data from AMI data manager occurences.json file"
+    help = "Import trap data from AMI data manager occurrences.json file"
 
     def add_arguments(self, parser):
         parser.add_argument("occurrences", type=str)
