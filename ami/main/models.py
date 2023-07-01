@@ -1,5 +1,6 @@
 import datetime
 import textwrap
+import urllib.parse
 from typing import Final, Optional, final  # noqa: F401
 
 from django.db import models
@@ -253,6 +254,13 @@ class SourceImage(BaseModel):
         # @TODO remove this method and use QuerySet annotation instead
         return self.detections.count()
 
+    def url(self):
+        # @TODO use settings or deployment storage base
+        # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
+        url_base = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
+        url = urllib.parse.urljoin(url_base, self.path)
+        return url
+
 
 @final
 class ClassificationResult(BaseModel):
@@ -385,6 +393,14 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
+    def width(self):
+        if self.bbox and len(self.bbox) == 4:
+            return self.bbox[2] - self.bbox[0]
+
+    def height(self):
+        if self.bbox and len(self.bbox) == 4:
+            return self.bbox[3] - self.bbox[1]
+
     class Meta:
         ordering = [
             "frame_num",
@@ -401,6 +417,13 @@ class Detection(BaseModel):
             return (classification.determination.name, classification.score)
         else:
             return (None, None)
+
+    def url(self):
+        # @TODO use settings
+        # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
+        crops_url_base = "https://static.dev.insectai.org/ami-trapdata/crops"
+        url = urllib.parse.urljoin(crops_url_base, self.path)
+        return url
 
 
 @final

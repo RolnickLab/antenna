@@ -242,11 +242,14 @@ class DetectionListSerializer(DefaultSerializer):
             "id",
             "details",
             "bbox",
+            "width",
+            "height",
             # "top_n_classifications",
             "occurrence",
             "timestamp",
             "source_image",
             "detection_algorithm",
+            "url",
         ]
 
 
@@ -289,7 +292,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "details",
             "deployment",
             "event",
-            "path",
+            "url",
             # "thumbnail",
             "timestamp",
             "width",

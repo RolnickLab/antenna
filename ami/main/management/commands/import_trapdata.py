@@ -10,37 +10,46 @@ from ...models import Algorithm, Classification, Deployment, Detection, Event, O
 class Command(BaseCommand):
     r"""Import trap data from a JSON file exported from the AMI data companion.
 
-    occurrences.json
+        occurrences.json
     [
     {
-        "id":"20220620-SEQ-207259",
-        "label":"Baileya ophthalmica",
-        "best_score":0.6794486046,
-        "start_time":"2022-06-21T09:23:00.000Z",
-        "end_time":"2022-06-21T09:23:00.000Z",
-        "duration":"P0DT0H0M0S",
-        "deployment":"Vermont-Snapshots-Sample",
-        "event":{
+      "id":"20220620-SEQ-207259",
+      "label":"Baileya ophthalmica",
+      "best_score":0.6794486046,
+      "start_time":"2022-06-21T09:23:00.000Z",
+      "end_time":"2022-06-21T09:23:00.000Z",
+      "duration":"P0DT0H0M0S",
+      "deployment":"Vermont-Snapshots-Sample",
+      "event":{
         "id":19,
         "day":"2022-06-20T00:00:00.000",
         "url":null
-        },
-        "num_frames":1,
-        "examples":[
+      },
+      "num_frames":1,
+      "examples":[
         {
-            "id":207259,
-            "source_image_id":15050,
-            "source_image_path":"2022_06_21_snapshots\/20220621052300-301-snapshot.jpg",
-            "label":"Baileya ophthalmica",
-            "score":0.6794486046,
-            "cropped_image_path":"crops\/963edb524a59504392d4bec06717857a.jpg",
-            "sequence_id":"20220620-SEQ-207259",
-            "timestamp":"2022-06-21T09:23:00.000Z"
+          "id":207259,
+          "source_image_id":15050,
+          "source_image_path":"2022_06_21_snapshots\/20220621052300-301-snapshot.jpg",
+          "source_image_width":4096,
+          "source_image_height":2160,
+          "source_image_filesize":1599836,
+          "label":"Baileya ophthalmica",
+          "score":0.6794486046,
+          "cropped_image_path":"exports\/occurrences_images\/20220620-SEQ-207259-963edb524a59504392d4bec06717857a.jpg",
+          "sequence_id":"20220620-SEQ-207259",
+          "timestamp":"2022-06-21T09:23:00.000Z",
+          "bbox":[
+            3598,
+            1074,
+            3821,
+            1329
+          ]
         }
-        ],
-        "url":null
+      ],
+      "url":null
     },
-    ]
+        ]
     """
 
     help = "Import trap data from AMI data manager occurrences.json file"
@@ -87,6 +96,9 @@ class Command(BaseCommand):
                     timestamp=parse_date(example["timestamp"]),
                     event=event,
                     deployment=deployment,
+                    width=example["source_image_width"],
+                    height=example["source_image_height"],
+                    size=example["source_image_filesize"],
                 )
                 if created:
                     self.stdout.write(self.style.SUCCESS('Successfully created image "%s"' % image))
@@ -96,6 +108,7 @@ class Command(BaseCommand):
                     source_image=image,
                     timestamp=parse_date(example["timestamp"]),
                     path=example["cropped_image_path"],
+                    bbox=example["bbox"],
                 )
                 if created:
                     self.stdout.write(self.style.SUCCESS('Successfully created detection "%s"' % detection))
