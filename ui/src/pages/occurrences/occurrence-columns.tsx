@@ -29,7 +29,6 @@ export const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'id',
-    sortField: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Occurrence) => (
       <Link to={`/occurrences/${item.id}`}>

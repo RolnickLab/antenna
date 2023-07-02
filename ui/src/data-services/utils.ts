@@ -14,7 +14,9 @@ export const getFetchUrl = ({
 }) => {
   const queryParams: QueryParams = { ..._queryParams }
   if (params?.sort) {
-    queryParams[`${params.sort.field}_order`] = params.sort?.order
+    const order = params.sort.order === 'asc' ? '' : '-'
+    const field = params.sort.field
+    queryParams['ordering'] = `${order}${field}`
   }
   if (params?.pagination) {
     queryParams.limit = `${params?.pagination.perPage}`
