@@ -126,7 +126,7 @@ class SourceImageNestedSerializer(DefaultSerializer):
         fields = [
             "id",
             "details",
-            "path",
+            "url",
             "width",
             "height",
             "timestamp",
@@ -141,7 +141,7 @@ class SourceImageQuickListSerializer(DefaultSerializer):
         fields = [
             "id",
             "details",
-            "path",
+            "url",
             "timestamp",
             "detections_count",
         ]
