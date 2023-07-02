@@ -10,7 +10,7 @@ from ..models import Algorithm, Classification, Deployment, Detection, Event, Oc
 
 def reverse_with_params(viewname: str, request, params: dict, *args, **kwargs) -> str:
     query_string = urllib.parse.urlencode(params)
-    base_url = reverse("sourceimage-list", request=request, args=args, kwargs=kwargs)
+    base_url = reverse(viewname, request=request, args=args, kwargs=kwargs)
     url = urllib.parse.urlunsplit(("", "", base_url, query_string, ""))
     return url
 
@@ -32,12 +32,21 @@ class GroupSerializer(DefaultSerializer):
 
 
 class DeploymentListSerializer(DefaultSerializer):
+    events = serializers.SerializerMethodField()
+    occurrences = serializers.SerializerMethodField()
+
     class Meta:
         model = Deployment
+        queryset = Deployment.objects.annotate(
+            events_count=Count("events"),
+            occurrences_count=Count("occurrences"),
+        )
         fields = [
             "id",
             "name",
             "details",
+            "events",
+            "occurrences",
             "events_count",
             "captures_count",
             "detections_count",
@@ -49,6 +58,28 @@ class DeploymentListSerializer(DefaultSerializer):
             "latitude",
             "longitude",
         ]
+
+    def get_events(self, obj):
+        """
+        Return URL to the events endpoint filtered by this deployment.
+        """
+
+        return reverse_with_params(
+            "event-list",
+            request=self.context.get("request"),
+            params={"deployment": obj.pk},
+        )
+
+    def get_occurrences(self, obj):
+        """
+        Return URL to the occurrences endpoint filtered by this deployment.
+        """
+
+        return reverse_with_params(
+            "occurrence-list",
+            request=self.context.get("request"),
+            params={"deployment": obj.pk},
+        )
 
 
 class DeploymentSerializer(DefaultSerializer):
@@ -205,7 +236,25 @@ class EventNestedSerializer(DefaultSerializer):
         ]
 
 
+class DetectionNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Detection
+        # queryset = Detection.objects.prefetch_related("classifications")
+        fields = [
+            "id",
+            "timestamp",
+            "url",
+            "source_image",
+            "width",
+            "height",
+            # "best_classification",
+        ]
+
+
 class TaxonSerializer(DefaultSerializer):
+    latest_detection = DetectionNestedSerializer(read_only=True)
+    occurrences = serializers.SerializerMethodField()
+
     class Meta:
         model = Taxon
         fields = [
@@ -214,7 +263,22 @@ class TaxonSerializer(DefaultSerializer):
             "rank",
             "parent",
             "details",
+            "occurrences_count",
+            "detections_count",
+            "occurrences",
+            "latest_detection",
         ]
+
+    def get_occurrences(self, obj):
+        """
+        Return URL to the occurrences endpoint filtered by this taxon.
+        """
+
+        return reverse_with_params(
+            "occurrence-list",
+            request=self.context.get("request"),
+            params={"determination": obj.pk},
+        )
 
 
 class ClassificationSerializer(DefaultSerializer):
@@ -265,19 +329,6 @@ class DetectionSerializer(DefaultSerializer):
             "source_image",
             "detection_algorithm",
             "detection_algorithm_id",
-        ]
-
-
-class DetectionNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Detection
-        # queryset = Detection.objects.prefetch_related("classifications")
-        fields = [
-            "id",
-            "timestamp",
-            "path",
-            "source_image",
-            # "best_classification",
         ]
 
 

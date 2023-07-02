@@ -57,8 +57,12 @@ class DeploymentViewSet(DefaultViewSet):
     for the list and detail views.
     """
 
-    queryset = Deployment.objects.all()
+    queryset = Deployment.objects.annotate(
+        events_count=models.Count("events"),
+        occurrences_count=models.Count("occurrences"),
+    )
     filterset_fields = ["project"]
+    ordering_fields = ["created_at", "updated_at", "occurrences_count", "events_count"]
 
     def get_serializer_class(self):
         """
@@ -76,11 +80,14 @@ class EventViewSet(DefaultViewSet):
     """
 
     # @TODO add annotations for counts
-    queryset = Event.objects.select_related("deployment")  # .prefetch_related("captures").all()
+    queryset = Event.objects.select_related("deployment").annotate(
+        occurrences_count=models.Count("occurrences"), captures_count=models.Count("captures")
+    )  # .prefetch_related("captures").all()
     serializer_class = EventSerializer
     filterset_fields = [
         "deployment",
     ]  # "project"]
+    ordering_fields = ["created_at", "updated_at", "start", "occurrences_count", "captures_count", "duration"]
 
     def get_serializer_class(self):
         """

@@ -11,6 +11,11 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 _TAXON_RANKS = ("SPECIES", "GENUS", "FAMILY", "ORDER")
 
+# @TODO move to settings & make configurable
+_SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
+_CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
+
+
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
@@ -250,15 +255,14 @@ class SourceImage(BaseModel):
 
     detections: models.QuerySet["Detection"]
 
-    def detections_count(self):
+    def detections_count(self) -> int:
         # @TODO remove this method and use QuerySet annotation instead
         return self.detections.count()
 
     def url(self):
         # @TODO use settings or deployment storage base
         # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-        url_base = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
-        url = urllib.parse.urljoin(url_base, self.path)
+        url = urllib.parse.urljoin(_SOURCE_IMAGES_URL_BASE, self.path)
         return url
 
 
@@ -393,11 +397,11 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
-    def width(self):
+    def width(self) -> Optional[int]:
         if self.bbox and len(self.bbox) == 4:
             return self.bbox[2] - self.bbox[0]
 
-    def height(self):
+    def height(self) -> Optional[int]:
         if self.bbox and len(self.bbox) == 4:
             return self.bbox[3] - self.bbox[1]
 
@@ -421,8 +425,7 @@ class Detection(BaseModel):
     def url(self):
         # @TODO use settings
         # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-        crops_url_base = "https://static.dev.insectai.org/ami-trapdata/crops"
-        url = urllib.parse.urljoin(crops_url_base, self.path)
+        url = urllib.parse.urljoin(_CROPS_URL_BASE, self.path)
         return url
 
 
@@ -453,7 +456,8 @@ class Occurrence(BaseModel):
             return None
 
     def detection_images(self, limit=5):
-        return Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]
+        for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
+            yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
     def determination_score(self):
         return self.detections.aggregate(models.Max("detection_score"))["detection_score__max"]
@@ -471,14 +475,25 @@ class Taxon(BaseModel):
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
-    detections: models.QuerySet[Detection]
 
-    def num_direct_children(self):
+    def num_direct_children(self) -> int:
         return self.direct_children.count()
 
-    def num_children_recursive(self):
+    def num_children_recursive(self) -> int:
         # @TODO how to do this with a single query?
         return self.children.count() + sum(child.num_children_recursive() for child in self.children.all())
+
+    def occurrences_count(self) -> int:
+        return self.occurrences.count()
+
+    def detections_count(self) -> int:
+        return Detection.objects.filter(occurrence__determination=self).count()
+
+    def latest_occurrence(self) -> Optional[Occurrence]:
+        return self.occurrences.order_by("-created_at").first()
+
+    def latest_detection(self) -> Optional[Detection]:
+        return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
 
     class Meta:
         ordering = ["parent__name", "name"]
