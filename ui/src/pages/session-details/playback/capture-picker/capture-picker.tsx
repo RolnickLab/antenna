@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { Capture } from 'data-services/models/capture'
 import {
   IconButton,
   IconButtonShape,
@@ -7,22 +8,23 @@ import {
 import { IconType } from 'design-system/components/icon/icon'
 import { RefObject, createRef, useEffect, useMemo, useRef } from 'react'
 import { CaptureRow } from '../capture-row/capture-row'
-import captures from '../captures.json' // TODO: Update when we have real data
 import styles from './capture-picker.module.scss'
 
 export const CapturePicker = ({
   activeCaptureId,
+  captures,
   setActiveCaptureId,
 }: {
-  activeCaptureId: number
-  setActiveCaptureId: (captureID: number) => void
+  activeCaptureId: string
+  captures: Capture[]
+  setActiveCaptureId: (captureID: string) => void
 }) => {
   const activeCaptureIndex = captures.findIndex(
     (capture) => capture.id === activeCaptureId
   )
 
   const maxAmountDetections = Math.max(
-    ...captures.map((capture) => capture.num_detections)
+    ...captures.map((capture) => capture.numDetections)
   )
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -91,7 +93,7 @@ export const CapturePicker = ({
               capture={capture}
               innerRef={captureRefs[capture.id]}
               isActive={isActive}
-              scale={capture.num_detections / maxAmountDetections}
+              scale={capture.numDetections / maxAmountDetections}
               onClick={() => setActiveCaptureId(capture.id)}
             />
           )

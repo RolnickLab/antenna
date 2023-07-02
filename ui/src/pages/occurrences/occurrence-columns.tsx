@@ -45,9 +45,9 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
-      <Link to={`/deployments/deployment-id`}>
+      <Link to={`/deployments/${item.deploymentId}`}>
         <BasicTableCell
-          value={item.deployment}
+          value={item.deploymentLabel}
           details={['WIP']}
           theme={CellTheme.Primary}
         />

@@ -1,29 +1,33 @@
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
+import { Capture, ServerCapture } from 'data-services/models/capture'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { ServerEvent, Session } from '../models/session'
 
-const COLLECTION = 'events'
+const COLLECTION = 'captures'
 
-const convertServerRecord = (record: ServerEvent) => new Session(record)
+const convertServerRecord = (record: ServerCapture) => new Capture(record)
 
-export const useSessions = (
+export const useCaptures = (
+  sessionId: string,
   params?: FetchParams
 ): {
-  sessions?: Session[]
+  captures?: Capture[]
   total: number
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({ collection: COLLECTION, params })
+  const fetchUrl = getFetchUrl({
+    collection: COLLECTION,
+    queryParams: { event: sessionId },
+  })
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: [COLLECTION, params],
     queryFn: () =>
       axios
-        .get<{ results: ServerEvent[]; count: number }>(fetchUrl)
+        .get<{ results: ServerCapture[]; count: number }>(fetchUrl)
         .then((res) => ({
           results: res.data.results.map(convertServerRecord),
           count: res.data.count,
@@ -31,7 +35,7 @@ export const useSessions = (
   })
 
   return {
-    sessions: data?.results,
+    captures: data?.results,
     total: data?.count ?? 0,
     isLoading,
     isFetching,

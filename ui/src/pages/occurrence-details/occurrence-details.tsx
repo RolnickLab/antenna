@@ -27,8 +27,8 @@ export const OccurrenceDetails = ({
   const fields = [
     {
       label: translate(STRING.DETAILS_LABEL_DEPLOYMENT),
-      value: occurrence.deployment,
-      to: '/deployments/deployment-id',
+      value: occurrence.deploymentLabel,
+      to: `/deployments/${occurrence.deploymentId}`,
     },
     {
       label: translate(STRING.DETAILS_LABEL_SESSION),

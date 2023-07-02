@@ -1,20 +1,24 @@
-import { useMemo, useState } from 'react'
+import { useCaptures } from 'data-services/hooks/useCaptures'
+import { Capture } from 'data-services/models/capture'
+import { useEffect, useState } from 'react'
 import { CapturePicker } from './capture-picker/capture-picker'
-import captures from './captures.json' // Only for testing
 import { Frame } from './frame/frame'
 import styles from './playback.module.scss'
 
-export const Playback = () => {
-  const [activeCaptureId, setActiveCaptureId] = useState(captures[0].id)
+export const Playback = ({ sessionId }: { sessionId: string }) => {
+  const { captures = [] } = useCaptures(sessionId)
+  const [activeCaptureId, setActiveCaptureId] = useState<string>()
   const [showOverlay, setShowOverlay] = useState(false)
-  const capture = captures.find((c) => c.id === activeCaptureId)
 
-  const detections = useMemo(
-    () => capture?.detections.filter((detection) => !!detection.label),
-    [capture?.detections]
-  )
+  useEffect(() => {
+    if (!activeCaptureId) {
+      setActiveCaptureId(captures[0]?.id)
+    }
+  }, [captures])
 
-  if (!capture) {
+  const capture = captures?.find((c) => c.id === activeCaptureId)
+
+  if (!activeCaptureId || !capture) {
     return null
   }
 
@@ -25,21 +29,34 @@ export const Playback = () => {
         onMouseOver={() => setShowOverlay(true)}
         onMouseOut={() => setShowOverlay(false)}
       >
-        <Frame
-          src={capture.source_image}
-          width={capture.width}
-          height={capture.height}
-          detections={detections ?? []}
-          showOverlay={showOverlay}
-        />
+        <PlaybackFrame capture={capture} showOverlay={showOverlay} />
       </div>
 
       <div className={styles.capturePicker}>
         <CapturePicker
           activeCaptureId={activeCaptureId}
+          captures={captures}
           setActiveCaptureId={setActiveCaptureId}
         />
       </div>
     </div>
+  )
+}
+
+const PlaybackFrame = ({
+  capture,
+  showOverlay,
+}: {
+  capture: Capture
+  showOverlay: boolean
+}) => {
+  return (
+    <Frame
+      src={capture.src}
+      width={capture.width}
+      height={capture.height}
+      detections={[]}
+      showOverlay={showOverlay}
+    />
   )
 }

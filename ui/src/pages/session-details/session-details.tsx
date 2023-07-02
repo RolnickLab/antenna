@@ -46,7 +46,7 @@ export const SessionDetails = () => {
         )}
         <div className={styles.container}>
           <div className={styles.playback}>
-            <Playback />
+            <Playback sessionId={session.id} />
           </div>
         </div>
       </div>

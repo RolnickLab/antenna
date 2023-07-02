@@ -22,7 +22,7 @@ export const columns: TableColumn<Session>[] = [
 
       return (
         <ImageTableCell
-          images={item.images}
+          images={item.exampleCaptures}
           theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
         />
       )
@@ -30,7 +30,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'session',
-    name: translate(STRING.TABLE_COLUMN_SESSION),
+    name: translate(STRING.TABLE_COLUMN_ID),
     sortField: 'id',
     renderCell: (item: Session) => (
       <Link to={`/sessions/${item.id}`}>
@@ -42,7 +42,7 @@ export const columns: TableColumn<Session>[] = [
     id: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     renderCell: (item: Session) => (
-      <Link to={`/deployments/deployment-id`}>
+      <Link to={`/deployments/${item.deploymentId}`}>
         <BasicTableCell
           value={item.deploymentLabel}
           theme={CellTheme.Primary}
@@ -110,6 +110,6 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'avg-temp',
     name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
-    renderCell: () => <BasicTableCell value="WIP" />,
+    renderCell: (item: Session) => <BasicTableCell value={item.tempLabel} />,
   },
 ]
