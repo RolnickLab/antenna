@@ -12,13 +12,16 @@ import {
 import { MinimapControl } from '../minimap-control'
 import styles from '../styles.module.scss'
 import { MarkerPosition } from '../types'
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 
 setup()
 
 export const MultiMarkerMap = ({
   markers,
+  isLoading,
 }: {
   markers: { position: MarkerPosition; popupContent?: JSX.Element }[]
+  isLoading?: boolean
 }) => {
   const mapRef = useRef<L.Map>(null)
 
@@ -38,6 +41,14 @@ export const MultiMarkerMap = ({
       mapRef.current?.fitBounds(bounds, { maxZoom: DEFAULT_ZOOM })
     })
   }, [mapRef, bounds])
+
+  if (isLoading) {
+    return (
+      <div className={styles.mapContainer}>
+        <LoadingSpinner />
+      </div>
+    )
+  }
 
   return (
     <MapContainer
