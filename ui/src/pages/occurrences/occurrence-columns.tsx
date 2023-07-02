@@ -35,7 +35,7 @@ export const columns: TableColumn<Occurrence>[] = [
       <Link to={`/occurrences/${item.id}`}>
         <BasicTableCell
           value={item.categoryLabel}
-          details={['WIP', `${translate(STRING.SCORE)}: ${item.categoryScore}`]}
+          details={[`${translate(STRING.SCORE)}: ${item.categoryScore}`]}
           theme={CellTheme.Primary}
         />
       </Link>
@@ -48,7 +48,6 @@ export const columns: TableColumn<Occurrence>[] = [
       <Link to={`/deployments/${item.deploymentId}`}>
         <BasicTableCell
           value={item.deploymentLabel}
-          details={['WIP']}
           theme={CellTheme.Primary}
         />
       </Link>

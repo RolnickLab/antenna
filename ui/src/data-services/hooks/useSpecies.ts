@@ -2,10 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { ServerOccurrence } from '../models/occurrence'
 import { ServerSpecies, Species } from '../models/species'
 
-const COLLECTION = 'species'
+const COLLECTION = 'taxa'
 
 const convertServerRecord = (record: ServerSpecies) => new Species(record)
 
@@ -24,13 +23,16 @@ export const useSpecies = (
     queryKey: [COLLECTION, params],
     queryFn: () =>
       axios
-        .get<ServerOccurrence[]>(fetchUrl)
-        .then((res) => res.data.map(convertServerRecord)),
+        .get<{ results: ServerSpecies[]; count: number }>(fetchUrl)
+        .then((res) => ({
+          results: res.data.results.map(convertServerRecord),
+          count: res.data.count,
+        })),
   })
 
   return {
-    species: data,
-    total: data?.length ?? 0, // TODO: Until we get total in response
+    species: data?.results,
+    total: data?.count ?? 0,
     isLoading,
     isFetching,
     error,
