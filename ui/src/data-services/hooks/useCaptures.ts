@@ -8,9 +8,13 @@ const COLLECTION = 'captures'
 
 const convertServerRecord = (record: ServerCapture) => new Capture(record)
 
+const FETCH_PARAMS: FetchParams = {
+  pagination: { page: 0, perPage: 10000 },
+  sort: { field: 'timestamp', order: 'asc' },
+}
+
 export const useCaptures = (
-  sessionId: string,
-  params?: FetchParams
+  sessionId: string
 ): {
   captures?: Capture[]
   total: number
@@ -20,11 +24,12 @@ export const useCaptures = (
 } => {
   const fetchUrl = getFetchUrl({
     collection: COLLECTION,
+    params: FETCH_PARAMS,
     queryParams: { event: sessionId },
   })
 
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: [COLLECTION, params],
+    queryKey: [COLLECTION, { event: sessionId, ...FETCH_PARAMS }],
     queryFn: () =>
       axios
         .get<{ results: ServerCapture[]; count: number }>(fetchUrl)

@@ -30,7 +30,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'session',
-    name: translate(STRING.TABLE_COLUMN_ID),
+    name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Session) => (
       <Link to={`/sessions/${item.id}`}>
         <BasicTableCell value={item.idLabel} theme={CellTheme.Primary} />

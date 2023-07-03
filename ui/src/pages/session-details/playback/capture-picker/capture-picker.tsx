@@ -15,9 +15,9 @@ export const CapturePicker = ({
   captures,
   setActiveCaptureId,
 }: {
-  activeCaptureId: string
+  activeCaptureId?: string
   captures: Capture[]
-  setActiveCaptureId: (captureID: string) => void
+  setActiveCaptureId: (captureId: string) => void
 }) => {
   const activeCaptureIndex = captures.findIndex(
     (capture) => capture.id === activeCaptureId
@@ -74,6 +74,9 @@ export const CapturePicker = ({
 
   // Scroll active element into view
   useEffect(() => {
+    if (!activeCaptureId) {
+      return
+    }
     captureRefs[activeCaptureId].current?.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',

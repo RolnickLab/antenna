@@ -55,7 +55,7 @@ export class Session {
   }
 
   get idLabel(): string {
-    return `#${this.id}`
+    return `Session #${this.id}`
   }
 
   get numDetections(): string {
