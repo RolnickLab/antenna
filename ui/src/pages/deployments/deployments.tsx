@@ -1,6 +1,6 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
-import { useDeployments } from 'data-services/hooks/useDeployments'
-import { useDeploymentDetails } from 'data-services/hooks/useDeploymentsDetails'
+import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
+import { useDeploymentDetails } from 'data-services/hooks/deployments/useDeploymentsDetails'
 import { Table } from 'design-system/components/table/table/table'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
@@ -45,10 +45,6 @@ export const Deployments = () => {
 const DeploymentDetails = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { deployment } = useDeploymentDetails(id)
-
-  if (!deployment) {
-    return null
-  }
 
   return (
     <DeploymentDetailsDialog

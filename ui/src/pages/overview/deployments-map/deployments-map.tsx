@@ -1,9 +1,8 @@
-import { useDeployments } from 'data-services/hooks/useDeployments'
+import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-map'
 import { MarkerPosition } from 'design-system/map/types'
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
-import { STRING, translate } from 'utils/language'
+import { DeploymentsMapPopupContent } from './deployments-map-popup-content'
 
 export const DeploymentsMap = () => {
   const { deployments, isLoading } = useDeployments()
@@ -13,37 +12,10 @@ export const DeploymentsMap = () => {
       return []
     }
 
-    return deployments.map((deployment) => {
-      const position = new MarkerPosition(
-        deployment.latitude,
-        deployment.longitude
-      )
-      const popupContent = (
-        <>
-          <p>
-            <Link to={`/deployments/${deployment.id}`}>
-              <span>{deployment.name}</span>
-            </Link>
-          </p>
-          <p>
-            <span>
-              {translate(STRING.DETAILS_LABEL_SESSIONS)}: {deployment.numEvents}
-            </span>
-            <br />
-            <span>
-              {translate(STRING.DETAILS_LABEL_IMAGES)}: {deployment.numImages}
-            </span>
-            <br />
-            <span>
-              {translate(STRING.DETAILS_LABEL_DETECTIONS)}:{' '}
-              {deployment.numDetections}
-            </span>
-          </p>
-        </>
-      )
-
-      return { position, popupContent }
-    })
+    return deployments.map((deployment) => ({
+      position: new MarkerPosition(deployment.latitude, deployment.longitude),
+      popupContent: <DeploymentsMapPopupContent deployment={deployment} />,
+    }))
   }, [deployments])
 
   return <MultiMarkerMap isLoading={isLoading} markers={markers} />

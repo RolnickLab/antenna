@@ -16,12 +16,14 @@ import { Section } from './types'
 
 export const DeploymentDetailsForm = ({
   deployment,
+  isLoading,
   startValid,
   title,
   onCancelClick,
   onSubmit,
 }: {
   deployment: DeploymentDetails
+  isLoading?: boolean
   startValid?: boolean
   title: string
   onCancelClick: () => void
@@ -58,7 +60,7 @@ export const DeploymentDetailsForm = ({
           onClick={onCancelClick}
           type="button"
         />
-        <SaveButton onSubmit={onSubmit} />
+        <SaveButton isLoading={isLoading} onSubmit={onSubmit} />
       </div>
     </Dialog.Header>
     <div className={styles.content}>
@@ -71,8 +73,10 @@ export const DeploymentDetailsForm = ({
 )
 
 const SaveButton = ({
+  isLoading,
   onSubmit,
 }: {
+  isLoading?: boolean
   onSubmit: (data: DeploymentFieldValues) => void
 }) => {
   const { formState, submitFormSection } = useContext(FormContext)
@@ -106,10 +110,11 @@ const SaveButton = ({
 
   return (
     <Button
+      disabled={!allValid || !someDirty || isLoading}
       label={translate(STRING.SAVE)}
-      disabled={!allValid || !someDirty}
-      onClick={onSaveClick}
+      loading={isLoading}
       theme={ButtonTheme.Success}
+      onClick={onSaveClick}
     />
   )
 }

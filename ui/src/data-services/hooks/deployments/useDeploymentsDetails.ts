@@ -5,8 +5,7 @@ import {
   DeploymentDetails,
   ServerDeploymentDetails,
 } from 'data-services/models/deployment-details'
-
-const COLLECTION = 'deployments'
+import { COLLECTION } from './constants'
 
 const convertServerRecord = (record: ServerDeploymentDetails) =>
   new DeploymentDetails(record)

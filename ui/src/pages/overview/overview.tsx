@@ -2,7 +2,7 @@ import { Plot } from 'design-system/components/plot/plot'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import styles from './overview.module.scss'
 
-export const EXAMPLE_DATA = {
+const EXAMPLE_DATA = {
   y: [18, 45, 98, 120, 109, 113, 43],
   x: ['8PM', '9PM', '10PM', '11PM', '12PM', '13PM', '14PM'],
   tickvals: ['8PM', '', '', '', '', '', '14PM'],
