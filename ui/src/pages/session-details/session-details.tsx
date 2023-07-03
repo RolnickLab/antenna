@@ -57,21 +57,6 @@ export const SessionDetails = () => {
             <SessionInfo session={session} />
           </div>
         </div>
-        <div className={styles.container}>
-          <div className={styles.content}>
-            <span>WIP</span>
-          </div>
-        </div>
-        <div className={styles.container}>
-          <div className={styles.content}>
-            <span>WIP</span>
-          </div>
-        </div>
-        <div className={styles.container}>
-          <div className={styles.content}>
-            <span>WIP</span>
-          </div>
-        </div>
       </div>
     </>
   )

@@ -6,29 +6,47 @@ import styles from './session-info.module.scss'
 export const SessionInfo = ({ session }: { session: Session }) => {
   const fields = [
     {
-      label: translate(STRING.DETAILS_LABEL_DEPLOYMENT),
+      label: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
       value: session.deploymentLabel,
       to: `/deployments/${session.deploymentId}`,
     },
     {
-      label: translate(STRING.DETAILS_LABEL_DATE),
+      label: translate(STRING.TABLE_COLUMN_DATE),
       value: session.datespanLabel,
     },
     {
-      label: translate(STRING.DETAILS_LABEL_TIME),
+      label: translate(STRING.TABLE_COLUMN_TIME),
       value: session.timespanLabel,
     },
     {
-      label: translate(STRING.DETAILS_LABEL_DURATION),
+      label: translate(STRING.TABLE_COLUMN_DURATION),
       value: session.durationLabel,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_IMAGES),
+      value: session.numImages,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_DETECTIONS),
+      value: session.numDetections,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+      value: session.numOccurrences,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_SPECIES),
+      value: session.numSpecies,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_AVG_TEMP),
+      value: session.tempLabel,
     },
   ]
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.title}>
-        {translate(STRING.SESSION)} {session.idLabel}
-      </h1>
+      <h1 className={styles.title}>{session.idLabel}</h1>
       <div className={styles.content}>
         <div className={styles.fields}>
           <InfoBlock fields={fields} />

@@ -58,24 +58,24 @@ export class Session {
     return `Session #${this.id}`
   }
 
-  get numDetections(): string {
-    return 'WIP'
+  get numDetections(): number | undefined {
+    return this._event.detections_count
   }
 
-  get numImages(): number {
+  get numImages(): number | undefined {
     return this._event.captures_count
   }
 
-  get numOccurrences(): number {
+  get numOccurrences(): number | undefined {
     return this._event.occurrences_count
   }
 
-  get numSpecies(): number {
+  get numSpecies(): number | undefined {
     return this._event.taxa_count
   }
 
-  get tempLabel(): string {
-    return 'WIP'
+  get tempLabel(): string | undefined {
+    return undefined
   }
 
   get timespanLabel(): string {
