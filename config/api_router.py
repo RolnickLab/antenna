@@ -18,6 +18,7 @@ router.register(r"detections", views.DetectionViewSet)
 router.register(r"occurrences", views.OccurrenceViewSet)
 router.register(r"taxa", views.TaxonViewSet)
 router.register(r"models", views.AlgorithmViewSet)
+router.register(r"classifications", views.ClassificationViewSet)
 
 # Wire up our API using automatic URL routing.
 

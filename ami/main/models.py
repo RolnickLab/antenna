@@ -322,6 +322,8 @@ class Algorithm(BaseModel):
     version = models.CharField(max_length=255, blank=True)
     url = models.URLField(blank=True)
 
+    classfications: models.QuerySet["Classification"]
+
 
 @final
 class Detection(BaseModel):
@@ -459,8 +461,15 @@ class Occurrence(BaseModel):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
-    def determination_score(self):
-        return self.detections.aggregate(models.Max("detection_score"))["detection_score__max"]
+    def determination_score(self) -> float | None:
+        return (
+            Classification.objects.filter(detection__occurrence=self)
+            .order_by("-created_at")
+            .aggregate(models.Max("score"))["score__max"]
+        )
+
+    def determination_algorithm(self) -> Algorithm | None:
+        return Algorithm.objects.filter(classification__detection__occurrence=self).first()
 
 
 @final
