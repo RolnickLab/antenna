@@ -1,3 +1,7 @@
+const DAY_OPTIONS: Intl.DateTimeFormatOptions = { day: '2-digit' }
+const MONTH_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short' }
+const YEAR_OPTIONS: Intl.DateTimeFormatOptions = { year: 'numeric' }
+
 export const getCompactDatespanString = ({
   date1,
   date2,
@@ -7,12 +11,12 @@ export const getCompactDatespanString = ({
   date2: Date
   locale?: string
 }) => {
-  const day1 = date1.toLocaleDateString(locale, { day: '2-digit' })
-  const day2 = date2.toLocaleDateString(locale, { day: '2-digit' })
-  const month1 = date1.toLocaleDateString(locale, { month: 'short' })
-  const month2 = date2.toLocaleDateString(locale, { month: 'short' })
-  const year1 = date1.toLocaleDateString(locale, { year: 'numeric' })
-  const year2 = date2.toLocaleDateString(locale, { year: 'numeric' })
+  const day1 = date1.toLocaleDateString(locale, DAY_OPTIONS)
+  const day2 = date2.toLocaleDateString(locale, DAY_OPTIONS)
+  const month1 = date1.toLocaleDateString(locale, MONTH_OPTIONS)
+  const month2 = date2.toLocaleDateString(locale, MONTH_OPTIONS)
+  const year1 = date1.toLocaleDateString(locale, YEAR_OPTIONS)
+  const year2 = date2.toLocaleDateString(locale, YEAR_OPTIONS)
 
   if (year1 === year2) {
     if (month1 === month2) {

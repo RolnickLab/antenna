@@ -1,16 +1,17 @@
 import classNames from 'classnames'
+import { CaptureDetection } from 'data-services/models/capture-details'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styles from './frame.module.scss'
-import { BoxStyle, FrameDetection } from './types'
+import { BoxStyle } from './types'
 import { useActiveDetections } from './useActiveDetections'
 
 interface FrameProps {
   src: string
   width: number
   height: number
-  detections: FrameDetection[]
+  detections: CaptureDetection[]
   showOverlay?: boolean
 }
 
@@ -35,7 +36,7 @@ export const Frame = ({
 
   const boxStyles = useMemo(
     () =>
-      detections.reduce((result: { [key: number]: BoxStyle }, detection) => {
+      detections.reduce((result: { [key: string]: BoxStyle }, detection) => {
         const [boxLeft, boxTop, boxRight, boxBottom] = detection.bbox
         const boxWidth = boxRight - boxLeft
         const boxHeight = boxBottom - boxTop
@@ -111,7 +112,7 @@ const FrameDetections = ({
   detections,
   boxStyles,
 }: {
-  detections: FrameDetection[]
+  detections: CaptureDetection[]
   boxStyles: { [key: number]: BoxStyle }
 }) => {
   const containerRef = useRef(null)

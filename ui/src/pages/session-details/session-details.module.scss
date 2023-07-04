@@ -29,11 +29,8 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-
-  span {
-    @include paragraph-medium();
-    color: $color-neutral-800;
-  }
+  @include paragraph-medium();
+  color: $color-neutral-800;
 }
 
 .container {
@@ -46,7 +43,6 @@
 }
 
 .content {
-  width: 20%;
   padding: 24px;
   box-sizing: border-box;
   overflow: auto;

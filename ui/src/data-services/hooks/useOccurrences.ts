@@ -23,13 +23,16 @@ export const useOccurrences = (
     queryKey: [COLLECTION, params],
     queryFn: () =>
       axios
-        .get<ServerOccurrence[]>(fetchUrl)
-        .then((res) => res.data.map(convertServerRecord)),
+        .get<{ results: ServerOccurrence[]; count: number }>(fetchUrl)
+        .then((res) => ({
+          results: res.data.results.map(convertServerRecord),
+          count: res.data.count,
+        })),
   })
 
   return {
-    occurrences: data,
-    total: data?.length ?? 0, // TODO: Until we get total in response
+    occurrences: data?.results,
+    total: data?.count ?? 0,
     isLoading,
     isFetching,
     error,

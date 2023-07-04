@@ -23,13 +23,16 @@ export const useSessions = (
     queryKey: [COLLECTION, params],
     queryFn: () =>
       axios
-        .get<ServerEvent[]>(fetchUrl)
-        .then((res) => res.data.map(convertServerRecord)),
+        .get<{ results: ServerEvent[]; count: number }>(fetchUrl)
+        .then((res) => ({
+          results: res.data.results.map(convertServerRecord),
+          count: res.data.count,
+        })),
   })
 
   return {
-    sessions: data,
-    total: data?.length ?? 0, // TODO: Until we get total in response
+    sessions: data?.results,
+    total: data?.count ?? 0,
     isLoading,
     isFetching,
     error,

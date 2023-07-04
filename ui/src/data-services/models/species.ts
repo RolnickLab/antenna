@@ -7,14 +7,13 @@ export class Species {
   public constructor(species: ServerSpecies) {
     this._species = species
 
-    this._images = species.examples.map((example: any) => ({
-      // TODO: Can we get full URL from API?
-      src: `https://api.dev.insectai.org${example.cropped_image_path}`,
-    }))
+    if (species.latest_detection) {
+      this._images = [{ src: species.latest_detection?.url }]
+    }
   }
 
   get id(): string {
-    return this._species.name // TODO: Update when BE is returning an ID
+    return `${this._species.id}`
   }
 
   get images(): { src: string }[] {
@@ -26,10 +25,10 @@ export class Species {
   }
 
   get numDetections(): number {
-    return this._species.num_detections
+    return this._species.detections_count
   }
 
   get numOccurrences(): number {
-    return this._species.num_occurrences
+    return this._species.occurrences_count
   }
 }

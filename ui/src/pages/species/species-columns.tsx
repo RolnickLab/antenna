@@ -13,6 +13,7 @@ import { STRING, translate } from 'utils/language'
 export const columns: TableColumn<Species>[] = [
   {
     id: 'snapshots',
+    sortField: 'updated_at',
     name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
     styles: {
       padding: '16px 32px',
@@ -30,6 +31,7 @@ export const columns: TableColumn<Species>[] = [
   },
   {
     id: 'name',
+    sortField: 'name',
     name: 'Name',
     renderCell: (item: Species) => (
       <Link to={`/species/species-id`}>
@@ -68,11 +70,11 @@ export const columns: TableColumn<Species>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => (
-      <Link to={`https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${item.name}`} target='_blank'>
-        <BasicTableCell
-          value={'GBIF'}
-          theme={CellTheme.Primary}
-        />
+      <Link
+        to={`https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${item.name}`}
+        target="_blank"
+      >
+        <BasicTableCell value={'GBIF'} theme={CellTheme.Primary} />
       </Link>
     ),
   },

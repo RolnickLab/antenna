@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { Capture } from 'data-services/models/capture'
 import { RefObject } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './capture-row.module.scss'
@@ -10,7 +11,7 @@ export const CaptureRow = ({
   scale,
   onClick,
 }: {
-  capture: any // TODO: Update when we have real data
+  capture: Capture
   innerRef: RefObject<HTMLDivElement>
   isActive: boolean
   scale: number
@@ -21,12 +22,12 @@ export const CaptureRow = ({
     key={capture.id}
     className={classNames(styles.capture, {
       [styles.active]: isActive,
-      [styles.empty]: capture.num_detections === 0,
+      [styles.empty]: capture.numDetections === 0,
     })}
     onClick={onClick}
   >
     <div className={styles.numDetections}>
-      {capture.num_detections} {translate(STRING.DETAILS_LABEL_DETECTIONS)}
+      {capture.numDetections} {translate(STRING.DETAILS_LABEL_DETECTIONS)}
     </div>
     <div className={styles.barContainer}>
       <div
@@ -36,8 +37,6 @@ export const CaptureRow = ({
         }}
       />
     </div>
-    <div className={styles.timestamp}>
-      {new Date(capture.timestamp).toLocaleTimeString()}
-    </div>
+    <div className={styles.timestamp}>{capture.timeString}</div>
   </div>
 )

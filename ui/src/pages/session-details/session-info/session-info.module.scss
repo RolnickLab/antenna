@@ -14,27 +14,6 @@
   margin: 0 0 16px 0;
 }
 
-.fieldGroup {
-  margin: 0 0 16px 0;
-}
-
-.fieldLabel {
-  display: block;
-  @include label();
-  font-weight: 600;
-  color: $color-neutral-500;
-}
-
-.fieldValue {
-  display: block;
-  @include paragraph-medium();
-  color: $color-neutral-800;
-
-  &.link {
-    color: $color-primary-1-600;
-  }
-}
-
 @media only screen and (max-width: $medium-screen-breakpoint) {
   .content {
     grid-template-columns: 1fr 1fr;

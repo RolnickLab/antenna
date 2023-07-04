@@ -1,9 +1,9 @@
 import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import {
-  Deployment,
+  DeploymentDetails,
   DeploymentFieldValues,
-} from 'data-services/models/deployment'
+} from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
 import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
 import { InputValue } from 'design-system/components/input/input'
@@ -31,7 +31,7 @@ export const SectionSourceImages = ({
   deployment,
   onBack,
 }: {
-  deployment: Deployment
+  deployment: DeploymentDetails
   onBack: () => void
 }) => {
   const { formSectionRef, formState, setFormSectionValues } =

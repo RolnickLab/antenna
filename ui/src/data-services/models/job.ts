@@ -1,4 +1,5 @@
-import { getFormatedDateString } from 'utils/date/getFormatedDateString/getCompactDatespanString'
+import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
+import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 
 export type ServerJob = any // TODO: Update this type
@@ -23,7 +24,11 @@ export class Job {
   }
 
   get jobStarted(): string {
-    return getFormatedDateString({ date: new Date(this._job.job_started) })
+    const date = new Date(this._job.job_started)
+    const dateString = getFormatedDateString({ date })
+    const timeString = getFormatedTimeString({ date })
+
+    return `${dateString} ${timeString}`
   }
 
   get project(): string {

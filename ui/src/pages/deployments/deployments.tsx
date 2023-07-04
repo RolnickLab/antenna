@@ -1,5 +1,6 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
-import { useDeployments } from 'data-services/hooks/useDeployments'
+import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
+import { useDeploymentDetails } from 'data-services/hooks/deployments/useDeploymentsDetails'
 import { Table } from 'design-system/components/table/table/table'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
@@ -11,7 +12,6 @@ import styles from './deployments.module.scss'
 
 export const Deployments = () => {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { deployments, isLoading, isFetching, error } = useDeployments()
   const { sortedItems, sort, setSort } = useClientSideSort({
     items: deployments,
@@ -21,9 +21,6 @@ export const Deployments = () => {
   if (!isLoading && error) {
     return <Error />
   }
-
-  const deployment = deployments?.find((d) => d.id === id)
-  const detailsOpen = !!deployment
 
   return (
     <>
@@ -40,12 +37,20 @@ export const Deployments = () => {
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
-      {!detailsOpen ? <NewDeploymentDialog /> : null}
-      <DeploymentDetailsDialog
-        deployment={deployment}
-        open={detailsOpen}
-        onOpenChange={() => navigate('/deployments')}
-      />
+      {id ? <DeploymentDetails id={id} /> : <NewDeploymentDialog />}
     </>
+  )
+}
+
+const DeploymentDetails = ({ id }: { id: string }) => {
+  const navigate = useNavigate()
+  const { deployment } = useDeploymentDetails(id)
+
+  return (
+    <DeploymentDetailsDialog
+      deployment={deployment}
+      open={!!deployment}
+      onOpenChange={() => navigate('/deployments')}
+    />
   )
 }

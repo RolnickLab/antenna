@@ -1,43 +1,22 @@
-import exampleCaptures from '../example-data/example_captures.json'
-
 export type ServerDeployment = any // TODO: Update this type
-
-export interface DeploymentFieldValues {
-  device: string
-  name: string
-  latitude: number
-  longitude: number
-  path: string
-  site: string
-}
 
 export class Deployment {
   private readonly _deployment: ServerDeployment
-  private readonly _exampleCaptures: { src: string }[] = []
 
   public constructor(deployment: ServerDeployment) {
     this._deployment = deployment
-
-    this._exampleCaptures = exampleCaptures.map((capture: any) => ({
-      // TODO: Can we get full URL from API?
-      src: `https://api.dev.insectai.org${capture.path}`,
-    }))
-  }
-
-  get exampleCaptures(): { src: string }[] {
-    return this._exampleCaptures
   }
 
   get id(): string {
-    return this._deployment.id ?? this._deployment.name // TODO: Update when BE is returning an ID
+    return `${this._deployment.id}`
   }
 
   get latitude(): number {
-    return 0 // TODO: Update when BE is returning latitude
+    return this._deployment.latitude
   }
 
   get longitude(): number {
-    return 0 // TODO: Update when BE is returning longitude
+    return this._deployment.longitude
   }
 
   get name(): string {
@@ -45,18 +24,14 @@ export class Deployment {
   }
 
   get numDetections(): number {
-    return this._deployment.num_detections
+    return this._deployment.detections_count
   }
 
   get numEvents(): number {
-    return this._deployment.num_events
+    return this._deployment.events_count
   }
 
   get numImages(): number {
-    return this._deployment.num_source_images
-  }
-
-  get path(): string {
-    return this._deployment.image_base_path
+    return this._deployment.captures_count
   }
 }

@@ -29,13 +29,12 @@ export const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'id',
-    sortField: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Occurrence) => (
       <Link to={`/occurrences/${item.id}`}>
         <BasicTableCell
           value={item.categoryLabel}
-          details={['WIP', `${translate(STRING.SCORE)}: ${item.categoryScore}`]}
+          details={[`${translate(STRING.SCORE)}: ${item.categoryScore}`]}
           theme={CellTheme.Primary}
         />
       </Link>
@@ -45,10 +44,9 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
-      <Link to={`/deployments/deployment-id`}>
+      <Link to={`/deployments/${item.deploymentId}`}>
         <BasicTableCell
-          value={item.deployment}
-          details={['WIP']}
+          value={item.deploymentLabel}
           theme={CellTheme.Primary}
         />
       </Link>

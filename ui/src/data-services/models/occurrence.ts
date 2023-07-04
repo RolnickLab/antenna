@@ -1,6 +1,3 @@
-import _ from 'lodash'
-import { getCompactDatespanString } from 'utils/date/getCompactDatespanString/getCompactDatespanString'
-
 export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
@@ -10,44 +7,48 @@ export class Occurrence {
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
 
-    this._images = occurrence.examples.map((example: any) => ({
-      // TODO: Can we get full URL from API?
-      src: `https://api.dev.insectai.org${example.cropped_image_path}`,
-    }))
+    this._images = occurrence.detection_images
+      .filter((src: string) => !!src.length)
+      .map((src: string) => ({ src }))
   }
 
   get categoryLabel(): string {
-    return this._occurrence.label
+    return this._occurrence.determination.name
   }
 
-  get categoryScore(): number {
-    return _.round(Number(this._occurrence.best_score), 2)
+  get categoryScore(): string {
+    return 'WIP'
   }
 
-  get deployment(): string {
-    return this._occurrence.deployment
+  get deploymentLabel(): string {
+    return this._occurrence.deployment.name
+  }
+
+  get deploymentId(): string {
+    return `${this._occurrence.deployment.id}`
   }
 
   get id(): string {
-    return this._occurrence.id
+    return `${this._occurrence.id}`
+  }
+
+  get idLabel(): string {
+    return `#${this.id}`
   }
 
   get images(): { src: string }[] {
     return this._images
   }
 
-  get sessionId(): number {
-    return this._occurrence.event.id
+  get sessionId(): string {
+    return `${this._occurrence.event.id}`
   }
 
   get sessionLabel(): string {
-    return `Session ${this._occurrence.event.day}`
+    return `Session #${this.sessionId}`
   }
 
   get sessionTimespan(): string {
-    return getCompactDatespanString({
-      date1: new Date(this._occurrence.start_time),
-      date2: new Date(this._occurrence.end_time),
-    })
+    return this._occurrence.event.date_label
   }
 }

@@ -1,74 +1,57 @@
-import classNames from 'classnames'
 import { Session } from 'data-services/models/session'
-import { Link } from 'react-router-dom'
+import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { STRING, translate } from 'utils/language'
 import styles from './session-info.module.scss'
 
-export const SessionInfo = ({ session }: { session: Session }) => (
-  <>
-    <h1 className={styles.title}>
-      {translate(STRING.SESSION)} {session.idLabel}
-    </h1>
-    <div className={styles.content}>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_DEPLOYMENT)}
-        </span>
-        <Link to="`/deployments/deployment-id`">
-          <span className={classNames(styles.fieldValue, styles.link)}>
-            {session.deploymentLabel}
-          </span>
-        </Link>
-      </p>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_DATE)}
-        </span>
-        <span className={styles.fieldValue}>{session.datespanLabel}</span>
-      </p>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_TIME)}
-        </span>
-        <span className={styles.fieldValue}>{session.timespanLabel}</span>
-      </p>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_DURATION)}
-        </span>
-        <span className={styles.fieldValue}>{session.durationLabel}</span>
-      </p>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_ELEVATION)}
-        </span>
-        <span className={styles.fieldValue}>WIP</span>
-      </p>
+export const SessionInfo = ({ session }: { session: Session }) => {
+  const fields = [
+    {
+      label: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
+      value: session.deploymentLabel,
+      to: `/deployments/${session.deploymentId}`,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_DATE),
+      value: session.datespanLabel,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_TIME),
+      value: session.timespanLabel,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_DURATION),
+      value: session.durationLabel,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_IMAGES),
+      value: session.numImages,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_DETECTIONS),
+      value: session.numDetections,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+      value: session.numOccurrences,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_SPECIES),
+      value: session.numSpecies,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_AVG_TEMP),
+      value: session.tempLabel,
+    },
+  ]
 
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_AVG_TEMP)}
-        </span>
-        <span className={styles.fieldValue}>WIP</span>
-      </p>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_AVG_WEATHER)}
-        </span>
-        <span className={styles.fieldValue}>WIP</span>
-      </p>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_LIGHT_SOURCE)}
-        </span>
-        <span className={styles.fieldValue}>WIP</span>
-      </p>
-      <p className={styles.fieldGroup}>
-        <span className={styles.fieldLabel}>
-          {translate(STRING.DETAILS_LABEL_CAMERA)}
-        </span>
-        <span className={styles.fieldValue}>WIP</span>
-      </p>
+  return (
+    <div className={styles.container}>
+      <h1 className={styles.title}>{session.idLabel}</h1>
+      <div className={styles.content}>
+        <div className={styles.fields}>
+          <InfoBlock fields={fields} />
+        </div>
+      </div>
     </div>
-  </>
-)
+  )
+}
