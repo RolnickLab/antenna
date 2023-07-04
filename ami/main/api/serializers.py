@@ -331,6 +331,7 @@ class ClassificationSerializer(DefaultSerializer):
 
 class CaptureDetectionsSerializer(DefaultSerializer):
     occurrence = CaptureOccurrenceSerializer(read_only=True)
+    classifications = serializers.SerializerMethodField()
 
     class Meta:
         model = Detection
@@ -344,6 +345,17 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "occurrence",
             "classifications",
         ]
+
+    def get_classifications(self, obj):
+        """
+        Return URL to the classifications endpoint filtered by this detection.
+        """
+
+        return reverse_with_params(
+            "classification-list",
+            request=self.context.get("request"),
+            params={"detection": obj.pk},
+        )
 
 
 class DetectionNestedSerializer(DefaultSerializer):
@@ -423,14 +435,12 @@ class SourceImageListSerializer(DefaultSerializer):
 
 class SourceImageSerializer(DefaultSerializer):
     detections_count = serializers.IntegerField(read_only=True)
-    detections = DetectionListSerializer(many=True, read_only=True)
+    detections = CaptureDetectionsSerializer(many=True, read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
         model = SourceImage
-        fields = SourceImageListSerializer.Meta.fields + [
-            "detections",
-        ]
+        fields = SourceImageListSerializer.Meta.fields + []
 
 
 class OccurrenceListSerializer(DefaultSerializer):
