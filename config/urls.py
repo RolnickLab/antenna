@@ -25,12 +25,14 @@ if settings.DEBUG:
 # API URLS
 urlpatterns += [
     # API base url
-    path("api/", include("config.api_router")),
+    path("api/v2/", include("config.api_router", namespace="api")),
     # DRF auth token
-    path("auth-token/", obtain_auth_token),
-    path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
+    path("api/v2/auth-token/", obtain_auth_token),
+    # Login page the browsable API. From the Wemake template. @TODO: remove?
+    path("api/v2/auth/", include("rest_framework.urls", namespace="rest_framework")),
+    path("api/v2/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path(
-        "api/docs/",
+        "api/v2/docs/",
         SpectacularSwaggerView.as_view(url_name="api-schema"),
         name="api-docs",
     ),

@@ -1,4 +1,4 @@
-exclude: '^docs/|/migrations/'
+exclude: "^docs/|/migrations/"
 default_stages: [commit]
 
 repos:
@@ -18,16 +18,16 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/adamchainz/django-upgrade
-    rev: '1.14.0'
+    rev: "1.14.0"
     hooks:
       - id: django-upgrade
-        args: ['--target-version', '4.2']
+        args: ["--target-version", "4.2"]
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.7.0
     hooks:
       - id: pyupgrade
-        args: [--py311-plus]
+        args: [--py310-plus]
 
   - repo: https://github.com/psf/black
     rev: 23.3.0

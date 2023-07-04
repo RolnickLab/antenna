@@ -1,5 +1,10 @@
+from typing import TYPE_CHECKING
+
 from .base import *  # noqa
 from .base import env
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest  # noqa: F401 # Check wemake template about why this is needed
 
 # GENERAL
 # ------------------------------------------------------------------------------
@@ -11,7 +16,7 @@ SECRET_KEY = env(
     default="3T3ckueKQBdtUaY9IcQdpkEK25HnAHYDFAh2FaK4bIjP6ybVfej9fGo2EHeLDaVa",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]
+ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1", "api.dev.insectai.org"]
 
 # CACHES
 # ------------------------------------------------------------------------------
