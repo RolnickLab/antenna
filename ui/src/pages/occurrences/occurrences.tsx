@@ -16,6 +16,8 @@ import { usePagination } from 'utils/usePagination'
 import { Gallery } from './gallery/gallery'
 import { columns } from './occurrence-columns'
 import styles from './occurrences.module.scss'
+import { FilterSettings } from 'components/filter-settings/filter-settings'
+import { useFilters } from 'utils/useFilters'
 
 export const Occurrences = () => {
   const { id } = useParams()
@@ -30,24 +32,23 @@ export const Occurrences = () => {
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     pagination,
     sort,
+    filters,
   })
 
   if (!isLoading && error) {
     return <Error />
   }
 
-  const occurrence = occurrences?.find((o) => o.id === id)
-
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <div className={styles.infoWrapper}>
+        {isFetching && <FetchInfo isLoading={isLoading} />}
+        <FilterSettings />
+      </div>
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger
