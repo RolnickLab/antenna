@@ -236,23 +236,8 @@ class EventNestedSerializer(DefaultSerializer):
         ]
 
 
-class DetectionNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Detection
-        # queryset = Detection.objects.prefetch_related("classifications")
-        fields = [
-            "id",
-            "timestamp",
-            "url",
-            "source_image",
-            "width",
-            "height",
-            # "best_classification",
-        ]
-
-
 class TaxonSerializer(DefaultSerializer):
-    latest_detection = DetectionNestedSerializer(read_only=True)
+    # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
 
     class Meta:
@@ -266,7 +251,7 @@ class TaxonSerializer(DefaultSerializer):
             "occurrences_count",
             "detections_count",
             "occurrences",
-            "latest_detection",
+            # "latest_detection",
         ]
 
     def get_occurrences(self, obj):
@@ -281,15 +266,30 @@ class TaxonSerializer(DefaultSerializer):
         )
 
 
-class ClassificationSerializer(DefaultSerializer):
-    taxon = TaxonSerializer(read_only=True)
+class OccurrenceNestedSerializer(DefaultSerializer):
+    determination = TaxonSerializer(read_only=True)
 
     class Meta:
-        model = Classification
+        model = Occurrence
+        # queryset = Occurrence.objects.annotate(
+        #     determination_score=Max("detections__classsifications__score")
+        # )
         fields = [
             "id",
-            "determination__name",
-            "score",
+            "details",
+            "determination",
+            # "determination_score",
+        ]
+
+
+class CaptureTaxonSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
         ]
 
 
@@ -297,6 +297,84 @@ class AlgorithmSerializer(DefaultSerializer):
     class Meta:
         model = Algorithm
         fields = ["id", "name", "version", "details", "created_at"]
+
+
+class CaptureOccurrenceSerializer(DefaultSerializer):
+    determination = CaptureTaxonSerializer(read_only=True)
+    determination_algorithm = AlgorithmSerializer(read_only=True)
+
+    class Meta:
+        model = Occurrence
+        fields = [
+            "id",
+            "details",
+            "determination",
+            "determination_score",
+            "determination_algorithm",
+        ]
+
+
+class ClassificationSerializer(DefaultSerializer):
+    determination = CaptureTaxonSerializer(read_only=True)
+    algorithm = AlgorithmSerializer(read_only=True)
+
+    class Meta:
+        model = Classification
+        fields = [
+            "id",
+            "determination",
+            "score",
+            "algorithm",
+            "type",
+        ]
+
+
+class CaptureDetectionsSerializer(DefaultSerializer):
+    occurrence = CaptureOccurrenceSerializer(read_only=True)
+    classifications = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Detection
+        # queryset = Detection.objects.prefetch_related("classifications")
+        fields = [
+            "id",
+            "url",
+            "width",
+            "height",
+            "bbox",
+            "occurrence",
+            "classifications",
+        ]
+
+    def get_classifications(self, obj):
+        """
+        Return URL to the classifications endpoint filtered by this detection.
+        """
+
+        return reverse_with_params(
+            "classification-list",
+            request=self.context.get("request"),
+            params={"detection": obj.pk},
+        )
+
+
+class DetectionNestedSerializer(DefaultSerializer):
+    classifications = ClassificationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Detection
+        # queryset = Detection.objects.prefetch_related("classifications")
+        fields = [
+            "id",
+            "timestamp",
+            "url",
+            "source_image",
+            "width",
+            "height",
+            "bbox",
+            "occurrence",
+            "classifications",
+        ]
 
 
 class DetectionListSerializer(DefaultSerializer):
@@ -334,6 +412,7 @@ class DetectionSerializer(DefaultSerializer):
 
 class SourceImageListSerializer(DefaultSerializer):
     detections_count = serializers.IntegerField(read_only=True)
+    detections = CaptureDetectionsSerializer(many=True, read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -350,19 +429,18 @@ class SourceImageListSerializer(DefaultSerializer):
             "height",
             "size",
             "detections_count",
+            "detections",
         ]
 
 
 class SourceImageSerializer(DefaultSerializer):
     detections_count = serializers.IntegerField(read_only=True)
-    detections = DetectionListSerializer(many=True, read_only=True)
+    detections = CaptureDetectionsSerializer(many=True, read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
         model = SourceImage
-        fields = SourceImageListSerializer.Meta.fields + [
-            "detections",
-        ]
+        fields = SourceImageListSerializer.Meta.fields + []
 
 
 class OccurrenceListSerializer(DefaultSerializer):

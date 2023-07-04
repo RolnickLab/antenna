@@ -3,9 +3,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.filters import OrderingFilter, SearchFilter
 
-from ..models import Algorithm, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
+from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
 from .serializers import (
     AlgorithmSerializer,
+    ClassificationSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
     DetectionListSerializer,
@@ -207,3 +208,18 @@ class AlgorithmViewSet(DefaultViewSet):
         "version",
     ]
     search_fields = ["name"]
+
+
+class ClassificationViewSet(DefaultViewSet):
+    """
+    API endpoint for viewing and adding classification results from a model.
+    """
+
+    queryset = Classification.objects.all()
+    serializer_class = ClassificationSerializer
+    filterset_fields = ["detection", "detection__occurrence", "determination", "algorithm", "type"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "score",
+    ]
