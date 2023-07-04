@@ -5,7 +5,7 @@ import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
-import { useActiveDetections } from './useActiveDetections'
+import { useActiveOccurrences } from './useActiveOccurrences'
 
 interface FrameProps {
   src: string
@@ -116,25 +116,27 @@ const FrameDetections = ({
   boxStyles: { [key: number]: BoxStyle }
 }) => {
   const containerRef = useRef(null)
-  const { activeDetections, setActiveDetections } = useActiveDetections()
+  const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
 
-  const toggleActiveState = (id: string) => {
-    const isActive = activeDetections.includes(id)
+  const toggleActiveState = (occurrenceId: string) => {
+    const isActive = activeOccurrences.includes(occurrenceId)
 
     if (isActive) {
-      setActiveDetections(
-        activeDetections.filter((activeDetection) => activeDetection !== id)
+      setActiveOccurrences(
+        activeOccurrences.filter((occurrence) => occurrence !== occurrenceId)
       )
     } else {
-      setActiveDetections([...activeDetections, id])
+      setActiveOccurrences([...activeOccurrences, occurrenceId])
     }
   }
 
   return (
     <div className={styles.detections} ref={containerRef}>
       {Object.entries(boxStyles).map(([id, style]) => {
-        const detection = detections.find((d) => `${d.id}` === id)
-        const isActive = activeDetections.includes(id)
+        const detection = detections.find((d) => d.id === id)
+        const isActive = detection
+          ? activeOccurrences.includes(detection?.occurrenceId)
+          : false
 
         return (
           <Tooltip
@@ -148,7 +150,11 @@ const FrameDetections = ({
               className={classNames(styles.detection, {
                 [styles.active]: isActive,
               })}
-              onClick={() => toggleActiveState(id)}
+              onClick={() => {
+                if (detection) {
+                  toggleActiveState(detection?.occurrenceId)
+                }
+              }}
             />
           </Tooltip>
         )
