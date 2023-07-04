@@ -7,14 +7,15 @@
   align-items: center;
   min-height: 100%;
   padding: 20px;
-  background-color: $color-primary-2-50;
+  background-color: rgba($color: $color-primary-2-50, $alpha: 0.5);
   background-size: 20px 20px;
   background-image: linear-gradient(
       to right,
-      $color-neutral-200 1px,
+      $color-neutral-100 1px,
       transparent 1px
     ),
-    linear-gradient(to bottom, $color-neutral-200 1px, transparent 1px);
+    linear-gradient(to bottom, $color-neutral-100 1px, transparent 1px);
+
   box-sizing: border-box;
 }
 
@@ -29,7 +30,7 @@
   }
 
   .blueprintImage {
-    margin-bottom: -8px;
+    margin-bottom: 8px;
 
     img {
       max-width: 100%;
