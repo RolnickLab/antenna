@@ -32,7 +32,9 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
       <div className={styles.header}>
         <Popover.Root>
           <Popover.Trigger asChild={false}>
-            <span className={styles.title}>{occurrence.categoryLabel}</span>
+            <span className={styles.title}>
+              {occurrence.determinationLabel}
+            </span>
           </Popover.Trigger>
           <Popover.Content
             ariaCloselabel={translate(STRING.CLOSE)}
@@ -42,7 +44,6 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
             <TaxonomyInfo />
           </Popover.Content>
         </Popover.Root>
-        <span className={styles.details}>WIP</span>
       </div>
       <div className={styles.content}>
         <div className={styles.column}>

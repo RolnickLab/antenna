@@ -1,3 +1,5 @@
+import _ from 'lodash'
+
 export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
@@ -12,20 +14,24 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
-  get categoryLabel(): string {
-    return this._occurrence.determination.name
-  }
-
-  get categoryScore(): string {
-    return 'WIP'
-  }
-
   get deploymentLabel(): string {
     return this._occurrence.deployment.name
   }
 
   get deploymentId(): string {
     return `${this._occurrence.deployment.id}`
+  }
+
+  get determinationLabel(): string {
+    return this._occurrence.determination.name
+  }
+
+  get determinationScore(): number | string {
+    if (this._occurrence.determination.score === undefined) {
+      return 'N/A'
+    }
+
+    return _.round(this._occurrence.determination.score, 4)
   }
 
   get id(): string {

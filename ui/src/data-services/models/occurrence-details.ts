@@ -23,10 +23,6 @@ export class OccurrenceDetails {
     this._detections = this._occurrence.detections.map((d: any) => `${d.id}`)
   }
 
-  get categoryLabel(): string {
-    return this._occurrence.determination.name
-  }
-
   get deploymentLabel(): string {
     return this._occurrence.deployment.name
   }
@@ -37,6 +33,10 @@ export class OccurrenceDetails {
 
   get detections(): string[] {
     return this._detections
+  }
+
+  get determinationLabel(): string {
+    return this._occurrence.determination.name
   }
 
   get id(): string {

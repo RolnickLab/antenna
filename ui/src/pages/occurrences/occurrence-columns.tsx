@@ -33,8 +33,8 @@ export const columns: TableColumn<Occurrence>[] = [
     renderCell: (item: Occurrence) => (
       <Link to={`/occurrences/${item.id}`}>
         <BasicTableCell
-          value={item.categoryLabel}
-          details={[`${translate(STRING.SCORE)}: ${item.categoryScore}`]}
+          value={item.determinationLabel}
+          details={[`${translate(STRING.SCORE)}: ${item.determinationScore}`]}
           theme={CellTheme.Primary}
         />
       </Link>
@@ -63,17 +63,6 @@ export const columns: TableColumn<Occurrence>[] = [
           theme={CellTheme.Primary}
         />
       </Link>
-    ),
-  },
-  {
-    id: 'appearance',
-    name: translate(STRING.TABLE_COLUMN_APPEARANCE),
-    renderCell: () => (
-      <BasicTableCell
-        value={'WIP'}
-        details={['WIP']}
-        theme={CellTheme.Primary}
-      />
     ),
   },
 ]
