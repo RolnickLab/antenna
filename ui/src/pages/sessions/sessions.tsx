@@ -10,7 +10,9 @@ import { Error } from 'pages/error/error'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { FilterSettings } from '../../components/filter-settings/filter-settings'
 import { columns } from './session-columns'
 import styles from './sessions.module.scss'
 
@@ -28,9 +30,11 @@ export const Sessions = () => {
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({
     sort,
     pagination,
+    filters,
   })
 
   if (!isLoading && error) {
@@ -39,11 +43,10 @@ export const Sessions = () => {
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <div className={styles.infoWrapper}>
+        {isFetching && <FetchInfo isLoading={isLoading} />}
+        <FilterSettings />
+      </div>
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger

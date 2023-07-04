@@ -31,6 +31,12 @@
     border-color: transparent;
   }
 
+  &.neutral {
+    background-color: $color-neutral-600;
+    color: $color-generic-white;
+    border-color: $color-neutral-600;
+  }
+
   &:not(.disabled) {
     &:hover {
       cursor: pointer;
