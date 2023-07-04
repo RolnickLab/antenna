@@ -1,11 +1,7 @@
 import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
-import {
-  DeploymentDetails,
-  DeploymentFieldValues,
-} from 'data-services/models/deployment-details'
+import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'

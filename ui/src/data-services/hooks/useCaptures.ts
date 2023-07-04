@@ -24,8 +24,10 @@ export const useCaptures = (
 } => {
   const fetchUrl = getFetchUrl({
     collection: COLLECTION,
-    params: FETCH_PARAMS,
-    queryParams: { event: sessionId },
+    params: {
+      ...FETCH_PARAMS,
+      filters: [{ field: 'event', value: sessionId }],
+    },
   })
 
   const { data, isLoading, isFetching, error } = useQuery({

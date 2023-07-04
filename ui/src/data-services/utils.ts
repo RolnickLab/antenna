@@ -6,13 +6,11 @@ type QueryParams = { [key: string]: string }
 export const getFetchUrl = ({
   collection,
   params,
-  queryParams: _queryParams = {},
 }: {
   collection: string
   params?: FetchParams
-  queryParams?: QueryParams
 }) => {
-  const queryParams: QueryParams = { ..._queryParams }
+  const queryParams: QueryParams = {}
 
   if (params?.sort) {
     const order = params.sort.order === 'asc' ? '' : '-'
