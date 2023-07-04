@@ -57,7 +57,6 @@ export enum STRING {
   NAV_ITEM_OVERVIEW,
   NAV_ITEM_PROJECT,
   NAV_ITEM_SESSIONS,
-  NAV_ITEM_SETTINGS,
   NAV_ITEM_SPECIES,
 
   /* TAB_ITEM */
@@ -101,7 +100,6 @@ export enum STRING {
   SELECT_COLUMNS,
   SELECT_VALUE,
   SESSION,
-  SETTINGS,
   STOPPED,
   UNKNOWN,
   UPDATING_DATA,
@@ -166,7 +164,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
   [STRING.NAV_ITEM_PROJECT]: 'Project',
   [STRING.NAV_ITEM_SESSIONS]: 'Sessions',
-  [STRING.NAV_ITEM_SETTINGS]: 'Settings',
   [STRING.NAV_ITEM_SPECIES]: 'Species',
 
   /* TAB_ITEM */
@@ -210,7 +207,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SELECT_COLUMNS]: 'Select columns',
   [STRING.SELECT_VALUE]: 'Select a value',
   [STRING.SESSION]: 'Session',
-  [STRING.SETTINGS]: 'Settings',
   [STRING.STOPPED]: 'Stopped',
   [STRING.UNKNOWN]: 'Unknown',
   [STRING.UPDATING_DATA]: 'Updating data',
