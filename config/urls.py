@@ -25,7 +25,7 @@ if settings.DEBUG:
 # API URLS
 urlpatterns += [
     # API base url
-    path("api/v2/", include("config.api_router")),
+    path("api/v2/", include("config.api_router", namespace="api")),
     # DRF auth token
     path("api/v2/auth-token/", obtain_auth_token),
     # Login page the browsable API. From the Wemake template. @TODO: remove?

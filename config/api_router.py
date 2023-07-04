@@ -22,5 +22,5 @@ router.register(r"models", views.AlgorithmViewSet)
 # Wire up our API using automatic URL routing.
 
 
-# app_name = "api"  # this breaks the automatic routing with viewsets & hyperlinked serializers
+app_name = "api"  # this breaks the automatic routing with viewsets & hyperlinked serializers
 urlpatterns = router.urls
