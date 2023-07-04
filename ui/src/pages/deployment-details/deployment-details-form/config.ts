@@ -6,6 +6,9 @@ export const config: FormConfig = {
     label: translate(STRING.DETAILS_LABEL_NAME),
     rules: { required: true },
   },
+  description: {
+    label: 'Description',
+  },
   device: {
     label: translate(STRING.DETAILS_LABEL_DEVICE),
   },

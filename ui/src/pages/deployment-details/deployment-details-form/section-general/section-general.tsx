@@ -19,22 +19,17 @@ import { Section } from '../types'
 
 type SectionGeneralFieldValues = Pick<
   DeploymentFieldValues,
-  'name' | 'device' | 'site'
+  'name' | 'description' | 'device' | 'site'
 >
 
 const DEFAULT_VALUES: SectionGeneralFieldValues = {
+  description: '',
   device: '',
   name: '',
   site: '',
 }
 
-export const SectionGeneral = ({
-  deployment,
-  onNext,
-}: {
-  deployment: DeploymentDetails
-  onNext: () => void
-}) => {
+export const SectionGeneral = ({ onNext }: { onNext: () => void }) => {
   const { formSectionRef, formState, setFormSectionValues } =
     useContext(FormContext)
 
@@ -61,11 +56,8 @@ export const SectionGeneral = ({
         </h2>
         <div className={styles.sectionContent}>
           <div className={styles.sectionRow}>
-            <InputValue
-              label={translate(STRING.DETAILS_LABEL_DEPLOYMENT_ID)}
-              value={deployment.id}
-            />
             <FormField name="name" control={control} config={config} />
+            <FormField name="description" control={control} config={config} />
           </div>
           <div className={styles.sectionRow}>
             <FormField name="device" control={control} config={config} />

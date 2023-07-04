@@ -35,6 +35,7 @@ export const DeploymentDetailsForm = ({
       [Section.General]: {
         values: {
           name: deployment.name,
+          description: deployment.description,
         },
         isValid: startValid,
       },
@@ -150,10 +151,7 @@ const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
   switch (currentSection) {
     case Section.General:
       return (
-        <SectionGeneral
-          deployment={deployment}
-          onNext={() => setCurrentSection(Section.Location)}
-        />
+        <SectionGeneral onNext={() => setCurrentSection(Section.Location)} />
       )
     case Section.Location:
       return (

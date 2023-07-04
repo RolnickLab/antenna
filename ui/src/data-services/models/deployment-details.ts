@@ -1,6 +1,7 @@
 export type ServerDeploymentDetails = any // TODO: Update this type
 
 export interface DeploymentFieldValues {
+  description: string
   device: string
   name: string
   latitude: number
@@ -23,6 +24,10 @@ export class DeploymentDetails {
         })
       )
     }
+  }
+
+  get description(): string {
+    return `${this._deployment.description}`
   }
 
   get exampleCaptures(): { src: string }[] {
