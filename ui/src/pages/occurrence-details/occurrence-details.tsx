@@ -1,24 +1,14 @@
-import { Occurrence } from 'data-services/models/occurrence'
+import { useOccurrenceDetails } from 'data-services/hooks/useOccurrenceDetails'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Popover from 'design-system/components/popover/popover'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
+import { BlueprintDetections } from './blueprint-detections/blueprint-detections'
 import styles from './occurrence-details.module.scss'
+import { TaxonomyInfo } from './taxonomy-info/taxonomy-info'
 
-const taxonomyData = {
-  taxonomy:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Meropleon_diversicolor_-_Multicolored_Sedgeminer_Moth_%289810621354%29.jpg/440px-Meropleon_diversicolor_-_Multicolored_Sedgeminer_Moth_%289810621354%29.jpg',
-  taxonomyDescription:
-    'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum sodales cursus porta. Proin nec quam turpis.',
-}
-
-export const OccurrenceDetails = ({
-  occurrence,
-}: {
-  occurrence?: Occurrence
-}) => {
-  const [showTaxonomy, setShowTaxonomy] = useState(false)
+export const OccurrenceDetails = ({ id }: { id: string }) => {
+  const { occurrence } = useOccurrenceDetails(id)
 
   if (!occurrence) {
     return null
@@ -35,39 +25,21 @@ export const OccurrenceDetails = ({
       value: occurrence.sessionLabel,
       to: `/sessions/${occurrence.sessionId}`,
     },
-    { label: translate(STRING.DETAILS_LABEL_APPEARANCE), value: 'WIP' },
-    { label: translate(STRING.DETAILS_LABEL_ELEVATION), value: 'WIP' },
-    { label: translate(STRING.DETAILS_LABEL_AVG_TEMP), value: 'WIP' },
-    { label: translate(STRING.DETAILS_LABEL_AVG_WEATHER), value: 'WIP' },
-  ]
-
-  const classifications = [
-    { label: 'PanamaLeps', value: 'WIP' },
-    { label: 'WorldwideLeps', value: 'WIP' },
   ]
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
-        <Popover.Root open={showTaxonomy} onOpenChange={setShowTaxonomy}>
-          <Popover.Trigger
-            onMouseEnter={() => setShowTaxonomy(true)}
-            onMouseLeave={() => setShowTaxonomy(false)}
-          >
+        <Popover.Root>
+          <Popover.Trigger asChild={false}>
             <span className={styles.title}>{occurrence.categoryLabel}</span>
           </Popover.Trigger>
           <Popover.Content
             ariaCloselabel={translate(STRING.CLOSE)}
             align="start"
             side="bottom"
-            hideClose
           >
-            <div className={styles.taxonomyPopover}>
-              <img src={taxonomyData.taxonomy} />
-              <div className={styles.taxonomyContent}>
-                <p>{taxonomyData.taxonomyDescription}</p>
-              </div>
-            </div>
+            <TaxonomyInfo />
           </Popover.Content>
         </Popover.Root>
         <span className={styles.details}>WIP</span>
@@ -93,17 +65,15 @@ export const OccurrenceDetails = ({
               </Tabs.Content>
               <Tabs.Content value="classification">
                 <div className={styles.fields}>
-                  <InfoBlock fields={classifications} />
+                  <InfoBlock fields={[]} />
                 </div>
               </Tabs.Content>
             </Tabs.Root>
           </div>
         </div>
-        <div className={styles.images}>
-          <div className={styles.imagesContent}>
-            {occurrence.images.map((image, index) => (
-              <img key={index} src={image.src} alt="" />
-            ))}
+        <div className={styles.blueprintWrapper}>
+          <div className={styles.blueprintContainer}>
+            <BlueprintDetections occurrence={occurrence} />
           </div>
         </div>
       </div>

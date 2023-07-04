@@ -1,0 +1,30 @@
+@import 'design-system/variables/variables.scss';
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.container {
+  width: 480px;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    vertical-align: middle;
+    border-radius: 4px 4px 0 0;
+  }
+}
+
+.content {
+  padding: 24px;
+
+  p {
+    @include paragraph-small();
+    color: $color-neutral-800;
+    margin: 0;
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .container {
+    width: 320px;
+  }
+}
