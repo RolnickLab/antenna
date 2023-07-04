@@ -1,7 +1,7 @@
 import datetime
 import textwrap
 import urllib.parse
-from typing import Final, Optional, final  # noqa: F401
+from typing import Final, final  # noqa: F401
 
 from django.db import models
 from django.db.models import Q
@@ -397,11 +397,11 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
-    def width(self) -> Optional[int]:
+    def width(self) -> int | None:
         if self.bbox and len(self.bbox) == 4:
             return self.bbox[2] - self.bbox[0]
 
-    def height(self) -> Optional[int]:
+    def height(self) -> int | None:
         if self.bbox and len(self.bbox) == 4:
             return self.bbox[3] - self.bbox[1]
 
@@ -489,10 +489,10 @@ class Taxon(BaseModel):
     def detections_count(self) -> int:
         return Detection.objects.filter(occurrence__determination=self).count()
 
-    def latest_occurrence(self) -> Optional[Occurrence]:
+    def latest_occurrence(self) -> Occurrence | None:
         return self.occurrences.order_by("-created_at").first()
 
-    def latest_detection(self) -> Optional[Detection]:
+    def latest_detection(self) -> Detection | None:
         return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
 
     class Meta:
