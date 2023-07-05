@@ -12,13 +12,17 @@ import { usePagination } from 'utils/usePagination'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
 import styles from './species.module.scss'
+import { useFilters } from 'utils/useFilters'
+import { FilterSettings } from 'components/filter-settings/filter-settings'
 
 export const Species = () => {
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     sort,
     pagination,
+    filters,
   })
 
   if (!isLoading && error) {
@@ -27,11 +31,10 @@ export const Species = () => {
 
   return (
     <>
-      {!isLoading && isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <div className={styles.infoWrapper}>
+        {isFetching && <FetchInfo isLoading={isLoading} />}
+        <FilterSettings />
+      </div>
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger

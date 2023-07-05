@@ -7,15 +7,14 @@ import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
-import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { FilterSettings } from '../../components/filter-settings/filter-settings'
 import { columns } from './session-columns'
-import styles from './sessions.module.scss'
 import { SessionGallery } from './session-gallery'
+import styles from './sessions.module.scss'
 
 export const Sessions = () => {
   const [columnSettings, setColumnSettings] = useState<{
