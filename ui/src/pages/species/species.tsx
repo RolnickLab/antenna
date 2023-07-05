@@ -6,11 +6,11 @@ import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
-import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './species-columns'
+import { SpeciesGallery } from './species-gallery'
 import styles from './species.module.scss'
 
 export const Species = () => {
@@ -59,7 +59,7 @@ export const Species = () => {
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
-            <UnderConstruction message="Gallery is under construction!" />
+            <SpeciesGallery species={species} isLoading={isLoading} />
           </div>
         </Tabs.Content>
       </Tabs.Root>

@@ -15,6 +15,7 @@ import { usePagination } from 'utils/usePagination'
 import { FilterSettings } from '../../components/filter-settings/filter-settings'
 import { columns } from './session-columns'
 import styles from './sessions.module.scss'
+import { SessionGallery } from './session-gallery'
 
 export const Sessions = () => {
   const [columnSettings, setColumnSettings] = useState<{
@@ -80,7 +81,7 @@ export const Sessions = () => {
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
-            <UnderConstruction message="Gallery is under construction!" />
+            <SessionGallery sessions={sessions} isLoading={isLoading} />
           </div>
         </Tabs.Content>
       </Tabs.Root>

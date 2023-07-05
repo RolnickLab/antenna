@@ -29,6 +29,10 @@
   max-height: 100%;
 }
 
+.placeholder {
+  @include heading-5();
+}
+
 /* Slideshow styles */
 
 .row {

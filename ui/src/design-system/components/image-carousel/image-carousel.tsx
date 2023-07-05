@@ -29,11 +29,7 @@ export const ImageCarousel = ({
   autoPlay,
   size,
 }: ImageCarouselProps) => {
-  if (!images.length) {
-    return <div className={styles.container} />
-  }
-
-  if (images.length === 1) {
+  if (images.length <= 1) {
     return <BasicImageCarousel image={images[0]} theme={theme} size={size} />
   }
 
@@ -52,7 +48,7 @@ const BasicImageCarousel = ({
   theme,
   size,
 }: {
-  image: {
+  image?: {
     src: string
     alt?: string
   }
@@ -71,7 +67,11 @@ const BasicImageCarousel = ({
     >
       <div style={getPlaceholderStyles(size?.ratio)} />
       <div className={classNames(styles.slide, styles.visible)}>
-        <img src={image.src} alt={image.alt} className={styles.image} />
+        {image ? (
+          <img src={image.src} alt={image.alt} className={styles.image} />
+        ) : (
+          <span className={styles.placeholder}>🪲</span>
+        )}
       </div>
     </div>
   </div>

@@ -1,4 +1,5 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
+import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -12,12 +13,11 @@ import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { STRING, translate } from 'utils/language'
-import { usePagination } from 'utils/usePagination'
-import { Gallery } from './gallery/gallery'
-import { columns } from './occurrence-columns'
-import styles from './occurrences.module.scss'
-import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useFilters } from 'utils/useFilters'
+import { usePagination } from 'utils/usePagination'
+import { columns } from './occurrence-columns'
+import { OccurrenceGallery } from './occurrence-gallery'
+import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
   const { id } = useParams()
@@ -86,7 +86,10 @@ export const Occurrences = () => {
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
-            <Gallery occurrences={occurrences} isLoading={isLoading} />
+            <OccurrenceGallery
+              occurrences={occurrences}
+              isLoading={isLoading}
+            />
           </div>
         </Tabs.Content>
       </Tabs.Root>

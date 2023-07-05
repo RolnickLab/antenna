@@ -16,7 +16,7 @@ export const columns: TableColumn<Species>[] = [
     sortField: 'updated_at',
     name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
     styles: {
-      padding: '16px 32px',
+      padding: '16px 32px 16px 50px',
     },
     renderCell: (item: Species, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
@@ -35,11 +35,7 @@ export const columns: TableColumn<Species>[] = [
     name: 'Name',
     renderCell: (item: Species) => (
       <Link to={`/species/species-id`}>
-        <BasicTableCell
-          value={item.name}
-          details={['WIP']}
-          theme={CellTheme.Primary}
-        />
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
   },
@@ -65,7 +61,7 @@ export const columns: TableColumn<Species>[] = [
   },
   {
     id: 'training-images',
-    name: 'Training Images',
+    name: 'Training images',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -74,7 +70,7 @@ export const columns: TableColumn<Species>[] = [
         to={`https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${item.name}`}
         target="_blank"
       >
-        <BasicTableCell value={'GBIF'} theme={CellTheme.Primary} />
+        <BasicTableCell value="GBIF" theme={CellTheme.Primary} />
       </Link>
     ),
   },
