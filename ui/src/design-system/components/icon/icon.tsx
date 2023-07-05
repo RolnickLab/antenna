@@ -15,6 +15,7 @@ import { ReactComponent as Members } from './assets/members.svg'
 import { ReactComponent as Occurrences } from './assets/occurrences.svg'
 import { ReactComponent as Options } from './assets/options.svg'
 import { ReactComponent as Overview } from './assets/overview.svg'
+import { ReactComponent as Photograph } from './assets/photograph.svg'
 import { ReactComponent as PlayButton } from './assets/play-button.svg'
 import { ReactComponent as RadixCheck } from './assets/radix/check.svg'
 import { ReactComponent as RadixQuestionMark } from './assets/radix/question-mark.svg'
@@ -44,6 +45,7 @@ export enum IconType {
   Occurrences = 'occurrences',
   Options = 'options',
   Overview = 'overview',
+  Photograph = 'photograph',
   PlayButton = 'play-button',
   RadixCheck = 'radix-check',
   RadixQuestionMark = 'radix-question-mark',
@@ -81,6 +83,7 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.Occurrences]: Occurrences,
   [IconType.Options]: Options,
   [IconType.Overview]: Overview,
+  [IconType.Photograph]: Photograph,
   [IconType.PlayButton]: PlayButton,
   [IconType.RadixCheck]: RadixCheck,
   [IconType.RadixQuestionMark]: RadixQuestionMark,

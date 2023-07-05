@@ -4,7 +4,7 @@ import {
   IconButtonShape,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
-import { Icon, IconType } from 'design-system/components/icon/icon'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { useEffect, useRef, useState } from 'react'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
@@ -70,7 +70,11 @@ const BasicImageCarousel = ({
         {image ? (
           <img src={image.src} alt={image.alt} className={styles.image} />
         ) : (
-          <span className={styles.placeholder}>🪲</span>
+          <Icon
+            type={IconType.Photograph}
+            theme={IconTheme.Neutral}
+            size={16}
+          />
         )}
       </div>
     </div>

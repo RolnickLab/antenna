@@ -1,3 +1,4 @@
+import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './card.module.scss'
 
 interface CardProps {
@@ -17,7 +18,13 @@ export const Card = ({ title, subTitle, image, maxWidth }: CardProps) => {
         {image ? (
           <img src={image.src} alt={image.alt} className={styles.image} />
         ) : (
-          <span className={styles.placeholder}>🪲</span>
+          <div className={styles.image}>
+            <Icon
+              type={IconType.Photograph}
+              theme={IconTheme.Neutral}
+              size={32}
+            />
+          </div>
         )}
       </div>
       <div className={styles.footer}>
