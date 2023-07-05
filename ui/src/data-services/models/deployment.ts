@@ -1,7 +1,7 @@
 export type ServerDeployment = any // TODO: Update this type
 
 export class Deployment {
-  private readonly _deployment: ServerDeployment
+  protected readonly _deployment: ServerDeployment
 
   public constructor(deployment: ServerDeployment) {
     this._deployment = deployment
@@ -33,5 +33,13 @@ export class Deployment {
 
   get numImages(): number {
     return this._deployment.captures_count
+  }
+
+  get numOccurrences(): number {
+    return this._deployment.occurrences_count
+  }
+
+  get numSpecies(): number {
+    return this._deployment.taxa_count
   }
 }

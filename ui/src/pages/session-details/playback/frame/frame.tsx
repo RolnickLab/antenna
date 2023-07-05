@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import { CaptureDetection } from 'data-services/models/capture-details'
+import { CaptureDetection } from 'data-services/models/capture'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -24,6 +24,7 @@ export const Frame = ({
 }: FrameProps) => {
   const imageRef = useRef<HTMLImageElement>(null)
   const [isLoading, setIsLoading] = useState<boolean>()
+  const [rendeOverlay, setRenderOverlay] = useState<boolean>()
 
   useLayoutEffect(() => {
     if (!imageRef.current) {
@@ -33,6 +34,11 @@ export const Frame = ({
     imageRef.current.src = src
     imageRef.current.onload = () => setIsLoading(false)
   }, [src])
+
+  useLayoutEffect(() => {
+    // Ugly hack to make overlay correct on first render
+    setRenderOverlay(true)
+  }, [])
 
   const boxStyles = useMemo(
     () =>
@@ -59,16 +65,15 @@ export const Frame = ({
       style={{ paddingBottom: `${(height / width) * 100}%` }}
     >
       <img ref={imageRef} className={styles.image} />
-      {!isLoading ? (
-        <div
-          className={classNames(styles.details, {
-            [styles.showOverlay]: showOverlay,
-          })}
-        >
-          <FrameOverlay boxStyles={boxStyles} />
-          <FrameDetections detections={detections} boxStyles={boxStyles} />
-        </div>
-      ) : (
+      <div
+        className={classNames(styles.details, {
+          [styles.showOverlay]: showOverlay,
+        })}
+      >
+        {rendeOverlay && <FrameOverlay boxStyles={boxStyles} />}
+        <FrameDetections detections={detections} boxStyles={boxStyles} />
+      </div>
+      {isLoading && (
         <div className={styles.loadingWrapper}>
           <LoadingSpinner />
         </div>
@@ -134,13 +139,18 @@ const FrameDetections = ({
     <div className={styles.detections} ref={containerRef}>
       {Object.entries(boxStyles).map(([id, style]) => {
         const detection = detections.find((d) => d.id === id)
+
+        if (!detection) {
+          return null
+        }
+
         const isActive = detection
-          ? activeOccurrences.includes(detection?.occurrenceId)
+          ? activeOccurrences.includes(detection.occurrenceId)
           : false
 
         return (
           <Tooltip
-            key={id}
+            key={detection.occurrenceId}
             content={detection?.label ?? ''}
             frame={containerRef.current}
             open={isActive ? isActive : undefined}

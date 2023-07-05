@@ -1,20 +1,20 @@
-export type ServerDeploymentDetails = any // TODO: Update this type
+import { Deployment, ServerDeployment } from './deployment'
+
+export type ServerDeploymentDetails = ServerDeployment & any // TODO: Update this type
 
 export interface DeploymentFieldValues {
-  device: string
+  description: string
   name: string
   latitude: number
   longitude: number
   path: string
-  site: string
 }
 
-export class DeploymentDetails {
-  private readonly _deployment: ServerDeploymentDetails
+export class DeploymentDetails extends Deployment {
   private readonly _exampleCaptures: { src: string }[] = []
 
   public constructor(deployment: ServerDeploymentDetails) {
-    this._deployment = deployment
+    super(deployment)
 
     if (deployment.example_captures?.length) {
       this._exampleCaptures = deployment.example_captures?.map(
@@ -25,36 +25,12 @@ export class DeploymentDetails {
     }
   }
 
+  get description(): string {
+    return `${this._deployment.description}`
+  }
+
   get exampleCaptures(): { src: string }[] {
     return this._exampleCaptures
-  }
-
-  get id(): string {
-    return `${this._deployment.id}`
-  }
-
-  get latitude(): number {
-    return this._deployment.latitude
-  }
-
-  get longitude(): number {
-    return this._deployment.longitude
-  }
-
-  get name(): string {
-    return this._deployment.name
-  }
-
-  get numDetections(): number {
-    return this._deployment.detections_count
-  }
-
-  get numEvents(): number {
-    return this._deployment.events_count
-  }
-
-  get numImages(): number {
-    return this._deployment.captures_count
   }
 
   get path(): string {

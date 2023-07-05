@@ -7,8 +7,10 @@ export class Species {
   public constructor(species: ServerSpecies) {
     this._species = species
 
-    if (species.latest_detection) {
-      this._images = [{ src: species.latest_detection?.url }]
+    if (species.occurrence_images?.length) {
+      this._images = species.occurrence_images.map((image: any) => ({
+        src: image,
+      }))
     }
   }
 

@@ -7,6 +7,7 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Occurrence>[] = [
@@ -31,10 +32,10 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Occurrence) => (
-      <Link to={`/occurrences/${item.id}`}>
+      <Link to={getRoute({ collection: 'occurrences', itemId: item.id })}>
         <BasicTableCell
           value={item.determinationLabel}
-          details={[`${translate(STRING.SCORE)}: ${item.determinationScore}`]}
+          details={[`(${item.determinationScore})`]}
           theme={CellTheme.Primary}
         />
       </Link>
@@ -44,7 +45,9 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
-      <Link to={`/deployments/${item.deploymentId}`}>
+      <Link
+        to={getRoute({ collection: 'deployments', itemId: item.deploymentId })}
+      >
         <BasicTableCell
           value={item.deploymentLabel}
           theme={CellTheme.Primary}
@@ -56,13 +59,33 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'session',
     name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Occurrence) => (
-      <Link to={`/sessions/${item.sessionId}`}>
-        <BasicTableCell
-          value={item.sessionLabel}
-          details={[item.sessionTimespan]}
-          theme={CellTheme.Primary}
-        />
+      <Link to={getRoute({ collection: 'sessions', itemId: item.sessionId })}>
+        <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
       </Link>
+    ),
+  },
+  {
+    id: 'date',
+    name: translate(STRING.TABLE_COLUMN_DATE),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
+  },
+  {
+    id: 'time',
+    name: translate(STRING.TABLE_COLUMN_TIME),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.timeLabel} />,
+  },
+  {
+    id: 'duration',
+    name: translate(STRING.TABLE_COLUMN_DURATION),
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell value={item.durationLabel} />
+    ),
+  },
+  {
+    id: 'detections',
+    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell value={item.numDetections} />
     ),
   },
 ]

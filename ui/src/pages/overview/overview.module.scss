@@ -22,11 +22,13 @@
 }
 
 .about {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
 }
 
 .aboutImage {
-  flex: 1;
+  min-width: 320px;
   background-color: $color-generic-white;
   display: flex;
   align-items: center;
@@ -34,7 +36,7 @@
 }
 
 .aboutInfo {
-  max-width: 600px;
+  max-width: 640px;
 }
 
 .plots {
@@ -52,7 +54,6 @@
 }
 
 .title {
-  display: block;
   @include paragraph-large();
   font-weight: 600;
   color: $color-neutral-800;
@@ -60,10 +61,8 @@
 }
 
 .text {
-  display: block;
   @include paragraph-medium();
   color: $color-neutral-800;
-  margin-bottom: 16px;
   margin: 0 0 16px;
 }
 

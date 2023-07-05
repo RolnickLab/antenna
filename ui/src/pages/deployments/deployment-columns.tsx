@@ -6,6 +6,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Deployment>[] = [
@@ -14,7 +15,12 @@ export const columns: TableColumn<Deployment>[] = [
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortField: 'name',
     renderCell: (item: Deployment) => (
-      <Link to={`/deployments/${item.id}`}>
+      <Link
+        to={getRoute({
+          collection: 'deployments',
+          itemId: item.id,
+        })}
+      >
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
@@ -26,7 +32,16 @@ export const columns: TableColumn<Deployment>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.numEvents} />,
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getRoute({
+          collection: 'sessions',
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
+      </Link>
+    ),
   },
   {
     id: 'images',
@@ -46,6 +61,42 @@ export const columns: TableColumn<Deployment>[] = [
     },
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.numDetections} />
+    ),
+  },
+  {
+    id: 'occurrences',
+    name: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+    sortField: 'numOccurrences',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getRoute({
+          collection: 'occurrences',
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+      </Link>
+    ),
+  },
+  {
+    id: 'species',
+    name: translate(STRING.TABLE_COLUMN_SPECIES),
+    sortField: 'numSpecies',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getRoute({
+          collection: 'species',
+          filters: { occurrences__deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
 ]

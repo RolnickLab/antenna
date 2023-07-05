@@ -1,4 +1,5 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
+import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -12,9 +13,10 @@ import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
-import { Gallery } from './gallery/gallery'
 import { columns } from './occurrence-columns'
+import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
@@ -27,27 +29,29 @@ export const Occurrences = () => {
     id: true,
     deployment: true,
     session: true,
+    date: true,
+    duration: true,
+    detections: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     pagination,
     sort,
+    filters,
   })
 
   if (!isLoading && error) {
     return <Error />
   }
 
-  const occurrence = occurrences?.find((o) => o.id === id)
-
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <div className={styles.infoWrapper}>
+        {isFetching && <FetchInfo isLoading={isLoading} />}
+        <FilterSettings />
+      </div>
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger
@@ -82,7 +86,10 @@ export const Occurrences = () => {
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
-            <Gallery occurrences={occurrences} isLoading={isLoading} />
+            <OccurrenceGallery
+              occurrences={occurrences}
+              isLoading={isLoading}
+            />
           </div>
         </Tabs.Content>
       </Tabs.Root>

@@ -4,6 +4,7 @@ import { BasicTableCell } from 'design-system/components/table/basic-table-cell/
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Job>[] = [
@@ -11,7 +12,7 @@ export const columns: TableColumn<Job>[] = [
     id: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Job) => (
-      <Link to={`/jobs/${item.id}`}>
+      <Link to={getRoute({ collection: 'jobs', itemId: item.id })}>
         <BasicTableCell value={item.idLabel} theme={CellTheme.Primary} />
       </Link>
     ),

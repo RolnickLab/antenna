@@ -17,7 +17,7 @@ export const Overview = () => (
             <p className={styles.text}>Area for project images</p>
           </div>
           <div className={styles.aboutInfo}>
-            <span className={styles.title}>Example title</span>
+            <h1 className={styles.title}>Example title</h1>
             <p className={styles.text}>
               Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur
               a sapien quis ligula suscipit tristique ullamcorper porta tellus.

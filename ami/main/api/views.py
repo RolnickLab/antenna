@@ -186,9 +186,15 @@ class TaxonViewSet(DefaultViewSet):
     API endpoint that allows taxa to be viewed or edited.
     """
 
-    queryset = Taxon.objects.all()
+    queryset = Taxon.objects.all().distinct()
     serializer_class = TaxonSerializer
-    filterset_fields = ["name", "rank"]
+    filterset_fields = [
+        "name",
+        "rank",
+        "parent",
+        "occurrences__event",
+        "occurrences__deployment",
+    ]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -252,7 +258,7 @@ class SummaryView(APIView):
             "captures_count": SourceImage.objects.count(),
             "detections_count": Detection.objects.count(),
             "occurrences_count": Occurrence.objects.count(),
-            "taxa_count": Taxon.objects.count(),
+            "taxa_count": Taxon.objects.distinct().count(),
             "last_updated": timezone.now(),
         }
 

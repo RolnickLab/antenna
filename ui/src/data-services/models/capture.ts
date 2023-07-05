@@ -2,15 +2,32 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 
 export type ServerCapture = any // TODO: Update this type
 
+export type CaptureDetection = {
+  bbox: number[]
+  id: string
+  label: string
+  occurrenceId: string
+}
+
 export class Capture {
-  private readonly _capture: ServerCapture
+  protected readonly _capture: ServerCapture
+  private readonly _detections: CaptureDetection[] = []
 
   public constructor(capture: ServerCapture) {
     this._capture = capture
+
+    if (capture.detections?.length) {
+      this._detections = capture.detections.map((detection: any) => ({
+        bbox: detection.bbox,
+        id: `${detection.id}`,
+        label: detection.occurrence.determination.name,
+        occurrenceId: `${detection.occurrence.id}`,
+      }))
+    }
   }
 
-  get numDetections(): number {
-    return this._capture.detections_count
+  get detections(): CaptureDetection[] {
+    return this._detections
   }
 
   get height(): number {
@@ -21,11 +38,15 @@ export class Capture {
     return `${this._capture.id}`
   }
 
+  get numDetections(): number {
+    return this._capture.detections_count
+  }
+
   get src(): string {
     return `${this._capture.url}`
   }
 
-  get timeString(): string {
+  get timeLabel(): string {
     return getFormatedTimeString({ date: new Date(this._capture.timestamp) })
   }
 

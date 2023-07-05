@@ -6,6 +6,7 @@ import { COLLECTION } from './constants'
 
 const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
   data_source: fieldValues.path,
+  description: fieldValues.description,
   name: fieldValues.name,
   latitude: fieldValues.latitude,
   longitude: fieldValues.longitude,

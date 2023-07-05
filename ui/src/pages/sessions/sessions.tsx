@@ -7,11 +7,13 @@ import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
-import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { FilterSettings } from '../../components/filter-settings/filter-settings'
 import { columns } from './session-columns'
+import { SessionGallery } from './session-gallery'
 import styles from './sessions.module.scss'
 
 export const Sessions = () => {
@@ -21,16 +23,17 @@ export const Sessions = () => {
     snapshots: true,
     session: true,
     images: true,
-    date: true,
     duration: true,
     occurrences: true,
     species: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({
     sort,
     pagination,
+    filters,
   })
 
   if (!isLoading && error) {
@@ -39,11 +42,10 @@ export const Sessions = () => {
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <div className={styles.infoWrapper}>
+        {isFetching && <FetchInfo isLoading={isLoading} />}
+        <FilterSettings />
+      </div>
       <Tabs.Root defaultValue="table">
         <Tabs.List>
           <Tabs.Trigger
@@ -78,7 +80,7 @@ export const Sessions = () => {
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
-            <UnderConstruction message="Gallery is under construction!" />
+            <SessionGallery sessions={sessions} isLoading={isLoading} />
           </div>
         </Tabs.Content>
       </Tabs.Root>

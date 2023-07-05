@@ -46,11 +46,9 @@ export const SessionInfo = ({ session }: { session: Session }) => {
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.title}>{session.idLabel}</h1>
+      <h1 className={styles.title}>{session.label}</h1>
       <div className={styles.content}>
-        <div className={styles.fields}>
-          <InfoBlock fields={fields} />
-        </div>
+        <InfoBlock fields={fields} />
       </div>
     </div>
   )

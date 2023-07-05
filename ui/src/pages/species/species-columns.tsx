@@ -8,6 +8,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Species>[] = [
@@ -16,7 +17,7 @@ export const columns: TableColumn<Species>[] = [
     sortField: 'updated_at',
     name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
     styles: {
-      padding: '16px 32px',
+      padding: '16px 32px 16px 50px',
     },
     renderCell: (item: Species, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
@@ -34,12 +35,13 @@ export const columns: TableColumn<Species>[] = [
     sortField: 'name',
     name: 'Name',
     renderCell: (item: Species) => (
-      <Link to={`/species/species-id`}>
-        <BasicTableCell
-          value={item.name}
-          details={['WIP']}
-          theme={CellTheme.Primary}
-        />
+      <Link
+        to={getRoute({
+          collection: 'species',
+          itemId: item.id,
+        })}
+      >
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
   },
@@ -60,12 +62,20 @@ export const columns: TableColumn<Species>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => (
-      <BasicTableCell value={item.numOccurrences} />
+      <Link
+        to={getRoute({
+          collection: 'occurrences',
+          filters: { determination: item.id },
+        })}
+        target="_blank"
+      >
+        <BasicTableCell value={item.numOccurrences} />
+      </Link>
     ),
   },
   {
     id: 'training-images',
-    name: 'Training Images',
+    name: 'Training images',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -74,7 +84,7 @@ export const columns: TableColumn<Species>[] = [
         to={`https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${item.name}`}
         target="_blank"
       >
-        <BasicTableCell value={'GBIF'} theme={CellTheme.Primary} />
+        <BasicTableCell value="GBIF" theme={CellTheme.Primary} />
       </Link>
     ),
   },

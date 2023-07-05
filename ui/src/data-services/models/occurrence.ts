@@ -1,9 +1,11 @@
 import _ from 'lodash'
+import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
+import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 
 export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
-  private readonly _occurrence: ServerOccurrence
+  protected readonly _occurrence: ServerOccurrence
   private readonly _images: { src: string }[] = []
 
   public constructor(occurrence: ServerOccurrence) {
@@ -12,6 +14,11 @@ export class Occurrence {
     this._images = occurrence.detection_images
       .filter((src: string) => !!src.length)
       .map((src: string) => ({ src }))
+  }
+
+  get dateLabel(): string {
+    const date = new Date(this._occurrence.first_appearance)
+    return getFormatedDateString({ date })
   }
 
   get deploymentLabel(): string {
@@ -26,24 +33,28 @@ export class Occurrence {
     return this._occurrence.determination.name
   }
 
-  get determinationScore(): number | string {
-    if (this._occurrence.determination.score === undefined) {
-      return 'N/A'
+  get durationLabel(): string {
+    return this._occurrence.duration_label
+  }
+
+  get determinationScore(): number | undefined {
+    if (this._occurrence.determination_score === undefined) {
+      return undefined
     }
 
-    return _.round(this._occurrence.determination.score, 4)
+    return _.round(this._occurrence.determination_score, 4)
   }
 
   get id(): string {
     return `${this._occurrence.id}`
   }
 
-  get idLabel(): string {
-    return `#${this.id}`
-  }
-
   get images(): { src: string }[] {
     return this._images
+  }
+
+  get numDetections(): number {
+    return this._occurrence.detections_count
   }
 
   get sessionId(): string {
@@ -51,10 +62,11 @@ export class Occurrence {
   }
 
   get sessionLabel(): string {
-    return `Session #${this.sessionId}`
+    return this._occurrence.event.name
   }
 
-  get sessionTimespan(): string {
-    return this._occurrence.event.date_label
+  get timeLabel(): string {
+    const date = new Date(this._occurrence.first_appearance)
+    return getFormatedTimeString({ date })
   }
 }

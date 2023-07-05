@@ -1,9 +1,10 @@
+import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './card.module.scss'
 
 interface CardProps {
   title: string
   subTitle: string
-  image: {
+  image?: {
     src: string
     alt?: string
   }
@@ -14,7 +15,17 @@ export const Card = ({ title, subTitle, image, maxWidth }: CardProps) => {
   return (
     <div className={styles.container} style={{ maxWidth }}>
       <div className={styles.square}>
-        <img src={image.src} alt={image.alt} className={styles.image} />
+        {image ? (
+          <img src={image.src} alt={image.alt} className={styles.image} />
+        ) : (
+          <div className={styles.image}>
+            <Icon
+              type={IconType.Photograph}
+              theme={IconTheme.Neutral}
+              size={32}
+            />
+          </div>
+        )}
       </div>
       <div className={styles.footer}>
         <span className={styles.title}>{title}</span>

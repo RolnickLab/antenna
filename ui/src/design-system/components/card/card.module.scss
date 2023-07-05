@@ -3,14 +3,15 @@
 
 .container {
   background-color: $color-generic-white;
-  border: 1px solid $color-neutral-200;
+  border: 1px solid $color-neutral-100;
   border-radius: 8px;
   overflow: hidden;
 }
 
 .square {
   position: relative;
-  background-color: $color-primary-2-50;
+  background-color: rgba($color: $color-primary-2-50, $alpha: 0.5);
+  border-bottom: 1px solid $color-neutral-100;
 }
 
 .square::after {

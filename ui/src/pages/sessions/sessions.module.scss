@@ -1,7 +1,13 @@
-.fetchInfoWrapper {
+.infoWrapper {
   position: absolute;
   top: 0;
   right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  gap: 16px;
+  z-index: 1;
 }
 
 .tableContent {
