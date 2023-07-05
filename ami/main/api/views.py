@@ -228,6 +228,9 @@ class TaxonViewSet(DefaultViewSet):
     ordering_fields = [
         "created_at",
         "updated_at",
+        "occurrences_count",
+        "detections_count",
+        "last_detected",
         "name",
     ]
     search_fields = ["name", "parent__name"]
