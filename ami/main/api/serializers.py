@@ -224,6 +224,7 @@ class EventSerializer(DefaultSerializer):
         source="deployment",
     )
     captures = serializers.SerializerMethodField()
+    first_capture = SourceImageNestedSerializer(read_only=True)
     start = serializers.DateTimeField(read_only=True)
     end = serializers.DateTimeField(read_only=True)
 
@@ -243,6 +244,7 @@ class EventSerializer(DefaultSerializer):
             "duration_label",
             "captures",
             "captures_count",
+            "first_capture",
         ]
 
     def get_captures(self, obj):

@@ -238,7 +238,10 @@ class Event(BaseModel):
         return Taxon.objects.filter(Q(occurrences__event=self)).distinct()
 
     def example_captures(self, num=5):
-        return SourceImage.objects.filter(event=self).order_by("?")[:num]
+        return SourceImage.objects.filter(event=self).order_by("-size")[:num]
+
+    def first_capture(self):
+        return SourceImage.objects.filter(event=self).order_by("timestamp").first()
 
     def save(self, *args, **kwargs):
         first = self.captures.order_by("timestamp").values("timestamp").first()
