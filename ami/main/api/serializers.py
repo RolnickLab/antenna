@@ -344,10 +344,27 @@ class TaxonDetectionsSerializer(DefaultSerializer):
         ]
 
 
+class TaxonSourceImageNestedSerializer(DefaultSerializer):
+    event = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = SourceImage
+        fields = [
+            "id",
+            "details",
+            "timestamp",
+            "event",
+        ]
+
+
 class TaxonOccurrenceNestedSerializer(DefaultSerializer):
     # determination_algorithm = AlgorithmSerializer(read_only=True)
+    deployment = DeploymentNestedSerializer(read_only=True)
+    event = EventNestedSerializer(read_only=True)
     best_detection = TaxonDetectionsSerializer(read_only=True)
     determination = CaptureTaxonSerializer(read_only=True)
+    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    last_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence

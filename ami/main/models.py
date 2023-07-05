@@ -474,21 +474,20 @@ class Occurrence(BaseModel):
         # Annotaions don't seem to work with nested serializers
         return self.detections.count()
 
-    def first_appearance(self) -> datetime.datetime | None:
-        first = self.detections.order_by("timestamp").first()
+    def first_appearance(self) -> SourceImage | None:
+        first = self.detections.order_by("timestamp").select_related("source_image").first()
         if first:
-            return first.timestamp
+            return first.source_image
 
-    def last_appearance(self) -> datetime.datetime | None:
-        last = self.detections.order_by("timestamp").last()
-        if last:
-            return last.timestamp
+    def last_appearance(self) -> Detection | None:
+        last = self.detections.order_by("-timestamp").select_related("source_image").first()
+        return last
 
     def duration(self) -> datetime.timedelta | None:
         first = self.first_appearance()
         last = self.last_appearance()
-        if first and last:
-            return last - first
+        if first and last and first.timestamp and last.timestamp:
+            return last.timestamp - first.timestamp
         else:
             return None
 
