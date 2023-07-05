@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -240,16 +241,31 @@ class ClassificationViewSet(DefaultViewSet):
 class SummaryView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, format=None):
+    def get(self, request):
         """
-        Return a list of all users.
+        Return counts of all models.
         """
         data = {
-            "projects": Project.objects.count(),
-            "deployments": Deployment.objects.count(),
-            "events": Event.objects.count(),
-            "occurrences": Occurrence.objects.count(),
-            "detections": Detection.objects.count(),
-            "classifications": Classification.objects.count(),
+            "projects_count": Project.objects.count(),
+            "deployments_count": Deployment.objects.count(),
+            "events_count": Event.objects.count(),
+            "captures_count": SourceImage.objects.count(),
+            "detections_count": Detection.objects.count(),
+            "occurrences_count": Occurrence.objects.count(),
+            "taxa_count": Taxon.objects.count(),
+            "last_updated": timezone.now(),
         }
+
+        aliases = {
+            "num_sessions": data["events_count"],
+            "num_species": data["taxa_count"],
+        }
+
+        # add an num_ alias for each _count key
+        for key, value in data.items():
+            if key.endswith("_count"):
+                aliases[key.replace("_count", "_num")] = value
+
+        data.update(aliases)
+
         return Response(data)

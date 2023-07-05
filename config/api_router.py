@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.urls import path
 from rest_framework.routers import DefaultRouter, SimpleRouter
 
 from ami.main.api import views
@@ -24,4 +25,10 @@ router.register(r"classifications", views.ClassificationViewSet)
 
 
 app_name = "api"  # this breaks the automatic routing with viewsets & hyperlinked serializers
-urlpatterns = router.urls
+
+urlpatterns = [
+    path("status/summary/", views.SummaryView.as_view(), name="status-summary"),
+]
+
+
+urlpatterns += router.urls
