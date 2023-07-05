@@ -473,6 +473,9 @@ class Occurrence(BaseModel):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
+    def best_detection(self):
+        return Detection.objects.filter(occurrence=self).order_by("classifications__score").first()
+
     def determination_score(self) -> float | None:
         return (
             Classification.objects.filter(detection__occurrence=self)
@@ -515,6 +518,18 @@ class Taxon(BaseModel):
 
     def latest_detection(self) -> Detection | None:
         return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
+
+    def occurrence_images(self):
+        """
+        Return one image from each occurrence of this Taxon.
+        The image should be from the detection with the highest classification score.
+        """
+
+        # @TODO Can we use a single query
+        for occurrence in self.occurrences.prefetch_related("detections__classifications").all():
+            detection = occurrence.detections.order_by("classifications__score").first()
+            if detection:
+                yield detection.url()
 
     class Meta:
         ordering = ["parent__name", "name"]

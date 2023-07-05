@@ -82,13 +82,39 @@ class DeploymentListSerializer(DefaultSerializer):
         )
 
 
+class DeploymentEventNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Event
+        fields = [
+            "id",
+            "name",
+            "details",
+            "occurrences_count",
+            "taxa_count",
+        ]
+
+
 class DeploymentSerializer(DefaultSerializer):
+    events = DeploymentEventNestedSerializer(many=True, read_only=True)
+    occurrences = serializers.SerializerMethodField()
+
     class Meta:
         model = Deployment
         fields = DeploymentListSerializer.Meta.fields + [
             "description",
             "data_source",
         ]
+
+    def get_occurrences(self, obj):
+        """
+        Return URL to the occurrences endpoint filtered by this deployment.
+        """
+
+        return reverse_with_params(
+            "occurrence-list",
+            request=self.context.get("request"),
+            params={"deployment": obj.pk},
+        )
 
 
 class DeploymentNestedSerializer(DefaultSerializer):
@@ -241,7 +267,7 @@ class EventNestedSerializer(DefaultSerializer):
         ]
 
 
-class TaxonSerializer(DefaultSerializer):
+class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
 
@@ -256,7 +282,7 @@ class TaxonSerializer(DefaultSerializer):
             "occurrences_count",
             "detections_count",
             "occurrences",
-            # "latest_detection",
+            "occurrence_images",
         ]
 
     def get_occurrences(self, obj):
@@ -271,8 +297,19 @@ class TaxonSerializer(DefaultSerializer):
         )
 
 
+class CaptureTaxonSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+        ]
+
+
 class OccurrenceNestedSerializer(DefaultSerializer):
-    determination = TaxonSerializer(read_only=True)
+    determination = CaptureTaxonSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -287,21 +324,58 @@ class OccurrenceNestedSerializer(DefaultSerializer):
         ]
 
 
-class CaptureTaxonSerializer(DefaultSerializer):
+class AlgorithmSerializer(DefaultSerializer):
+    class Meta:
+        model = Algorithm
+        fields = ["id", "name", "version", "details", "created_at"]
+
+
+class TaxonDetectionsSerializer(DefaultSerializer):
+    class Meta:
+        model = Detection
+        # queryset = Detection.objects.prefetch_related("classifications")
+        fields = [
+            "id",
+            "url",
+            "timestamp",
+            "details",
+        ]
+
+
+class TaxonOccurrenceNestedSerializer(DefaultSerializer):
+    # determination_algorithm = AlgorithmSerializer(read_only=True)
+    best_detection = TaxonDetectionsSerializer(read_only=True)
+    determination = CaptureTaxonSerializer(read_only=True)
+
+    class Meta:
+        model = Occurrence
+        fields = [
+            "id",
+            "details",
+            "deployment",
+            "event",
+            "determination_score",
+            "determination",
+            "best_detection",
+        ]
+
+
+class TaxonSerializer(DefaultSerializer):
+    # latest_detection = DetectionNestedSerializer(read_only=True)
+    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+
     class Meta:
         model = Taxon
         fields = [
             "id",
             "name",
             "rank",
+            "parent",
             "details",
+            "occurrences_count",
+            "detections_count",
+            "occurrences",
         ]
-
-
-class AlgorithmSerializer(DefaultSerializer):
-    class Meta:
-        model = Algorithm
-        fields = ["id", "name", "version", "details", "created_at"]
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):

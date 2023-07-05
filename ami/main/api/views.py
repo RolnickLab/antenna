@@ -2,6 +2,8 @@ from django.db import models
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
 from .serializers import (
@@ -18,6 +20,7 @@ from .serializers import (
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
+    TaxonListSerializer,
     TaxonSerializer,
 )
 
@@ -192,6 +195,15 @@ class TaxonViewSet(DefaultViewSet):
     ]
     search_fields = ["name", "parent__name"]
 
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return TaxonListSerializer
+        else:
+            return TaxonSerializer
+
 
 class AlgorithmViewSet(DefaultViewSet):
     """
@@ -223,3 +235,21 @@ class ClassificationViewSet(DefaultViewSet):
         "updated_at",
         "score",
     ]
+
+
+class SummaryView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, format=None):
+        """
+        Return a list of all users.
+        """
+        data = {
+            "projects": Project.objects.count(),
+            "deployments": Deployment.objects.count(),
+            "events": Event.objects.count(),
+            "occurrences": Occurrence.objects.count(),
+            "detections": Detection.objects.count(),
+            "classifications": Classification.objects.count(),
+        }
+        return Response(data)
