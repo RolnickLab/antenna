@@ -359,6 +359,11 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "determination_score",
             "determination",
             "best_detection",
+            "detections_count",
+            "duration",
+            "duration_label",
+            "first_appearance",
+            "last_appearance",
         ]
 
 
@@ -376,6 +381,7 @@ class TaxonSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "detections_count",
+            "events_count",
             "occurrences",
         ]
 

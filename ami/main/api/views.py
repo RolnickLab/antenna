@@ -210,8 +210,8 @@ class TaxonViewSet(DefaultViewSet):
     queryset = (
         Taxon.objects.annotate(
             occurrences_count=models.Count("occurrences", distinct=True),
-            # detections_count=models.Count("classifications__detection", distinct=True),
             detections_count=models.Count("classifications__detection", distinct=True),
+            events_count=models.Count("occurrences__event", distinct=True),
             last_detected=models.Max("classifications__detection__timestamp"),
         )
         .all()

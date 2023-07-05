@@ -470,9 +470,9 @@ class Occurrence(BaseModel):
 
     detections: models.QuerySet[Detection]
 
-    def detections_count(self):
-        # return self.detections.count()
-        return 0
+    def detections_count(self) -> int | None:
+        # Annotaions don't seem to work with nested serializers
+        return self.detections.count()
 
     def first_appearance(self) -> datetime.datetime | None:
         first = self.detections.order_by("timestamp").first()
@@ -540,6 +540,9 @@ class Taxon(BaseModel):
 
     def detections_count(self) -> int:
         # return Detection.objects.filter(occurrence__determination=self).count()
+        return 0
+
+    def events_count(self) -> int:
         return 0
 
     def latest_occurrence(self) -> Occurrence | None:
