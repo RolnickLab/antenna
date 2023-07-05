@@ -8,7 +8,7 @@ from rest_framework.reverse import reverse
 from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
 
 
-def reverse_with_params(viewname: str, request, params: dict, *args, **kwargs) -> str:
+def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
     query_string = urllib.parse.urlencode(params)
     base_url = reverse(viewname, request=request, args=args, kwargs=kwargs)
     url = urllib.parse.urlunsplit(("", "", base_url, query_string, ""))
@@ -303,7 +303,7 @@ class TaxonDetectionsSerializer(DefaultSerializer):
 
 
 class TaxonSourceImageNestedSerializer(DefaultSerializer):
-    event = serializers.PrimaryKeyRelatedField(read_only=True)
+    event = serializers.SerializerMethodField()
 
     class Meta:
         model = SourceImage
@@ -313,6 +313,14 @@ class TaxonSourceImageNestedSerializer(DefaultSerializer):
             "timestamp",
             "event",
         ]
+
+    def get_event(self, obj):
+        return reverse_with_params(
+            "event-detail",
+            args=[obj.event.pk],
+            request=self.context.get("request"),
+            params={"capture": obj.pk},
+        )
 
 
 class TaxonOccurrenceNestedSerializer(DefaultSerializer):
