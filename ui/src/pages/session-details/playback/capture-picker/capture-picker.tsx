@@ -77,7 +77,7 @@ export const CapturePicker = ({
     if (!activeCaptureId) {
       return
     }
-    captureRefs[activeCaptureId].current?.scrollIntoView({
+    captureRefs[activeCaptureId]?.current?.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',
       inline: 'nearest',

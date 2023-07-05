@@ -1,16 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_URL } from 'data-services/constants'
-import { ServerEvent, Session } from '../models/session'
+import { ServerEventDetails, SessionDetails } from '../models/session-details'
 
 const COLLECTION = 'events'
 
-const convertServerRecord = (record: ServerEvent) => new Session(record)
+const convertServerRecord = (record: ServerEventDetails) =>
+  new SessionDetails(record)
 
 export const useSessionDetails = (
   id: string
 ): {
-  session?: Session
+  session?: SessionDetails
   isLoading: boolean
   isFetching: boolean
   error?: unknown
@@ -19,7 +20,7 @@ export const useSessionDetails = (
     queryKey: [COLLECTION, id],
     queryFn: () =>
       axios
-        .get<ServerEvent[]>(`${API_URL}/${COLLECTION}/${id}`)
+        .get<ServerEventDetails[]>(`${API_URL}/${COLLECTION}/${id}`)
         .then((res) => convertServerRecord(res.data)),
   })
 
