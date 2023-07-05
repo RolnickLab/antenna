@@ -29,7 +29,6 @@ export const Occurrences = () => {
     id: true,
     deployment: true,
     session: true,
-    date: true,
     duration: true,
     detections: true,
   })

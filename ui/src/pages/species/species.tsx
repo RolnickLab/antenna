@@ -1,21 +1,27 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
-import { useSpecies } from 'data-services/hooks/useSpecies'
+import { FilterSettings } from 'components/filter-settings/filter-settings'
+import { useSpecies } from 'data-services/hooks/species/useSpecies'
+import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
+import { SpeciesDetails } from 'pages/species-details/species-details'
 import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
 import styles from './species.module.scss'
-import { useFilters } from 'utils/useFilters'
-import { FilterSettings } from 'components/filter-settings/filter-settings'
 
 export const Species = () => {
+  const { id } = useParams()
+  const navigate = useNavigate()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
@@ -75,6 +81,15 @@ export const Species = () => {
           onNextClick={setNextPage}
         />
       ) : null}
+
+      <Dialog.Root
+        open={!!id}
+        onOpenChange={() => navigate(getRoute({ collection: 'species' }))}
+      >
+        <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
+          {id ? <SpeciesDetails id={id} /> : null}
+        </Dialog.Content>
+      </Dialog.Root>
     </>
   )
 }

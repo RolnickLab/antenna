@@ -17,7 +17,7 @@ export class Occurrence {
   }
 
   get dateLabel(): string {
-    const date = new Date(this._occurrence.first_appearance)
+    const date = new Date(this._occurrence.first_appearance.timestamp)
     return getFormatedDateString({ date })
   }
 
@@ -33,8 +33,8 @@ export class Occurrence {
     return this._occurrence.determination.name
   }
 
-  get durationLabel(): string {
-    return this._occurrence.duration_label
+  get determinationId(): string {
+    return `${this._occurrence.determination.id}`
   }
 
   get determinationScore(): number | undefined {
@@ -43,6 +43,10 @@ export class Occurrence {
     }
 
     return _.round(this._occurrence.determination_score, 4)
+  }
+
+  get durationLabel(): string {
+    return this._occurrence.duration_label
   }
 
   get id(): string {
@@ -66,7 +70,7 @@ export class Occurrence {
   }
 
   get timeLabel(): string {
-    const date = new Date(this._occurrence.first_appearance)
+    const date = new Date(this._occurrence.first_appearance.timestamp)
     return getFormatedTimeString({ date })
   }
 }
