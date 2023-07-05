@@ -19,6 +19,26 @@ _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
+def format_timedelta(duration: datetime.timedelta | None) -> str:
+    """Format the duration for display.
+    @TODO try the humanize library
+    # return humanize.naturaldelta(self.duration())
+
+    Examples:
+    5 minutes
+    2 hours 30 min
+    2 days 5 hours
+    """
+    if not duration:
+        return ""
+    if duration < datetime.timedelta(hours=1):
+        return f"{duration.seconds // 60} minutes"
+    if duration < datetime.timedelta(days=1):
+        return f"{duration.seconds // 3600} hours {duration.seconds % 3600 // 60} min"
+    else:
+        return f"{duration.days} days {duration.seconds // 3600} hours"
+
+
 class BaseModel(models.Model):
     """ """
 
@@ -194,20 +214,7 @@ class Event(BaseModel):
         return self.end - self.start
 
     def duration_label(self) -> str:
-        """Format the duration for display.
-
-        Examples:
-        5 minutes
-        2 hours 30 min
-        2 days 5 hours
-        """
-        duration = self.duration()
-        if duration < datetime.timedelta(hours=1):
-            return f"{duration.seconds // 60} minutes"
-        if duration < datetime.timedelta(days=1):
-            return f"{duration.seconds // 3600} hours {duration.seconds % 3600 // 60} min"
-        else:
-            return f"{duration.days} days {duration.seconds // 3600} hours"
+        return format_timedelta(self.duration())
 
     def captures_count(self) -> int:
         return self.captures.count()
@@ -460,14 +467,26 @@ class Occurrence(BaseModel):
         # @TODO remove this method and use QuerySet annotation instead
         return self.detections.count()
 
-    def duration(self) -> datetime.timedelta | None:
-        first = self.detections.first()
-        last = self.detections.last()
+    def first_appearance(self) -> datetime.datetime | None:
+        first = self.detections.order_by("timestamp").first()
+        if first:
+            return first.timestamp
 
-        if first and last and first.timestamp and last.timestamp:
-            return last.timestamp - first.timestamp
+    def last_appearance(self) -> datetime.datetime | None:
+        last = self.detections.order_by("timestamp").last()
+        if last:
+            return last.timestamp
+
+    def duration(self) -> datetime.timedelta | None:
+        first = self.first_appearance()
+        last = self.last_appearance()
+        if first and last:
+            return last - first
         else:
             return None
+
+    def duration_label(self) -> str | None:
+        return format_timedelta(self.duration())
 
     def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
