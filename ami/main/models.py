@@ -457,7 +457,7 @@ class Occurrence(BaseModel):
         else:
             return None
 
-    def detection_images(self, limit=5):
+    def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
