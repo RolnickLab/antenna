@@ -2,9 +2,16 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .content {
   max-width: 100%;
   display: flex;
+  flex: 1;
 }
 
 .header {
@@ -21,39 +28,17 @@
   box-sizing: border-box;
 }
 
-.fields {
-  min-height: 314px;
-}
-
-.images {
+.blueprintWrapper {
   width: 320px;
   position: relative;
   overflow: hidden;
-
-  .imagesContent {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    padding: 20px 24px 24px;
-    box-sizing: border-box;
-    overflow-y: auto;
-  }
-
-  img {
-    max-width: 100%;
-    vertical-align: middle;
-    margin-bottom: 2px;
-  }
 }
 
-.copyright {
-  display: block;
-  @include paragraph-xx-small();
-  margin-bottom: 16px;
-  color: $color-neutral-600;
+.blueprintContainer {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  overflow-y: auto;
 }
 
 .title {
@@ -73,27 +58,6 @@
   color: $color-neutral-600;
 }
 
-.taxonomyPopover {
-  width: 480px;
-  overflow: hidden;
-
-  img {
-    width: 100%;
-    vertical-align: middle;
-    border-radius: 4px 4px 0 0;
-  }
-}
-
-.taxonomyContent {
-  padding: 24px;
-
-  p {
-    @include paragraph-small();
-    color: $color-neutral-800;
-    margin: 0;
-  }
-}
-
 @media only screen and (max-width: $small-screen-breakpoint) {
   .wrapper {
     width: 100%;
@@ -105,12 +69,13 @@
     flex-direction: column;
   }
 
-  .images {
-    width: 100%;
-    height: auto;
+  .blueprintWrapper {
+    width: auto;
+  }
 
-    .imagesContent {
-      position: relative;
-    }
+  .blueprintContainer {
+    height: auto;
+    position: relative;
+    overflow: auto;
   }
 }

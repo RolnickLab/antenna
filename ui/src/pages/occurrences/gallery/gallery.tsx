@@ -20,7 +20,7 @@ export const Gallery = ({
         <Link to={`/occurrences/${occurrence.id}`}>
           <Card
             key={occurrence.id}
-            title={occurrence.categoryLabel}
+            title={occurrence.determinationLabel}
             subTitle="WIP"
             image={occurrence.images[0]}
           />

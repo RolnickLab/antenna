@@ -4,6 +4,7 @@ export type CaptureDetection = {
   bbox: number[]
   id: string
   label: string
+  occurrenceId: string
 }
 
 export class CaptureDetails {
@@ -16,7 +17,8 @@ export class CaptureDetails {
     this._detections = capture.detections.map((detection: any) => ({
       bbox: detection.bbox,
       id: `${detection.id}`,
-      label: `#${detection.id}`, // TODO: Update
+      label: detection.occurrence.determination.name,
+      occurrenceId: `${detection.occurrence.id}`,
     }))
   }
 

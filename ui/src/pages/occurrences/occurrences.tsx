@@ -98,7 +98,7 @@ export const Occurrences = () => {
 
       <Dialog.Root open={!!id} onOpenChange={() => navigate('/occurrences')}>
         <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-          <OccurrenceDetails occurrence={occurrence} />
+          {id ? <OccurrenceDetails id={id} /> : null}
         </Dialog.Content>
       </Dialog.Root>
     </>

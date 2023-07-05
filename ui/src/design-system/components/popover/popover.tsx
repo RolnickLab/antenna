@@ -18,16 +18,18 @@ const Root = ({
 )
 
 const Trigger = ({
+  asChild = true,
   children,
   onMouseEnter,
   onMouseLeave,
 }: {
+  asChild?: boolean
   children: ReactNode
   onMouseEnter?: () => void
   onMouseLeave?: () => void
 }) => (
   <Popover.Trigger
-    asChild
+    asChild={asChild}
     onMouseEnter={onMouseEnter}
     onMouseLeave={onMouseLeave}
   >
