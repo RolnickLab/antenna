@@ -264,7 +264,7 @@ class SummaryView(APIView):
         # add an num_ alias for each _count key
         for key, value in data.items():
             if key.endswith("_count"):
-                aliases[key.replace("_count", "_num")] = value
+                aliases["num_" + key.replace("_count", "")] = value
 
         data.update(aliases)
 
