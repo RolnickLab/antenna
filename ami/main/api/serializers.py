@@ -303,7 +303,8 @@ class TaxonDetectionsSerializer(DefaultSerializer):
 
 
 class TaxonSourceImageNestedSerializer(DefaultSerializer):
-    event = serializers.SerializerMethodField()
+    page = serializers.SerializerMethodField()
+    page_offset = serializers.SerializerMethodField()
 
     class Meta:
         model = SourceImage
@@ -312,15 +313,19 @@ class TaxonSourceImageNestedSerializer(DefaultSerializer):
             "details",
             "timestamp",
             "event",
+            "page_offset",
+            "page",
         ]
 
-    def get_event(self, obj):
+    def get_page(self, obj):
         return reverse_with_params(
-            "event-detail",
-            args=[obj.event.pk],
+            "sourceimage-list",
             request=self.context.get("request"),
-            params={"capture": obj.pk},
+            params={"offset": self.get_page_offset(obj)},
         )
+
+    def get_page_offset(self, obj) -> int:
+        return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
 
 
 class TaxonOccurrenceNestedSerializer(DefaultSerializer):
