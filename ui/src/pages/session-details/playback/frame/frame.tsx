@@ -24,6 +24,7 @@ export const Frame = ({
 }: FrameProps) => {
   const imageRef = useRef<HTMLImageElement>(null)
   const [isLoading, setIsLoading] = useState<boolean>()
+  const [rendeOverlay, setRenderOverlay] = useState<boolean>()
 
   useLayoutEffect(() => {
     if (!imageRef.current) {
@@ -33,6 +34,11 @@ export const Frame = ({
     imageRef.current.src = src
     imageRef.current.onload = () => setIsLoading(false)
   }, [src])
+
+  useLayoutEffect(() => {
+    // Ugly hack to make overlay correct on first render
+    setRenderOverlay(true)
+  }, [])
 
   const boxStyles = useMemo(
     () =>
@@ -64,7 +70,7 @@ export const Frame = ({
           [styles.showOverlay]: showOverlay,
         })}
       >
-        <FrameOverlay boxStyles={boxStyles} />
+        {rendeOverlay && <FrameOverlay boxStyles={boxStyles} />}
         <FrameDetections detections={detections} boxStyles={boxStyles} />
       </div>
       {isLoading && (
