@@ -159,6 +159,7 @@ class EventListSerializer(DefaultSerializer):
         model = Event
         fields = [
             "id",
+            "name",
             "details",
             "deployment",
             "start",
@@ -196,11 +197,14 @@ class EventSerializer(DefaultSerializer):
         source="deployment",
     )
     captures = serializers.SerializerMethodField()
+    start = serializers.DateTimeField(read_only=True)
+    end = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Event
         fields = [
             "id",
+            "name",
             "details",
             "deployment",
             "deployment_id",
@@ -231,6 +235,7 @@ class EventNestedSerializer(DefaultSerializer):
         model = Event
         fields = [
             "id",
+            "name",
             "details",
             "date_label",
         ]

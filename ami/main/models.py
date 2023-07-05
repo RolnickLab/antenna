@@ -158,7 +158,10 @@ class Event(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
 
     def __str__(self) -> str:
-        return f"Event #{self.pk} ({self.date_label()})"
+        return f"{self.start.strftime('%A')}, {self.date_label()}"
+
+    def name(self) -> str:
+        return str(self)
 
     def day(self) -> datetime.date:
         """
@@ -176,9 +179,9 @@ class Event(BaseModel):
         Jan 1-5, 2021
         """
         if self.end and self.end.date() != self.start.date():
-            return f"{self.start.strftime('%b %-d')}-{self.end.strftime('%-d, %Y')}"
+            return f"{self.start.strftime('%b %-d')}-{self.end.strftime('%-d %Y')}"
         else:
-            return f"{self.start.strftime('%b %-d, %Y')}"
+            return f"{self.start.strftime('%b %-d %Y')}"
 
     def duration(self):
         """Return the duration of the event.
@@ -223,6 +226,15 @@ class Event(BaseModel):
 
     def example_captures(self, num=5):
         return SourceImage.objects.filter(event=self).order_by("?")[:num]
+
+    def save(self, *args, **kwargs):
+        first = self.captures.order_by("timestamp").values("timestamp").first()
+        last = self.captures.order_by("-timestamp").values("timestamp").first()
+        if first:
+            self.start = first["timestamp"]
+        if last:
+            self.end = last["timestamp"]
+        super().save(*args, **kwargs)
 
 
 @final
