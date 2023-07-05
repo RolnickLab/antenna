@@ -16,14 +16,30 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
 
   const fields = [
     {
-      label: translate(STRING.DETAILS_LABEL_DEPLOYMENT),
+      label: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
       value: occurrence.deploymentLabel,
       to: `/deployments/${occurrence.deploymentId}`,
     },
     {
-      label: translate(STRING.DETAILS_LABEL_SESSION),
+      label: translate(STRING.TABLE_COLUMN_SESSION),
       value: occurrence.sessionLabel,
       to: `/sessions/${occurrence.sessionId}`,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_DATE),
+      value: occurrence.dateLabel,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_TIME),
+      value: occurrence.timeLabel,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_DURATION),
+      value: occurrence.durationLabel,
+    },
+    {
+      label: translate(STRING.TABLE_COLUMN_DETECTIONS),
+      value: occurrence.numDetections,
     },
   ]
 

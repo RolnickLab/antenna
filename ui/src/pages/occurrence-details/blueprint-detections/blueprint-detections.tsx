@@ -30,7 +30,7 @@ const BlueprintDetection = ({
       className={styles.blueprintTimestamp}
       style={{ width: detection.image.width }}
     >
-      {detection.timestamp}
+      {detection.timeLabel}
     </span>
     <div className={styles.blueprintImage}>
       <img

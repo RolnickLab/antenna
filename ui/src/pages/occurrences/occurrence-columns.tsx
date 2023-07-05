@@ -34,7 +34,7 @@ export const columns: TableColumn<Occurrence>[] = [
       <Link to={`/occurrences/${item.id}`}>
         <BasicTableCell
           value={item.determinationLabel}
-          details={[`${translate(STRING.SCORE)}: ${item.determinationScore}`]}
+          details={[`(${item.determinationScore})`]}
           theme={CellTheme.Primary}
         />
       </Link>
@@ -57,12 +57,32 @@ export const columns: TableColumn<Occurrence>[] = [
     name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Occurrence) => (
       <Link to={`/sessions/${item.sessionId}`}>
-        <BasicTableCell
-          value={item.sessionLabel}
-          details={[item.sessionTimespan]}
-          theme={CellTheme.Primary}
-        />
+        <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
       </Link>
+    ),
+  },
+  {
+    id: 'date',
+    name: translate(STRING.TABLE_COLUMN_DATE),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
+  },
+  {
+    id: 'time',
+    name: translate(STRING.TABLE_COLUMN_TIME),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.timeLabel} />,
+  },
+  {
+    id: 'duration',
+    name: translate(STRING.TABLE_COLUMN_DURATION),
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell value={item.durationLabel} />
+    ),
+  },
+  {
+    id: 'detections',
+    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell value={item.numDetections} />
     ),
   },
 ]

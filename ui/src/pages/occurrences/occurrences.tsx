@@ -29,6 +29,9 @@ export const Occurrences = () => {
     id: true,
     deployment: true,
     session: true,
+    date: true,
+    duration: true,
+    detections: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
