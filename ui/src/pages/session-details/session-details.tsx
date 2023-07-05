@@ -38,26 +38,25 @@ export const SessionDetails = () => {
   }
 
   return (
-    <>
-      <div className={styles.main}>
-        {isFetching && (
-          <div className={styles.fetchInfoWrapper}>
-            <FetchInfo isLoading={isLoading} />
-          </div>
-        )}
-        <div className={styles.container}>
-          <div className={styles.playback}>
-            <Playback sessionId={session.id} />
+    <div className={styles.main}>
+      {isFetching && (
+        <div className={styles.fetchInfoWrapper}>
+          <FetchInfo isLoading={isLoading} />
+        </div>
+      )}
+      <div className={styles.playbackWrapper}>
+        <Playback sessionId={session.id} />
+      </div>
+      <div className={styles.details}>
+        <div className={styles.detailsContainer}>
+          <SessionInfo session={session} />
+        </div>
+        <div className={styles.detailsContainer}>
+          <div className={styles.graphContainer}>
+            <p className={styles.text}>Area for session graphs</p>
           </div>
         </div>
       </div>
-      <div className={styles.graphs}>
-        <div className={styles.container}>
-          <div className={styles.content}>
-            <SessionInfo session={session} />
-          </div>
-        </div>
-      </div>
-    </>
+    </div>
   )
 }

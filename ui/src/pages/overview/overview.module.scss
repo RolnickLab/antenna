@@ -52,7 +52,6 @@
 }
 
 .title {
-  display: block;
   @include paragraph-large();
   font-weight: 600;
   color: $color-neutral-800;
@@ -60,10 +59,8 @@
 }
 
 .text {
-  display: block;
   @include paragraph-medium();
   color: $color-neutral-800;
-  margin-bottom: 16px;
   margin: 0 0 16px;
 }
 

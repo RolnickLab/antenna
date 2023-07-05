@@ -23,7 +23,6 @@ export const Sessions = () => {
     snapshots: true,
     session: true,
     images: true,
-    date: true,
     duration: true,
     occurrences: true,
     species: true,

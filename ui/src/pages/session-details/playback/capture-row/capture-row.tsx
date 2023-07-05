@@ -37,6 +37,6 @@ export const CaptureRow = ({
         }}
       />
     </div>
-    <div className={styles.timestamp}>{capture.timeString}</div>
+    <div className={styles.timestamp}>{capture.timeLabel}</div>
   </div>
 )

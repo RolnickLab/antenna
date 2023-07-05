@@ -6,7 +6,7 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 export type ServerEvent = any // TODO: Update this type
 
 export class Session {
-  private readonly _event: ServerEvent
+  protected readonly _event: ServerEvent
   private readonly _exampleCaptures: { src: string }[] = []
 
   public constructor(event: ServerEvent) {
@@ -42,10 +42,6 @@ export class Session {
     return this._event.duration_label
   }
 
-  get durationMinutes(): number {
-    return this._event.duration_minutes
-  }
-
   get exampleCaptures(): { src: string }[] {
     return this._exampleCaptures
   }
@@ -54,8 +50,8 @@ export class Session {
     return `${this._event.id}`
   }
 
-  get idLabel(): string {
-    return `Session #${this.id}`
+  get label(): string {
+    return this._event.name
   }
 
   get numDetections(): number | undefined {

@@ -1,4 +1,3 @@
-import { useCaptureDetails } from 'data-services/hooks/useCaptureDetails'
 import { useCaptures } from 'data-services/hooks/useCaptures'
 import { Capture } from 'data-services/models/capture'
 import { useEffect, useState } from 'react'
@@ -18,22 +17,28 @@ export const Playback = ({ sessionId }: { sessionId: string }) => {
   }, [captures])
 
   if (!activeCapture) {
-    return null
+    return null // TODO: Show loading spinner
   }
 
   return (
     <div className={styles.wrapper}>
       <div
-        className={styles.frameWrapper}
+        className={styles.playbackFrame}
         onMouseOver={() => setShowOverlay(true)}
         onMouseOut={() => setShowOverlay(false)}
       >
-        <PlaybackFrame capture={activeCapture} showOverlay={showOverlay} />
+        <Frame
+          src={activeCapture.src}
+          width={activeCapture.width}
+          height={activeCapture.height}
+          detections={activeCapture.detections}
+          showOverlay={showOverlay}
+        />
       </div>
 
       <div className={styles.capturePicker}>
         <CapturePicker
-          activeCaptureId={activeCapture?.id}
+          activeCaptureId={activeCapture.id}
           captures={captures}
           setActiveCaptureId={(captureId) => {
             const capture = captures.find((c) => c.id === captureId)
@@ -44,25 +49,5 @@ export const Playback = ({ sessionId }: { sessionId: string }) => {
         />
       </div>
     </div>
-  )
-}
-
-const PlaybackFrame = ({
-  capture,
-  showOverlay,
-}: {
-  capture: Capture
-  showOverlay: boolean
-}) => {
-  const { capture: captureDetails } = useCaptureDetails(capture.id)
-
-  return (
-    <Frame
-      src={capture.src}
-      width={capture.width}
-      height={capture.height}
-      detections={captureDetails?.detections ?? []}
-      showOverlay={showOverlay}
-    />
   )
 }
