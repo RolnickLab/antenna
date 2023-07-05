@@ -509,6 +509,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -538,6 +539,7 @@ class OccurrenceSerializer(DefaultSerializer):
     detections = DetectionNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
