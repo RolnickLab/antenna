@@ -7,7 +7,7 @@ type CollectionType =
 
 type FilterType = 'deployment' | 'event' | 'determination'
 
-export const getLink = ({
+export const getRoute = ({
   collection,
   itemId,
   filters = {},

@@ -6,7 +6,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getLink } from 'utils/getLink'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Deployment>[] = [
@@ -16,7 +16,7 @@ export const columns: TableColumn<Deployment>[] = [
     sortField: 'name',
     renderCell: (item: Deployment) => (
       <Link
-        to={getLink({
+        to={getRoute({
           collection: 'deployments',
           itemId: item.id,
         })}
@@ -34,7 +34,7 @@ export const columns: TableColumn<Deployment>[] = [
     },
     renderCell: (item: Deployment) => (
       <Link
-        to={getLink({
+        to={getRoute({
           collection: 'sessions',
           filters: { deployment: item.id },
         })}
@@ -72,7 +72,7 @@ export const columns: TableColumn<Deployment>[] = [
     },
     renderCell: (item: Deployment) => (
       <Link
-        to={getLink({
+        to={getRoute({
           collection: 'occurrences',
           filters: { deployment: item.id },
         })}
@@ -90,7 +90,7 @@ export const columns: TableColumn<Deployment>[] = [
     },
     renderCell: (item: Deployment) => (
       <Link
-        to={getLink({
+        to={getRoute({
           collection: 'species',
           filters: { deployment: item.id },
         })}

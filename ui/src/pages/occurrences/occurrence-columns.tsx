@@ -7,7 +7,7 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getLink } from 'utils/getLink'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Occurrence>[] = [
@@ -32,7 +32,7 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Occurrence) => (
-      <Link to={getLink({ collection: 'occurrences', itemId: item.id })}>
+      <Link to={getRoute({ collection: 'occurrences', itemId: item.id })}>
         <BasicTableCell
           value={item.determinationLabel}
           details={[`(${item.determinationScore})`]}
@@ -46,7 +46,7 @@ export const columns: TableColumn<Occurrence>[] = [
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
       <Link
-        to={getLink({ collection: 'deployments', itemId: item.deploymentId })}
+        to={getRoute({ collection: 'deployments', itemId: item.deploymentId })}
       >
         <BasicTableCell
           value={item.deploymentLabel}
@@ -59,7 +59,7 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'session',
     name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Occurrence) => (
-      <Link to={getLink({ collection: 'sessions', itemId: item.sessionId })}>
+      <Link to={getRoute({ collection: 'sessions', itemId: item.sessionId })}>
         <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
       </Link>
     ),
