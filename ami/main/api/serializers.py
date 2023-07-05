@@ -540,7 +540,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination",
             "detections_count",
             "detection_images",
-            # "determination_score",
+            "determination_score",
         ]
 
 
