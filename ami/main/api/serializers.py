@@ -8,7 +8,7 @@ from rest_framework.reverse import reverse
 from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
 
 
-def reverse_with_params(viewname: str, request, params: dict, *args, **kwargs) -> str:
+def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
     query_string = urllib.parse.urlencode(params)
     base_url = reverse(viewname, request=request, args=args, kwargs=kwargs)
     url = urllib.parse.urlunsplit(("", "", base_url, query_string, ""))
@@ -157,6 +157,7 @@ class SourceImageNestedSerializer(DefaultSerializer):
             "height",
             "timestamp",
             "detections_count",
+            "detections",
         ]
 
 
@@ -195,53 +196,11 @@ class EventListSerializer(DefaultSerializer):
             "duration",
             "duration_label",
             "captures_count",
+            "detections_count",
             "occurrences_count",
             "taxa_count",
             "captures",
             "example_captures",
-        ]
-
-    def get_captures(self, obj):
-        """
-        Return URL to the captures endpoint filtered by this event.
-        """
-
-        return reverse_with_params(
-            "sourceimage-list",
-            request=self.context.get("request"),
-            params={"event": obj.pk},
-        )
-
-
-class EventSerializer(DefaultSerializer):
-    deployment = DeploymentNestedSerializer(
-        read_only=True,
-    )
-    deployment_id = serializers.PrimaryKeyRelatedField(
-        write_only=True,
-        queryset=Deployment.objects.all(),
-        source="deployment",
-    )
-    captures = serializers.SerializerMethodField()
-    start = serializers.DateTimeField(read_only=True)
-    end = serializers.DateTimeField(read_only=True)
-
-    class Meta:
-        model = Event
-        fields = [
-            "id",
-            "name",
-            "details",
-            "deployment",
-            "deployment_id",
-            "start",
-            "end",
-            "day",
-            "date_label",
-            "duration",
-            "duration_label",
-            "captures",
-            "captures_count",
         ]
 
     def get_captures(self, obj):
@@ -283,6 +242,7 @@ class TaxonListSerializer(DefaultSerializer):
             "detections_count",
             "occurrences",
             "occurrence_images",
+            "last_detected",
         ]
 
     def get_occurrences(self, obj):
@@ -342,10 +302,40 @@ class TaxonDetectionsSerializer(DefaultSerializer):
         ]
 
 
+class TaxonSourceImageNestedSerializer(DefaultSerializer):
+    page = serializers.SerializerMethodField()
+    page_offset = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SourceImage
+        fields = [
+            "id",
+            "details",
+            "timestamp",
+            "event",
+            "page_offset",
+            "page",
+        ]
+
+    def get_page(self, obj):
+        return reverse_with_params(
+            "sourceimage-list",
+            request=self.context.get("request"),
+            params={"offset": self.get_page_offset(obj)},
+        )
+
+    def get_page_offset(self, obj) -> int:
+        return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
+
+
 class TaxonOccurrenceNestedSerializer(DefaultSerializer):
     # determination_algorithm = AlgorithmSerializer(read_only=True)
+    deployment = DeploymentNestedSerializer(read_only=True)
+    event = EventNestedSerializer(read_only=True)
     best_detection = TaxonDetectionsSerializer(read_only=True)
     determination = CaptureTaxonSerializer(read_only=True)
+    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    last_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -357,6 +347,11 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "determination_score",
             "determination",
             "best_detection",
+            "detections_count",
+            "duration",
+            "duration_label",
+            "first_appearance",
+            "last_appearance",
         ]
 
 
@@ -374,6 +369,7 @@ class TaxonSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "detections_count",
+            "events_count",
             "occurrences",
         ]
 
@@ -526,6 +522,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -555,6 +552,7 @@ class OccurrenceSerializer(DefaultSerializer):
     detections = DetectionNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -562,3 +560,70 @@ class OccurrenceSerializer(DefaultSerializer):
             "determination_id",
             "detections",
         ]
+
+
+class EventCaptureNestedSerializer(DefaultSerializer):
+    """
+    Load the first capture for an event. Or @TODO a single capture from the URL params.
+    """
+
+    detections = CaptureDetectionsSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SourceImage
+        fields = [
+            "id",
+            "details",
+            "url",
+            "width",
+            "height",
+            "timestamp",
+            "detections_count",
+            "detections",
+            # "page_url",
+        ]
+
+
+class EventSerializer(DefaultSerializer):
+    deployment = DeploymentNestedSerializer(
+        read_only=True,
+    )
+    deployment_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Deployment.objects.all(),
+        source="deployment",
+    )
+    captures = serializers.SerializerMethodField()
+    first_capture = EventCaptureNestedSerializer(read_only=True)
+    start = serializers.DateTimeField(read_only=True)
+    end = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = Event
+        fields = [
+            "id",
+            "name",
+            "details",
+            "deployment",
+            "deployment_id",
+            "start",
+            "end",
+            "day",
+            "date_label",
+            "duration",
+            "duration_label",
+            "captures",
+            "captures_count",
+            "first_capture",
+        ]
+
+    def get_captures(self, obj):
+        """
+        Return URL to the captures endpoint filtered by this event.
+        """
+
+        return reverse_with_params(
+            "sourceimage-list",
+            request=self.context.get("request"),
+            params={"event": obj.pk},
+        )

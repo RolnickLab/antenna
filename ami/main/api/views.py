@@ -63,8 +63,8 @@ class DeploymentViewSet(DefaultViewSet):
     """
 
     queryset = Deployment.objects.annotate(
-        events_count=models.Count("events"),
-        occurrences_count=models.Count("occurrences"),
+        events_count=models.Count("events", distinct=True),
+        occurrences_count=models.Count("occurrences", distinct=True),
     )
     filterset_fields = ["project"]
     ordering_fields = ["created_at", "updated_at", "occurrences_count", "events_count"]
@@ -85,14 +85,29 @@ class EventViewSet(DefaultViewSet):
     """
 
     # @TODO add annotations for counts
-    queryset = Event.objects.select_related("deployment").annotate(
-        occurrences_count=models.Count("occurrences"), captures_count=models.Count("captures")
+    queryset = (
+        Event.objects.select_related("deployment")
+        .annotate(
+            captures_count=models.Count("captures", distinct=True),
+            detections_count=models.Count("captures__detections", distinct=True),
+            occurrences_count=models.Count("occurrences", distinct=True),
+            taxa_count=models.Count("occurrences__determination", distinct=True),
+        )
+        .distinct()
     )  # .prefetch_related("captures").all()
     serializer_class = EventSerializer
     filterset_fields = [
         "deployment",
     ]  # "project"]
-    ordering_fields = ["created_at", "updated_at", "start", "occurrences_count", "captures_count", "duration"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "start",
+        "captures_count",
+        "detections_count",
+        "occurrences_count",
+        "duration",
+    ]
 
     def get_serializer_class(self):
         """
@@ -109,7 +124,7 @@ class SourceImageViewSet(DefaultViewSet):
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
     """
 
-    queryset = SourceImage.objects.annotate(detections_count=models.Count("detections"))
+    queryset = SourceImage.objects.annotate(detections_count=models.Count("detections", distinct=True))
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment"]
     ordering_fields = [
@@ -166,7 +181,13 @@ class OccurrenceViewSet(DefaultViewSet):
     API endpoint that allows occurrences to be viewed or edited.
     """
 
-    queryset = Occurrence.objects.select_related("determination", "deployment", "event").all()
+    queryset = (
+        Occurrence.objects.annotate(
+            detections_count=models.Count("detections", distinct=True),
+        )
+        .select_related("determination", "deployment", "event")
+        .all()
+    )
     serializer_class = OccurrenceSerializer
     filterset_fields = ["event", "deployment", "determination"]
     ordering_fields = ["created_at", "updated_at", "timestamp"]
@@ -186,12 +207,30 @@ class TaxonViewSet(DefaultViewSet):
     API endpoint that allows taxa to be viewed or edited.
     """
 
-    queryset = Taxon.objects.all()
+    queryset = (
+        Taxon.objects.annotate(
+            occurrences_count=models.Count("occurrences", distinct=True),
+            detections_count=models.Count("classifications__detection", distinct=True),
+            events_count=models.Count("occurrences__event", distinct=True),
+            last_detected=models.Max("classifications__detection__timestamp"),
+        )
+        .all()
+        .distinct()
+    )
     serializer_class = TaxonSerializer
-    filterset_fields = ["name", "rank"]
+    filterset_fields = [
+        "name",
+        "rank",
+        "parent",
+        "occurrences__event",
+        "occurrences__deployment",
+    ]
     ordering_fields = [
         "created_at",
         "updated_at",
+        "occurrences_count",
+        "detections_count",
+        "last_detected",
         "name",
     ]
     search_fields = ["name", "parent__name"]
@@ -252,7 +291,7 @@ class SummaryView(APIView):
             "captures_count": SourceImage.objects.count(),
             "detections_count": Detection.objects.count(),
             "occurrences_count": Occurrence.objects.count(),
-            "taxa_count": Taxon.objects.count(),
+            "taxa_count": Taxon.objects.distinct().count(),
             "last_updated": timezone.now(),
         }
 
