@@ -216,20 +216,26 @@ class Event(BaseModel):
     def duration_label(self) -> str:
         return format_timedelta(self.duration())
 
+    # These are now loaded with annotations in EventViewSet
+    # But the serializer complains if they're not defined here.
     def captures_count(self) -> int:
-        return self.captures.count()
+        # return self.captures.distinct().count()
+        return 0
 
     def occurrences_count(self) -> int:
-        return self.occurrences.count()
+        # return self.occurrences.distinct().count()
+        return 0
 
     def detections_count(self) -> int:
-        return Detection.objects.filter(Q(source_image__event=self)).count()
-
-    def taxa(self) -> models.QuerySet["Taxon"]:
-        return Taxon.objects.filter(Q(occurrences__event=self)).distinct()
+        # return Detection.objects.filter(Q(source_image__event=self)).distinct().count()
+        return 0
 
     def taxa_count(self) -> int:
         return self.taxa().count()
+        return 0
+
+    def taxa(self) -> models.QuerySet["Taxon"]:
+        return Taxon.objects.filter(Q(occurrences__event=self)).distinct()
 
     def example_captures(self, num=5):
         return SourceImage.objects.filter(event=self).order_by("?")[:num]
@@ -275,8 +281,8 @@ class SourceImage(BaseModel):
     detections: models.QuerySet["Detection"]
 
     def detections_count(self) -> int:
-        # @TODO remove this method and use QuerySet annotation instead
-        return self.detections.count()
+        # return self.detections.count()
+        return 0
 
     def url(self):
         # @TODO use settings or deployment storage base
@@ -465,8 +471,8 @@ class Occurrence(BaseModel):
     detections: models.QuerySet[Detection]
 
     def detections_count(self):
-        # @TODO remove this method and use QuerySet annotation instead
-        return self.detections.count()
+        # return self.detections.count()
+        return 0
 
     def first_appearance(self) -> datetime.datetime | None:
         first = self.detections.order_by("timestamp").first()
@@ -529,16 +535,22 @@ class Taxon(BaseModel):
         return self.children.count() + sum(child.num_children_recursive() for child in self.children.all())
 
     def occurrences_count(self) -> int:
-        return self.occurrences.count()
+        # return self.occurrences.count()
+        return 0
 
     def detections_count(self) -> int:
-        return Detection.objects.filter(occurrence__determination=self).count()
+        # return Detection.objects.filter(occurrence__determination=self).count()
+        return 0
 
     def latest_occurrence(self) -> Occurrence | None:
         return self.occurrences.order_by("-created_at").first()
 
     def latest_detection(self) -> Detection | None:
         return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
+
+    def last_detected(self) -> datetime.datetime | None:
+        # This is handled by an annotation
+        return None
 
     def occurrence_images(self):
         """

@@ -195,6 +195,7 @@ class EventListSerializer(DefaultSerializer):
             "duration",
             "duration_label",
             "captures_count",
+            "detections_count",
             "occurrences_count",
             "taxa_count",
             "captures",
