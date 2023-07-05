@@ -122,7 +122,7 @@ export const columns: TableColumn<Session>[] = [
       <Link
         to={getRoute({
           collection: 'species',
-          filters: { event: item.id },
+          filters: { occurrences__event: item.id },
         })}
       >
         <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />

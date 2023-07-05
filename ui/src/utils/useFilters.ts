@@ -6,8 +6,16 @@ const AVAILABLE_FILTERS = [
     field: 'deployment',
   },
   {
+    label: 'Occurrence Deployment',
+    field: 'occurrences__deployment',
+  },
+  {
     label: 'Session',
     field: 'event',
+  },
+  {
+    label: 'Occurrence Session',
+    field: 'occurrences__event',
   },
   {
     label: 'Species',

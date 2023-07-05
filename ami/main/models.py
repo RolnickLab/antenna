@@ -303,7 +303,8 @@ class Classification(BaseModel):
         related_name="classifications",
     )
 
-    determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True)
+    # @TODO maybe use taxon instead of determination. Determination is for the final ID of the occurrence
+    determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
     timestamp = models.DateTimeField()
 
@@ -518,6 +519,7 @@ class Taxon(BaseModel):
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
+    classifications: models.QuerySet["Classification"]
 
     def num_direct_children(self) -> int:
         return self.direct_children.count()

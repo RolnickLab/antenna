@@ -5,7 +5,7 @@ type CollectionType =
   | 'occurrences'
   | 'species'
 
-type FilterType = 'deployment' | 'event' | 'determination'
+type FilterType = 'deployment' | 'event' | 'determination' | 'occurrences__deployment' | 'occurrences__event'
 
 export const getRoute = ({
   collection,

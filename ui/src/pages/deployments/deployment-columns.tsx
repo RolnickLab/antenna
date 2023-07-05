@@ -92,7 +92,7 @@ export const columns: TableColumn<Deployment>[] = [
       <Link
         to={getRoute({
           collection: 'species',
-          filters: { deployment: item.id },
+          filters: { occurrences__deployment: item.id },
         })}
       >
         <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
