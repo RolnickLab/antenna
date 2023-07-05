@@ -9,12 +9,6 @@ export const config: FormConfig = {
   description: {
     label: 'Description',
   },
-  device: {
-    label: translate(STRING.DETAILS_LABEL_DEVICE),
-  },
-  site: {
-    label: translate(STRING.DETAILS_LABEL_SITE),
-  },
   latitude: {
     label: translate(STRING.DETAILS_LABEL_LATITUDE),
     rules: { min: -90, max: 90 },

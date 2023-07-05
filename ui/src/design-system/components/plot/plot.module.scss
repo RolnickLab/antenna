@@ -1,4 +1,6 @@
 .plot {
+  text-align: center;
+
   :global(.barlayer .point > path) {
     clip-path: inset(0% 0% 0% 0% round 16px);
   }

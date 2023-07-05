@@ -15,14 +15,12 @@ import { Section } from '../types'
 
 type SectionGeneralFieldValues = Pick<
   DeploymentFieldValues,
-  'name' | 'description' | 'device' | 'site'
+  'name' | 'description'
 >
 
 const DEFAULT_VALUES: SectionGeneralFieldValues = {
   description: '',
-  device: '',
   name: '',
-  site: '',
 }
 
 export const SectionGeneral = ({ onNext }: { onNext: () => void }) => {
@@ -54,10 +52,6 @@ export const SectionGeneral = ({ onNext }: { onNext: () => void }) => {
           <div className={styles.sectionRow}>
             <FormField name="name" control={control} config={config} />
             <FormField name="description" control={control} config={config} />
-          </div>
-          <div className={styles.sectionRow}>
-            <FormField name="device" control={control} config={config} />
-            <FormField name="site" control={control} config={config} />
           </div>
         </div>
       </div>

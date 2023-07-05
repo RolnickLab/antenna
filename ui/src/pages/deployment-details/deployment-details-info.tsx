@@ -53,16 +53,6 @@ export const DeploymentDetailsInfo = ({
               />
               <InputValue label="Description" value={deployment.description} />
             </div>
-            <div className={styles.sectionRow}>
-              <InputValue
-                label={translate(STRING.DETAILS_LABEL_DEVICE)}
-                value="WIP"
-              />
-              <InputValue
-                label={translate(STRING.DETAILS_LABEL_SITE)}
-                value="WIP"
-              />
-            </div>
           </div>
         </div>
 

@@ -48,4 +48,26 @@ export const columns: TableColumn<Deployment>[] = [
       <BasicTableCell value={item.numDetections} />
     ),
   },
+  {
+    id: 'occurrences',
+    name: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+    sortField: 'numOccurrences',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.numOccurrences} />
+    ),
+  },
+  {
+    id: 'species',
+    name: translate(STRING.TABLE_COLUMN_SPECIES),
+    sortField: 'numSpecies',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.numSpecies} />
+    ),
+  },
 ]
