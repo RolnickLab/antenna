@@ -19,6 +19,26 @@ _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
+def format_timedelta(duration: datetime.timedelta | None) -> str:
+    """Format the duration for display.
+    @TODO try the humanize library
+    # return humanize.naturaldelta(self.duration())
+
+    Examples:
+    5 minutes
+    2 hours 30 min
+    2 days 5 hours
+    """
+    if not duration:
+        return ""
+    if duration < datetime.timedelta(hours=1):
+        return f"{duration.seconds // 60} minutes"
+    if duration < datetime.timedelta(days=1):
+        return f"{duration.seconds // 3600} hours {duration.seconds % 3600 // 60} min"
+    else:
+        return f"{duration.days} days {duration.seconds // 3600} hours"
+
+
 class BaseModel(models.Model):
     """ """
 
@@ -158,7 +178,10 @@ class Event(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
 
     def __str__(self) -> str:
-        return f"Event #{self.pk} ({self.date_label()})"
+        return f"{self.start.strftime('%A')}, {self.date_label()}"
+
+    def name(self) -> str:
+        return str(self)
 
     def day(self) -> datetime.date:
         """
@@ -176,9 +199,9 @@ class Event(BaseModel):
         Jan 1-5, 2021
         """
         if self.end and self.end.date() != self.start.date():
-            return f"{self.start.strftime('%b %-d')}-{self.end.strftime('%-d, %Y')}"
+            return f"{self.start.strftime('%b %-d')}-{self.end.strftime('%-d %Y')}"
         else:
-            return f"{self.start.strftime('%b %-d, %Y')}"
+            return f"{self.start.strftime('%b %-d %Y')}"
 
     def duration(self):
         """Return the duration of the event.
@@ -191,20 +214,7 @@ class Event(BaseModel):
         return self.end - self.start
 
     def duration_label(self) -> str:
-        """Format the duration for display.
-
-        Examples:
-        5 minutes
-        2 hours 30 min
-        2 days 5 hours
-        """
-        duration = self.duration()
-        if duration < datetime.timedelta(hours=1):
-            return f"{duration.seconds // 60} minutes"
-        if duration < datetime.timedelta(days=1):
-            return f"{duration.seconds // 3600} hours {duration.seconds % 3600 // 60} min"
-        else:
-            return f"{duration.days} days {duration.seconds // 3600} hours"
+        return format_timedelta(self.duration())
 
     def captures_count(self) -> int:
         return self.captures.count()
@@ -223,6 +233,15 @@ class Event(BaseModel):
 
     def example_captures(self, num=5):
         return SourceImage.objects.filter(event=self).order_by("?")[:num]
+
+    def save(self, *args, **kwargs):
+        first = self.captures.order_by("timestamp").values("timestamp").first()
+        last = self.captures.order_by("-timestamp").values("timestamp").first()
+        if first:
+            self.start = first["timestamp"]
+        if last:
+            self.end = last["timestamp"]
+        super().save(*args, **kwargs)
 
 
 @final
@@ -448,18 +467,33 @@ class Occurrence(BaseModel):
         # @TODO remove this method and use QuerySet annotation instead
         return self.detections.count()
 
-    def duration(self) -> datetime.timedelta | None:
-        first = self.detections.first()
-        last = self.detections.last()
+    def first_appearance(self) -> datetime.datetime | None:
+        first = self.detections.order_by("timestamp").first()
+        if first:
+            return first.timestamp
 
-        if first and last and first.timestamp and last.timestamp:
-            return last.timestamp - first.timestamp
+    def last_appearance(self) -> datetime.datetime | None:
+        last = self.detections.order_by("timestamp").last()
+        if last:
+            return last.timestamp
+
+    def duration(self) -> datetime.timedelta | None:
+        first = self.first_appearance()
+        last = self.last_appearance()
+        if first and last:
+            return last - first
         else:
             return None
 
-    def detection_images(self, limit=5):
+    def duration_label(self) -> str | None:
+        return format_timedelta(self.duration())
+
+    def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
+
+    def best_detection(self):
+        return Detection.objects.filter(occurrence=self).order_by("classifications__score").first()
 
     def determination_score(self) -> float | None:
         return (
@@ -503,6 +537,18 @@ class Taxon(BaseModel):
 
     def latest_detection(self) -> Detection | None:
         return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
+
+    def occurrence_images(self):
+        """
+        Return one image from each occurrence of this Taxon.
+        The image should be from the detection with the highest classification score.
+        """
+
+        # @TODO Can we use a single query
+        for occurrence in self.occurrences.prefetch_related("detections__classifications").all():
+            detection = occurrence.detections.order_by("classifications__score").first()
+            if detection:
+                yield detection.url()
 
     class Meta:
         ordering = ["parent__name", "name"]

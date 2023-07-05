@@ -1,7 +1,10 @@
 from django.db import models
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
 from .serializers import (
@@ -18,6 +21,7 @@ from .serializers import (
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
+    TaxonListSerializer,
     TaxonSerializer,
 )
 
@@ -192,6 +196,15 @@ class TaxonViewSet(DefaultViewSet):
     ]
     search_fields = ["name", "parent__name"]
 
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return TaxonListSerializer
+        else:
+            return TaxonSerializer
+
 
 class AlgorithmViewSet(DefaultViewSet):
     """
@@ -223,3 +236,36 @@ class ClassificationViewSet(DefaultViewSet):
         "updated_at",
         "score",
     ]
+
+
+class SummaryView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        """
+        Return counts of all models.
+        """
+        data = {
+            "projects_count": Project.objects.count(),
+            "deployments_count": Deployment.objects.count(),
+            "events_count": Event.objects.count(),
+            "captures_count": SourceImage.objects.count(),
+            "detections_count": Detection.objects.count(),
+            "occurrences_count": Occurrence.objects.count(),
+            "taxa_count": Taxon.objects.count(),
+            "last_updated": timezone.now(),
+        }
+
+        aliases = {
+            "num_sessions": data["events_count"],
+            "num_species": data["taxa_count"],
+        }
+
+        # add an num_ alias for each _count key
+        for key, value in data.items():
+            if key.endswith("_count"):
+                aliases["num_" + key.replace("_count", "")] = value
+
+        data.update(aliases)
+
+        return Response(data)
