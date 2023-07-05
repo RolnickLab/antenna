@@ -44,8 +44,8 @@ export const columns: TableColumn<Deployment>[] = [
     ),
   },
   {
-    id: 'images',
-    name: translate(STRING.TABLE_COLUMN_IMAGES),
+    id: 'captures',
+    name: translate(STRING.TABLE_COLUMN_CAPTURES),
     sortField: 'numImages',
     styles: {
       textAlign: TextAlign.Right,

@@ -23,7 +23,7 @@ export const SessionInfo = ({ session }: { session: Session }) => {
       value: session.durationLabel,
     },
     {
-      label: translate(STRING.TABLE_COLUMN_IMAGES),
+      label: translate(STRING.TABLE_COLUMN_CAPTURES),
       value: session.numImages,
     },
     {

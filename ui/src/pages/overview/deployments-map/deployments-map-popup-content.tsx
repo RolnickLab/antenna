@@ -20,7 +20,7 @@ export const DeploymentsMapPopupContent = ({
       </span>
       <br />
       <span>
-        {translate(STRING.DETAILS_LABEL_IMAGES)}: {deployment.numImages}
+        {translate(STRING.TABLE_COLUMN_CAPTURES)}: {deployment.numImages}
       </span>
       <br />
       <span>

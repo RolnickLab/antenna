@@ -76,8 +76,8 @@ export const columns: TableColumn<Session>[] = [
     ),
   },
   {
-    id: 'images',
-    name: translate(STRING.TABLE_COLUMN_IMAGES),
+    id: 'captures',
+    name: translate(STRING.TABLE_COLUMN_CAPTURES),
     sortField: 'captures_count',
     styles: {
       textAlign: TextAlign.Right,

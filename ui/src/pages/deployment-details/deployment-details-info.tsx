@@ -93,7 +93,7 @@ export const DeploymentDetailsInfo = ({
             </div>
             <div className={styles.sectionRow}>
               <InputValue
-                label={translate(STRING.DETAILS_LABEL_IMAGES)}
+                label={translate(STRING.TABLE_COLUMN_CAPTURES)}
                 value={deployment.numImages}
               />
               <InputValue
