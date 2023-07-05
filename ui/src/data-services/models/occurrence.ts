@@ -37,9 +37,9 @@ export class Occurrence {
     return this._occurrence.duration_label
   }
 
-  get determinationScore(): number | string {
+  get determinationScore(): number | undefined {
     if (this._occurrence.determination_score === undefined) {
-      return 'N/A'
+      return undefined
     }
 
     return _.round(this._occurrence.determination_score, 4)
@@ -53,7 +53,7 @@ export class Occurrence {
     return this._images
   }
 
-  get numDetections(): number | undefined {
+  get numDetections(): number {
     return this._occurrence.detections_count
   }
 

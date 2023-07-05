@@ -10,8 +10,8 @@ const AVAILABLE_FILTERS = [
     field: 'event',
   },
   {
-    label: 'Taxon',
-    field: 'taxon',
+    label: 'Species',
+    field: 'determination',
   },
 ]
 

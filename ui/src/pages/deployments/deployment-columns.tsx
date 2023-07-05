@@ -6,6 +6,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { getLink } from 'utils/getLink'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Deployment>[] = [
@@ -14,7 +15,12 @@ export const columns: TableColumn<Deployment>[] = [
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     sortField: 'name',
     renderCell: (item: Deployment) => (
-      <Link to={`/deployments/${item.id}`}>
+      <Link
+        to={getLink({
+          collection: 'deployments',
+          itemId: item.id,
+        })}
+      >
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
@@ -26,7 +32,16 @@ export const columns: TableColumn<Deployment>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.numEvents} />,
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getLink({
+          collection: 'sessions',
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
+      </Link>
+    ),
   },
   {
     id: 'images',
@@ -56,7 +71,14 @@ export const columns: TableColumn<Deployment>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.numOccurrences} />
+      <Link
+        to={getLink({
+          collection: 'occurrences',
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {
@@ -67,7 +89,14 @@ export const columns: TableColumn<Deployment>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.numSpecies} />
+      <Link
+        to={getLink({
+          collection: 'species',
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
 ]

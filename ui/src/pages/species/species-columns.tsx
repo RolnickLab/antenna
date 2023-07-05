@@ -8,6 +8,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { getLink } from 'utils/getLink'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Species>[] = [
@@ -34,7 +35,12 @@ export const columns: TableColumn<Species>[] = [
     sortField: 'name',
     name: 'Name',
     renderCell: (item: Species) => (
-      <Link to={`/species/species-id`}>
+      <Link
+        to={getLink({
+          collection: 'species',
+          itemId: item.id,
+        })}
+      >
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
@@ -56,7 +62,15 @@ export const columns: TableColumn<Species>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => (
-      <BasicTableCell value={item.numOccurrences} />
+      <Link
+        to={getLink({
+          collection: 'occurrences',
+          filters: { determination: item.id },
+        })}
+        target="_blank"
+      >
+        <BasicTableCell value={item.numOccurrences} />
+      </Link>
     ),
   },
   {

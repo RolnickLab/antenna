@@ -8,6 +8,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { getLink } from 'utils/getLink'
 import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Session>[] = [
@@ -32,7 +33,7 @@ export const columns: TableColumn<Session>[] = [
     id: 'session',
     name: translate(STRING.TABLE_COLUMN_SESSION),
     renderCell: (item: Session) => (
-      <Link to={`/sessions/${item.id}`}>
+      <Link to={getLink({ collection: 'sessions', itemId: item.id })}>
         <BasicTableCell value={item.label} theme={CellTheme.Primary} />
       </Link>
     ),
@@ -41,7 +42,9 @@ export const columns: TableColumn<Session>[] = [
     id: 'deployment',
     name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
     renderCell: (item: Session) => (
-      <Link to={`/deployments/${item.deploymentId}`}>
+      <Link
+        to={getLink({ collection: 'deployments', itemId: item.deploymentId })}
+      >
         <BasicTableCell
           value={item.deploymentLabel}
           theme={CellTheme.Primary}
@@ -99,7 +102,14 @@ export const columns: TableColumn<Session>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Session) => (
-      <BasicTableCell value={item.numOccurrences} />
+      <Link
+        to={getLink({
+          collection: 'occurrences',
+          filters: { event: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {
@@ -108,7 +118,16 @@ export const columns: TableColumn<Session>[] = [
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Session) => <BasicTableCell value={item.numSpecies} />,
+    renderCell: (item: Session) => (
+      <Link
+        to={getLink({
+          collection: 'species',
+          filters: { event: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+      </Link>
+    ),
   },
   {
     id: 'avg-temp',
