@@ -444,7 +444,7 @@ class SourceImageSerializer(DefaultSerializer):
 
 
 class OccurrenceListSerializer(DefaultSerializer):
-    determination = TaxonSerializer(read_only=True)
+    determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
 
@@ -466,7 +466,7 @@ class OccurrenceListSerializer(DefaultSerializer):
 
 
 class OccurrenceSerializer(DefaultSerializer):
-    determination = TaxonSerializer(read_only=True)
+    determination = CaptureTaxonSerializer(read_only=True)
     determination_id = serializers.PrimaryKeyRelatedField(
         write_only=True, queryset=Taxon.objects.all(), source="determination"
     )
