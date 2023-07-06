@@ -1,5 +1,7 @@
 import classNames from 'classnames'
 import { Capture } from 'data-services/models/capture'
+import { CaptureList } from 'design-system/components/capture-list/capture-list'
+import { CaptureRow } from 'design-system/components/capture-list/capture-row/capture-row'
 import {
   IconButton,
   IconButtonShape,
@@ -7,16 +9,22 @@ import {
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { RefObject, createRef, useEffect, useMemo, useRef } from 'react'
-import { CaptureRow } from '../capture-row/capture-row'
+import { STRING, translate } from 'utils/language'
 import styles from './capture-picker.module.scss'
 
 export const CapturePicker = ({
   activeCaptureId,
   captures,
+  hasMore,
+  isLoading,
+  onNext,
   setActiveCaptureId,
 }: {
   activeCaptureId?: string
   captures: Capture[]
+  hasMore?: boolean
+  isLoading?: boolean
+  onNext: () => void
   setActiveCaptureId: (captureId: string) => void
 }) => {
   const activeCaptureIndex = captures.findIndex(
@@ -86,30 +94,33 @@ export const CapturePicker = ({
 
   return (
     <>
-      <div className={styles.captures} ref={scrollContainerRef}>
+      <CaptureList
+        innerRef={scrollContainerRef}
+        hasMore={hasMore}
+        isLoading={isLoading}
+        onNext={onNext}
+      >
         {captures.map((capture) => {
           const isActive = activeCaptureId === capture.id
 
           return (
             <CaptureRow
               key={capture.id}
-              capture={capture}
+              capture={{
+                details: `${capture.numDetections} ${translate(
+                  STRING.DETAILS_LABEL_DETECTIONS
+                )}`,
+                scale: capture.numDetections / maxAmountDetections,
+                timeLabel: capture.timeLabel,
+              }}
               innerRef={captureRefs[capture.id]}
               isActive={isActive}
-              scale={capture.numDetections / maxAmountDetections}
+              isEmpty={capture.numDetections === 0}
               onClick={() => setActiveCaptureId(capture.id)}
             />
           )
         })}
-      </div>
-      <div
-        className={classNames(styles.scrollFader, styles.alignTop)}
-        style={{ width: scrollContainerRef.current?.clientWidth }}
-      />
-      <div
-        className={classNames(styles.scrollFader, styles.alignBottom)}
-        style={{ width: scrollContainerRef.current?.clientWidth }}
-      />
+      </CaptureList>
       <div className={classNames(styles.buttonContainer, styles.alignTop)}>
         <IconButton
           icon={IconType.ToggleLeft}

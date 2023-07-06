@@ -40,7 +40,11 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
     {
       label: translate(STRING.TABLE_COLUMN_SESSION),
       value: occurrence.sessionLabel,
-      to: getRoute({ collection: 'sessions', itemId: occurrence.sessionId }),
+      to: getRoute({
+        collection: 'sessions',
+        itemId: occurrence.sessionId,
+        filters: { occurrence: occurrence.id },
+      }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_DATE),
@@ -75,28 +79,10 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
       <div className={styles.content}>
         <div className={styles.column}>
           <div className={styles.info}>
-            <Tabs.Root defaultValue="fields">
-              <Tabs.List>
-                <Tabs.Trigger
-                  value="fields"
-                  label={translate(STRING.TAB_ITEM_FIELDS)}
-                />
-                <Tabs.Trigger
-                  value="classification"
-                  label={translate(STRING.TAB_ITEM_CLASSIFICATION)}
-                />
-              </Tabs.List>
-              <Tabs.Content value="fields">
-                <div className={styles.fields}>
-                  <InfoBlock fields={fields} />
-                </div>
-              </Tabs.Content>
-              <Tabs.Content value="classification">
-                <div className={styles.fields}>
-                  <InfoBlock fields={[]} />
-                </div>
-              </Tabs.Content>
-            </Tabs.Root>
+            <div className={styles.fields}>
+              {/* TODO: Replace with tabs below when classifications are in place */}
+              <InfoBlock fields={fields} />
+            </div>
           </div>
         </div>
         <div className={styles.blueprintWrapper}>
@@ -108,3 +94,26 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
     </div>
   )
 }
+
+/* eslint-disable @typescript-eslint/no-unused-vars */
+const InfoTabs = () => (
+  <Tabs.Root defaultValue="fields">
+    <Tabs.List>
+      <Tabs.Trigger value="fields" label={translate(STRING.TAB_ITEM_FIELDS)} />
+      <Tabs.Trigger
+        value="classification"
+        label={translate(STRING.TAB_ITEM_CLASSIFICATION)}
+      />
+    </Tabs.List>
+    <Tabs.Content value="fields">
+      <div className={styles.fields}>
+        <InfoBlock fields={[]} />
+      </div>
+    </Tabs.Content>
+    <Tabs.Content value="classification">
+      <div className={styles.fields}>
+        <InfoBlock fields={[]} />
+      </div>
+    </Tabs.Content>
+  </Tabs.Root>
+)

@@ -1,21 +1,20 @@
-import { useCaptures } from 'data-services/hooks/useCaptures'
-import { Capture } from 'data-services/models/capture'
+import { useInfiniteCaptures } from 'data-services/hooks/useInfiniteCaptures'
 import { SessionDetails } from 'data-services/models/session-details'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { CapturePicker } from './capture-picker/capture-picker'
 import { Frame } from './frame/frame'
 import styles from './playback.module.scss'
+import { useActiveCapture } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
-  const { captures = [] } = useCaptures(session.id)
-  const [activeCapture, setActiveCapture] = useState<Capture>()
+  const {
+    captures = [],
+    hasNextPage,
+    isLoading,
+    fetchNextPage,
+  } = useInfiniteCaptures(session.id)
+  const { activeCapture, setActiveCapture } = useActiveCapture(captures)
   const [showOverlay, setShowOverlay] = useState(false)
-
-  useEffect(() => {
-    if (!activeCapture && captures.length) {
-      setActiveCapture(captures[0])
-    }
-  }, [captures])
 
   return (
     <div className={styles.wrapper}>
@@ -37,6 +36,9 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         <CapturePicker
           activeCaptureId={activeCapture?.id}
           captures={captures}
+          hasMore={hasNextPage}
+          isLoading={isLoading}
+          onNext={fetchNextPage}
           setActiveCaptureId={(captureId) => {
             const capture = captures.find((c) => c.id === captureId)
             if (capture) {

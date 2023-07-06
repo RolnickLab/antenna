@@ -18,12 +18,15 @@ export const SessionDetails = () => {
   )
 
   useEffect(() => {
-    setDetailBreadcrumb({ title: `Session #${id}`, path: location.pathname })
+    setDetailBreadcrumb({
+      title: session?.label ?? '',
+      path: location.pathname,
+    })
 
     return () => {
       setDetailBreadcrumb(undefined)
     }
-  }, [location.pathname])
+  }, [session, location.pathname])
 
   if (isLoading) {
     return (
