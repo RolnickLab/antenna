@@ -33,7 +33,7 @@ const fetchCaptures = async (sessionId: string, page: number) => {
 export const useInfiniteCaptures = (sessionId: string) => {
   const queryKey = [COLLECTION, { event: sessionId }]
 
-  const { data, hasNextPage, fetchNextPage, isFetchingNextPage } =
+  const { data, hasNextPage, fetchNextPage, isFetching, isFetchingNextPage } =
     useInfiniteQuery(
       queryKey,
       ({ pageParam = 1 }) => fetchCaptures(sessionId, pageParam - 1),
@@ -60,7 +60,7 @@ export const useInfiniteCaptures = (sessionId: string) => {
 
   return {
     captures,
-    isLoading: isFetchingNextPage,
+    isLoading: isFetching,
     hasNextPage,
     fetchNextPage,
   }
