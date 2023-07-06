@@ -352,21 +352,31 @@ class Event(BaseModel):
 
     # These are now loaded with annotations in EventViewSet
     # But the serializer complains if they're not defined here.
-    def captures_count(self) -> int:
+    def captures_count(self) -> int | None:
         # return self.captures.distinct().count()
-        return 0
+        return None
 
-    def occurrences_count(self) -> int:
+    def occurrences_count(self) -> int | None:
         # return self.occurrences.distinct().count()
-        return 0
+        return None
 
-    def detections_count(self) -> int:
-        # return Detection.objects.filter(Q(source_image__event=self)).distinct().count()
-        return 0
+    def detections_count(self) -> int | None:
+        # return Detection.objects.filter(Q(source_image__event=self)).count()
+        return None
+
+    def stats(self) -> dict[str, int | None]:
+        return (
+            SourceImage.objects.filter(event=self)
+            .annotate(count=models.Count("detections"))
+            .aggregate(
+                detections_max_count=models.Max("count"),
+                detections_min_count=models.Min("count"),
+                detections_avg_count=models.Avg("count"),
+            )
+        )
 
     def taxa_count(self) -> int:
         return self.taxa().count()
-        return 0
 
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__event=self)).distinct()
@@ -471,9 +481,9 @@ class SourceImage(BaseModel):
 
     detections: models.QuerySet["Detection"]
 
-    def detections_count(self) -> int:
+    def detections_count(self) -> int | None:
         # return self.detections.count()
-        return 0
+        return None
 
     def url(self) -> str:
         # @TODO use settings or deployment storage base

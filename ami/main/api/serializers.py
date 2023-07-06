@@ -656,6 +656,7 @@ class EventSerializer(DefaultSerializer):
             "captures_count",
             "detections_count",
             "occurrences_count",
+            "stats",
             "taxa_count",
             "captures",
             "first_capture",
