@@ -11,7 +11,7 @@ export default {
   component: CaptureList,
 } as Meta
 
-const TOTAL = 1000
+const TOTAL = 100
 const PAGE_SIZE = 20
 
 const CaptureListTemplate: Story = () => {
@@ -42,7 +42,7 @@ const CaptureListTemplate: Story = () => {
         backgroundColor: '#222426',
       }}
     >
-      <CaptureList hasMore={hasMore} onNext={onNext} numItems={captures.length}>
+      <CaptureList hasMore={hasMore} isLoading={isLoading} onNext={onNext}>
         {captures.map((capture) => (
           <CaptureRow
             key={capture.id}
@@ -58,7 +58,7 @@ const CaptureListTemplate: Story = () => {
 
 export const Default = CaptureListTemplate.bind({})
 
-// Help methods
+// Help methods for testing
 const generateCaptures = (pageSize: number) =>
   Array.from({ length: pageSize }, generateCapture)
 
