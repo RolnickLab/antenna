@@ -152,7 +152,7 @@ const FrameDetections = ({
 
         return (
           <Tooltip
-            key={detection.occurrenceId}
+            key={detection.id}
             content={detection?.label ?? ''}
             frame={containerRef.current}
             open={isActive ? isActive : undefined}
