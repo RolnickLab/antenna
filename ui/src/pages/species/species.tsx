@@ -1,6 +1,7 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
+import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
@@ -21,7 +22,6 @@ import styles from './species.module.scss'
 
 export const Species = () => {
   const { id } = useParams()
-  const navigate = useNavigate()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
@@ -82,14 +82,26 @@ export const Species = () => {
         />
       ) : null}
 
-      <Dialog.Root
-        open={!!id}
-        onOpenChange={() => navigate(getRoute({ collection: 'species' }))}
-      >
-        <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-          {id ? <SpeciesDetails id={id} /> : null}
-        </Dialog.Content>
-      </Dialog.Root>
+      {id ? <SpeciesDetailsDialog id={id} /> : null}
     </>
+  )
+}
+
+const SpeciesDetailsDialog = ({ id }: { id: string }) => {
+  const navigate = useNavigate()
+  const { species, isLoading } = useSpeciesDetails(id)
+
+  return (
+    <Dialog.Root
+      open={!!id}
+      onOpenChange={() => navigate(getRoute({ collection: 'species' }))}
+    >
+      <Dialog.Content
+        ariaCloselabel={translate(STRING.CLOSE)}
+        isLoading={isLoading}
+      >
+        {species ? <SpeciesDetails species={species} /> : null}
+      </Dialog.Content>
+    </Dialog.Root>
   )
 }

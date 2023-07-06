@@ -2,7 +2,7 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
-import { useOccurrenceDetails } from 'data-services/hooks/useOccurrenceDetails'
+import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { useMemo } from 'react'
@@ -11,22 +11,20 @@ import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
 
-export const OccurrenceDetails = ({ id }: { id: string }) => {
-  const { occurrence } = useOccurrenceDetails(id)
-
+export const OccurrenceDetails = ({
+  occurrence,
+}: {
+  occurrence: Occurrence
+}) => {
   const blueprintItems = useMemo(
     () =>
-      occurrence?.detections.length
+      occurrence.detections.length
         ? occurrence.detections
             .map((id) => occurrence.getDetectionInfo(id))
             .filter((item): item is BlueprintItem => !!item)
         : [],
     [occurrence]
   )
-
-  if (!occurrence) {
-    return null
-  }
 
   const fields = [
     {

@@ -12,6 +12,17 @@ $dialog-padding-medium: 32px;
   z-index: 2;
 }
 
+.loadingWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  right: 0;
+}
+
 .dialog {
   all: unset;
   display: block;
