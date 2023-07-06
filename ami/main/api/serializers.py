@@ -154,6 +154,7 @@ class ProjectSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "image",
+            "summary_data",
         ]
 
 
