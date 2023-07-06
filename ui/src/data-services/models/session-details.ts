@@ -15,4 +15,8 @@ export class SessionDetails extends Session {
   get firstCapture(): Capture {
     return this._firstCapture
   }
+
+  get detectionsMaxCount() {
+    return this._event.stats.detections_max_count
+  }
 }
