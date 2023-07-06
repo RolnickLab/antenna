@@ -482,9 +482,10 @@ class Occurrence(BaseModel):
         if first:
             return first.source_image
 
-    def last_appearance(self) -> Detection | None:
+    def last_appearance(self) -> SourceImage | None:
         last = self.detections.order_by("-timestamp").select_related("source_image").first()
-        return last
+        if last:
+            return last.source_image
 
     def duration(self) -> datetime.timedelta | None:
         first = self.first_appearance()
