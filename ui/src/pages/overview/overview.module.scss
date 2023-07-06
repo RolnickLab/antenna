@@ -2,29 +2,24 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
-.section {
-  background: $color-generic-white;
-  width: 100%;
-  padding: 24px;
+.loadingWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// About
+.about {
+  display: grid;
+  grid-template-columns: 1fr auto;
   border-radius: 8px;
   border: 1px solid $color-neutral-100;
-  box-sizing: border-box;
-  overflow-x: auto;
+  background: $color-generic-white;
+  overflow: hidden;
 
   &:not(:last-child) {
     margin-bottom: 32px;
   }
-}
-
-.content {
-  display: inline-block;
-  min-width: 100%;
-}
-
-.about {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 16px;
 }
 
 .aboutImage {
@@ -33,16 +28,54 @@
   display: flex;
   align-items: center;
   justify-content: center;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 }
 
 .aboutInfo {
   max-width: 640px;
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+// Plots
+.plotsContainer {
+  background: $color-generic-white;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid $color-neutral-100;
+  padding: 32px;
+  box-sizing: border-box;
+  overflow-x: auto;
+}
+
+.plotsContent {
+  display: inline-block;
+  min-width: 100%;
 }
 
 .plots {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
+}
+
+// Text
+.title {
+  @include paragraph-large();
+  font-weight: 600;
+  color: $color-neutral-800;
+  margin: 0 0 16px;
+}
+
+.description {
+  @include paragraph-medium();
+  color: $color-neutral-800;
+  margin: 0 0 16px;
 }
 
 .label {
@@ -53,19 +86,7 @@
   margin: 0 0 32px;
 }
 
-.title {
-  @include paragraph-large();
-  font-weight: 600;
-  color: $color-neutral-800;
-  margin: 0 0 16px;
-}
-
-.text {
-  @include paragraph-medium();
-  color: $color-neutral-800;
-  margin: 0 0 16px;
-}
-
+// Small screen adjustments
 @media only screen and (max-width: $medium-screen-breakpoint) {
   .aboutImage {
     display: none;
