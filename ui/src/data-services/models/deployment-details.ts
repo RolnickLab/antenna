@@ -19,7 +19,7 @@ export class DeploymentDetails extends Deployment {
     if (deployment.example_captures?.length) {
       this._exampleCaptures = deployment.example_captures?.map(
         (capture: any) => ({
-          src: capture.path,
+          src: capture.url,
         })
       )
     }

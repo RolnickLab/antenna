@@ -31,6 +31,22 @@ class GroupSerializer(DefaultSerializer):
         fields = ["id", "details", "name"]
 
 
+class SourceImageNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        queryset = SourceImage.objects.annotate(detections_count=Count("detections"))
+        fields = [
+            "id",
+            "details",
+            "url",
+            "width",
+            "height",
+            "timestamp",
+            "detections_count",
+            "detections",
+        ]
+
+
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
@@ -94,29 +110,6 @@ class DeploymentEventNestedSerializer(DefaultSerializer):
         ]
 
 
-class DeploymentSerializer(DefaultSerializer):
-    events = DeploymentEventNestedSerializer(many=True, read_only=True)
-    occurrences = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Deployment
-        fields = DeploymentListSerializer.Meta.fields + [
-            "description",
-            "data_source",
-        ]
-
-    def get_occurrences(self, obj):
-        """
-        Return URL to the occurrences endpoint filtered by this deployment.
-        """
-
-        return reverse_with_params(
-            "occurrence-list",
-            request=self.context.get("request"),
-            params={"deployment": obj.pk},
-        )
-
-
 class DeploymentNestedSerializer(DefaultSerializer):
     class Meta:
         model = Deployment
@@ -142,22 +135,6 @@ class ProjectSerializer(DefaultSerializer):
             "deployments_count",
             "created_at",
             "updated_at",
-        ]
-
-
-class SourceImageNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = SourceImage
-        queryset = SourceImage.objects.annotate(detections_count=Count("detections"))
-        fields = [
-            "id",
-            "details",
-            "url",
-            "width",
-            "height",
-            "timestamp",
-            "detections_count",
-            "detections",
         ]
 
 
@@ -224,6 +201,48 @@ class EventNestedSerializer(DefaultSerializer):
             "details",
             "date_label",
         ]
+
+
+class DeploymentCaptureNestedSerializer(DefaultSerializer):
+    event = EventNestedSerializer(read_only=True)
+
+    class Meta:
+        model = SourceImage
+        fields = [
+            "id",
+            "details",
+            "url",
+            "width",
+            "height",
+            "timestamp",
+            "event",
+        ]
+
+
+class DeploymentSerializer(DefaultSerializer):
+    events = DeploymentEventNestedSerializer(many=True, read_only=True)
+    occurrences = serializers.SerializerMethodField()
+    example_captures = DeploymentCaptureNestedSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Deployment
+        fields = DeploymentListSerializer.Meta.fields + [
+            "description",
+            "data_source",
+            "example_captures",
+            # "capture_images",
+        ]
+
+    def get_occurrences(self, obj):
+        """
+        Return URL to the occurrences endpoint filtered by this deployment.
+        """
+
+        return reverse_with_params(
+            "occurrence-list",
+            request=self.context.get("request"),
+            params={"deployment": obj.pk},
+        )
 
 
 class TaxonListSerializer(DefaultSerializer):

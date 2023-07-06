@@ -164,6 +164,12 @@ class Deployment(BaseModel):
     def taxa_count(self) -> int:
         return self.taxa().count()
 
+    def example_captures(self, num=10) -> models.QuerySet["SourceImage"]:
+        return SourceImage.objects.filter(deployment=self).order_by("-size")[:num]
+
+    def capture_images(self, num=5) -> list[str]:
+        return [c.url() for c in self.example_captures(num)]
+
 
 @final
 class Event(BaseModel):
@@ -287,7 +293,7 @@ class SourceImage(BaseModel):
         # return self.detections.count()
         return 0
 
-    def url(self):
+    def url(self) -> str:
         # @TODO use settings or deployment storage base
         # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
         url = urllib.parse.urljoin(_SOURCE_IMAGES_URL_BASE, self.path)
