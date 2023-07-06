@@ -7,9 +7,10 @@ interface SummaryData {
   data: {
     x: (string | number)[]
     y: number[]
-    tickvals: (string | number)[]
+    tickvals?: (string | number)[]
+    ticktext?: string[]
   }
-  type: 'bar' | 'scatter'
+  type: any
 }
 
 export class Project {
