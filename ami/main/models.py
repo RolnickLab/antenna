@@ -123,6 +123,7 @@ class Project(BaseModel):
             SourceImage.objects.filter(deployment__project=self)
             .values_list("timestamp__date")
             .annotate(num_capture=models.Count("id"))
+            .order_by("timestamp__date")
         )
         days, counts = list(zip(*captures_per_date))
         # tickvals_per_month = [f"{d:%b}" for d in days]
