@@ -126,7 +126,8 @@ class Project(BaseModel):
         )
         days, counts = list(zip(*captures_per_date))
         # tickvals_per_month = [f"{d:%b}" for d in days]
-        tickvals = [f"{d:%b %d}" for d in days]
+        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+        days = [f"{d:%b %d}" for d in days]
 
         plots.append(
             {
@@ -145,7 +146,8 @@ class Project(BaseModel):
         hours, counts = list(zip(*captures_per_hour))
 
         hours, counts = shift_to_nighttime(hours, counts)
-        tickvals = [f"{h}" for h in hours]
+        # tickvals = [f"{h}" for h in hours]
+        tickvals = [f"{min(hours)}:00", f"{max(hours)}:00"]
 
         # plots.append(
         #     {
@@ -168,9 +170,7 @@ class Project(BaseModel):
             zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
         )
         hours, counts = shift_to_nighttime(list(hours), list(counts))
-
-        tickvals = hours
-        # tickvals = [f"{h}" for h in hours]
+        tickvals = [f"{hours[0]}:00", f"{hours[-1]}:00"]
 
         plots.append(
             {
@@ -191,7 +191,9 @@ class Project(BaseModel):
         days, counts = list(zip(*occurrences_per_day))
         # Accumulate the counts
         counts = list(itertools.accumulate(counts))
-        tickvals = [f"{d:%b %d}" for d in days]
+        # tickvals = [f"{d:%b %d}" for d in days]
+        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+        days = [f"{d:%b %d}" for d in days]
 
         plots.append(
             {
@@ -406,7 +408,7 @@ class Event(BaseModel):
             zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
         )
         hours, counts = shift_to_nighttime(list(hours), list(counts))
-        tickvals = [f"{h:00}" for h in hours]
+        tickvals = [f"{hours[0]}:00", f"{hours[-1]}:00"]
 
         plots.append(
             {
