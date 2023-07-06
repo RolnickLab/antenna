@@ -68,7 +68,7 @@ export const columns: TableColumn<Species>[] = [
           filters: { determination: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
       </Link>
     ),
   },

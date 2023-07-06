@@ -1,6 +1,7 @@
 import { Gallery } from 'components/gallery/gallery'
 import { Occurrence } from 'data-services/models/occurrence'
 import { useMemo } from 'react'
+import { getRoute } from 'utils/getRoute'
 
 export const OccurrenceGallery = ({
   occurrences = [],
@@ -16,7 +17,7 @@ export const OccurrenceGallery = ({
         image: o.images[0],
         subTitle: `(${o.determinationScore})`,
         title: o.determinationLabel,
-        to: `/occurrences/${o.id}`,
+        to: getRoute({ collection: 'occurrences', itemId: o.id }),
       })),
     [occurrences]
   )

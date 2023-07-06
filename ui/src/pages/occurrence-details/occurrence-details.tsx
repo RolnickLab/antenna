@@ -32,12 +32,15 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
     {
       label: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
       value: occurrence.deploymentLabel,
-      to: `/deployments/${occurrence.deploymentId}`,
+      to: getRoute({
+        collection: 'deployments',
+        itemId: occurrence.deploymentId,
+      }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_SESSION),
       value: occurrence.sessionLabel,
-      to: `/sessions/${occurrence.sessionId}`,
+      to: getRoute({ collection: 'sessions', itemId: occurrence.sessionId }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_DATE),

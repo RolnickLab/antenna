@@ -1,5 +1,6 @@
 import { Session } from 'data-services/models/session'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './session-info.module.scss'
 
@@ -8,7 +9,7 @@ export const SessionInfo = ({ session }: { session: Session }) => {
     {
       label: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
       value: session.deploymentLabel,
-      to: `/deployments/${session.deploymentId}`,
+      to: getRoute({ collection: 'deployments', itemId: session.deploymentId }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_DATE),
@@ -33,10 +34,18 @@ export const SessionInfo = ({ session }: { session: Session }) => {
     {
       label: translate(STRING.TABLE_COLUMN_OCCURRENCES),
       value: session.numOccurrences,
+      to: getRoute({
+        collection: 'occurrences',
+        filters: { event: session.id },
+      }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_SPECIES),
       value: session.numSpecies,
+      to: getRoute({
+        collection: 'species',
+        filters: { occurrences__event: session.id },
+      }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_AVG_TEMP),
