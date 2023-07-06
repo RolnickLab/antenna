@@ -338,6 +338,8 @@ class TaxonDetectionsSerializer(DefaultSerializer):
             "url",
             "timestamp",
             "details",
+            "width",
+            "height",
         ]
 
 
