@@ -2,6 +2,7 @@ import { Gallery } from 'components/gallery/gallery'
 import { Session } from 'data-services/models/session'
 
 import { useMemo } from 'react'
+import { getRoute } from 'utils/getRoute'
 
 export const SessionGallery = ({
   sessions = [],
@@ -16,7 +17,7 @@ export const SessionGallery = ({
         id: s.id,
         image: s.exampleCaptures?.[0],
         title: s.label,
-        to: `/sessions/${s.id}`,
+        to: getRoute({ collection: 'sessions', itemId: s.id }),
       })),
     [sessions]
   )

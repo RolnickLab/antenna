@@ -4,17 +4,6 @@ import { Occurrence, ServerOccurrence } from './occurrence'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
-export type OccurrenceDetailsDetectionInfo = {
-  image: {
-    src: string
-    width: number
-    height: number
-  }
-  name: string
-  score: number
-  timeLabel: string
-}
-
 export class OccurrenceDetails extends Occurrence {
   private readonly _detections: string[] = []
 
@@ -27,7 +16,7 @@ export class OccurrenceDetails extends Occurrence {
     return this._detections
   }
 
-  getDetectionInfo(id: string): OccurrenceDetailsDetectionInfo | undefined {
+  getDetectionInfo(id: string) {
     const detection = this._occurrence.detections.find(
       (d: any) => `${d.id}` === id
     )
@@ -39,13 +28,16 @@ export class OccurrenceDetails extends Occurrence {
     }
 
     return {
+      id,
       image: {
         src: detection.url,
         width: detection.width,
         height: detection.height,
       },
-      name: classification.determination.name,
-      score: _.round(classification.score, 4),
+      label: `${classification.determination.name} (${_.round(
+        classification.score,
+        4
+      )})`,
       timeLabel: getFormatedTimeString({
         date: new Date(detection.timestamp),
       }),

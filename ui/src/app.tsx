@@ -32,15 +32,7 @@ export const App = () => {
                 <Route path="/sessions" element={<Sessions />} />
                 <Route path="/sessions/:id" element={<SessionDetails />} />
                 <Route path="/occurrences/:id?" element={<Occurrences />} />
-                <Route path="/species" element={<Species />} />
-
-                {/* Work in progress pages */}
-                <Route
-                  path="/species/:id"
-                  element={
-                    <UnderConstruction message="Species details is under construction!" />
-                  }
-                />
+                <Route path="/species/:id?" element={<Species />} />
                 <Route path="*" element={<UnderConstruction />} />
               </Routes>
             </div>

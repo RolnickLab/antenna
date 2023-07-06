@@ -8,7 +8,7 @@ import { BoxStyle } from './types'
 import { useActiveOccurrences } from './useActiveOccurrences'
 
 interface FrameProps {
-  src: string
+  src?: string
   width: number
   height: number
   detections: CaptureDetection[]
@@ -31,8 +31,10 @@ export const Frame = ({
       return
     }
     setIsLoading(true)
-    imageRef.current.src = src
-    imageRef.current.onload = () => setIsLoading(false)
+    if (src) {
+      imageRef.current.src = src
+      imageRef.current.onload = () => setIsLoading(false)
+    }
   }, [src])
 
   useLayoutEffect(() => {

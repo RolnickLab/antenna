@@ -2,9 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { ServerSpecies, Species } from '../models/species'
-
-const COLLECTION = 'taxa'
+import { ServerSpecies, Species } from '../../models/species'
+import { COLLECTION } from './constants'
 
 const convertServerRecord = (record: ServerSpecies) => new Species(record)
 

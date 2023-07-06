@@ -67,9 +67,8 @@ export const columns: TableColumn<Species>[] = [
           collection: 'occurrences',
           filters: { determination: item.id },
         })}
-        target="_blank"
       >
-        <BasicTableCell value={item.numOccurrences} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
       </Link>
     ),
   },
@@ -80,11 +79,11 @@ export const columns: TableColumn<Species>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => (
-      <Link
-        to={`https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${item.name}`}
-        target="_blank"
-      >
-        <BasicTableCell value="GBIF" theme={CellTheme.Primary} />
+      <Link to={item.trainingImagesUrl} target="_blank">
+        <BasicTableCell
+          value={item.trainingImagesLabel}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },

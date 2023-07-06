@@ -1,14 +1,28 @@
+import {
+  BlueprintCollection,
+  BlueprintItem,
+} from 'components/blueprint-collection/blueprint-collection'
 import { useOccurrenceDetails } from 'data-services/hooks/useOccurrenceDetails'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
-import * as Popover from 'design-system/components/popover/popover'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
-import { BlueprintDetections } from './blueprint-detections/blueprint-detections'
 import styles from './occurrence-details.module.scss'
-import { TaxonomyInfo } from './taxonomy-info/taxonomy-info'
 
 export const OccurrenceDetails = ({ id }: { id: string }) => {
   const { occurrence } = useOccurrenceDetails(id)
+
+  const blueprintItems = useMemo(
+    () =>
+      occurrence?.detections.length
+        ? occurrence.detections
+            .map((id) => occurrence.getDetectionInfo(id))
+            .filter((item): item is BlueprintItem => !!item)
+        : [],
+    [occurrence]
+  )
 
   if (!occurrence) {
     return null
@@ -18,12 +32,15 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
     {
       label: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
       value: occurrence.deploymentLabel,
-      to: `/deployments/${occurrence.deploymentId}`,
+      to: getRoute({
+        collection: 'deployments',
+        itemId: occurrence.deploymentId,
+      }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_SESSION),
       value: occurrence.sessionLabel,
-      to: `/sessions/${occurrence.sessionId}`,
+      to: getRoute({ collection: 'sessions', itemId: occurrence.sessionId }),
     },
     {
       label: translate(STRING.TABLE_COLUMN_DATE),
@@ -46,20 +63,14 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
-        <Popover.Root>
-          <Popover.Trigger asChild={false}>
-            <span className={styles.title}>
-              {occurrence.determinationLabel}
-            </span>
-          </Popover.Trigger>
-          <Popover.Content
-            ariaCloselabel={translate(STRING.CLOSE)}
-            align="start"
-            side="bottom"
-          >
-            <TaxonomyInfo />
-          </Popover.Content>
-        </Popover.Root>
+        <Link
+          to={getRoute({
+            collection: 'species',
+            itemId: occurrence.determinationId,
+          })}
+        >
+          <span className={styles.title}>{occurrence.determinationLabel}</span>
+        </Link>
       </div>
       <div className={styles.content}>
         <div className={styles.column}>
@@ -90,7 +101,7 @@ export const OccurrenceDetails = ({ id }: { id: string }) => {
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintDetections occurrence={occurrence} />
+            <BlueprintCollection items={blueprintItems} />
           </div>
         </div>
       </div>

@@ -60,7 +60,7 @@ const JobSummary = ({ job }: { job: Job }) => (
         value={job.project}
       />
       <InputValue
-        label={translate(STRING.TABLE_COLUMN_IMAGES)}
+        label={translate(STRING.TABLE_COLUMN_CAPTURES)}
         value={job.totalImages}
       />
     </div>

@@ -1,7 +1,7 @@
 export type ServerSpecies = any // TODO: Update this type
 
 export class Species {
-  private readonly _species: ServerSpecies
+  protected readonly _species: ServerSpecies
   private readonly _images: { src: string }[] = []
 
   public constructor(species: ServerSpecies) {
@@ -32,5 +32,13 @@ export class Species {
 
   get numOccurrences(): number {
     return this._species.occurrences_count
+  }
+
+  get trainingImagesLabel(): string {
+    return 'GBIF'
+  }
+
+  get trainingImagesUrl(): string {
+    return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
   }
 }

@@ -45,7 +45,7 @@ export const SessionDetails = () => {
         </div>
       )}
       <div className={styles.playbackWrapper}>
-        <Playback sessionId={session.id} />
+        <Playback session={session} />
       </div>
       <div className={styles.details}>
         <div className={styles.detailsContainer}>

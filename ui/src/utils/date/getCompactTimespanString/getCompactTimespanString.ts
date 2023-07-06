@@ -15,5 +15,9 @@ export const getCompactTimespanString = ({
   const time1 = date1.toLocaleTimeString(locale, OPTIONS)
   const time2 = date2.toLocaleTimeString(locale, OPTIONS)
 
+  if (time1 === time2) {
+    return time1
+  }
+
   return `${time1} - ${time2}`
 }

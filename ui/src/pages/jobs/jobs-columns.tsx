@@ -28,8 +28,8 @@ export const columns: TableColumn<Job>[] = [
     renderCell: (item: Job) => <BasicTableCell value={item.project} />,
   },
   {
-    id: 'total-images',
-    name: translate(STRING.TABLE_COLUMN_IMAGES),
+    id: 'total-captures',
+    name: translate(STRING.TABLE_COLUMN_CAPTURES),
     renderCell: (item: Job) => <BasicTableCell value={item.totalImages} />,
   },
   {
