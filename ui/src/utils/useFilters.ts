@@ -38,14 +38,10 @@ export const useFilters = () => {
   const isActive = filters.some((filter) => filter.value?.length)
 
   const clearAll = () => {
-    const newSearchParams = AVAILABLE_FILTERS.reduce(
-      (newSearchParams: { [key: string]: string[] }, filter) => {
-        newSearchParams[filter.field] = []
-        return newSearchParams
-      },
-      {}
-    )
-    setSearchParams(newSearchParams)
+    AVAILABLE_FILTERS.forEach((filter) => {
+      searchParams.delete(filter.field)
+    })
+    setSearchParams(searchParams)
   }
 
   return {

@@ -3,9 +3,9 @@ import { CaptureDetection } from 'data-services/models/capture'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
-import { useActiveOccurrences } from './useActiveOccurrences'
 
 interface FrameProps {
   src?: string

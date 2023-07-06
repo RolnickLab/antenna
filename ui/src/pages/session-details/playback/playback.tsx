@@ -1,10 +1,10 @@
 import { useInfiniteCaptures } from 'data-services/hooks/useInfiniteCaptures'
-import { Capture } from 'data-services/models/capture'
 import { SessionDetails } from 'data-services/models/session-details'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { CapturePicker } from './capture-picker/capture-picker'
 import { Frame } from './frame/frame'
 import styles from './playback.module.scss'
+import { useActiveCapture } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const {
@@ -13,14 +13,8 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
     isLoading,
     fetchNextPage,
   } = useInfiniteCaptures(session.id)
-  const [activeCapture, setActiveCapture] = useState<Capture>()
+  const { activeCapture, setActiveCapture } = useActiveCapture(captures)
   const [showOverlay, setShowOverlay] = useState(false)
-
-  useEffect(() => {
-    if (!activeCapture && captures.length) {
-      setActiveCapture(captures[0])
-    }
-  }, [captures])
 
   return (
     <div className={styles.wrapper}>
