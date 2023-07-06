@@ -11,6 +11,7 @@ type FilterType =
   | 'determination'
   | 'occurrences__deployment'
   | 'occurrences__event'
+  | 'occurrence'
 
 export const getRoute = ({
   collection,
