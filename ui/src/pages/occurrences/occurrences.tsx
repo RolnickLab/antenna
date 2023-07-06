@@ -103,7 +103,7 @@ export const Occurrences = () => {
         />
       ) : null}
 
-      {id ? <OccurrenceDetailsDialog id={id} /> : null}
+      {!isLoading && id ? <OccurrenceDetailsDialog id={id} /> : null}
     </>
   )
 }

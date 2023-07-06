@@ -36,7 +36,11 @@ export const Deployments = () => {
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
-      {id ? <DeploymentDetailsDialog id={id} /> : <NewDeploymentDialog />}
+      {!isLoading && id ? (
+        <DeploymentDetailsDialog id={id} />
+      ) : (
+        <NewDeploymentDialog />
+      )}
     </>
   )
 }

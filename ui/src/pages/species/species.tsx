@@ -82,7 +82,7 @@ export const Species = () => {
         />
       ) : null}
 
-      {id ? <SpeciesDetailsDialog id={id} /> : null}
+      {!isLoading && id ? <SpeciesDetailsDialog id={id} /> : null}
     </>
   )
 }
