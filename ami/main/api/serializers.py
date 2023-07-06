@@ -612,8 +612,11 @@ class EventSerializer(DefaultSerializer):
             "date_label",
             "duration",
             "duration_label",
-            "captures",
             "captures_count",
+            "detections_count",
+            "occurrences_count",
+            "taxa_count",
+            "captures",
             "first_capture",
         ]
 
