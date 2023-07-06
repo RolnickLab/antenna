@@ -503,7 +503,7 @@ class Occurrence(BaseModel):
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
     def best_detection(self):
-        return Detection.objects.filter(occurrence=self).order_by("classifications__score").first()
+        return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
 
     def determination_score(self) -> float | None:
         return (
@@ -566,7 +566,7 @@ class Taxon(BaseModel):
 
         # @TODO Can we use a single query
         for occurrence in self.occurrences.prefetch_related("detections__classifications").all():
-            detection = occurrence.detections.order_by("classifications__score").first()
+            detection = occurrence.detections.order_by("-classifications__score").first()
             if detection:
                 yield detection.url()
 
