@@ -377,6 +377,60 @@ class Event(BaseModel):
     def first_capture(self):
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
 
+    def summary_data(self):
+        """
+        Data prepared for rendering charts with plotly.js
+        """
+        plots = []
+
+        # Detections per hour
+        Detection = apps.get_model("main", "Detection")
+        detections_per_hour = (
+            Detection.objects.filter(source_image__event=self)
+            .values("source_image__timestamp__hour")
+            .annotate(num_detections=models.Count("id"))
+        )
+
+        # hours, counts = list(zip(*detections_per_hour))
+        hours, counts = list(
+            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+        )
+        hours, counts = shift_to_nighttime(list(hours), list(counts))
+        tickvals = [f"{h:00}" for h in hours]
+
+        plots.append(
+            {
+                "title": "Detections per hour",
+                "data": {"x": hours, "y": counts, "tickvals": tickvals},
+                "type": "bar",
+            },
+        )
+
+        # Horiziontal bar chart of top taxa
+        Taxon = apps.get_model("main", "Taxon")
+        top_taxa = (
+            Taxon.objects.filter(occurrences__event=self)
+            .values("name")
+            # .annotate(num_detections=models.Count("occurrences__detections"))
+            .annotate(num_detections=models.Count("occurrences"))
+            .order_by("-num_detections")
+        )
+
+        taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
+        taxa = [t or "Unknown" for t in taxa]
+        counts = [c or 0 for c in counts]
+
+        plots.append(
+            {
+                "title": "Top species",
+                "data": {"x": counts, "y": taxa},
+                "type": "bar",
+                "orientation": "h",
+            },
+        )
+
+        return plots
+
     def save(self, *args, **kwargs):
         first = self.captures.order_by("timestamp").values("timestamp").first()
         last = self.captures.order_by("-timestamp").values("timestamp").first()

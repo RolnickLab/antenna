@@ -659,6 +659,7 @@ class EventSerializer(DefaultSerializer):
             "taxa_count",
             "captures",
             "first_capture",
+            "summary_data",
         ]
 
     def get_captures(self, obj):
