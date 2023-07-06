@@ -29,6 +29,8 @@ export class SpeciesDetails extends Species {
       id,
       image: {
         src: occurrence.best_detection.url,
+        width: occurrence.best_detection.width,
+        height: occurrence.best_detection.height,
       },
       label: `${occurrence.event.name}\n ${
         occurrence.determination.name
