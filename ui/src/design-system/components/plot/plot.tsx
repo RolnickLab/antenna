@@ -14,9 +14,8 @@ interface PlotProps {
   data: {
     x: (string | number)[]
     y: (string | number)[]
-    tickvals?: string[]
+    tickvals?: (string | number)[]
   }
-
   type?: 'bar' | 'scatter'
   showRangeSlider?: boolean
 }
