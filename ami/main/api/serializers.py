@@ -127,6 +127,7 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
         fields = [
             "id",
             "name",
+            "image",
             "details",
             "latitude",
             "longitude",
