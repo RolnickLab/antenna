@@ -17,6 +17,10 @@ export const CaptureList = ({
   const nextLoader = useRef(null)
 
   useEffect(() => {
+    if (!hasMore || isLoading) {
+      return
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
@@ -35,13 +39,13 @@ export const CaptureList = ({
         observer.unobserve(nextLoader.current)
       }
     }
-  }, [nextLoader, onNext])
+  }, [nextLoader, onNext, hasMore, isLoading])
 
   return (
     <div ref={innerRef} className={styles.captures}>
       {children}
       <p className={styles.message}>
-        {!hasMore ? 'No more items to show' : isLoading ? 'Loading...' : ''}
+        {isLoading ? 'Loading...' : hasMore ? '' : 'No more items to show'}
       </p>
       <div ref={nextLoader} />
     </div>

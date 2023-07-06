@@ -1,29 +1,5 @@
 @import 'design-system/variables/colors.scss';
 
-.scrollFader {
-  position: absolute;
-  height: 48px;
-  left: 0;
-
-  &.alignTop {
-    top: 0;
-    background-image: linear-gradient(
-      to top,
-      rgba($color: $color-neutral-800, $alpha: 0),
-      rgba($color: $color-neutral-800, $alpha: 1)
-    );
-  }
-
-  &.alignBottom {
-    bottom: 0;
-    background-image: linear-gradient(
-      to bottom,
-      rgba($color: $color-neutral-800, $alpha: 0),
-      rgba($color: $color-neutral-800, $alpha: 1)
-    );
-  }
-}
-
 .buttonContainer {
   display: flex;
   align-items: center;

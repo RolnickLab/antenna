@@ -15,10 +15,16 @@ import styles from './capture-picker.module.scss'
 export const CapturePicker = ({
   activeCaptureId,
   captures,
+  hasMore,
+  isLoading,
+  onNext,
   setActiveCaptureId,
 }: {
   activeCaptureId?: string
   captures: Capture[]
+  hasMore?: boolean
+  isLoading?: boolean
+  onNext: () => void
   setActiveCaptureId: (captureId: string) => void
 }) => {
   const activeCaptureIndex = captures.findIndex(
@@ -88,7 +94,12 @@ export const CapturePicker = ({
 
   return (
     <>
-      <CaptureList innerRef={scrollContainerRef}>
+      <CaptureList
+        innerRef={scrollContainerRef}
+        hasMore={hasMore}
+        isLoading={isLoading}
+        onNext={onNext}
+      >
         {captures.map((capture) => {
           const isActive = activeCaptureId === capture.id
 
@@ -110,14 +121,6 @@ export const CapturePicker = ({
           )
         })}
       </CaptureList>
-      <div
-        className={classNames(styles.scrollFader, styles.alignTop)}
-        style={{ width: scrollContainerRef.current?.clientWidth }}
-      />
-      <div
-        className={classNames(styles.scrollFader, styles.alignBottom)}
-        style={{ width: scrollContainerRef.current?.clientWidth }}
-      />
       <div className={classNames(styles.buttonContainer, styles.alignTop)}>
         <IconButton
           icon={IconType.ToggleLeft}
