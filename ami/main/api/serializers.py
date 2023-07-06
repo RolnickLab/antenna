@@ -61,6 +61,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "id",
             "name",
             "details",
+            "image",
             "events",
             "occurrences",
             "events_count",
@@ -120,8 +121,24 @@ class DeploymentNestedSerializer(DefaultSerializer):
         ]
 
 
+class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
+    class Meta:
+        model = Deployment
+        fields = [
+            "id",
+            "name",
+            "details",
+            "latitude",
+            "longitude",
+            "events_count",
+            "detections_count",
+            "occurrences_count",
+            "taxa_count",
+        ]
+
+
 class ProjectSerializer(DefaultSerializer):
-    deployments = DeploymentNestedSerializer(many=True, read_only=True)
+    deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
     deployments_count = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -135,6 +152,7 @@ class ProjectSerializer(DefaultSerializer):
             "deployments_count",
             "created_at",
             "updated_at",
+            "image",
         ]
 
 

@@ -63,6 +63,7 @@ class Project(BaseModel):
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField()
+    image = models.ImageField(upload_to="projects", blank=True, null=True)
 
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
@@ -130,6 +131,7 @@ class Deployment(BaseModel):
     data_source = models.TextField(default="s3://bucket-name/prefix", blank=True, max_length=255)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
+    image = models.ImageField(upload_to="deployments", blank=True, null=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
