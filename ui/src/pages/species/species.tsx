@@ -94,7 +94,9 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root
       open={!!id}
-      onOpenChange={() => navigate(getRoute({ collection: 'species' }))}
+      onOpenChange={() =>
+        navigate(getRoute({ collection: 'species', keepSearchParams: true }))
+      }
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}

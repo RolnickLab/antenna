@@ -115,7 +115,11 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root
       open={!!id}
-      onOpenChange={() => navigate(getRoute({ collection: 'occurrences' }))}
+      onOpenChange={() =>
+        navigate(
+          getRoute({ collection: 'occurrences', keepSearchParams: true })
+        )
+      }
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}

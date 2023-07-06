@@ -12,7 +12,13 @@ export const columns: TableColumn<Job>[] = [
     id: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Job) => (
-      <Link to={getRoute({ collection: 'jobs', itemId: item.id })}>
+      <Link
+        to={getRoute({
+          collection: 'jobs',
+          itemId: item.id,
+          keepSearchParams: true,
+        })}
+      >
         <BasicTableCell value={item.idLabel} theme={CellTheme.Primary} />
       </Link>
     ),

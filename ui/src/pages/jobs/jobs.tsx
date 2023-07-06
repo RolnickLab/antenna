@@ -4,6 +4,7 @@ import { Table } from 'design-system/components/table/table/table'
 import { Error } from 'pages/error/error'
 import { JobDetailsDialog } from 'pages/job-details/job-details-dialog'
 import { useNavigate, useParams } from 'react-router-dom'
+import { getRoute } from 'utils/getRoute'
 import { columns } from './jobs-columns'
 import styles from './jobs.module.scss'
 
@@ -30,7 +31,9 @@ export const Jobs = () => {
       <JobDetailsDialog
         job={job}
         open={detailsOpen}
-        onOpenChange={() => navigate('/jobs')}
+        onOpenChange={() =>
+          navigate(getRoute({ collection: 'jobs', keepSearchParams: true }))
+        }
       />
     </>
   )

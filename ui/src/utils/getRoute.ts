@@ -17,10 +17,12 @@ export const getRoute = ({
   collection,
   itemId,
   filters = {},
+  keepSearchParams,
 }: {
   collection: CollectionType
   itemId?: string
   filters?: Partial<Record<FilterType, string>>
+  keepSearchParams?: boolean
 }) => {
   let url = `/${collection}`
 
@@ -28,7 +30,14 @@ export const getRoute = ({
     url = `${url}/${itemId}`
   }
 
-  const queryString = new URLSearchParams(filters).toString()
+  const searchParams = new URLSearchParams(
+    keepSearchParams ? window.location.search : undefined
+  )
+  Object.entries(filters).forEach(([name, value]) => {
+    searchParams.set(name, value)
+  })
+
+  const queryString = searchParams.toString()
   if (queryString.length) {
     url = `${url}?${queryString}`
   }

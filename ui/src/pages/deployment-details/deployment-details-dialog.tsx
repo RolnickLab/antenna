@@ -16,7 +16,11 @@ export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root
       open={!!id}
-      onOpenChange={() => navigate(getRoute({ collection: 'deployments' }))}
+      onOpenChange={() =>
+        navigate(
+          getRoute({ collection: 'deployments', keepSearchParams: true })
+        )
+      }
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}

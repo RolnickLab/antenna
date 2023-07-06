@@ -16,7 +16,11 @@ export const SpeciesGallery = ({
         id: s.id,
         image: s.images[0],
         title: s.name,
-        to: getRoute({ collection: 'species', itemId: s.id }),
+        to: getRoute({
+          collection: 'species',
+          itemId: s.id,
+          keepSearchParams: true,
+        }),
       })),
     [species]
   )

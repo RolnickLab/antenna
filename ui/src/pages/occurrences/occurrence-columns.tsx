@@ -32,7 +32,13 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'id',
     name: translate(STRING.TABLE_COLUMN_ID),
     renderCell: (item: Occurrence) => (
-      <Link to={getRoute({ collection: 'occurrences', itemId: item.id })}>
+      <Link
+        to={getRoute({
+          collection: 'occurrences',
+          itemId: item.id,
+          keepSearchParams: true,
+        })}
+      >
         <BasicTableCell
           value={item.determinationLabel}
           details={[`(${item.determinationScore})`]}
