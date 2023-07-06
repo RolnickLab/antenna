@@ -1,3 +1,6 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
 .captures {
   position: absolute;
   width: 100%;
@@ -9,4 +12,15 @@
   overflow-x: hidden;
   overflow-y: auto;
   box-sizing: border-box;
+}
+
+.message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  @include paragraph-x-small();
+  font-weight: 600;
+  color: $color-neutral-200;
+  margin: 0;
 }

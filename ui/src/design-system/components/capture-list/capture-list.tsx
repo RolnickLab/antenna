@@ -2,14 +2,20 @@ import { ReactNode, RefObject } from 'react'
 import styles from './capture-list.module.scss'
 
 export const CaptureList = ({
-  innerRef,
   children,
+  hasMore,
+  innerRef,
+  numItems,
+  onNext,
 }: {
-  innerRef?: RefObject<HTMLDivElement>
   children: ReactNode
+  hasMore: boolean
+  innerRef?: RefObject<HTMLDivElement>
+  numItems: number
+  onNext: () => void
 }) => {
   return (
-    <div className={styles.captures} ref={innerRef}>
+    <div id="capture-list" className={styles.captures}>
       {children}
     </div>
   )
