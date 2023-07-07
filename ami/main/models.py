@@ -915,6 +915,7 @@ default_job_progress = {
     "stages": [
         {
             "key": "object_detection",
+            "status": "PENDING",
             "progress": 0,
             "time_elapsed": 0,
             "time_remaining": None,
@@ -923,6 +924,7 @@ default_job_progress = {
         },
         {
             "key": "binary_classification",
+            "status": "PENDING",
             "progress": 0,
             "time_elapsed": 0,
             "time_remaining": None,
@@ -931,6 +933,7 @@ default_job_progress = {
         },
         {
             "key": "species_classification",
+            "status": "PENDING",
             "progress": 0,
             "time_elapsed": 0,
             "time_remaining": None,
@@ -939,6 +942,7 @@ default_job_progress = {
         },
         {
             "key": "tracking",
+            "status": "PENDING",
             "progress": 0,
             "time_elapsed": 0,
             "time_remaining": None,

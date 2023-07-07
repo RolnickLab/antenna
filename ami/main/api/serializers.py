@@ -750,4 +750,4 @@ class JobSerializer(DefaultSerializer):
 
 
 class StorageStatusSerializer(serializers.Serializer):
-    storage_path = serializers.CharField(max_length=200)
+    data_source = serializers.CharField(max_length=200)
