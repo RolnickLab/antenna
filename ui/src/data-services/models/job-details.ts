@@ -35,6 +35,7 @@ export class JobDetails extends Job {
     const name = stage.name
     const status = this.getStatus(progress.status)
     const statusLabel = this.getStatusLabel(status)
+    const statusDetails = stage.status_label
     const fields: { key: string; label: string; value?: string | number }[] =
       stage.params.map((param: any) => {
         const configValue = param.value
@@ -51,6 +52,7 @@ export class JobDetails extends Job {
       name,
       status,
       statusLabel,
+      statusDetails,
       fields,
     }
   }

@@ -116,7 +116,11 @@ const JobStages = ({ job }: { job: Job }) => {
         return (
           <Wizard.Item key={stage.key} value={stage.key}>
             <div className={styles.jobStageLabel}>
-              <JobStageLabel label={stageInfo.statusLabel} status={status} />
+              <JobStageLabel
+                label={stageInfo.statusLabel}
+                status={status}
+                statusDetails={job.statusDetails}
+              />
             </div>
             <Wizard.Trigger title={stageInfo.name}>
               {status === Status.Success ? (
