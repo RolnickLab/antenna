@@ -3,7 +3,7 @@ import axios from 'axios'
 import { Job, ServerJob } from 'data-services/models/job'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { COLLECTION } from './constants'
+import { COLLECTION, REFETCH_INTERVAL } from './constants'
 
 const convertServerRecord = (record: ServerJob) => new Job(record)
 
@@ -27,6 +27,7 @@ export const useJobs = (
           results: res.data.results.map(convertServerRecord),
           count: res.data.count,
         })),
+    refetchInterval: REFETCH_INTERVAL,
   })
 
   return {

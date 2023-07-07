@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_URL } from 'data-services/constants'
 import { JobDetails, ServerJobDetails } from 'data-services/models/job-details'
-import { COLLECTION } from './constants'
+import { COLLECTION, REFETCH_INTERVAL } from './constants'
 
 const convertServerRecord = (record: ServerJobDetails) => new JobDetails(record)
 
@@ -20,6 +20,7 @@ export const useJobDetails = (
       axios
         .get<ServerJobDetails>(`${API_URL}/${COLLECTION}/${id}`)
         .then((res) => convertServerRecord(res.data)),
+    refetchInterval: REFETCH_INTERVAL,
   })
 
   return {
