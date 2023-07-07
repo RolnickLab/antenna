@@ -6,7 +6,18 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
+from ..models import (
+    Algorithm,
+    Classification,
+    Deployment,
+    Detection,
+    Event,
+    Job,
+    Occurrence,
+    Project,
+    SourceImage,
+    Taxon,
+)
 from .serializers import (
     AlgorithmSerializer,
     ClassificationSerializer,
@@ -16,11 +27,14 @@ from .serializers import (
     DetectionSerializer,
     EventListSerializer,
     EventSerializer,
+    JobListSerializer,
+    JobSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
+    StorageStatusSerializer,
     TaxonListSerializer,
     TaxonSerializer,
 )
@@ -314,3 +328,69 @@ class SummaryView(APIView):
         data.update(aliases)
 
         return Response(data)
+
+
+_STORAGE_CONNECTION_STATUS = [
+    # These come from the ConnetionStatus react component
+    # @TODO use ENUM
+    "NOT_CONNECTED",
+    "CONNECTING",
+    "CONNECTED",
+    "ERROR",
+]
+
+
+class StorageStatus(APIView):
+    """
+    Return the status of the storage connection.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = StorageStatusSerializer
+
+    def post(self, request):
+        """@TODO not totally sure how to use the serializer here yet."""
+        data_source = request.data.get("data_source")
+        example_image_urls = [img.url() for img in SourceImage.objects.order_by("?")[:10]]
+        data = {
+            "data_source": data_source,
+            "status": _STORAGE_CONNECTION_STATUS[1],
+            "updated_at": timezone.now(),
+            "example_captures": example_image_urls,
+        }
+
+        return Response(data)
+
+
+class JobViewSet(DefaultViewSet):
+    """
+    API endpoint that allows jobs to be viewed or edited.
+    """
+
+    queryset = Job.objects.all()
+    serializer_class = JobSerializer
+    filterset_fields = ["status", "project", "deployment"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "status",
+        "started_at",
+    ]
+
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return JobListSerializer
+        else:
+            return JobSerializer
+
+    def list(self, request, *args, **kwargs):
+        """
+        Return a list of jobs, with the most recent first.
+        """
+        response = super().list(request, *args, **kwargs)
+        response.data["default_config"] = Job.default_config()
+        response.data["default_progress"] = Job.default_progress()
+        return response

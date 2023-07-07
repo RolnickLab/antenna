@@ -820,3 +820,166 @@ class BlogPost(BaseModel):
     def __str__(self) -> str:
         """All django models should have this method."""
         return textwrap.wrap(self.title, _POST_TITLE_MAX_LENGTH // 4)[0]
+
+
+# These come directly from Celery
+_JOB_STATES = ["PENDING", "STARTED", "SUCCESS", "FAILURE", "RETRY", "REVOKED", "RECEIVED"]
+
+
+default_job_config = {
+    "input": {
+        "name": "Captures",
+        "size": 100,
+    },
+    "stages": [
+        {
+            "name": "Object Detection",
+            "key": "object_detection",
+            "params": [
+                {"key": "model", "name": "Localization Model", "value": "yolov5s"},
+                {"key": "batch_size", "name": "Batch Size", "value": 8},
+                # {"key": "threshold", "name": "Threshold", "value": 0.5},
+                {"key": "input_size", "name": "Images processed", "read_only": True},
+                {"key": "output_size", "name": "Objects detected", "read_only": True},
+            ],
+        },
+        {
+            "name": "Objects of Interest Filter",
+            "key": "binary_classification",
+            "params": [
+                {"key": "algorithm", "name": "Binary classification model", "value": "resnet18"},
+                {"key": "batch_size", "name": "Batch Size", "value": 8},
+                # {"key": "threshold", "name": "Threshold", "value": 0.5},
+                {"key": "input_size", "name": "Objects processed", "read_only": True},
+                {"key": "output_size", "name": "Objects of interest", "read_only": True},
+            ],
+        },
+        {
+            "name": "Species Classification",
+            "key": "species_classification",
+            "params": [
+                {"key": "algorithm", "name": "Species classification model", "value": "resnet18"},
+                {"key": "batch_size", "name": "Batch Size", "value": 8},
+                {"key": "input_size", "name": "Species processed", "read_only": True},
+                {"key": "output_size", "name": "Species classified", "read_only": True},
+            ],
+        },
+        {
+            "name": "Occurrence Tracking",
+            "key": "tracking",
+            "params": [
+                {"key": "algorithm", "name": "Occurrence tracking algorithm", "value": "adityacombo"},
+                {"key": "input_size", "name": "Detections processed", "read_only": True},
+                {"key": "output_size", "name": "Occurrences identified", "read_only": True},
+            ],
+        },
+    ],
+}
+
+example_non_model_config = {
+    "input": {
+        "name": "Raw Captures",
+        "source": "s3://bucket/path/to/captures",
+        "size": 100,
+    },
+    "stages": [
+        {
+            "name": "Image indexing",
+            "key": "image_indexing",
+            "params": [
+                {"key": "input_size", "name": "Directories scanned", "read_only": True},
+                {"key": "output_size", "name": "Images indexed", "read_only": True},
+            ],
+        },
+        {
+            "name": "Image resizing",
+            "key": "image_resizing",
+            "params": [
+                {"key": "width", "name": "Width", "value": 640},
+                {"key": "height", "name": "Height", "value": 480},
+                {"key": "input_size", "name": "Images processed", "read_only": True},
+            ],
+        },
+        {
+            "name": "Feature extraction",
+            "key": "feature_extraction",
+            "params": [
+                {"key": "algorithm", "name": "Feature extractor", "value": "imagenet"},
+                {"key": "input_size", "name": "Images processed", "read_only": True},
+            ],
+        },
+    ],
+}
+
+default_job_progress = {
+    "stages": [
+        {
+            "key": "object_detection",
+            "status": "PENDING",
+            "progress": 0,
+            "time_elapsed": 0,
+            "time_remaining": None,
+            "input_size": 0,
+            "output_size": 0,
+        },
+        {
+            "key": "binary_classification",
+            "status": "PENDING",
+            "progress": 0,
+            "time_elapsed": 0,
+            "time_remaining": None,
+            "input_size": 0,
+            "output_size": 0,
+        },
+        {
+            "key": "species_classification",
+            "status": "PENDING",
+            "progress": 0,
+            "time_elapsed": 0,
+            "time_remaining": None,
+            "input_size": 0,
+            "output_size": 0,
+        },
+        {
+            "key": "tracking",
+            "status": "PENDING",
+            "progress": 0,
+            "time_elapsed": 0,
+            "time_remaining": None,
+            "input_size": 0,
+            "output_size": 0,
+        },
+    ]
+}
+
+
+class Job(BaseModel):
+    """A job to be run by the scheduler
+
+    Example config:
+    """
+
+    name = models.CharField(max_length=255)
+    config = models.JSONField(default=dict)
+    queue = models.CharField(max_length=255, default="default")
+    scheduled_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=255, default="PENDING", choices=as_choices(_JOB_STATES))
+    progress = models.JSONField(null=True, blank=True)
+    result = models.JSONField(null=True, blank=True)
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="jobs")
+    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="jobs", null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.status})"
+
+    @classmethod
+    def default_config(cls) -> dict:
+        return default_job_config
+
+    @classmethod
+    def default_progress(cls) -> dict:
+        """Return the progress of each stage of this job as a dictionary"""
+        return default_job_progress
