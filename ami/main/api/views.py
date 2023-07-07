@@ -34,6 +34,7 @@ from .serializers import (
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
+    StorageStatusSerializer,
     TaxonListSerializer,
     TaxonSerializer,
 )
@@ -329,14 +330,31 @@ class SummaryView(APIView):
         return Response(data)
 
 
-class HealthCheckView(APIView):
-    permission_classes = [permissions.AllowAny]
+_STORAGE_CONNECTION_STATUS = [
+    # These come from the ConnetionStatus react component
+    # @TODO use ENUM
+    "NOT_CONNECTED",
+    "CONNECTING",
+    "CONNECTED",
+    "ERROR",
+]
 
-    def get(self, request):
-        """ """
+
+class StorageStatus(APIView):
+    """
+    Return the status of the storage connection.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = StorageStatusSerializer
+
+    def post(self, request):
+        """@TODO not totally sure how to use the serializer here yet."""
+        storage_path = request.data.get("storage_path")
         data = {
-            "status": "OK",
-            "last_checked": timezone.now(),
+            "storage_path": storage_path,
+            "status": _STORAGE_CONNECTION_STATUS[1],
+            "updated_at": timezone.now(),
         }
 
         return Response(data)

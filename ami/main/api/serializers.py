@@ -747,3 +747,7 @@ class JobSerializer(DefaultSerializer):
     def get_progress(self, obj):
         if not obj.progress:
             return Job.default_progress()
+
+
+class StorageStatusSerializer(serializers.Serializer):
+    storage_path = serializers.CharField(max_length=200)
