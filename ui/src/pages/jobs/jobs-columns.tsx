@@ -1,4 +1,4 @@
-import { Job } from 'data-services/models/job'
+import { Job, JobStatus } from 'data-services/models/job'
 import { Status } from 'design-system/components/status/types'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
@@ -9,8 +9,8 @@ import { STRING, translate } from 'utils/language'
 
 export const columns: TableColumn<Job>[] = [
   {
-    id: 'id',
-    name: translate(STRING.TABLE_COLUMN_ID),
+    id: 'job',
+    name: 'Job',
     renderCell: (item: Job) => (
       <Link
         to={getRoute({
@@ -19,14 +19,9 @@ export const columns: TableColumn<Job>[] = [
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell value={item.idLabel} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
-  },
-  {
-    id: 'description',
-    name: translate(STRING.TABLE_COLUMN_DESCRIPTION),
-    renderCell: (item: Job) => <BasicTableCell value={item.description} />,
   },
   {
     id: 'project',
@@ -34,14 +29,14 @@ export const columns: TableColumn<Job>[] = [
     renderCell: (item: Job) => <BasicTableCell value={item.project} />,
   },
   {
-    id: 'total-captures',
-    name: translate(STRING.TABLE_COLUMN_CAPTURES),
-    renderCell: (item: Job) => <BasicTableCell value={item.totalImages} />,
+    id: 'started-at',
+    name: 'Started at',
+    renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
   },
   {
-    id: 'job-started',
-    name: translate(STRING.TABLE_COLUMN_JOB_STARTED),
-    renderCell: (item: Job) => <BasicTableCell value={item.jobStarted} />,
+    id: 'finsihed-at',
+    name: 'Finished at',
+    renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
   },
   {
     id: 'status',
@@ -49,10 +44,11 @@ export const columns: TableColumn<Job>[] = [
     renderCell: (item: Job) => {
       const status = (() => {
         switch (item.status) {
-          case 0:
-          case 1:
+          case JobStatus.Pending:
+            return Status.Neutral
+          case JobStatus.Started:
             return Status.Warning
-          case 2:
+          case JobStatus.Success:
             return Status.Success
           default:
             return Status.Error

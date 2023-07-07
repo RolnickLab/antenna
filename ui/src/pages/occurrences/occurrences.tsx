@@ -102,7 +102,6 @@ export const Occurrences = () => {
           onNextClick={setNextPage}
         />
       ) : null}
-
       {!isLoading && id ? <OccurrenceDetailsDialog id={id} /> : null}
     </>
   )
