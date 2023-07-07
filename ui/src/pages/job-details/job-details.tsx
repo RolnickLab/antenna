@@ -45,13 +45,10 @@ const JobSummary = ({ job }: { job: Job }) => (
       />
     </InputContent>
     <div className={styles.sectionRow}>
-      <InputValue
-        label={translate(STRING.TABLE_COLUMN_ID)}
-        value={job.idLabel}
-      />
+      <InputValue label={translate(STRING.TABLE_COLUMN_ID)} value={job.name} />
       <InputValue
         label={translate(STRING.TABLE_COLUMN_DESCRIPTION)}
-        value={job.description}
+        value="N/A"
       />
     </div>
     <div className={styles.sectionRow}>
@@ -59,15 +56,12 @@ const JobSummary = ({ job }: { job: Job }) => (
         label={translate(STRING.TABLE_COLUMN_PROJECT)}
         value={job.project}
       />
-      <InputValue
-        label={translate(STRING.TABLE_COLUMN_CAPTURES)}
-        value={job.totalImages}
-      />
+      <InputValue label={translate(STRING.TABLE_COLUMN_CAPTURES)} value="N/A" />
     </div>
     <div className={styles.sectionRow}>
       <InputValue
         label={translate(STRING.TABLE_COLUMN_JOB_STARTED)}
-        value={job.jobStarted}
+        value={job.startedAt}
       />
       <InputValue label="Estimated time" value="WIP" />
     </div>

@@ -21,7 +21,9 @@ export const StatusTableCell = ({
           <StatusMarker status={status} />
         </div>
       </Tooltip>
-    ) : null}
+    ) : (
+      <StatusMarker status={status} />
+    )}
     <span className={styles.label}>{label}</span>
   </div>
 )

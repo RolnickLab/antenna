@@ -60,9 +60,14 @@ export const InputValue = ({
   value: _value,
 }: {
   label: string
-  value: string | number
+  value?: string | number
 }) => {
-  const value = _.isNumber(_value) ? _value.toLocaleString() : _value
+  const value =
+    _value === undefined
+      ? 'N/A'
+      : _.isNumber(_value)
+      ? _value.toLocaleString()
+      : _value
 
   return (
     <InputContent label={label}>

@@ -4,6 +4,13 @@ import { STRING, translate } from 'utils/language'
 
 export type ServerJob = any // TODO: Update this type
 
+export enum JobStatus {
+  Pending = 'pending',
+  Started = 'started',
+  Success = 'success',
+  Unknown = 'unknown',
+}
+
 export class Job {
   private readonly _job: ServerJob
 
@@ -11,49 +18,66 @@ export class Job {
     this._job = job
   }
 
-  get description(): string {
-    return this._job.description
-  }
+  get finishedAt(): string | undefined {
+    if (!this._job.finished_at) {
+      return
+    }
 
-  get id(): string {
-    return this._job.id
-  }
-
-  get idLabel(): string {
-    return `#${this.id}`
-  }
-
-  get jobStarted(): string {
-    const date = new Date(this._job.job_started)
+    const date = new Date(this._job.finished_at)
     const dateString = getFormatedDateString({ date })
     const timeString = getFormatedTimeString({ date })
 
     return `${dateString} ${timeString}`
   }
 
+  get id(): string {
+    return `${this._job.id}`
+  }
+
+  get startedAt(): string | undefined {
+    if (!this._job.started_at) {
+      return
+    }
+
+    const date = new Date(this._job.started_at)
+    const dateString = getFormatedDateString({ date })
+    const timeString = getFormatedTimeString({ date })
+
+    return `${dateString} ${timeString}`
+  }
+
+  get name(): string {
+    return this._job.name
+  }
+
   get project(): string {
-    return this._job.project
+    return this._job.project.name
   }
 
-  get totalImages(): number {
-    return this._job.total_images
+  get status(): JobStatus {
+    switch (this._job.status) {
+      case 'PENDING':
+        return JobStatus.Pending
+      case 'STARTED':
+        return JobStatus.Started
+      case 'SUCCESS':
+        return JobStatus.Success
+      default:
+        return JobStatus.Unknown
+    }
   }
 
-  get status(): number {
-    return this._job.status
-  }
-
-  get statusDetails(): string {
-    return 'More details about the job status.'
+  get statusDetails(): string | undefined {
+    return undefined // If we return a string here, it will show up as a tooltip on status bullet hover
   }
 
   get statusLabel(): string {
-    switch (this._job.status) {
-      case 0:
+    switch (this.status) {
+      case JobStatus.Pending:
+        return translate(STRING.PENDING)
+      case JobStatus.Started:
         return translate(STRING.RUNNING)
-      case 1:
-        return translate(STRING.STOPPED)
-      case 2:
+      case JobStatus.Success:
         return translate(STRING.DONE)
       default:
         return translate(STRING.UNKNOWN)
