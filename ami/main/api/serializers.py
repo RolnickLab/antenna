@@ -718,6 +718,7 @@ class JobListSerializer(DefaultSerializer):
             "project",
             "deployment",
             "status",
+            "progress",
             "started_at",
             "finished_at",
             # "duration",
@@ -730,24 +731,19 @@ class JobListSerializer(DefaultSerializer):
 
 
 class JobSerializer(DefaultSerializer):
-    config = serializers.SerializerMethodField()
-    progress = serializers.SerializerMethodField()
+    project = ProjectNestedSerializer(read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(write_only=True, queryset=Project.objects.all(), source="project")
+    config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
+    progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
 
     class Meta:
         model = Job
         fields = JobListSerializer.Meta.fields + [
             "config",
-            "progress",
             "result",
+            "project",
+            "project_id",
         ]
-
-    def get_config(self, obj):
-        if not obj.config:
-            return Job.default_config()
-
-    def get_progress(self, obj):
-        if not obj.progress:
-            return Job.default_progress()
 
 
 class StorageStatusSerializer(serializers.Serializer):

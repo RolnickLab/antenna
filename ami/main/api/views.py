@@ -386,11 +386,12 @@ class JobViewSet(DefaultViewSet):
         else:
             return JobSerializer
 
-    def list(self, request, *args, **kwargs):
-        """
-        Return a list of jobs, with the most recent first.
-        """
-        response = super().list(request, *args, **kwargs)
-        response.data["default_config"] = Job.default_config()
-        response.data["default_progress"] = Job.default_progress()
-        return response
+    # The default schema is now returned if the progresr or config attrbutes are empty.
+    # def list(self, request, *args, **kwargs):
+    #     """
+    #     Return a list of jobs, with the most recent first.
+    #     """
+    #     response = super().list(request, *args, **kwargs)
+    #     response.data["default_config"] = Job.default_config()
+    #     response.data["default_progress"] = Job.default_progress()
+    #     return response
