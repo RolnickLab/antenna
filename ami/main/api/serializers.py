@@ -5,7 +5,18 @@ from django.db.models import Count
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
-from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
+from ..models import (
+    Algorithm,
+    Classification,
+    Deployment,
+    Detection,
+    Event,
+    Job,
+    Occurrence,
+    Project,
+    SourceImage,
+    Taxon,
+)
 
 
 def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
@@ -138,8 +149,7 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
         ]
 
 
-class ProjectSerializer(DefaultSerializer):
-    deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
+class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -149,12 +159,31 @@ class ProjectSerializer(DefaultSerializer):
             "name",
             "description",
             "details",
-            "deployments",
             "deployments_count",
             "created_at",
             "updated_at",
             "image",
             "summary_data",
+        ]
+
+
+class ProjectSerializer(DefaultSerializer):
+    deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
+
+    class Meta:
+        model = Project
+        fields = ProjectListSerializer.Meta.fields + [
+            "deployments",
+        ]
+
+
+class ProjectNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Project
+        fields = [
+            "id",
+            "name",
+            "details",
         ]
 
 
@@ -673,3 +702,48 @@ class EventSerializer(DefaultSerializer):
             request=self.context.get("request"),
             params={"event": obj.pk},
         )
+
+
+class JobListSerializer(DefaultSerializer):
+    project = ProjectNestedSerializer(read_only=True)
+    deployment = DeploymentNestedSerializer(read_only=True)
+
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "details",
+            "name",
+            "project",
+            "deployment",
+            "status",
+            "started_at",
+            "finished_at",
+            # "duration",
+            # "duration_label",
+            # "progress",
+            # "progress_label",
+            # "progress_percent",
+            # "progress_percent_label",
+        ]
+
+
+class JobSerializer(DefaultSerializer):
+    config = serializers.SerializerMethodField()
+    progress = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Job
+        fields = JobListSerializer.Meta.fields + [
+            "config",
+            "progress",
+            "result",
+        ]
+
+    def get_config(self, obj):
+        if not obj.config:
+            return Job.default_config()
+
+    def get_progress(self, obj):
+        if not obj.progress:
+            return Job.default_progress()

@@ -6,7 +6,18 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..models import Algorithm, Classification, Deployment, Detection, Event, Occurrence, Project, SourceImage, Taxon
+from ..models import (
+    Algorithm,
+    Classification,
+    Deployment,
+    Detection,
+    Event,
+    Job,
+    Occurrence,
+    Project,
+    SourceImage,
+    Taxon,
+)
 from .serializers import (
     AlgorithmSerializer,
     ClassificationSerializer,
@@ -16,6 +27,8 @@ from .serializers import (
     DetectionSerializer,
     EventListSerializer,
     EventSerializer,
+    JobListSerializer,
+    JobSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     ProjectSerializer,
@@ -314,3 +327,50 @@ class SummaryView(APIView):
         data.update(aliases)
 
         return Response(data)
+
+
+class HealthCheckView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        """ """
+        data = {
+            "status": "OK",
+            "last_checked": timezone.now(),
+        }
+
+        return Response(data)
+
+
+class JobViewSet(DefaultViewSet):
+    """
+    API endpoint that allows jobs to be viewed or edited.
+    """
+
+    queryset = Job.objects.all()
+    serializer_class = JobSerializer
+    filterset_fields = ["status", "project", "deployment"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "status",
+        "started_at",
+    ]
+
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return JobListSerializer
+        else:
+            return JobSerializer
+
+    def list(self, request, *args, **kwargs):
+        """
+        Return a list of jobs, with the most recent first.
+        """
+        response = super().list(request, *args, **kwargs)
+        response.data["default_config"] = Job.default_config()
+        response.data["default_progress"] = Job.default_progress()
+        return response
