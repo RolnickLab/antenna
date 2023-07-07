@@ -849,8 +849,8 @@ default_job_config = {
             "params": [
                 {"key": "algorithm", "name": "Binary classification model", "value": "resnet18"},
                 {"key": "batch_size", "name": "Batch size", "value": 8},
-                {"key": "input_size", "name": "Objects processed", "read_only": True, "value": 0},
-                {"key": "output_size", "name": "Objects of interest", "read_only": True, "value": 0},
+                {"key": "input_size", "name": "Objects processed", "read_only": True},
+                {"key": "output_size", "name": "Objects of interest", "read_only": True},
             ],
         },
         {
@@ -860,8 +860,8 @@ default_job_config = {
                 {"key": "algorithm", "name": "Species classification model", "value": "resnet18"},
                 {"key": "batch_size", "name": "Batch size", "value": 8},
                 {"key": "threshold", "name": "Confidence threshold", "value": 0.5},
-                {"key": "input_size", "name": "Species processed", "read_only": True, "value": 0},
-                {"key": "output_size", "name": "Species classified", "read_only": True, "value": 0},
+                {"key": "input_size", "name": "Species processed", "read_only": True},
+                {"key": "output_size", "name": "Species classified", "read_only": True},
             ],
         },
         {
@@ -869,8 +869,8 @@ default_job_config = {
             "key": "tracking",
             "params": [
                 {"key": "algorithm", "name": "Occurrence tracking algorithm", "value": "adityacombo"},
-                {"key": "input_size", "name": "Detections processed", "read_only": True, "value": 0},
-                {"key": "output_size", "name": "Occurrences identified", "read_only": True, "value": 0},
+                {"key": "input_size", "name": "Detections processed", "read_only": True},
+                {"key": "output_size", "name": "Occurrences identified", "read_only": True},
             ],
         },
     ],
