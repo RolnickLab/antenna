@@ -397,6 +397,9 @@ class TaxonSourceImageNestedSerializer(DefaultSerializer):
         )
 
     def get_page_offset(self, obj) -> int:
+        # @TODO this may not be correct. Test or remove if unnecessary.
+        # the Occurrence to Session navigation in the UI will be using
+        # another method.
         return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
 
 
@@ -739,7 +742,19 @@ class EventSerializer(DefaultSerializer):
             capture_with_subject = event.captures.filter(timestamp=timestamp).first()
 
         if capture_with_subject:
-            offset = event.captures.filter(timestamp__lt=capture_with_subject.timestamp).count()
+            # Assert that the capture is part of the event
+            # @TODO add logging and return 404 if not found
+            assert (
+                capture_with_subject.event == event
+            ), f"Capture {capture_with_subject.pk} is not part of Event {event.pk}"
+            capture_timestamps = event.captures.values_list("timestamp", flat=True)
+            subject_index = list(capture_timestamps).index(capture_with_subject.timestamp)
+            offset = subject_index
+            # This query is not working as expected. The offset is not correct.
+            # offset = (
+            #     SourceImage.objects.filter(event=event, timestamp__lt=capture_with_subject.timestamp)
+            #     .count()
+            # )
         else:
             offset = request.query_params.get("offset", None)
 
