@@ -15,7 +15,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
     isFetchingPreviousPage,
     hasNextPage,
     hasPreviousPage,
-  } = useInfiniteCaptures(session.id)
+  } = useInfiniteCaptures(session.id, session.captureOffset)
   const { activeCapture, setActiveCapture } = useActiveCapture(captures)
   const [showOverlay, setShowOverlay] = useState(false)
 

@@ -12,6 +12,10 @@ export class SessionDetails extends Session {
     this._firstCapture = new Capture(event.first_capture)
   }
 
+  get captureOffset(): number | undefined {
+    return this._event.capture_page_offset
+  }
+
   get firstCapture(): Capture {
     return this._firstCapture
   }

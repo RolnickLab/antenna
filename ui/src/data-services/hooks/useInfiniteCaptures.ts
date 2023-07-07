@@ -15,7 +15,6 @@ const fetchCaptures = async (sessionId: string, page: number) => {
     collection: COLLECTION,
     params: {
       pagination: { page, perPage: PER_PAGE },
-      sort: { field: 'timestamp', order: 'asc' },
       filters: [{ field: 'event', value: sessionId }],
     },
   })
@@ -31,8 +30,9 @@ const fetchCaptures = async (sessionId: string, page: number) => {
   }
 }
 
-export const useInfiniteCaptures = (sessionId: string) => {
+export const useInfiniteCaptures = (sessionId: string, offset?: number) => {
   const queryKey = [COLLECTION, { event: sessionId }]
+  const startPage = offset !== undefined ? Math.floor(offset / PER_PAGE) : 0
 
   const {
     data,
@@ -44,7 +44,7 @@ export const useInfiniteCaptures = (sessionId: string) => {
     hasPreviousPage,
   } = useInfiniteQuery(
     queryKey,
-    ({ pageParam = 0 }) => fetchCaptures(sessionId, pageParam),
+    ({ pageParam = startPage }) => fetchCaptures(sessionId, pageParam),
     {
       getNextPageParam: (lastPage) => {
         if ((lastPage.page + 1) * PER_PAGE >= lastPage.count) {

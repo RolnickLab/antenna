@@ -18,10 +18,8 @@ export const getFetchUrl = ({
     queryParams.ordering = `${order}${field}`
   }
   if (params?.pagination) {
-    queryParams.limit = `${params?.pagination.perPage}`
-    queryParams.offset = `${
-      params?.pagination.perPage * params?.pagination.page
-    }`
+    queryParams.limit = `${params.pagination.perPage}`
+    queryParams.offset = `${params.pagination.perPage * params.pagination.page}`
   }
   if (params?.filters?.length) {
     params.filters.forEach((filter) => {
