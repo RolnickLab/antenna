@@ -351,10 +351,12 @@ class StorageStatus(APIView):
     def post(self, request):
         """@TODO not totally sure how to use the serializer here yet."""
         storage_path = request.data.get("storage_path")
+        example_image_urls = [img.url() for img in SourceImage.objects.order_by("?")[:10]]
         data = {
             "storage_path": storage_path,
             "status": _STORAGE_CONNECTION_STATUS[1],
             "updated_at": timezone.now(),
+            "example_captures": example_image_urls,
         }
 
         return Response(data)
