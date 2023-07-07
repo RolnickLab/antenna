@@ -1,5 +1,6 @@
 import * as _Tooltip from '@radix-ui/react-tooltip'
 import { ReactNode, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import styles from './tooltip.module.scss'
 
 interface TooltipProps {
@@ -8,6 +9,7 @@ interface TooltipProps {
   delayDuration?: number
   frame?: HTMLElement | null
   open?: boolean
+  to?: string
 }
 
 export const Tooltip = ({
@@ -16,6 +18,7 @@ export const Tooltip = ({
   delayDuration = 0,
   frame,
   open,
+  to,
 }: TooltipProps) => {
   const triggerRef = useRef(null)
 
@@ -42,7 +45,7 @@ export const Tooltip = ({
               }
             }}
           >
-            <span>{content}</span>
+            {to ? <Link to={to}>{content}</Link> : <span>{content}</span>}
             <_Tooltip.Arrow className={styles.tooltipArrow} />
           </_Tooltip.Content>
         </_Tooltip.Portal>
