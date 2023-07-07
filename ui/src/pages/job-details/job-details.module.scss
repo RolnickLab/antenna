@@ -2,9 +2,8 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
-.buttonWrapper {
-  display: flex;
-  gap: 16px;
+.fetchInfoWrapper {
+  height: 32px;
 }
 
 .content {
@@ -28,16 +27,15 @@
   padding: 32px;
 }
 
-.sectionColumn {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 32px;
-}
-
-.sectionRow {
+.sectionFields {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 48px;
+  column-gap: 32px;
+  row-gap: 32px;
+}
+
+.sectionStatus {
+  grid-column: span 2;
 }
 
 .jobStageLabel {
@@ -48,8 +46,12 @@
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .sectionRow {
+  .sectionFields {
     grid-template-columns: 1fr;
     gap: 32px;
+  }
+
+  .sectionStatus {
+    grid-column: auto;
   }
 }

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { API_URL } from 'data-services/constants'
 import { Deployment, ServerDeployment } from 'data-services/models/deployment'
+import { getFetchUrl } from 'data-services/utils'
 import { COLLECTION } from './constants'
 
 const convertServerRecord = (record: ServerDeployment) => new Deployment(record)
@@ -12,11 +12,16 @@ export const useDeployments = (): {
   isFetching: boolean
   error?: unknown
 } => {
+  const fetchUrl = getFetchUrl({
+    collection: COLLECTION,
+    params: { pagination: { page: 0, perPage: 100 } },
+  })
+
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: [COLLECTION],
     queryFn: () =>
       axios
-        .get<{ results: ServerDeployment[] }>(`${API_URL}/${COLLECTION}`)
+        .get<{ results: ServerDeployment[] }>(fetchUrl)
         .then((res) => res.data.results.map(convertServerRecord)),
   })
 

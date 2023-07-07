@@ -1,5 +1,6 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
+@import 'design-system/variables/variables.scss';
 
 .accordionRoot {
   border: 2px solid $color-neutral-100;
@@ -85,5 +86,11 @@
   }
   to {
     height: 0;
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .content {
+    padding: 0 32px 32px 32px;
   }
 }
