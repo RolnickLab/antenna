@@ -34,7 +34,7 @@ export const Jobs = () => {
 
 const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
-  const { job, isLoading } = useJobDetails(id)
+  const { job, isLoading, isFetching } = useJobDetails(id)
 
   return (
     <Dialog.Root
@@ -47,7 +47,9 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
       >
-        {job ? <JobDetails job={job} title="Job details" /> : null}
+        {job ? (
+          <JobDetails job={job} title="Job details" isFetching={isFetching} />
+        ) : null}
       </Dialog.Content>
     </Dialog.Root>
   )

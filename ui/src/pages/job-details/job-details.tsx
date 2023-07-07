@@ -1,3 +1,4 @@
+import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { JobStatus } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -11,14 +12,22 @@ import {
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
 import { STRING, translate } from 'utils/language'
+import styles from './job-details.module.scss'
 import { JobStageLabel } from './job-stage-label/job-stage-label'
-import styles from './styles.module.scss'
 
-export const JobDetails = ({ job, title }: { job: Job; title: string }) => (
+export const JobDetails = ({
+  job,
+  title,
+  isFetching,
+}: {
+  job: Job
+  title: string
+  isFetching?: boolean
+}) => (
   <>
     <Dialog.Header title={title}>
-      <div className={styles.buttonWrapper}>
-        {/* Room for action buttons */}
+      <div className={styles.fetchInfoWrapper}>
+        {isFetching ? <FetchInfo /> : null}
       </div>
     </Dialog.Header>
     <div className={styles.content}>
