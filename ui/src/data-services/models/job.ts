@@ -12,7 +12,7 @@ export enum JobStatus {
 }
 
 export class Job {
-  private readonly _job: ServerJob
+  protected readonly _job: ServerJob
 
   public constructor(job: ServerJob) {
     this._job = job
@@ -55,7 +55,33 @@ export class Job {
   }
 
   get status(): JobStatus {
-    switch (this._job.status) {
+    return this.getStatus(this._job.status)
+  }
+
+  get statusDetails(): string {
+    // TODO: Return BE value here when available.
+    return `${this.statusValue * 100}% completed.`
+  }
+
+  get statusValue(): number {
+    // TODO: Return BE value here when available (number between 0 and 1).
+    switch (this.status) {
+      case JobStatus.Pending:
+      default:
+        return 0
+      case JobStatus.Started:
+        return 0.5
+      case JobStatus.Success:
+        return 1
+    }
+  }
+
+  get statusLabel(): string {
+    return this.getStatusLabel(this.status)
+  }
+
+  protected getStatus(status: string): JobStatus {
+    switch (status) {
       case 'PENDING':
         return JobStatus.Pending
       case 'STARTED':
@@ -67,12 +93,8 @@ export class Job {
     }
   }
 
-  get statusDetails(): string | undefined {
-    return undefined // If we return a string here, it will show up as a tooltip on status bullet hover
-  }
-
-  get statusLabel(): string {
-    switch (this.status) {
+  protected getStatusLabel(status: JobStatus): string {
+    switch (status) {
       case JobStatus.Pending:
         return translate(STRING.PENDING)
       case JobStatus.Started:

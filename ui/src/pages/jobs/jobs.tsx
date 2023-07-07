@@ -1,24 +1,23 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
-import { useJobs } from 'data-services/hooks/useJobs'
+import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
+import { useJobs } from 'data-services/hooks/jobs/useJobs'
+import * as Dialog from 'design-system/components/dialog/dialog'
 import { Table } from 'design-system/components/table/table/table'
 import { Error } from 'pages/error/error'
-import { JobDetailsDialog } from 'pages/job-details/job-details-dialog'
+import { JobDetails } from 'pages/job-details/job-details'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getRoute } from 'utils/getRoute'
+import { STRING, translate } from 'utils/language'
 import { columns } from './jobs-columns'
 import styles from './jobs.module.scss'
 
 export const Jobs = () => {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { jobs, isLoading, isFetching, error } = useJobs()
 
   if (!isLoading && error) {
     return <Error />
   }
-
-  const job = jobs?.find((j) => j.id === id)
-  const detailsOpen = !!job
 
   return (
     <>
@@ -28,13 +27,28 @@ export const Jobs = () => {
         </div>
       )}
       <Table items={jobs} isLoading={isLoading} columns={columns} />
-      <JobDetailsDialog
-        job={job}
-        open={detailsOpen}
-        onOpenChange={() =>
-          navigate(getRoute({ collection: 'jobs', keepSearchParams: true }))
-        }
-      />
+      {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
     </>
+  )
+}
+
+const JobDetailsDialog = ({ id }: { id: string }) => {
+  const navigate = useNavigate()
+  const { job, isLoading } = useJobDetails(id)
+
+  return (
+    <Dialog.Root
+      open={!!id}
+      onOpenChange={() =>
+        navigate(getRoute({ collection: 'jobs', keepSearchParams: true }))
+      }
+    >
+      <Dialog.Content
+        ariaCloselabel={translate(STRING.CLOSE)}
+        isLoading={isLoading}
+      >
+        {job ? <JobDetails job={job} title="Job details" /> : null}
+      </Dialog.Content>
+    </Dialog.Root>
   )
 }

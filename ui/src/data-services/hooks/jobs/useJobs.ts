@@ -3,10 +3,9 @@ import axios from 'axios'
 import { Job, ServerJob } from 'data-services/models/job'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
+import { COLLECTION } from './constants'
 
 const convertServerRecord = (record: ServerJob) => new Job(record)
-
-const COLLECTION = 'jobs'
 
 export const useJobs = (
   params?: FetchParams
