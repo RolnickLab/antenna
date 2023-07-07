@@ -3,17 +3,23 @@ import { ReactNode, forwardRef } from 'react'
 import styles from './wizard.module.scss'
 
 const Root = ({
-  defaultValue,
   children,
+  defaultValue,
+  value,
+  onValueChange,
 }: {
-  defaultValue?: string
   children: ReactNode
+  defaultValue?: string
+  value?: string
+  onValueChange?: (value?: string) => void
 }) => (
   <Accordion.Root
     className={styles.accordionRoot}
     type="single"
     defaultValue={defaultValue}
     collapsible
+    value={value}
+    onValueChange={onValueChange}
   >
     {children}
   </Accordion.Root>

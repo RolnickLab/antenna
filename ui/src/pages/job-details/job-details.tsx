@@ -11,6 +11,7 @@ import {
   StatusBulletTheme,
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
+import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './job-details.module.scss'
 import { JobStageLabel } from './job-stage-label/job-stage-label'
@@ -85,59 +86,69 @@ const JobSummary = ({ job }: { job: Job }) => {
   )
 }
 
-const JobStages = ({ job }: { job: Job }) => (
-  <Wizard.Root>
-    {job.stages.map((stage, index) => {
-      const stageInfo = job.getStageInfo(stage.key)
+const JobStages = ({ job }: { job: Job }) => {
+  const [activeStage, setActiveStage] = useState<string>()
 
-      if (!stageInfo) {
-        return null
-      }
+  return (
+    <Wizard.Root value={activeStage} onValueChange={setActiveStage}>
+      {job.stages.map((stage, index) => {
+        const stageInfo = job.getStageInfo(stage.key)
 
-      const status = (() => {
-        switch (stageInfo.status) {
-          case JobStatus.Pending:
-            return Status.Neutral
-          case JobStatus.Started:
-            return Status.Warning
-          case JobStatus.Success:
-            return Status.Success
-          default:
-            return Status.Error
+        if (!stageInfo) {
+          return null
         }
-      })()
 
-      return (
-        <Wizard.Item key={stage.key} value={stage.key}>
-          <div className={styles.jobStageLabel}>
-            <JobStageLabel label={stageInfo.statusLabel} status={status} />
-          </div>
-          <Wizard.Trigger title={stageInfo.name}>
-            {status === Status.Success ? (
-              <StatusBullet
-                icon={IconType.Checkmark}
-                theme={StatusBulletTheme.Success}
-              />
-            ) : (
-              <StatusBullet
-                value={index + 1}
-                theme={StatusBulletTheme.Neutral}
-              />
-            )}
-          </Wizard.Trigger>
-          <Wizard.Content>
-            <div className={styles.sectionFields}>
-              {stageInfo.fields.map((field) => (
-                <InputValue
-                  key={field.key}
-                  label={field.label}
-                  value={field.value}
-                />
-              ))}
+        const isOpen = activeStage === stage.key
+
+        const status = (() => {
+          switch (stageInfo.status) {
+            case JobStatus.Pending:
+              return Status.Neutral
+            case JobStatus.Started:
+              return Status.Warning
+            case JobStatus.Success:
+              return Status.Success
+            default:
+              return Status.Error
+          }
+        })()
+
+        return (
+          <Wizard.Item key={stage.key} value={stage.key}>
+            <div className={styles.jobStageLabel}>
+              <JobStageLabel label={stageInfo.statusLabel} status={status} />
             </div>
-          </Wizard.Content>
-        </Wizard.Item>
-      )
-    })}
-  </Wizard.Root>
-)
+            <Wizard.Trigger title={stageInfo.name}>
+              {status === Status.Success ? (
+                <StatusBullet
+                  icon={IconType.Checkmark}
+                  theme={StatusBulletTheme.Success}
+                />
+              ) : (
+                <StatusBullet
+                  value={index + 1}
+                  theme={
+                    isOpen
+                      ? StatusBulletTheme.Default
+                      : StatusBulletTheme.Neutral
+                  }
+                />
+              )}
+            </Wizard.Trigger>
+            <Wizard.Content>
+              <div className={styles.sectionFields}>
+                {stageInfo.fields.map((field) => (
+                  <InputValue
+                    key={field.key}
+                    label={field.label}
+                    value={field.value}
+                  />
+                ))}
+              </div>
+            </Wizard.Content>
+          </Wizard.Item>
+        )
+      })}
+    </Wizard.Root>
+  )
+}
