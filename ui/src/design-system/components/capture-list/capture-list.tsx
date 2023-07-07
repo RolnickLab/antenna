@@ -1,53 +1,60 @@
-import { ReactNode, RefObject, useEffect, useRef } from 'react'
+/* eslint-disable @typescript-eslint/no-empty-function */
+
+import { ReactNode, RefObject, useCallback } from 'react'
 import styles from './capture-list.module.scss'
+import { useIntersectionObserver } from './useIntersectionObserver'
 
 export const CaptureList = ({
   children,
-  hasMore,
-  isLoading,
+  hasNext,
+  hasPrev,
+  isLoadingNext,
+  isLoadingPrev,
   innerRef,
-  onNext,
+  onNext = () => {},
+  onPrev = () => {},
 }: {
   children: ReactNode
-  hasMore?: boolean
+  hasNext?: boolean
+  hasPrev?: boolean
   innerRef?: RefObject<HTMLDivElement>
-  isLoading?: boolean
-  onNext: () => void
+  isLoadingNext?: boolean
+  isLoadingPrev?: boolean
+  onNext?: () => void
+  onPrev?: () => void
 }) => {
-  const nextLoader = useRef(null)
-
-  useEffect(() => {
-    if (!hasMore || isLoading) {
-      return
+  const _onNext = useCallback(() => {
+    if (!isLoadingNext && hasNext) {
+      onNext()
     }
+  }, [isLoadingNext, hasNext])
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          onNext()
-        }
-      },
-      { threshold: 1 }
-    )
-
-    if (nextLoader.current) {
-      observer.observe(nextLoader.current)
+  const _onPrev = useCallback(() => {
+    if (!isLoadingPrev && hasPrev) {
+      onPrev()
     }
+  }, [isLoadingPrev, hasPrev])
 
-    return () => {
-      if (nextLoader.current) {
-        observer.unobserve(nextLoader.current)
-      }
-    }
-  }, [nextLoader, onNext, hasMore, isLoading])
+  const nextLoader = useIntersectionObserver({ onIntersect: _onNext })
+  const prevLoader = useIntersectionObserver({ onIntersect: _onPrev })
 
   return (
     <div ref={innerRef} className={styles.captures}>
+      <div ref={prevLoader} />
+      <MessageRow
+        message={isLoadingPrev ? 'Loading...' : hasPrev ? '' : 'Session start'}
+      />
       {children}
-      <p className={styles.message}>
-        {isLoading ? 'Loading...' : hasMore ? '' : 'No more items to show'}
-      </p>
+      <MessageRow
+        message={isLoadingNext ? 'Loading...' : hasNext ? '' : 'Session end'}
+      />
       <div ref={nextLoader} />
     </div>
   )
 }
+
+const MessageRow = ({ message }: { message: string }) => (
+  <p className={styles.message}>
+    <span className={styles.messageText}>{message}</span>
+  </p>
+)

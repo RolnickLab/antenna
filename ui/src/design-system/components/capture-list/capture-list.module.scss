@@ -15,12 +15,18 @@
 }
 
 .message {
-  display: flex;
+  display: grid;
   align-items: center;
   justify-content: center;
+  grid-template-columns: 2fr 2fr 1fr;
   height: 40px;
   @include paragraph-x-small();
   font-weight: 600;
   color: $color-neutral-200;
+  gap: 16px;
   margin: 0;
+}
+
+.messageText {
+  grid-column-start: 2;
 }
