@@ -1,8 +1,10 @@
 import datetime
+import itertools
 import textwrap
 import urllib.parse
 from typing import Final, final  # noqa: F401
 
+from django.apps import apps
 from django.db import models
 from django.db.models import Q
 
@@ -17,6 +19,21 @@ _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 
 
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
+
+
+def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
+    """Shift hours so that the x-axis is centered around 12PM."""
+
+    split_index = 0
+    for i, hour in enumerate(hours):
+        if hour > 12:
+            split_index = i
+            break
+
+    hours = hours[split_index:] + hours[:split_index]
+    values = values[split_index:] + values[:split_index]
+
+    return hours, values
 
 
 def format_timedelta(duration: datetime.timedelta | None) -> str:
@@ -63,6 +80,7 @@ class Project(BaseModel):
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField()
+    image = models.ImageField(upload_to="projects", blank=True, null=True)
 
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
@@ -75,6 +93,118 @@ class Project(BaseModel):
 
     def taxa_count(self):
         return self.taxa().count()
+
+    def summary_data(self):
+        """
+        Data prepared for rendering charts with plotly.js on the overview page.
+
+        const EXAMPLE_DATA = {
+            y: [18, 45, 98, 120, 109, 113, 43],
+            x: ['8PM', '9PM', '10PM', '11PM', '12PM', '13PM', '14PM'],
+            tickvals: ['8PM', '', '', '', '', '', '14PM'],
+        }
+
+        const EXAMPLE_PLOTS = [
+        { title: '19 Jun', data: EXAMPLE_DATA, type: 'bar' },
+        { title: '20 Jun', data: EXAMPLE_DATA, type: 'scatter' },
+        {
+            title: '21 Jun',
+            data: EXAMPLE_DATA,
+            type: 'scatter',
+            showRangeSlider: true,
+        }
+        """
+
+        plots = []
+
+        # Capture counts per day
+        SourceImage = apps.get_model("main", "SourceImage")
+        captures_per_date = (
+            SourceImage.objects.filter(deployment__project=self)
+            .values_list("timestamp__date")
+            .annotate(num_capture=models.Count("id"))
+            .order_by("timestamp__date")
+        )
+        days, counts = list(zip(*captures_per_date))
+        # tickvals_per_month = [f"{d:%b}" for d in days]
+        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+        days = [f"{d:%b %d}" for d in days]
+
+        plots.append(
+            {
+                "title": "Captures per day",
+                "data": {"x": days, "y": counts, "tickvals": tickvals},
+                "type": "bar",
+            },
+        )
+
+        # Capture counts per hour
+        captures_per_hour = (
+            SourceImage.objects.filter(deployment__project=self)
+            .values_list("timestamp__hour")
+            .annotate(num_captures=models.Count("id"))
+        )
+        hours, counts = list(zip(*captures_per_hour))
+
+        hours, counts = shift_to_nighttime(hours, counts)
+        # tickvals = [f"{h}" for h in hours]
+        tickvals = [f"{min(hours)}:00", f"{max(hours)}:00"]
+
+        # plots.append(
+        #     {
+        #         "title": "Captures per hour",
+        #         "data": {"x": hours, "y": counts, "tickvals": tickvals},
+        #         "type": "bar",
+        #     },
+        # )
+
+        # Detections per hour
+        Detection = apps.get_model("main", "Detection")
+        detections_per_hour = (
+            Detection.objects.filter(source_image__deployment__project=self)
+            .values("source_image__timestamp__hour")
+            .annotate(num_detections=models.Count("id"))
+        )
+
+        # hours, counts = list(zip(*detections_per_hour))
+        hours, counts = list(
+            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+        )
+        hours, counts = shift_to_nighttime(list(hours), list(counts))
+        tickvals = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+
+        plots.append(
+            {
+                "title": "Detections per hour",
+                "data": {"x": hours, "y": counts, "tickvals": tickvals},
+                "type": "bar",
+            },
+        )
+
+        # Line chart of the accumulated number of occurrnces over time throughout the season
+        occurrences_per_day = (
+            Occurrence.objects.filter(project=self)
+            .values_list("event__start")
+            .annotate(num_occurrences=models.Count("id"))
+            .order_by("event__start")
+        )
+
+        days, counts = list(zip(*occurrences_per_day))
+        # Accumulate the counts
+        counts = list(itertools.accumulate(counts))
+        # tickvals = [f"{d:%b %d}" for d in days]
+        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+        days = [f"{d:%b %d}" for d in days]
+
+        plots.append(
+            {
+                "title": "Accumulation of occurrences",
+                "data": {"x": days, "y": counts, "tickvals": tickvals},
+                "type": "line",
+            },
+        )
+
+        return plots
 
 
 @final
@@ -130,6 +260,7 @@ class Deployment(BaseModel):
     data_source = models.TextField(default="s3://bucket-name/prefix", blank=True, max_length=255)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
+    image = models.ImageField(upload_to="deployments", blank=True, null=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
@@ -224,21 +355,31 @@ class Event(BaseModel):
 
     # These are now loaded with annotations in EventViewSet
     # But the serializer complains if they're not defined here.
-    def captures_count(self) -> int:
+    def captures_count(self) -> int | None:
         # return self.captures.distinct().count()
-        return 0
+        return None
 
-    def occurrences_count(self) -> int:
+    def occurrences_count(self) -> int | None:
         # return self.occurrences.distinct().count()
-        return 0
+        return None
 
-    def detections_count(self) -> int:
-        # return Detection.objects.filter(Q(source_image__event=self)).distinct().count()
-        return 0
+    def detections_count(self) -> int | None:
+        # return Detection.objects.filter(Q(source_image__event=self)).count()
+        return None
+
+    def stats(self) -> dict[str, int | None]:
+        return (
+            SourceImage.objects.filter(event=self)
+            .annotate(count=models.Count("detections"))
+            .aggregate(
+                detections_max_count=models.Max("count"),
+                detections_min_count=models.Min("count"),
+                detections_avg_count=models.Avg("count"),
+            )
+        )
 
     def taxa_count(self) -> int:
         return self.taxa().count()
-        return 0
 
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__event=self)).distinct()
@@ -248,6 +389,60 @@ class Event(BaseModel):
 
     def first_capture(self):
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
+
+    def summary_data(self):
+        """
+        Data prepared for rendering charts with plotly.js
+        """
+        plots = []
+
+        # Detections per hour
+        Detection = apps.get_model("main", "Detection")
+        detections_per_hour = (
+            Detection.objects.filter(source_image__event=self)
+            .values("source_image__timestamp__hour")
+            .annotate(num_detections=models.Count("id"))
+        )
+
+        # hours, counts = list(zip(*detections_per_hour))
+        hours, counts = list(
+            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+        )
+        hours, counts = shift_to_nighttime(list(hours), list(counts))
+        tickvals = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+
+        plots.append(
+            {
+                "title": "Detections per hour",
+                "data": {"x": hours, "y": counts, "tickvals": tickvals},
+                "type": "bar",
+            },
+        )
+
+        # Horiziontal bar chart of top taxa
+        Taxon = apps.get_model("main", "Taxon")
+        top_taxa = (
+            Taxon.objects.filter(occurrences__event=self)
+            .values("name")
+            # .annotate(num_detections=models.Count("occurrences__detections"))
+            .annotate(num_detections=models.Count("occurrences"))
+            .order_by("-num_detections")
+        )
+
+        taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
+        taxa = [t or "Unknown" for t in taxa]
+        counts = [c or 0 for c in counts]
+
+        plots.append(
+            {
+                "title": "Top species",
+                "data": {"x": counts, "y": taxa},
+                "type": "bar",
+                "orientation": "h",
+            },
+        )
+
+        return plots
 
     def save(self, *args, **kwargs):
         first = self.captures.order_by("timestamp").values("timestamp").first()
@@ -289,9 +484,9 @@ class SourceImage(BaseModel):
 
     detections: models.QuerySet["Detection"]
 
-    def detections_count(self) -> int:
+    def detections_count(self) -> int | None:
         # return self.detections.count()
-        return 0
+        return None
 
     def url(self) -> str:
         # @TODO use settings or deployment storage base
@@ -483,6 +678,7 @@ class Occurrence(BaseModel):
         # Annotaions don't seem to work with nested serializers
         return self.detections.count()
 
+    # @TODO cache first_apperance timestamp
     def first_appearance(self) -> SourceImage | None:
         first = self.detections.order_by("timestamp").select_related("source_image").first()
         if first:

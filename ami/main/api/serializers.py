@@ -61,6 +61,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "id",
             "name",
             "details",
+            "image",
             "events",
             "occurrences",
             "events_count",
@@ -120,8 +121,25 @@ class DeploymentNestedSerializer(DefaultSerializer):
         ]
 
 
+class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
+    class Meta:
+        model = Deployment
+        fields = [
+            "id",
+            "name",
+            "image",
+            "details",
+            "latitude",
+            "longitude",
+            "events_count",
+            "detections_count",
+            "occurrences_count",
+            "taxa_count",
+        ]
+
+
 class ProjectSerializer(DefaultSerializer):
-    deployments = DeploymentNestedSerializer(many=True, read_only=True)
+    deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
     deployments_count = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -135,6 +153,8 @@ class ProjectSerializer(DefaultSerializer):
             "deployments_count",
             "created_at",
             "updated_at",
+            "image",
+            "summary_data",
         ]
 
 
@@ -318,6 +338,8 @@ class TaxonDetectionsSerializer(DefaultSerializer):
             "url",
             "timestamp",
             "details",
+            "width",
+            "height",
         ]
 
 
@@ -634,9 +656,11 @@ class EventSerializer(DefaultSerializer):
             "captures_count",
             "detections_count",
             "occurrences_count",
+            "stats",
             "taxa_count",
             "captures",
             "first_capture",
+            "summary_data",
         ]
 
     def get_captures(self, obj):

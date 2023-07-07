@@ -124,7 +124,13 @@ class SourceImageViewSet(DefaultViewSet):
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
     """
 
-    queryset = SourceImage.objects.annotate(detections_count=models.Count("detections", distinct=True))
+    queryset = (
+        SourceImage.objects.annotate(
+            detections_count=models.Count("detections", distinct=True),
+        )
+        .select_related("event", "deployment")
+        .all()
+    )
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment"]
     ordering_fields = [
