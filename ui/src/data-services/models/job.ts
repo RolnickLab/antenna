@@ -59,21 +59,11 @@ export class Job {
   }
 
   get statusDetails(): string {
-    // TODO: Return BE value here when available.
-    return `${this.statusValue * 100}% completed.`
+    return this._job.progress.summary.status_label
   }
 
   get statusValue(): number {
-    // TODO: Return BE value here when available (number between 0 and 1).
-    switch (this.status) {
-      case JobStatus.Pending:
-      default:
-        return 0
-      case JobStatus.Started:
-        return 0.5
-      case JobStatus.Success:
-        return 1
-    }
+    return this._job.progress.summary.progress
   }
 
   get statusLabel(): string {
