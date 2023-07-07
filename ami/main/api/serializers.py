@@ -701,13 +701,24 @@ class EventSerializer(DefaultSerializer):
         Return URL to the captures endpoint filtered by this event.
         """
 
+        params = {"event": obj.pk}
+
+        initial_offset = self.get_capture_page_offset(obj)
+        if initial_offset:
+            params["offset"] = initial_offset
+
         return reverse_with_params(
             "sourceimage-list",
             request=self.context.get("request"),
-            params={"event": obj.pk},
+            params=params,
         )
 
-    def get_capture_page_offset(self, obj) -> int:
+    def get_capture_page_offset(self, obj) -> int | None:
+        """
+        Look up the source image (capture) that contains a specfic detection or occurrence.
+
+        Return the page offset for the capture to be used when requesting the capture list endpoint.
+        """
         request = self.context["request"]
         event = obj
         capture_with_subject = None
@@ -730,7 +741,7 @@ class EventSerializer(DefaultSerializer):
         if capture_with_subject:
             offset = event.captures.filter(timestamp__lt=capture_with_subject.timestamp).count()
         else:
-            offset = request.query_params.get("offset", 0)
+            offset = request.query_params.get("offset", None)
 
         return offset
 
