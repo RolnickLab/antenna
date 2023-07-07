@@ -1,3 +1,4 @@
+import datetime
 import urllib.parse
 
 from django.contrib.auth.models import Group, User
@@ -668,6 +669,7 @@ class EventSerializer(DefaultSerializer):
     first_capture = EventCaptureNestedSerializer(read_only=True)
     start = serializers.DateTimeField(read_only=True)
     end = serializers.DateTimeField(read_only=True)
+    capture_page_offset = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -691,6 +693,7 @@ class EventSerializer(DefaultSerializer):
             "captures",
             "first_capture",
             "summary_data",
+            "capture_page_offset",
         ]
 
     def get_captures(self, obj):
@@ -703,6 +706,33 @@ class EventSerializer(DefaultSerializer):
             request=self.context.get("request"),
             params={"event": obj.pk},
         )
+
+    def get_capture_page_offset(self, obj) -> int:
+        request = self.context["request"]
+        event = obj
+        capture_with_subject = None
+
+        occurrence_id = request.query_params.get("occurrence")
+        detection_id = request.query_params.get("detection")
+        capture_id = request.query_params.get("capture")
+        timestamp = request.query_params.get("timestamp")
+
+        if detection_id:
+            capture_with_subject = Detection.objects.get(pk=detection_id).source_image
+        elif occurrence_id:
+            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance()
+        elif capture_id:
+            capture_with_subject = SourceImage.objects.get(pk=capture_id)
+        elif timestamp:
+            timestamp = datetime.fromisoformat(timestamp)
+            capture_with_subject = event.captures.filter(timestamp=timestamp).first()
+
+        if capture_with_subject:
+            offset = event.captures.filter(timestamp__lt=capture_with_subject.timestamp).count()
+        else:
+            offset = request.query_params.get("offset", 0)
+
+        return offset
 
 
 class JobListSerializer(DefaultSerializer):
