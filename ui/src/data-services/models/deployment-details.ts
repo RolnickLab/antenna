@@ -26,7 +26,7 @@ export class DeploymentDetails extends Deployment {
   }
 
   get description(): string {
-    return `${this._deployment.description}`
+    return this._deployment.description
   }
 
   get exampleCaptures(): { src: string }[] {

@@ -36,6 +36,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         <CapturePicker
           activeCaptureId={activeCapture?.id}
           captures={captures}
+          detectionsMaxCount={session.detectionsMaxCount}
           hasMore={hasNextPage}
           isLoading={isLoading}
           onNext={fetchNextPage}

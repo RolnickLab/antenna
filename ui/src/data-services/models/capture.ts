@@ -43,7 +43,7 @@ export class Capture {
   }
 
   get src(): string {
-    return `${this._capture.url}`
+    return this._capture.url
   }
 
   get timeLabel(): string {

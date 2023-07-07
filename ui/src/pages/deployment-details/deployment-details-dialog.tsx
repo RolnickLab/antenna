@@ -1,28 +1,38 @@
+import { useDeploymentDetails } from 'data-services/hooks/deployments/useDeploymentsDetails'
 import { useUpdateDeployment } from 'data-services/hooks/deployments/useUpdateDeployment'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 import { DeploymentDetailsForm } from './deployment-details-form/deployment-details-form'
 import { DeploymentDetailsInfo } from './deployment-details-info'
 
-export const DeploymentDetailsDialog = ({
-  deployment,
-  open,
-  onOpenChange,
-}: {
-  deployment?: DeploymentDetails
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) => (
-  <Dialog.Root open={open} onOpenChange={onOpenChange}>
-    <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-      {deployment ? (
-        <DeploymentDetailsDialogContent deployment={deployment} />
-      ) : null}
-    </Dialog.Content>
-  </Dialog.Root>
-)
+export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
+  const navigate = useNavigate()
+  const { deployment, isLoading } = useDeploymentDetails(id)
+
+  return (
+    <Dialog.Root
+      open={!!id}
+      onOpenChange={() =>
+        navigate(
+          getRoute({ collection: 'deployments', keepSearchParams: true })
+        )
+      }
+    >
+      <Dialog.Content
+        ariaCloselabel={translate(STRING.CLOSE)}
+        isLoading={isLoading}
+      >
+        {deployment ? (
+          <DeploymentDetailsDialogContent deployment={deployment} />
+        ) : null}
+      </Dialog.Content>
+    </Dialog.Root>
+  )
+}
 
 const DeploymentDetailsDialogContent = ({
   deployment,

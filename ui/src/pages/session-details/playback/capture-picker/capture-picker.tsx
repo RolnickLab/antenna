@@ -15,6 +15,7 @@ import styles from './capture-picker.module.scss'
 export const CapturePicker = ({
   activeCaptureId,
   captures,
+  detectionsMaxCount,
   hasMore,
   isLoading,
   onNext,
@@ -22,6 +23,7 @@ export const CapturePicker = ({
 }: {
   activeCaptureId?: string
   captures: Capture[]
+  detectionsMaxCount: number
   hasMore?: boolean
   isLoading?: boolean
   onNext: () => void
@@ -29,10 +31,6 @@ export const CapturePicker = ({
 }) => {
   const activeCaptureIndex = captures.findIndex(
     (capture) => capture.id === activeCaptureId
-  )
-
-  const maxAmountDetections = Math.max(
-    ...captures.map((capture) => capture.numDetections)
   )
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -110,7 +108,7 @@ export const CapturePicker = ({
                 details: `${capture.numDetections} ${translate(
                   STRING.DETAILS_LABEL_DETECTIONS
                 )}`,
-                scale: capture.numDetections / maxAmountDetections,
+                scale: capture.numDetections / detectionsMaxCount,
                 timeLabel: capture.timeLabel,
               }}
               innerRef={captureRefs[capture.id]}

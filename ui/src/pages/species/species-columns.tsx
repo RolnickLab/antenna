@@ -39,6 +39,7 @@ export const columns: TableColumn<Species>[] = [
         to={getRoute({
           collection: 'species',
           itemId: item.id,
+          keepSearchParams: true,
         })}
       >
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />

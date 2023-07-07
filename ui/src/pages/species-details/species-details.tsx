@@ -2,19 +2,17 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
-import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
+import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { useMemo } from 'react'
 import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './species-details.module.scss'
 
-export const SpeciesDetails = ({ id }: { id: string }) => {
-  const { species } = useSpeciesDetails(id)
-
+export const SpeciesDetails = ({ species }: { species: Species }) => {
   const blueprintItems = useMemo(
     () =>
-      species?.occurrences.length
+      species.occurrences.length
         ? species?.occurrences
             .map((id) => species.getOccurrenceInfo(id))
             .filter((item): item is BlueprintItem => !!item)
@@ -25,10 +23,6 @@ export const SpeciesDetails = ({ id }: { id: string }) => {
         : [],
     [species]
   )
-
-  if (!species) {
-    return null
-  }
 
   const fields = [
     {

@@ -14,9 +14,9 @@ interface PlotProps {
   data: {
     x: (string | number)[]
     y: (string | number)[]
-    tickvals?: string[]
+    tickvals?: (string | number)[]
+    ticktext?: string[]
   }
-
   type?: 'bar' | 'scatter'
   showRangeSlider?: boolean
 }
@@ -82,6 +82,7 @@ export const Plot = ({
           zeroline: false,
           type: 'category',
           tickvals: data.tickvals,
+          ticktext: data.ticktext,
           ...(showRangeSlider
             ? {
                 range: [0, 3],

@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
+import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './dialog.module.scss'
 
 const Root = ({
@@ -24,14 +25,22 @@ const Trigger = ({ children }: { children: ReactNode }) => (
 const Content = ({
   ariaCloselabel,
   children,
+  isLoading,
   onOpenAutoFocus,
 }: {
   ariaCloselabel: string
   children: ReactNode
+  isLoading?: boolean
   onOpenAutoFocus?: (event: Event) => void
 }) => (
   <Dialog.Portal>
-    <Dialog.Overlay className={styles.dialogOverlay} />
+    <Dialog.Overlay className={styles.dialogOverlay}>
+      {isLoading ? (
+        <div className={styles.loadingWrapper}>
+          <LoadingSpinner />
+        </div>
+      ) : null}
+    </Dialog.Overlay>
     <Dialog.Content className={styles.dialog} onOpenAutoFocus={onOpenAutoFocus}>
       <div className={styles.dialogContent}>{children}</div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
@@ -54,4 +63,4 @@ const Header = ({
   </div>
 )
 
-export { Root, Trigger, Content, Header }
+export { Content, Header, Root, Trigger }

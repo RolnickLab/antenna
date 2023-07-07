@@ -1,5 +1,6 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FilterSettings } from 'components/filter-settings/filter-settings'
+import { useOccurrenceDetails } from 'data-services/hooks/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -12,6 +13,7 @@ import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
+import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
@@ -21,7 +23,6 @@ import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
   const { id } = useParams()
-  const navigate = useNavigate()
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -102,11 +103,30 @@ export const Occurrences = () => {
         />
       ) : null}
 
-      <Dialog.Root open={!!id} onOpenChange={() => navigate('/occurrences')}>
-        <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-          {id ? <OccurrenceDetails id={id} /> : null}
-        </Dialog.Content>
-      </Dialog.Root>
+      {!isLoading && id ? <OccurrenceDetailsDialog id={id} /> : null}
     </>
+  )
+}
+
+const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
+  const navigate = useNavigate()
+  const { occurrence, isLoading } = useOccurrenceDetails(id)
+
+  return (
+    <Dialog.Root
+      open={!!id}
+      onOpenChange={() =>
+        navigate(
+          getRoute({ collection: 'occurrences', keepSearchParams: true })
+        )
+      }
+    >
+      <Dialog.Content
+        ariaCloselabel={translate(STRING.CLOSE)}
+        isLoading={isLoading}
+      >
+        {occurrence ? <OccurrenceDetails occurrence={occurrence} /> : null}
+      </Dialog.Content>
+    </Dialog.Root>
   )
 }

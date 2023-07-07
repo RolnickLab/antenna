@@ -17,7 +17,11 @@ export const OccurrenceGallery = ({
         image: o.images[0],
         subTitle: `(${o.determinationScore})`,
         title: o.determinationLabel,
-        to: getRoute({ collection: 'occurrences', itemId: o.id }),
+        to: getRoute({
+          collection: 'occurrences',
+          itemId: o.id,
+          keepSearchParams: true,
+        }),
       })),
     [occurrences]
   )
