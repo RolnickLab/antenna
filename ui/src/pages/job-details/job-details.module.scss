@@ -50,4 +50,8 @@
     grid-template-columns: 1fr;
     gap: 32px;
   }
+
+  .sectionStatus {
+    grid-column: auto;
+  }
 }
