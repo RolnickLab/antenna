@@ -143,6 +143,7 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
             "latitude",
             "longitude",
             "events_count",
+            "captures_count",
             "detections_count",
             "occurrences_count",
             "taxa_count",
