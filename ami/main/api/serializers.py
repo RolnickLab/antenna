@@ -724,7 +724,7 @@ class EventSerializer(DefaultSerializer):
         elif capture_id:
             capture_with_subject = SourceImage.objects.get(pk=capture_id)
         elif timestamp:
-            timestamp = datetime.fromisoformat(timestamp)
+            timestamp = datetime.datetime.fromisoformat(timestamp)
             capture_with_subject = event.captures.filter(timestamp=timestamp).first()
 
         if capture_with_subject:
