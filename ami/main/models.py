@@ -837,7 +837,7 @@ default_job_config = {
             "key": "object_detection",
             "params": [
                 {"key": "model", "name": "Localization Model", "value": "yolov5s"},
-                {"key": "batch_size", "name": "Batch Size", "value": 8},
+                {"key": "batch_size", "name": "Batch size", "value": 8},
                 # {"key": "threshold", "name": "Threshold", "value": 0.5},
                 {"key": "input_size", "name": "Images processed", "read_only": True},
                 {"key": "output_size", "name": "Objects detected", "read_only": True},
@@ -848,8 +848,7 @@ default_job_config = {
             "key": "binary_classification",
             "params": [
                 {"key": "algorithm", "name": "Binary classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch Size", "value": 8},
-                # {"key": "threshold", "name": "Threshold", "value": 0.5},
+                {"key": "batch_size", "name": "Batch size", "value": 8},
                 {"key": "input_size", "name": "Objects processed", "read_only": True},
                 {"key": "output_size", "name": "Objects of interest", "read_only": True},
             ],
@@ -859,7 +858,8 @@ default_job_config = {
             "key": "species_classification",
             "params": [
                 {"key": "algorithm", "name": "Species classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch Size", "value": 8},
+                {"key": "batch_size", "name": "Batch size", "value": 8},
+                {"key": "threshold", "name": "Confidence threshold", "value": 0.5},
                 {"key": "input_size", "name": "Species processed", "read_only": True},
                 {"key": "output_size", "name": "Species classified", "read_only": True},
             ],
@@ -912,11 +912,13 @@ example_non_model_config = {
 }
 
 default_job_progress = {
+    "summary": {"status": "PENDING", "progress": 0, "status_label": "0% completed."},
     "stages": [
         {
             "key": "object_detection",
             "status": "PENDING",
             "progress": 0,
+            "status_label": "0% completed.",
             "time_elapsed": 0,
             "time_remaining": None,
             "input_size": 0,
@@ -926,6 +928,7 @@ default_job_progress = {
             "key": "binary_classification",
             "status": "PENDING",
             "progress": 0,
+            "status_label": "0% completed.",
             "time_elapsed": 0,
             "time_remaining": None,
             "input_size": 0,
@@ -935,6 +938,7 @@ default_job_progress = {
             "key": "species_classification",
             "status": "PENDING",
             "progress": 0,
+            "status_label": "0% completed.",
             "time_elapsed": 0,
             "time_remaining": None,
             "input_size": 0,
@@ -949,7 +953,7 @@ default_job_progress = {
             "input_size": 0,
             "output_size": 0,
         },
-    ]
+    ],
 }
 
 
@@ -960,13 +964,13 @@ class Job(BaseModel):
     """
 
     name = models.CharField(max_length=255)
-    config = models.JSONField(default=dict)
+    config = models.JSONField(default=default_job_config, null=True, blank=False)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=255, default="PENDING", choices=as_choices(_JOB_STATES))
-    progress = models.JSONField(null=True, blank=True)
+    progress = models.JSONField(default=default_job_progress, null=True, blank=False)
     result = models.JSONField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="jobs")

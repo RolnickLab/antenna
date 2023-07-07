@@ -1,3 +1,4 @@
+import datetime
 import urllib.parse
 
 from django.contrib.auth.models import Group, User
@@ -396,6 +397,9 @@ class TaxonSourceImageNestedSerializer(DefaultSerializer):
         )
 
     def get_page_offset(self, obj) -> int:
+        # @TODO this may not be correct. Test or remove if unnecessary.
+        # the Occurrence to Session navigation in the UI will be using
+        # another method.
         return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
 
 
@@ -668,6 +672,7 @@ class EventSerializer(DefaultSerializer):
     first_capture = EventCaptureNestedSerializer(read_only=True)
     start = serializers.DateTimeField(read_only=True)
     end = serializers.DateTimeField(read_only=True)
+    capture_page_offset = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -691,6 +696,7 @@ class EventSerializer(DefaultSerializer):
             "captures",
             "first_capture",
             "summary_data",
+            "capture_page_offset",
         ]
 
     def get_captures(self, obj):
@@ -698,11 +704,61 @@ class EventSerializer(DefaultSerializer):
         Return URL to the captures endpoint filtered by this event.
         """
 
+        params = {"event": obj.pk}
+
+        initial_offset = self.get_capture_page_offset(obj)
+        if initial_offset:
+            params["offset"] = initial_offset
+
         return reverse_with_params(
             "sourceimage-list",
             request=self.context.get("request"),
-            params={"event": obj.pk},
+            params=params,
         )
+
+    def get_capture_page_offset(self, obj) -> int | None:
+        """
+        Look up the source image (capture) that contains a specfic detection or occurrence.
+
+        Return the page offset for the capture to be used when requesting the capture list endpoint.
+        """
+        request = self.context["request"]
+        event = obj
+        capture_with_subject = None
+
+        occurrence_id = request.query_params.get("occurrence")
+        detection_id = request.query_params.get("detection")
+        capture_id = request.query_params.get("capture")
+        timestamp = request.query_params.get("timestamp")
+
+        if detection_id:
+            capture_with_subject = Detection.objects.get(pk=detection_id).source_image
+        elif occurrence_id:
+            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance()
+        elif capture_id:
+            capture_with_subject = SourceImage.objects.get(pk=capture_id)
+        elif timestamp:
+            timestamp = datetime.datetime.fromisoformat(timestamp)
+            capture_with_subject = event.captures.filter(timestamp=timestamp).first()
+
+        if capture_with_subject:
+            # Assert that the capture is part of the event
+            # @TODO add logging and return 404 if not found
+            assert (
+                capture_with_subject.event == event
+            ), f"Capture {capture_with_subject.pk} is not part of Event {event.pk}"
+            capture_timestamps = event.captures.values_list("timestamp", flat=True)
+            subject_index = list(capture_timestamps).index(capture_with_subject.timestamp)
+            offset = subject_index
+            # This query is not working as expected. The offset is not correct.
+            # offset = (
+            #     SourceImage.objects.filter(event=event, timestamp__lt=capture_with_subject.timestamp)
+            #     .count()
+            # )
+        else:
+            offset = request.query_params.get("offset", None)
+
+        return offset
 
 
 class JobListSerializer(DefaultSerializer):
@@ -718,6 +774,7 @@ class JobListSerializer(DefaultSerializer):
             "project",
             "deployment",
             "status",
+            "progress",
             "started_at",
             "finished_at",
             # "duration",
@@ -730,24 +787,19 @@ class JobListSerializer(DefaultSerializer):
 
 
 class JobSerializer(DefaultSerializer):
-    config = serializers.SerializerMethodField()
-    progress = serializers.SerializerMethodField()
+    project = ProjectNestedSerializer(read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(write_only=True, queryset=Project.objects.all(), source="project")
+    config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
+    progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
 
     class Meta:
         model = Job
         fields = JobListSerializer.Meta.fields + [
             "config",
-            "progress",
             "result",
+            "project",
+            "project_id",
         ]
-
-    def get_config(self, obj):
-        if not obj.config:
-            return Job.default_config()
-
-    def get_progress(self, obj):
-        if not obj.progress:
-            return Job.default_progress()
 
 
 class StorageStatusSerializer(serializers.Serializer):
