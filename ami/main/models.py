@@ -494,6 +494,9 @@ class SourceImage(BaseModel):
         url = urllib.parse.urljoin(_SOURCE_IMAGES_URL_BASE, self.path)
         return url
 
+    class Meta:
+        ordering = ("deployment", "event", "timestamp")
+
 
 @final
 class ClassificationResult(BaseModel):
