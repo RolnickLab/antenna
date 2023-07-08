@@ -85,10 +85,11 @@ export const CapturePicker = ({
   }, [goToPrev, goToNext])
 
   // Scroll active element into view
-  const currentCaptureRef = activeCaptureId
-    ? captureRefs[activeCaptureId]?.current
-    : undefined
+  const _activeCaptureId = captures.length ? activeCaptureId : undefined
   useEffect(() => {
+    const currentCaptureRef = _activeCaptureId
+      ? captureRefs[_activeCaptureId]?.current
+      : undefined
     if (!currentCaptureRef) {
       return
     }
@@ -97,7 +98,7 @@ export const CapturePicker = ({
       block: 'nearest',
       inline: 'nearest',
     })
-  }, [currentCaptureRef])
+  }, [_activeCaptureId])
 
   if (!captures.length) {
     return null

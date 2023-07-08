@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
-import { ReactNode, RefObject, useCallback, useEffect } from 'react'
+import { ReactNode, RefObject, useCallback } from 'react'
 import styles from './capture-list.module.scss'
 import { useIntersectionObserver } from './useIntersectionObserver'
 
@@ -37,13 +37,6 @@ export const CaptureList = ({
 
   const nextLoader = useIntersectionObserver({ onIntersect: _onNext })
   const prevLoader = useIntersectionObserver({ onIntersect: _onPrev })
-
-  useEffect(() => {
-    const scrollContainer = innerRef?.current
-    if (scrollContainer) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight
-    }
-  }, [innerRef?.current])
 
   return (
     <div ref={innerRef} className={styles.captures}>
