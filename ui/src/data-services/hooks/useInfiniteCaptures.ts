@@ -8,7 +8,7 @@ const COLLECTION = 'captures'
 
 const convertServerRecord = (record: ServerCapture) => new Capture(record)
 
-const PER_PAGE = 5
+const PER_PAGE = 20
 
 const fetchCaptures = async (sessionId: string, page: number) => {
   const fetchUrl = getFetchUrl({
