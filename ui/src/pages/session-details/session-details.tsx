@@ -1,6 +1,7 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessionDetails } from 'data-services/hooks/useSessionDetails'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { Plot } from 'design-system/components/plot/plot'
 import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
 import { useLocation, useParams } from 'react-router'
@@ -55,13 +56,25 @@ export const SessionDetails = () => {
       </div>
       <div className={styles.details}>
         <div className={styles.detailsContainer}>
-          <SessionInfo session={session} />
-        </div>
-        <div className={styles.detailsContainer}>
-          <div className={styles.graphContainer}>
-            <p className={styles.text}>Area for session graphs</p>
+          <div className={styles.detailsContent}>
+            <div className={styles.sessionInfo}>
+              <SessionInfo session={session} />
+            </div>
           </div>
         </div>
+        {session.summaryData.map((summary, index) => (
+          <div className={styles.detailsContainer}>
+            <div className={styles.detailsContent}>
+              <Plot
+                key={index}
+                title={summary.title}
+                data={summary.data}
+                orientation={summary.orientation}
+                type={summary.type}
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

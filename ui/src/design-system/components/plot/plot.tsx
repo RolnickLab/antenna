@@ -11,6 +11,7 @@ const tooltipBorderColor = '#222426'
 
 interface PlotProps {
   title: string
+  orientation?: 'h' | 'v'
   data: {
     x: (string | number)[]
     y: (string | number)[]
@@ -24,6 +25,7 @@ interface PlotProps {
 export const Plot = ({
   title,
   data,
+  orientation,
   type = 'bar',
   showRangeSlider,
 }: PlotProps) => (
@@ -31,7 +33,8 @@ export const Plot = ({
     <_Plot
       data={[
         {
-          type: type,
+          orientation,
+          type,
           x: data.x,
           y: data.y,
           marker: {
@@ -75,14 +78,15 @@ export const Plot = ({
           gridcolor: borderColor,
           zeroline: true,
           zerolinecolor: borderColor,
+          automargin: true,
         },
         xaxis: {
           color: textColor,
           showgrid: false,
           zeroline: false,
-          type: 'category',
           tickvals: data.tickvals,
           ticktext: data.ticktext,
+          automargin: true,
           ...(showRangeSlider
             ? {
                 range: [0, 3],
