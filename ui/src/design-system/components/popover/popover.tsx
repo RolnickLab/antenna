@@ -20,22 +20,10 @@ const Root = ({
 const Trigger = ({
   asChild = true,
   children,
-  onMouseEnter,
-  onMouseLeave,
 }: {
   asChild?: boolean
   children: ReactNode
-  onMouseEnter?: () => void
-  onMouseLeave?: () => void
-}) => (
-  <Popover.Trigger
-    asChild={asChild}
-    onMouseEnter={onMouseEnter}
-    onMouseLeave={onMouseLeave}
-  >
-    {children}
-  </Popover.Trigger>
-)
+}) => <Popover.Trigger asChild={asChild}>{children}</Popover.Trigger>
 
 const Content = ({
   ariaCloselabel,
@@ -71,4 +59,4 @@ const Content = ({
   </Popover.Portal>
 )
 
-export { Root, Trigger, Content }
+export { Content, Root, Trigger }
