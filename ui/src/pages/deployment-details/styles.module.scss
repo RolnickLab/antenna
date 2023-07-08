@@ -5,6 +5,7 @@
 .buttonWrapper {
   display: flex;
   gap: 16px;
+  position: relative;
 }
 
 .content {
@@ -53,6 +54,13 @@
 
 .exampleCapturesContainer {
   margin: 32px 0;
+}
+
+.formError {
+  @include paragraph-x-small();
+  padding: 16px 32px;
+  color: $color-destructive-600;
+  border-bottom: 2px solid $color-neutral-100;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

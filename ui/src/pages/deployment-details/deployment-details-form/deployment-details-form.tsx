@@ -16,6 +16,7 @@ import { Section } from './types'
 
 export const DeploymentDetailsForm = ({
   deployment,
+  serverError,
   isLoading,
   startValid,
   title,
@@ -23,6 +24,7 @@ export const DeploymentDetailsForm = ({
   onSubmit,
 }: {
   deployment: DeploymentDetails
+  serverError?: any
   isLoading?: boolean
   startValid?: boolean
   title: string
@@ -64,6 +66,7 @@ export const DeploymentDetailsForm = ({
         <SaveButton isLoading={isLoading} onSubmit={onSubmit} />
       </div>
     </Dialog.Header>
+    {serverError && <FormError error={serverError} />}
     <div className={styles.content}>
       <div className={styles.section}>
         <FormStepper />
@@ -170,4 +173,23 @@ const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
     default:
       return null
   }
+}
+
+const FormError = ({ error }: { error: any }) => {
+  let message = 'Unknown error'
+  if (error.response?.data) {
+    const [field, details] = Object.entries(error.response.data)[0]
+    if (field) {
+      message = `Please check field "${field}". ${details}`
+    }
+  } else if (error.message) {
+    message = error.message
+  }
+
+  return (
+    <div className={styles.formError}>
+      <span>Could not save: </span>
+      <span>{message}</span>
+    </div>
+  )
 }
