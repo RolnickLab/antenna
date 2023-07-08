@@ -29,6 +29,8 @@ export class OccurrenceDetails extends Occurrence {
 
     return {
       id,
+      captureId:
+        detection.capture !== undefined ? `${detection.capture_id}` : undefined,
       image: {
         src: detection.url,
         width: detection.width,
