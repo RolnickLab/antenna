@@ -6,6 +6,7 @@ import { useContext, useEffect } from 'react'
 import { useLocation, useParams } from 'react-router'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { Playback } from './playback/playback'
+import { useActiveCaptureId } from './playback/useActiveCapture'
 import { useActiveOccurrences } from './playback/useActiveOccurrences'
 import styles from './session-details.module.scss'
 import { SessionInfo } from './session-info/session-info'
@@ -15,9 +16,10 @@ export const SessionDetails = () => {
   const { id } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { activeOccurrences } = useActiveOccurrences()
+  const { activeCaptureId } = useActiveCaptureId()
   const { session, isLoading, isFetching, error } = useSessionDetails(
     id as string,
-    activeOccurrences[0]
+    { capture: activeCaptureId, occurrence: activeOccurrences[0] }
   )
 
   useEffect(() => {
