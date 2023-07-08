@@ -7,8 +7,6 @@ import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-
 import { MarkerPosition } from 'design-system/map/types'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
-import { ConnectionStatus } from './connection-status/connection-status'
-import { useConnectionStatus } from './connection-status/useConnectionStatus'
 import styles from './styles.module.scss'
 
 export const DeploymentDetailsInfo = ({
@@ -20,10 +18,6 @@ export const DeploymentDetailsInfo = ({
   title: string
   onEditClick: () => void
 }) => {
-  const { status, refreshStatus, lastUpdated } = useConnectionStatus(
-    deployment.path
-  )
-
   const markers = useMemo(
     () => [
       {
@@ -87,11 +81,6 @@ export const DeploymentDetailsInfo = ({
               <InputValue
                 label={translate(STRING.FIELD_LABEL_PATH)}
                 value={deployment.path}
-              />
-              <ConnectionStatus
-                status={status}
-                onRefreshClick={refreshStatus}
-                lastUpdated={lastUpdated}
               />
             </div>
             <div className={styles.sectionRow}>
