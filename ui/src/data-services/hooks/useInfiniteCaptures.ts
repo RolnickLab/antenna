@@ -8,13 +8,14 @@ const COLLECTION = 'captures'
 
 const convertServerRecord = (record: ServerCapture) => new Capture(record)
 
-const PER_PAGE = 20
+const PER_PAGE = 5
 
 const fetchCaptures = async (sessionId: string, page: number) => {
   const fetchUrl = getFetchUrl({
     collection: COLLECTION,
     params: {
       pagination: { page, perPage: PER_PAGE },
+      sort: { field: 'timestamp', order: 'asc' },
       filters: [{ field: 'event', value: sessionId }],
     },
   })
