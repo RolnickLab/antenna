@@ -15,7 +15,7 @@ const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
 export const useUpdateDeployment = (id: string) => {
   const queryClient = useQueryClient()
 
-  const { mutate, isLoading, isError, isSuccess } = useMutation({
+  const { mutate, isLoading, error, isSuccess } = useMutation({
     mutationFn: (fieldValues: DeploymentFieldValues) =>
       axios.patch(
         `${API_URL}/${COLLECTION}/${id}/`,
@@ -26,5 +26,5 @@ export const useUpdateDeployment = (id: string) => {
     },
   })
 
-  return { updateDeployment: mutate, isLoading, isError, isSuccess }
+  return { updateDeployment: mutate, isLoading, error, isSuccess }
 }

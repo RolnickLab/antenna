@@ -46,7 +46,7 @@ export const SectionGeneral = ({ onNext }: { onNext: () => void }) => {
     >
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>
-          {translate(STRING.DETAILS_LABEL_GENERAL)}
+          {translate(STRING.FIELD_LABEL_GENERAL)}
         </h2>
         <div className={styles.sectionContent}>
           <div className={styles.sectionRow}>

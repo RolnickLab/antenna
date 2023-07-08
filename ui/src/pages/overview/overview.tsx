@@ -36,8 +36,9 @@ export const Overview = () => {
         <div className={styles.plotsContent}>
           <span className={styles.label}>Example plots</span>
           <div className={styles.plots}>
-            {project.summaryData.map((summary) => (
+            {project.summaryData.map((summary, index) => (
               <Plot
+                key={index}
                 title={summary.title}
                 data={summary.data}
                 type={summary.type}

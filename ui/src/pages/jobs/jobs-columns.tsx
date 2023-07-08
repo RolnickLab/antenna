@@ -25,7 +25,7 @@ export const columns: TableColumn<Job>[] = [
   },
   {
     id: 'project',
-    name: translate(STRING.TABLE_COLUMN_PROJECT),
+    name: translate(STRING.FIELD_LABEL_PROJECT),
     renderCell: (item: Job) => <BasicTableCell value={item.project} />,
   },
   {
@@ -40,7 +40,7 @@ export const columns: TableColumn<Job>[] = [
   },
   {
     id: 'status',
-    name: translate(STRING.TABLE_COLUMN_STATUS),
+    name: translate(STRING.FIELD_LABEL_STATUS),
     renderCell: (item: Job) => {
       const status = (() => {
         switch (item.status) {

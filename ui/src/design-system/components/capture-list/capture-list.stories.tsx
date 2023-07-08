@@ -11,8 +11,8 @@ export default {
   component: CaptureList,
 } as Meta
 
-const TOTAL = 100
-const PAGE_SIZE = 20
+const TOTAL = 10
+const PAGE_SIZE = 2
 
 const CaptureListTemplate: Story = () => {
   const [captures, setCaptures] = useState(generateCaptures(PAGE_SIZE))
@@ -21,10 +21,6 @@ const CaptureListTemplate: Story = () => {
   const hasMore = captures.length < TOTAL
 
   const onNext = () => {
-    if (!hasMore || isLoading) {
-      return
-    }
-
     // Fake async API call
     setIsLoading(true)
     setTimeout(() => {
@@ -42,7 +38,7 @@ const CaptureListTemplate: Story = () => {
         backgroundColor: '#222426',
       }}
     >
-      <CaptureList hasMore={hasMore} isLoading={isLoading} onNext={onNext}>
+      <CaptureList hasNext={hasMore} isLoadingNext={isLoading} onNext={onNext}>
         {captures.map((capture) => (
           <CaptureRow
             key={capture.id}

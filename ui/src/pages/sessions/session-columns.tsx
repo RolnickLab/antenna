@@ -14,7 +14,7 @@ import { STRING, translate } from 'utils/language'
 export const columns: TableColumn<Session>[] = [
   {
     id: 'snapshots',
-    name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -31,7 +31,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'session',
-    name: translate(STRING.TABLE_COLUMN_SESSION),
+    name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Session) => (
       <Link to={getRoute({ collection: 'sessions', itemId: item.id })}>
         <BasicTableCell value={item.label} theme={CellTheme.Primary} />
@@ -40,7 +40,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'deployment',
-    name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
+    name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     renderCell: (item: Session) => (
       <Link
         to={getRoute({ collection: 'deployments', itemId: item.deploymentId })}
@@ -55,14 +55,14 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'date',
     sortField: 'start',
-    name: translate(STRING.TABLE_COLUMN_DATE),
+    name: translate(STRING.FIELD_LABEL_DATE),
     renderCell: (item: Session) => (
       <BasicTableCell value={item.datespanLabel} />
     ),
   },
   {
     id: 'time',
-    name: translate(STRING.TABLE_COLUMN_TIME),
+    name: translate(STRING.FIELD_LABEL_TIME),
     renderCell: (item: Session) => (
       <BasicTableCell value={item.timespanLabel} />
     ),
@@ -70,14 +70,14 @@ export const columns: TableColumn<Session>[] = [
   {
     id: 'duration',
     sortField: 'duration',
-    name: translate(STRING.TABLE_COLUMN_DURATION),
+    name: translate(STRING.FIELD_LABEL_DURATION),
     renderCell: (item: Session) => (
       <BasicTableCell value={item.durationLabel} />
     ),
   },
   {
     id: 'captures',
-    name: translate(STRING.TABLE_COLUMN_CAPTURES),
+    name: translate(STRING.FIELD_LABEL_CAPTURES),
     sortField: 'captures_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -86,7 +86,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'detections',
-    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
+    name: translate(STRING.FIELD_LABEL_DETECTIONS),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -96,7 +96,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'occurrences',
-    name: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -114,7 +114,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'species',
-    name: translate(STRING.TABLE_COLUMN_SPECIES),
+    name: translate(STRING.FIELD_LABEL_SPECIES),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -131,7 +131,7 @@ export const columns: TableColumn<Session>[] = [
   },
   {
     id: 'avg-temp',
-    name: translate(STRING.TABLE_COLUMN_AVG_TEMP),
+    name: translate(STRING.FIELD_LABEL_AVG_TEMP),
     renderCell: (item: Session) => <BasicTableCell value={item.tempLabel} />,
   },
 ]

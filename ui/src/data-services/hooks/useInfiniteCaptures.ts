@@ -27,27 +27,39 @@ const fetchCaptures = async (sessionId: string, page: number) => {
   return {
     results: res.data.results.map(convertServerRecord),
     count: res.data.count,
+    page,
   }
 }
 
-export const useInfiniteCaptures = (sessionId: string) => {
+export const useInfiniteCaptures = (sessionId: string, offset?: number) => {
   const queryKey = [COLLECTION, { event: sessionId }]
+  const startPage = offset !== undefined ? Math.floor(offset / PER_PAGE) : 0
 
-  const { data, hasNextPage, fetchNextPage, isFetching } = useInfiniteQuery(
+  const {
+    data,
+    fetchNextPage,
+    fetchPreviousPage,
+    isFetchingNextPage,
+    isFetchingPreviousPage,
+    hasNextPage,
+    hasPreviousPage,
+  } = useInfiniteQuery(
     queryKey,
-    ({ pageParam = 1 }) => fetchCaptures(sessionId, pageParam - 1),
+    ({ pageParam = startPage }) => fetchCaptures(sessionId, pageParam),
     {
-      getNextPageParam: (lastPage, allPages) => {
-        const allItems = allPages.map((page) => page.results).flat(1)
-
-        if (
-          allItems.length >= lastPage.count ||
-          lastPage.results.length < PER_PAGE
-        ) {
+      getNextPageParam: (lastPage) => {
+        if ((lastPage.page + 1) * PER_PAGE >= lastPage.count) {
           return undefined
         }
 
-        return allPages.length + 1
+        return lastPage.page + 1
+      },
+      getPreviousPageParam: (firstPage) => {
+        if (firstPage.page === 0) {
+          return undefined
+        }
+
+        return firstPage.page - 1
       },
     }
   )
@@ -59,8 +71,11 @@ export const useInfiniteCaptures = (sessionId: string) => {
 
   return {
     captures,
-    isLoading: isFetching,
-    hasNextPage,
     fetchNextPage,
+    fetchPreviousPage,
+    isFetchingNextPage,
+    isFetchingPreviousPage,
+    hasNextPage,
+    hasPreviousPage,
   }
 }

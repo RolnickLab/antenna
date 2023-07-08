@@ -18,10 +18,8 @@ export const getFetchUrl = ({
     queryParams.ordering = `${order}${field}`
   }
   if (params?.pagination) {
-    queryParams.limit = `${params?.pagination.perPage}`
-    queryParams.offset = `${
-      params?.pagination.perPage * params?.pagination.page
-    }`
+    queryParams.limit = `${params.pagination.perPage}`
+    queryParams.offset = `${params.pagination.perPage * params.pagination.page}`
   }
   if (params?.filters?.length) {
     params.filters.forEach((filter) => {
@@ -32,6 +30,25 @@ export const getFetchUrl = ({
   }
 
   const baseUrl = `${API_URL}/${collection}`
+  const queryString = new URLSearchParams(queryParams).toString()
+
+  if (!queryString.length) {
+    return baseUrl
+  }
+
+  return `${baseUrl}?${queryString}`
+}
+
+export const getFetchDetailsUrl = ({
+  collection,
+  itemId,
+  queryParams = {},
+}: {
+  collection: string
+  itemId: string
+  queryParams?: QueryParams
+}) => {
+  const baseUrl = `${API_URL}/${collection}/${itemId}`
   const queryString = new URLSearchParams(queryParams).toString()
 
   if (!queryString.length) {

@@ -16,17 +16,23 @@ export const CapturePicker = ({
   activeCaptureId,
   captures,
   detectionsMaxCount,
-  hasMore,
-  isLoading,
+  hasNext,
+  hasPrev,
+  isLoadingNext,
+  isLoadingPrev,
   onNext,
+  onPrev,
   setActiveCaptureId,
 }: {
   activeCaptureId?: string
   captures: Capture[]
   detectionsMaxCount: number
-  hasMore?: boolean
-  isLoading?: boolean
+  hasNext?: boolean
+  hasPrev?: boolean
+  isLoadingNext?: boolean
+  isLoadingPrev?: boolean
   onNext: () => void
+  onPrev: () => void
   setActiveCaptureId: (captureId: string) => void
 }) => {
   const activeCaptureIndex = captures.findIndex(
@@ -90,13 +96,20 @@ export const CapturePicker = ({
     })
   }, [activeCaptureId])
 
+  if (!captures.length) {
+    return null
+  }
+
   return (
     <>
       <CaptureList
         innerRef={scrollContainerRef}
-        hasMore={hasMore}
-        isLoading={isLoading}
+        hasNext={hasNext}
+        hasPrev={hasPrev}
+        isLoadingNext={isLoadingNext}
+        isLoadingPrev={isLoadingPrev}
         onNext={onNext}
+        onPrev={onPrev}
       >
         {captures.map((capture) => {
           const isActive = activeCaptureId === capture.id
@@ -106,7 +119,7 @@ export const CapturePicker = ({
               key={capture.id}
               capture={{
                 details: `${capture.numDetections} ${translate(
-                  STRING.DETAILS_LABEL_DETECTIONS
+                  STRING.FIELD_LABEL_DETECTIONS
                 )}`,
                 scale: capture.numDetections / detectionsMaxCount,
                 timeLabel: capture.timeLabel,

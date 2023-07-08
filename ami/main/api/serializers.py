@@ -704,7 +704,7 @@ class EventSerializer(DefaultSerializer):
         Return URL to the captures endpoint filtered by this event.
         """
 
-        params = {"event": obj.pk}
+        params = {"event": obj.pk, "ordering": "timestamp"}
 
         initial_offset = self.get_capture_page_offset(obj)
         if initial_offset:
@@ -741,20 +741,15 @@ class EventSerializer(DefaultSerializer):
             timestamp = datetime.datetime.fromisoformat(timestamp)
             capture_with_subject = event.captures.filter(timestamp=timestamp).first()
 
-        if capture_with_subject:
+        if capture_with_subject and capture_with_subject.event:
             # Assert that the capture is part of the event
             # @TODO add logging and return 404 if not found
-            assert (
-                capture_with_subject.event == event
-            ), f"Capture {capture_with_subject.pk} is not part of Event {event.pk}"
-            capture_timestamps = event.captures.values_list("timestamp", flat=True)
-            subject_index = list(capture_timestamps).index(capture_with_subject.timestamp)
-            offset = subject_index
-            # This query is not working as expected. The offset is not correct.
-            # offset = (
-            #     SourceImage.objects.filter(event=event, timestamp__lt=capture_with_subject.timestamp)
-            #     .count()
-            # )
+            assert capture_with_subject.event.pk == event.pk, (
+                f"Capture {capture_with_subject.pk} is not part of Event {event.pk} "
+                f"(It belongs to Event {capture_with_subject.event.pk})"
+            )
+            # This is only reliable if the captures are ordered by timestamp. Which is the default sort order.
+            offset = SourceImage.objects.filter(event=event, timestamp__lt=capture_with_subject.timestamp).count()
         else:
             offset = request.query_params.get("offset", None)
 

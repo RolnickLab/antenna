@@ -40,7 +40,9 @@ const DeploymentDetailsDialogContent = ({
   deployment: DeploymentDetails
 }) => {
   const [isEditing, setIsEditing] = useState(false)
-  const { updateDeployment, isLoading } = useUpdateDeployment(deployment?.id)
+  const { updateDeployment, isLoading, error } = useUpdateDeployment(
+    deployment?.id
+  )
 
   useEffect(() => {
     // Reset to view mode when a new deployment is selected
@@ -52,15 +54,16 @@ const DeploymentDetailsDialogContent = ({
       {!isEditing ? (
         <DeploymentDetailsInfo
           deployment={deployment}
-          title={translate(STRING.DETAILS_LABEL_DEPLOYMENT_DETAILS)}
+          title={translate(STRING.DIALOG_DEPLOYMENT_DETAILS)}
           onEditClick={() => setIsEditing(true)}
         />
       ) : (
         <DeploymentDetailsForm
           deployment={deployment}
+          serverError={error}
           isLoading={isLoading}
           startValid
-          title={translate(STRING.DETAILS_LABEL_EDIT_DEPLOYMENT)}
+          title={translate(STRING.DIALOG_EDIT_DEPLOYMENT)}
           onCancelClick={() => setIsEditing(false)}
           onSubmit={(data) => {
             updateDeployment(data)

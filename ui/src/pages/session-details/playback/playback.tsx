@@ -9,10 +9,13 @@ import { useActiveCapture } from './useActiveCapture'
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const {
     captures = [],
-    hasNextPage,
-    isLoading,
     fetchNextPage,
-  } = useInfiniteCaptures(session.id)
+    fetchPreviousPage,
+    isFetchingNextPage,
+    isFetchingPreviousPage,
+    hasNextPage,
+    hasPreviousPage,
+  } = useInfiniteCaptures(session.id, session.captureOffset)
   const { activeCapture, setActiveCapture } = useActiveCapture(captures)
   const [showOverlay, setShowOverlay] = useState(false)
 
@@ -37,9 +40,12 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           activeCaptureId={activeCapture?.id}
           captures={captures}
           detectionsMaxCount={session.detectionsMaxCount}
-          hasMore={hasNextPage}
-          isLoading={isLoading}
+          hasNext={hasNextPage}
+          hasPrev={hasPreviousPage}
+          isLoadingNext={isFetchingNextPage}
+          isLoadingPrev={isFetchingPreviousPage}
           onNext={fetchNextPage}
+          onPrev={fetchPreviousPage}
           setActiveCaptureId={(captureId) => {
             const capture = captures.find((c) => c.id === captureId)
             if (capture) {

@@ -43,32 +43,35 @@ export const DeploymentDetailsInfo = ({
       <div className={styles.content}>
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>
-            {translate(STRING.DETAILS_LABEL_GENERAL)}
+            {translate(STRING.FIELD_LABEL_GENERAL)}
           </h2>
           <div className={styles.sectionContent}>
             <div className={styles.sectionRow}>
               <InputValue
-                label={translate(STRING.DETAILS_LABEL_NAME)}
+                label={translate(STRING.FIELD_LABEL_NAME)}
                 value={deployment.name}
               />
-              <InputValue label="Description" value={deployment.description} />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
+                value={deployment.description}
+              />
             </div>
           </div>
         </div>
 
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>
-            {translate(STRING.DETAILS_LABEL_LOCATION)}
+            {translate(STRING.FIELD_LABEL_LOCATION)}
           </h2>
           <div className={styles.sectionContent}>
             <MultiMarkerMap markers={markers} />
             <div className={styles.sectionRow}>
               <InputValue
-                label={translate(STRING.DETAILS_LABEL_LATITUDE)}
+                label={translate(STRING.FIELD_LABEL_LATITUDE)}
                 value={deployment.latitude}
               />
               <InputValue
-                label={translate(STRING.DETAILS_LABEL_LONGITUDE)}
+                label={translate(STRING.FIELD_LABEL_LONGITUDE)}
                 value={deployment.longitude}
               />
             </div>
@@ -77,12 +80,12 @@ export const DeploymentDetailsInfo = ({
 
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>
-            {translate(STRING.DETAILS_LABEL_SOURCE_IMAGES)}
+            {translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
           </h2>
           <div className={styles.sectionContent}>
             <div className={styles.sectionRow}>
               <InputValue
-                label={translate(STRING.DETAILS_LABEL_PATH)}
+                label={translate(STRING.FIELD_LABEL_PATH)}
                 value={deployment.path}
               />
               <ConnectionStatus
@@ -93,11 +96,11 @@ export const DeploymentDetailsInfo = ({
             </div>
             <div className={styles.sectionRow}>
               <InputValue
-                label={translate(STRING.TABLE_COLUMN_CAPTURES)}
+                label={translate(STRING.FIELD_LABEL_CAPTURES)}
                 value={deployment.numImages}
               />
               <InputValue
-                label={translate(STRING.DETAILS_LABEL_EXAMPLE_CAPTURES)}
+                label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
                 value={deployment.exampleCaptures.length}
               />
             </div>

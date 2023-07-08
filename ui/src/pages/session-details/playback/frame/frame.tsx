@@ -3,6 +3,7 @@ import { CaptureDetection } from 'data-services/models/capture'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { getRoute } from 'utils/getRoute'
 import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
@@ -156,6 +157,10 @@ const FrameDetections = ({
             content={detection?.label ?? ''}
             frame={containerRef.current}
             open={isActive ? isActive : undefined}
+            to={getRoute({
+              collection: 'occurrences',
+              itemId: detection.occurrenceId,
+            })}
           >
             <div
               style={style}
