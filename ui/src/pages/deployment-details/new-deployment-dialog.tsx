@@ -18,7 +18,7 @@ export const NewDeploymentDialog = () => {
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
         <Button
-          label={translate(STRING.DETAILS_LABEL_NEW_DEPLOYMENT)}
+          label={translate(STRING.DIALOG_NEW_DEPLOYMENT)}
           theme={ButtonTheme.Plain}
         />
       </Dialog.Trigger>
@@ -26,7 +26,7 @@ export const NewDeploymentDialog = () => {
         <DeploymentDetailsForm
           deployment={newDeployment}
           isLoading={isLoading}
-          title={translate(STRING.DETAILS_LABEL_NEW_DEPLOYMENT)}
+          title={translate(STRING.DIALOG_NEW_DEPLOYMENT)}
           onCancelClick={() => setIsOpen(false)}
           onSubmit={async (data) => {
             await createDeployment(data)

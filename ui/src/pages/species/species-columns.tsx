@@ -15,7 +15,7 @@ export const columns: TableColumn<Species>[] = [
   {
     id: 'snapshots',
     sortField: 'updated_at',
-    name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -33,7 +33,7 @@ export const columns: TableColumn<Species>[] = [
   {
     id: 'name',
     sortField: 'name',
-    name: 'Name',
+    name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: Species) => (
       <Link
         to={getRoute({
@@ -48,7 +48,7 @@ export const columns: TableColumn<Species>[] = [
   },
   {
     id: 'detections',
-    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
+    name: translate(STRING.FIELD_LABEL_DETECTIONS),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -58,7 +58,7 @@ export const columns: TableColumn<Species>[] = [
   },
   {
     id: 'occurrences',
-    name: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -75,7 +75,7 @@ export const columns: TableColumn<Species>[] = [
   },
   {
     id: 'training-images',
-    name: 'Training images',
+    name: translate(STRING.FIELD_LABEL_TRAINING_IMAGES),
     styles: {
       textAlign: TextAlign.Right,
     },

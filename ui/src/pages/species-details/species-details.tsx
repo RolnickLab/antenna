@@ -26,11 +26,11 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
 
   const fields = [
     {
-      label: translate(STRING.TABLE_COLUMN_DETECTIONS),
+      label: translate(STRING.FIELD_LABEL_DETECTIONS),
       value: species.numDetections,
     },
     {
-      label: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+      label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value: species.numOccurrences,
       to: getRoute({
         collection: 'occurrences',
@@ -38,7 +38,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
       }),
     },
     {
-      label: 'Training images',
+      label: translate(STRING.FIELD_LABEL_TRAINING_IMAGES),
       value: species.trainingImagesLabel,
       to: species.trainingImagesUrl,
     },

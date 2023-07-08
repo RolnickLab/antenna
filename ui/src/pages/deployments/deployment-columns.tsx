@@ -12,7 +12,7 @@ import { STRING, translate } from 'utils/language'
 export const columns: TableColumn<Deployment>[] = [
   {
     id: 'deployment',
-    name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
+    name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     sortField: 'name',
     renderCell: (item: Deployment) => (
       <Link
@@ -28,7 +28,7 @@ export const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'sessions',
-    name: translate(STRING.TABLE_COLUMN_SESSIONS),
+    name: translate(STRING.FIELD_LABEL_SESSIONS),
     sortField: 'numEvents',
     styles: {
       textAlign: TextAlign.Right,
@@ -46,7 +46,7 @@ export const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'captures',
-    name: translate(STRING.TABLE_COLUMN_CAPTURES),
+    name: translate(STRING.FIELD_LABEL_CAPTURES),
     sortField: 'numImages',
     styles: {
       textAlign: TextAlign.Right,
@@ -55,7 +55,7 @@ export const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'detections',
-    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
+    name: translate(STRING.FIELD_LABEL_DETECTIONS),
     sortField: 'numDetections',
     styles: {
       textAlign: TextAlign.Right,
@@ -66,7 +66,7 @@ export const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'occurrences',
-    name: translate(STRING.TABLE_COLUMN_OCCURRENCES),
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'numOccurrences',
     styles: {
       textAlign: TextAlign.Right,
@@ -84,7 +84,7 @@ export const columns: TableColumn<Deployment>[] = [
   },
   {
     id: 'species',
-    name: translate(STRING.TABLE_COLUMN_SPECIES),
+    name: translate(STRING.FIELD_LABEL_SPECIES),
     sortField: 'numSpecies',
     styles: {
       textAlign: TextAlign.Right,

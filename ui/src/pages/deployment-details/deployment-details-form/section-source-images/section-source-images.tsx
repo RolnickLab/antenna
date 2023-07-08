@@ -60,7 +60,7 @@ export const SectionSourceImages = ({
     >
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>
-          {translate(STRING.DETAILS_LABEL_SOURCE_IMAGES)}
+          {translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
         </h2>
         <div className={styles.sectionContent}>
           <div className={styles.sectionRow}>
@@ -75,11 +75,11 @@ export const SectionSourceImages = ({
             <>
               <div className={styles.sectionRow}>
                 <InputValue
-                  label={translate(STRING.TABLE_COLUMN_CAPTURES)}
+                  label={translate(STRING.FIELD_LABEL_CAPTURES)}
                   value={deployment.numImages}
                 />
                 <InputValue
-                  label={translate(STRING.DETAILS_LABEL_EXAMPLE_CAPTURES)}
+                  label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
                   value={deployment.exampleCaptures.length}
                 />
               </div>

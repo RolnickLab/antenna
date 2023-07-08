@@ -52,7 +52,7 @@ const DeploymentDetailsDialogContent = ({
       {!isEditing ? (
         <DeploymentDetailsInfo
           deployment={deployment}
-          title={translate(STRING.DETAILS_LABEL_DEPLOYMENT_DETAILS)}
+          title={translate(STRING.DIALOG_DEPLOYMENT_DETAILS)}
           onEditClick={() => setIsEditing(true)}
         />
       ) : (
@@ -60,7 +60,7 @@ const DeploymentDetailsDialogContent = ({
           deployment={deployment}
           isLoading={isLoading}
           startValid
-          title={translate(STRING.DETAILS_LABEL_EDIT_DEPLOYMENT)}
+          title={translate(STRING.DIALOG_EDIT_DEPLOYMENT)}
           onCancelClick={() => setIsEditing(false)}
           onSubmit={(data) => {
             updateDeployment(data)

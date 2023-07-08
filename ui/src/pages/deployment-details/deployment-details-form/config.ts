@@ -3,25 +3,25 @@ import { STRING, translate } from 'utils/language'
 
 export const config: FormConfig = {
   name: {
-    label: translate(STRING.DETAILS_LABEL_NAME),
+    label: translate(STRING.FIELD_LABEL_NAME),
     rules: { required: true },
   },
   description: {
-    label: 'Description',
+    label: translate(STRING.FIELD_LABEL_DESCRIPTION),
   },
   latitude: {
-    label: translate(STRING.DETAILS_LABEL_LATITUDE),
+    label: translate(STRING.FIELD_LABEL_LATITUDE),
     rules: { min: -90, max: 90 },
   },
   longitude: {
-    label: translate(STRING.DETAILS_LABEL_LONGITUDE),
+    label: translate(STRING.FIELD_LABEL_LONGITUDE),
     rules: {
       min: -180,
       max: 180,
     },
   },
   path: {
-    label: translate(STRING.DETAILS_LABEL_PATH),
+    label: translate(STRING.FIELD_LABEL_PATH),
     rules: { required: true },
   },
 }

@@ -43,7 +43,7 @@ export const ConnectionStatus = ({
     <div className={styles.wrapper}>
       <div className={styles.titleRow}>
         <div className={styles.titleRowContent}>
-          <span>{translate(STRING.DETAILS_LABEL_CONNECTION_STATUS)}</span>
+          <span>{translate(STRING.FIELD_LABEL_CONNECTION_STATUS)}</span>
           <div className={styles.buttonContainer}>
             <IconButton
               icon={IconType.RadixUpdate}

@@ -16,15 +16,15 @@ export const DeploymentsMapPopupContent = ({
     </p>
     <p>
       <span>
-        {translate(STRING.DETAILS_LABEL_SESSIONS)}: {deployment.numEvents}
+        {translate(STRING.FIELD_LABEL_SESSIONS)}: {deployment.numEvents}
       </span>
       <br />
       <span>
-        {translate(STRING.TABLE_COLUMN_CAPTURES)}: {deployment.numImages}
+        {translate(STRING.FIELD_LABEL_CAPTURES)}: {deployment.numImages}
       </span>
       <br />
       <span>
-        {translate(STRING.DETAILS_LABEL_DETECTIONS)}: {deployment.numDetections}
+        {translate(STRING.FIELD_LABEL_DETECTIONS)}: {deployment.numDetections}
       </span>
     </p>
   </>

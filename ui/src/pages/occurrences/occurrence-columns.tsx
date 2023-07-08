@@ -13,7 +13,7 @@ import { STRING, translate } from 'utils/language'
 export const columns: TableColumn<Occurrence>[] = [
   {
     id: 'snapshots',
-    name: translate(STRING.TABLE_COLUMN_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -30,7 +30,7 @@ export const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'id',
-    name: translate(STRING.TABLE_COLUMN_ID),
+    name: translate(STRING.FIELD_LABEL_ID),
     renderCell: (item: Occurrence) => (
       <Link
         to={getRoute({
@@ -49,7 +49,7 @@ export const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'deployment',
-    name: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
+    name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
       <Link
         to={getRoute({ collection: 'deployments', itemId: item.deploymentId })}
@@ -63,7 +63,7 @@ export const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'session',
-    name: translate(STRING.TABLE_COLUMN_SESSION),
+    name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Occurrence) => (
       <Link to={getRoute({ collection: 'sessions', itemId: item.sessionId })}>
         <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
@@ -72,24 +72,24 @@ export const columns: TableColumn<Occurrence>[] = [
   },
   {
     id: 'date',
-    name: translate(STRING.TABLE_COLUMN_DATE),
+    name: translate(STRING.FIELD_LABEL_DATE),
     renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
   },
   {
     id: 'time',
-    name: translate(STRING.TABLE_COLUMN_TIME),
+    name: translate(STRING.FIELD_LABEL_TIME),
     renderCell: (item: Occurrence) => <BasicTableCell value={item.timeLabel} />,
   },
   {
     id: 'duration',
-    name: translate(STRING.TABLE_COLUMN_DURATION),
+    name: translate(STRING.FIELD_LABEL_DURATION),
     renderCell: (item: Occurrence) => (
       <BasicTableCell value={item.durationLabel} />
     ),
   },
   {
     id: 'detections',
-    name: translate(STRING.TABLE_COLUMN_DETECTIONS),
+    name: translate(STRING.FIELD_LABEL_DETECTIONS),
     renderCell: (item: Occurrence) => (
       <BasicTableCell value={item.numDetections} />
     ),

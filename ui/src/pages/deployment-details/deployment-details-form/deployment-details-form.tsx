@@ -128,15 +128,15 @@ const FormStepper = () => {
       items={[
         {
           id: Section.General,
-          label: translate(STRING.DETAILS_LABEL_GENERAL),
+          label: translate(STRING.FIELD_LABEL_GENERAL),
         },
         {
           id: Section.Location,
-          label: translate(STRING.DETAILS_LABEL_LOCATION),
+          label: translate(STRING.FIELD_LABEL_LOCATION),
         },
         {
           id: Section.SourceImages,
-          label: translate(STRING.DETAILS_LABEL_SOURCE_IMAGES),
+          label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
         },
       ]}
       currentItemId={currentSection}

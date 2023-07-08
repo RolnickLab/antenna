@@ -28,7 +28,7 @@ export const OccurrenceDetails = ({
 
   const fields = [
     {
-      label: translate(STRING.TABLE_COLUMN_DEPLOYMENT),
+      label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: occurrence.deploymentLabel,
       to: getRoute({
         collection: 'deployments',
@@ -36,7 +36,7 @@ export const OccurrenceDetails = ({
       }),
     },
     {
-      label: translate(STRING.TABLE_COLUMN_SESSION),
+      label: translate(STRING.FIELD_LABEL_SESSION),
       value: occurrence.sessionLabel,
       to: getRoute({
         collection: 'sessions',
@@ -45,19 +45,19 @@ export const OccurrenceDetails = ({
       }),
     },
     {
-      label: translate(STRING.TABLE_COLUMN_DATE),
+      label: translate(STRING.FIELD_LABEL_DATE),
       value: occurrence.dateLabel,
     },
     {
-      label: translate(STRING.TABLE_COLUMN_TIME),
+      label: translate(STRING.FIELD_LABEL_TIME),
       value: occurrence.timeLabel,
     },
     {
-      label: translate(STRING.TABLE_COLUMN_DURATION),
+      label: translate(STRING.FIELD_LABEL_DURATION),
       value: occurrence.durationLabel,
     },
     {
-      label: translate(STRING.TABLE_COLUMN_DETECTIONS),
+      label: translate(STRING.FIELD_LABEL_DETECTIONS),
       value: occurrence.numDetections,
     },
   ]

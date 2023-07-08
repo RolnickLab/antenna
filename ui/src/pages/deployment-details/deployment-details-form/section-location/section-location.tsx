@@ -67,7 +67,7 @@ export const SectionLocation = ({
     >
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>
-          {translate(STRING.DETAILS_LABEL_LOCATION)}
+          {translate(STRING.FIELD_LABEL_LOCATION)}
         </h2>
         <div className={styles.sectionContent}>
           <LocationMap

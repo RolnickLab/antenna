@@ -64,7 +64,7 @@ const JobSummary = ({ job }: { job: Job }) => {
     <>
       <div className={styles.sectionFields}>
         <div className={styles.sectionStatus}>
-          <InputContent label={translate(STRING.TABLE_COLUMN_STATUS)}>
+          <InputContent label={translate(STRING.FIELD_LABEL_STATUS)}>
             <StatusBar
               status={status}
               progress={job.statusValue}
@@ -72,10 +72,13 @@ const JobSummary = ({ job }: { job: Job }) => {
             />
           </InputContent>
         </div>
-        <InputValue label={translate(STRING.TABLE_COLUMN_ID)} value={job.id} />
-        <InputValue label="Name" value={job.name} />
+        <InputValue label={translate(STRING.FIELD_LABEL_ID)} value={job.id} />
         <InputValue
-          label={translate(STRING.TABLE_COLUMN_PROJECT)}
+          label={translate(STRING.FIELD_LABEL_NAME)}
+          value={job.name}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_PROJECT)}
           value={job.project}
         />
         <InputValue label={job.inputLabel} value={job.inputValue} />
