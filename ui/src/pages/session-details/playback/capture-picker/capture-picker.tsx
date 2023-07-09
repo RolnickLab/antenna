@@ -85,16 +85,20 @@ export const CapturePicker = ({
   }, [goToPrev, goToNext])
 
   // Scroll active element into view
+  const _activeCaptureId = captures.length ? activeCaptureId : undefined
   useEffect(() => {
-    if (!activeCaptureId) {
+    const currentCaptureRef = _activeCaptureId
+      ? captureRefs[_activeCaptureId]?.current
+      : undefined
+    if (!currentCaptureRef) {
       return
     }
-    captureRefs[activeCaptureId]?.current?.scrollIntoView({
+    currentCaptureRef.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',
       inline: 'nearest',
     })
-  }, [activeCaptureId])
+  }, [_activeCaptureId])
 
   if (!captures.length) {
     return null

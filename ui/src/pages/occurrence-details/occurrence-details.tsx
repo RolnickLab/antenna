@@ -21,7 +21,20 @@ export const OccurrenceDetails = ({
       occurrence.detections.length
         ? occurrence.detections
             .map((id) => occurrence.getDetectionInfo(id))
-            .filter((item): item is BlueprintItem => !!item)
+            .filter(
+              (item): item is BlueprintItem & { captureId: string } => !!item
+            )
+            .map((item) => ({
+              ...item,
+              to: getRoute({
+                collection: 'sessions',
+                itemId: occurrence.sessionId,
+                filters: {
+                  occurrence: occurrence.id,
+                  capture: item.captureId,
+                },
+              }),
+            }))
         : [],
     [occurrence]
   )

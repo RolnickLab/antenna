@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { getFetchDetailsUrl } from 'data-services/utils'
+import _ from 'lodash'
 import { ServerEventDetails, SessionDetails } from '../models/session-details'
 
 const COLLECTION = 'events'
@@ -10,7 +11,7 @@ const convertServerRecord = (record: ServerEventDetails) =>
 
 export const useSessionDetails = (
   id: string,
-  occurrenceId?: string
+  params: { occurrence?: string; capture?: string }
 ): {
   session?: SessionDetails
   isLoading: boolean
@@ -20,7 +21,7 @@ export const useSessionDetails = (
   const fetchUrl = getFetchDetailsUrl({
     collection: COLLECTION,
     itemId: id,
-    queryParams: occurrenceId ? { occurrence: occurrenceId } : undefined,
+    queryParams: _.pickBy(params, (param) => param !== undefined),
   })
 
   const { data, isLoading, isFetching, error } = useQuery({

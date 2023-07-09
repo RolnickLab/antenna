@@ -12,6 +12,7 @@ type FilterType =
   | 'occurrences__deployment'
   | 'occurrences__event'
   | 'occurrence'
+  | 'capture'
 
 export const getRoute = ({
   collection,
@@ -21,7 +22,7 @@ export const getRoute = ({
 }: {
   collection: CollectionType
   itemId?: string
-  filters?: Partial<Record<FilterType, string>>
+  filters?: Partial<Record<FilterType, string | undefined>>
   keepSearchParams?: boolean
 }) => {
   let url = `/${collection}`
@@ -34,7 +35,9 @@ export const getRoute = ({
     keepSearchParams ? window.location.search : undefined
   )
   Object.entries(filters).forEach(([name, value]) => {
-    searchParams.set(name, value)
+    if (value !== undefined) {
+      searchParams.set(name, value)
+    }
   })
 
   const queryString = searchParams.toString()
