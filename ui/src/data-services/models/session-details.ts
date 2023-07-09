@@ -3,6 +3,18 @@ import { ServerEvent, Session } from './session'
 
 export type ServerEventDetails = ServerEvent & any // TODO: Update this type
 
+interface SummaryData {
+  title: string
+  data: {
+    x: (string | number)[]
+    y: number[]
+    tickvals?: (string | number)[]
+    ticktext?: string[]
+  }
+  orientation: 'h' | 'v'
+  type: any
+}
+
 export class SessionDetails extends Session {
   private readonly _firstCapture: Capture
 
@@ -22,5 +34,9 @@ export class SessionDetails extends Session {
 
   get detectionsMaxCount() {
     return this._event.stats.detections_max_count
+  }
+
+  get summaryData(): SummaryData[] {
+    return this._event.summary_data
   }
 }

@@ -34,7 +34,7 @@ export const Overview = () => {
       </div>
       <div className={styles.plotsContainer}>
         <div className={styles.plotsContent}>
-          <span className={styles.label}>Example plots</span>
+          <span className={styles.label}>Summary</span>
           <div className={styles.plots}>
             {project.summaryData.map((summary, index) => (
               <Plot
