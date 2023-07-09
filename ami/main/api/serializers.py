@@ -508,8 +508,21 @@ class CaptureDetectionsSerializer(DefaultSerializer):
         )
 
 
+class DetectionCaptureNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        fields = [
+            "id",
+            "details",
+            "url",
+            "width",
+            "height",
+        ]
+
+
 class DetectionNestedSerializer(DefaultSerializer):
     classifications = ClassificationSerializer(many=True, read_only=True)
+    capture = DetectionCaptureNestedSerializer(read_only=True, source="source_image")
 
     class Meta:
         model = Detection
@@ -518,7 +531,7 @@ class DetectionNestedSerializer(DefaultSerializer):
             "id",
             "timestamp",
             "url",
-            "source_image",
+            "capture",
             "width",
             "height",
             "bbox",
@@ -731,15 +744,15 @@ class EventSerializer(DefaultSerializer):
         capture_id = request.query_params.get("capture")
         timestamp = request.query_params.get("timestamp")
 
-        if detection_id:
-            capture_with_subject = Detection.objects.get(pk=detection_id).source_image
-        elif occurrence_id:
-            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance()
-        elif capture_id:
+        if capture_id:
             capture_with_subject = SourceImage.objects.get(pk=capture_id)
         elif timestamp:
             timestamp = datetime.datetime.fromisoformat(timestamp)
             capture_with_subject = event.captures.filter(timestamp=timestamp).first()
+        elif detection_id:
+            capture_with_subject = Detection.objects.get(pk=detection_id).source_image
+        elif occurrence_id:
+            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance()
 
         if capture_with_subject and capture_with_subject.event:
             # Assert that the capture is part of the event
