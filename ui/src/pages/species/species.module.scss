@@ -1,3 +1,5 @@
+@import 'design-system/variables/variables.scss';
+
 .infoWrapper {
   position: absolute;
   top: 0;
@@ -19,4 +21,11 @@
   display: flex;
   align-items: flex-start;
   padding: 16px 0;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .tableContent,
+  .galleryContent {
+    padding: 0;
+  }
 }

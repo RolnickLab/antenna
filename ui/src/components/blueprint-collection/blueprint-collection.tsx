@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { Icon, IconType } from 'design-system/components/icon/icon'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -13,7 +14,11 @@ export interface BlueprintItem {
 }
 
 export const BlueprintCollection = ({ items }: { items: BlueprintItem[] }) => (
-  <div className={styles.blueprint}>
+  <div
+    className={classNames(styles.blueprint, {
+      [styles.empty]: items.length === 0,
+    })}
+  >
     {items.map((item) =>
       item.to ? (
         <Link key={item.id} to={item.to} className={styles.blueprintItem}>

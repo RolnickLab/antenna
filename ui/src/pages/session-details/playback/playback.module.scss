@@ -1,4 +1,5 @@
 @import 'design-system/variables/colors.scss';
+@import 'design-system/variables/variables.scss';
 
 .wrapper {
   display: flex;
@@ -13,4 +14,20 @@
   min-width: 320px;
   background-color: $color-neutral-800;
   position: relative;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .wrapper {
+    flex-direction: column;
+  }
+
+  .playbackFrame {
+    width: 100%;
+  }
+
+  .capturePicker {
+    width: 100%;
+    min-width: auto;
+    height: 240px;
+  }
 }

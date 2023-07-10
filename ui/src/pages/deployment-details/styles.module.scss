@@ -64,7 +64,32 @@
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
+  .section {
+    margin: 16px;
+
+    &:not(:first-child) {
+      padding-top: 16px;
+    }
+  }
+
+  .sectionTitle {
+    margin: 0 0 16px;
+  }
+
+  .sectionContent {
+    gap: 16px;
+
+    &:not(:last-child) {
+      margin-bottom: 16px;
+    }
+  }
+
   .sectionRow {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .exampleCapturesContainer {
+    margin: 16px 0;
   }
 }
