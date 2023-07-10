@@ -1,9 +1,16 @@
+@import 'design-system/variables/variables.scss';
+
 @mixin heading-6 {
   font-family: 'AzoSans';
   font-style: normal;
   font-weight: 600;
   font-size: 20px;
   line-height: 28px;
+
+  @media only screen and (max-width: $small-screen-breakpoint) {
+    font-size: 18px;
+    line-height: 24px;
+  }
 }
 
 @mixin heading-5 {
@@ -13,15 +20,25 @@
   font-size: 24px;
   line-height: 32px;
   letter-spacing: -0.02em;
+
+  @media only screen and (max-width: $small-screen-breakpoint) {
+    font-size: 20px;
+    line-height: 28px;
+  }
 }
 
 @mixin heading-4-italic {
   font-family: 'AzoSans';
   font-style: normal;
   font-weight: 400;
-  font-size: 24px;
-  line-height: 32px;
+  font-size: 28px;
+  line-height: 36px;
   font-style: italic;
+
+  @media only screen and (max-width: $small-screen-breakpoint) {
+    font-size: 24px;
+    line-height: 32px;
+  }
 }
 
 @mixin paragraph-xx-small {
@@ -38,6 +55,11 @@
   font-weight: 400;
   font-size: 12px;
   line-height: 20px;
+
+  @media only screen and (max-width: $small-screen-breakpoint) {
+    font-size: 10px;
+    line-height: 18px;
+  }
 }
 
 @mixin paragraph-small {
@@ -46,6 +68,11 @@
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+
+  @media only screen and (max-width: $small-screen-breakpoint) {
+    font-size: 12px;
+    line-height: 20px;
+  }
 }
 
 @mixin paragraph-medium {
@@ -54,6 +81,11 @@
   font-weight: 400;
   font-size: 16px;
   line-height: 24px;
+
+  @media only screen and (max-width: $small-screen-breakpoint) {
+    font-size: 14px;
+    line-height: 20px;
+  }
 }
 
 @mixin paragraph-large {
@@ -62,6 +94,11 @@
   font-weight: 400;
   font-size: 18px;
   line-height: 28px;
+
+  @media only screen and (max-width: $small-screen-breakpoint) {
+    font-size: 16px;
+    line-height: 24px;
+  }
 }
 
 // Not present in Figma

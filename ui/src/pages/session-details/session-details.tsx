@@ -65,10 +65,9 @@ export const SessionDetails = () => {
           </div>
         </div>
         {session.summaryData.map((summary, index) => (
-          <div className={styles.detailsContainer}>
+          <div key={index} className={styles.detailsContainer}>
             <div className={styles.detailsContent}>
               <Plot
-                key={index}
                 title={summary.title}
                 data={summary.data}
                 orientation={summary.orientation}

@@ -69,7 +69,15 @@
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
+  .playbackWrapper {
+    margin-bottom: 16px;
+  }
+
   .details {
     grid-template-columns: 1fr;
+  }
+
+  .detailsContent {
+    padding: 16px;
   }
 }

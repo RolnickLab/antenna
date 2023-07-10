@@ -1,4 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
+import classNames from 'classnames'
 import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
@@ -41,7 +42,10 @@ const Content = ({
         </div>
       ) : null}
     </Dialog.Overlay>
-    <Dialog.Content className={styles.dialog} onOpenAutoFocus={onOpenAutoFocus}>
+    <Dialog.Content
+      className={classNames(styles.dialog, { [styles.loading]: isLoading })}
+      onOpenAutoFocus={onOpenAutoFocus}
+    >
       <div className={styles.dialogContent}>{children}</div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
         <Icon type={IconType.Close} size={12} />

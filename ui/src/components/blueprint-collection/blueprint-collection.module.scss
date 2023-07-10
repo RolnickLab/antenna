@@ -1,5 +1,6 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
+@import 'design-system/variables/variables.scss';
 
 .blueprint {
   display: flex;
@@ -67,5 +68,13 @@
     box-sizing: border-box;
     @include paragraph-x-small();
     background-color: $color-generic-white;
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .blueprint {
+    &.empty {
+      display: none;
+    }
   }
 }

@@ -1,3 +1,5 @@
+@import 'design-system/variables/variables.scss';
+
 .infoWrapper {
   position: absolute;
   top: 0;
@@ -27,4 +29,15 @@
   left: 0;
   z-index: 1;
   transform: rotate(90deg);
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .tableContent,
+  .galleryContent {
+    padding: 0;
+  }
+
+  .settingsWrapper {
+    top: 14px;
+  }
 }

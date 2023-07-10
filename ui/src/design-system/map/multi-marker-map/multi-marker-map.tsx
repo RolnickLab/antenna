@@ -1,3 +1,4 @@
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import * as L from 'leaflet'
 import { useEffect, useMemo, useRef } from 'react'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
@@ -6,13 +7,12 @@ import {
   DEFAULT_ZOOM,
   MAX_BOUNDS,
   MIN_ZOOM,
-  setup,
   TILE_LAYER_URL,
+  setup,
 } from '../config'
 import { MinimapControl } from '../minimap-control'
 import styles from '../styles.module.scss'
 import { MarkerPosition } from '../types'
-import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 
 setup()
 
@@ -54,6 +54,7 @@ export const MultiMarkerMap = ({
     <MapContainer
       center={bounds.getCenter()}
       className={styles.mapContainer}
+      dragging={false}
       maxBounds={MAX_BOUNDS}
       minZoom={MIN_ZOOM}
       ref={mapRef}

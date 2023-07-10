@@ -32,9 +32,13 @@
   transform: rotate(90deg);
 }
 
-.sidebar {
-  width: 262px;
-  background-color: $color-neutral-200;
-  height: 400px;
-  margin-right: 16px;
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .tableContent,
+  .galleryContent {
+    padding: 0;
+  }
+
+  .settingsWrapper {
+    top: 14px;
+  }
 }
