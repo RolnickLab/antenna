@@ -84,16 +84,17 @@ export const Plot = ({
           color: textColor,
           showgrid: false,
           zeroline: false,
+          type: 'category',
           tickvals: data.tickvals,
           ticktext: data.ticktext,
           automargin: true,
           ...(showRangeSlider
             ? {
-                range: [0, 3],
-                rangeslider: {
-                  visible: true,
-                },
-              }
+              range: [0, 3],
+              rangeslider: {
+                visible: true,
+              },
+            }
             : {}),
         },
         bargap: 2 / 3,

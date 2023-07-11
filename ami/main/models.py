@@ -138,25 +138,23 @@ class Project(BaseModel):
             },
         )
 
-        # Capture counts per hour
-        captures_per_hour = (
-            SourceImage.objects.filter(deployment__project=self)
-            .values_list("timestamp__hour")
-            .annotate(num_captures=models.Count("id"))
+        # Detections per hour
+        Detection = apps.get_model("main", "Detection")
+        detections_per_hour = (
+            Detection.objects.filter(source_image__deployment__project=self)
+            .values("source_image__timestamp__hour")
+            .annotate(num_detections=models.Count("id"))
+            .order_by("source_image__timestamp__hour")
         )
-        hours, counts = list(zip(*captures_per_hour))
 
-        hours, counts = shift_to_nighttime(hours, counts)
-        # tickvals = [f"{h}" for h in hours]
-        tickvals = [f"{min(hours)}:00", f"{max(hours)}:00"]
-
-        # plots.append(
-        #     {
-        #         "title": "Captures per hour",
-        #         "data": {"x": hours, "y": counts, "tickvals": tickvals},
-        #         "type": "bar",
-        #     },
-        # )
+        # hours, counts = list(zip(*detections_per_hour))
+        hours, counts = list(
+            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+        )
+        hours, counts = shift_to_nighttime(list(hours), list(counts))
+        # @TODO show a tick for every hour even if there are no detections
+        hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
+        ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
 
         # Detections per hour
         Detection = apps.get_model("main", "Detection")
@@ -165,18 +163,10 @@ class Project(BaseModel):
             .values("source_image__timestamp__hour")
             .annotate(num_detections=models.Count("id"))
         )
-
-        # hours, counts = list(zip(*detections_per_hour))
-        hours, counts = list(
-            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-        )
-        hours, counts = shift_to_nighttime(list(hours), list(counts))
-        tickvals = [f"{hours[0]}:00", f"{hours[-1]}:00"]
-
         plots.append(
             {
                 "title": "Detections per hour",
-                "data": {"x": hours, "y": counts, "tickvals": tickvals},
+                "data": {"x": hours, "y": counts, "ticktext": ticktext},
                 "type": "bar",
             },
         )
@@ -402,6 +392,7 @@ class Event(BaseModel):
             Detection.objects.filter(source_image__event=self)
             .values("source_image__timestamp__hour")
             .annotate(num_detections=models.Count("id"))
+            .order_by("source_image__timestamp__hour")
         )
 
         # hours, counts = list(zip(*detections_per_hour))
@@ -409,12 +400,14 @@ class Event(BaseModel):
             zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
         )
         hours, counts = shift_to_nighttime(list(hours), list(counts))
-        tickvals = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+        # @TODO show a tick for every hour even if there are no detections
+        hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
+        ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
 
         plots.append(
             {
                 "title": "Detections per hour",
-                "data": {"x": hours, "y": counts, "tickvals": tickvals},
+                "data": {"x": hours, "y": counts, "ticktext": ticktext},
                 "type": "bar",
             },
         )
