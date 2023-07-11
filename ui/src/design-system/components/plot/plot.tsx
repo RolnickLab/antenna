@@ -20,6 +20,7 @@ interface PlotProps {
   }
   type?: 'bar' | 'scatter'
   showRangeSlider?: boolean
+  categorical?: boolean
 }
 
 export const Plot = ({
@@ -84,7 +85,6 @@ export const Plot = ({
           color: textColor,
           showgrid: false,
           zeroline: false,
-          type: 'category',
           tickvals: data.tickvals,
           ticktext: data.ticktext,
           automargin: true,
