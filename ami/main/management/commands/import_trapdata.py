@@ -72,6 +72,7 @@ class Command(BaseCommand):
             )
             if created:
                 self.stdout.write(self.style.SUCCESS('Successfully created deployment "%s"' % deployment))
+
             event, created = Event.objects.get_or_create(
                 start=parse_date(occurrence["event"]["day"]),
                 deployment=deployment,
@@ -82,47 +83,63 @@ class Command(BaseCommand):
             best_taxon, created = Taxon.objects.get_or_create(
                 name=occurrence["label"], rank="SPECIES", parent=taxon_parent
             )
-            occ, created = Occurrence.objects.get_or_create(
+            occ = Occurrence.objects.create(
                 event=event,
                 deployment=deployment,
                 project=project,
                 determination=best_taxon,
             )
-            if created:
-                self.stdout.write(self.style.SUCCESS('Successfully created occurrence "%s"' % occ))
-            for example in occurrence["examples"]:
-                image, created = SourceImage.objects.get_or_create(
-                    path=example["source_image_path"],
-                    timestamp=parse_date(example["timestamp"]),
-                    event=event,
-                    deployment=deployment,
-                    width=example["source_image_width"],
-                    height=example["source_image_height"],
-                    size=example["source_image_filesize"],
-                )
-                if created:
-                    self.stdout.write(self.style.SUCCESS('Successfully created image "%s"' % image))
+            self.stdout.write(self.style.SUCCESS('Successfully created occurrence "%s"' % occ))
 
-                detection, created = Detection.objects.get_or_create(
-                    occurrence=occ,
-                    source_image=image,
-                    timestamp=parse_date(example["timestamp"]),
-                    path=example["cropped_image_path"],
-                    bbox=example["bbox"],
-                )
-                if created:
-                    self.stdout.write(self.style.SUCCESS('Successfully created detection "%s"' % detection))
+            for example in occurrence["examples"]:
+                try:
+                    image, created = SourceImage.objects.get_or_create(
+                        path=example["source_image_path"],
+                        timestamp=parse_date(example["timestamp"]),
+                        event=event,
+                        deployment=deployment,
+                        width=example["source_image_width"],
+                        height=example["source_image_height"],
+                        size=example["source_image_filesize"],
+                    )
+                    if created:
+                        self.stdout.write(self.style.SUCCESS('Successfully created image "%s"' % image))
+                except KeyError as e:
+                    self.stdout.write(self.style.ERROR('Error creating image "%s"' % e))
+                    image = None
+
+                if image:
+                    detection, created = Detection.objects.get_or_create(
+                        occurrence=occ,
+                        source_image=image,
+                        timestamp=parse_date(example["timestamp"]),
+                        path=example["cropped_image_path"],
+                        bbox=example["bbox"],
+                    )
+                    if created:
+                        self.stdout.write(self.style.SUCCESS('Successfully created detection "%s"' % detection))
+                else:
+                    detection = None
+
                 taxon, created = Taxon.objects.get_or_create(
                     name=example["label"], rank="SPECIES", parent=taxon_parent
                 )
-                one_day_later = datetime.timedelta(seconds=60 * 60 * 24)
-                classification, created = Classification.objects.get_or_create(
-                    score=example["score"],
-                    determination=taxon,
-                    detection=detection,
-                    type="machine",
-                    algorithm=algorithm,
-                    timestamp=parse_date(example["timestamp"]) + one_day_later,
-                )
-                if created:
-                    self.stdout.write(self.style.SUCCESS('Successfully created classification "%s"' % classification))
+
+                if detection:
+                    one_day_later = datetime.timedelta(seconds=60 * 60 * 24)
+                    classification, created = Classification.objects.get_or_create(
+                        score=example["score"],
+                        determination=taxon,
+                        detection=detection,
+                        type="machine",
+                        algorithm=algorithm,
+                        timestamp=parse_date(example["timestamp"]) + one_day_later,
+                    )
+                    if created:
+                        self.stdout.write(
+                            self.style.SUCCESS('Successfully created classification "%s"' % classification)
+                        )
+
+        # Update event start and end times based on the first and last detections
+        for event in Event.objects.all():
+            event.save()

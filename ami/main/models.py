@@ -438,12 +438,14 @@ class Event(BaseModel):
         return plots
 
     def save(self, *args, **kwargs):
-        first = self.captures.order_by("timestamp").values("timestamp").first()
-        last = self.captures.order_by("-timestamp").values("timestamp").first()
-        if first:
-            self.start = first["timestamp"]
-        if last:
-            self.end = last["timestamp"]
+        if self.pk is not None:
+            # Can only update start and end times if this is an update to an existing event
+            first = self.captures.order_by("timestamp").values("timestamp").first()
+            last = self.captures.order_by("-timestamp").values("timestamp").first()
+            if first:
+                self.start = first["timestamp"]
+            if last:
+                self.end = last["timestamp"]
         super().save(*args, **kwargs)
 
 
