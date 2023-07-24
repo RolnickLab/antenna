@@ -459,16 +459,20 @@ class LabelStudioCapturesView(APIView):
                 {
                     "data": {
                         "image": capture.url(),
-                        "ref_id": capture.pk,
-                        "meta_info": {
-                            "timestamp": capture.timestamp,
-                            "deployment": capture.event.deployment.name
-                            if capture.event and capture.event.deployment
-                            else None,
-                            "deployment_id": capture.event.deployment.pk
-                            if capture.event and capture.event.deployment
-                            else None,
-                        },
+                        "ami_id": capture.pk,
+                        "timestamp": capture.timestamp,
+                        "deployment": (capture.deployment.name if capture.deployment else None),
+                        "deployment_id": (capture.deployment.pk if capture.deployment else None),
+                        "project": (
+                            capture.deployment.project.name
+                            if capture.deployment and capture.deployment.project
+                            else None
+                        ),
+                        "project_id": (
+                            capture.deployment.project.pk
+                            if capture.deployment and capture.deployment.project
+                            else None
+                        ),
                     },
                     "annotations": [],
                     "predictions": [],
