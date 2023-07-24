@@ -395,3 +395,84 @@ class JobViewSet(DefaultViewSet):
     #     response.data["default_config"] = Job.default_config()
     #     response.data["default_progress"] = Job.default_progress()
     #     return response
+
+
+class LabelStudioCapturesView(APIView):
+    """
+    Endpoint for importing data to annotate in Label Studio.
+
+    Example schema:
+    [{
+        # "data" must contain the "my_text" field defined in the text labeling config as the value and can optionally
+        # include other fields
+        "data": {
+            "my_text": "Opossums are great",
+            "ref_id": 456,
+            "meta_info": {
+            "timestamp": "2020-03-09 18:15:28.212882",
+            "location": "North Pole"
+            }
+        },
+
+        # annotations are not required and are the list of annotation results matching the labeling config schema
+        "annotations": [{
+            "result": [{
+            "from_name": "sentiment_class",
+            "to_name": "message",
+            "type": "choices",
+            "readonly": false,
+            "hidden": false,
+            "value": {
+                "choices": ["Positive"]
+            }
+            }]
+        }],
+
+        # "predictions" are pretty similar to "annotations"
+        # except that they also include some ML-related fields like a prediction "score"
+        "predictions": [{
+            "result": [{
+            "from_name": "sentiment_class",
+            "to_name": "message",
+            "type": "choices",
+            "readonly": false,
+            "hidden": false,
+            "value": {
+                "choices": ["Neutral"]
+            }
+            }],
+        # score is used for active learning sampling mode
+            "score": 0.95
+        }]
+        }]
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        """ """
+        captures = SourceImage.objects.all()[:10]
+
+        data = []
+        for capture in captures:
+            data.append(
+                {
+                    "data": {
+                        "image": capture.url(),
+                        "ref_id": capture.pk,
+                        "meta_info": {
+                            "timestamp": capture.timestamp,
+                            "deployment": capture.event.deployment.name
+                            if capture.event and capture.event.deployment
+                            else None,
+                            "deployment_id": capture.event.deployment.pk
+                            if capture.event and capture.event.deployment
+                            else None,
+                        },
+                    },
+                    "annotations": [],
+                    "predictions": [],
+                }
+            )
+
+        return Response(data)

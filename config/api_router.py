@@ -29,6 +29,7 @@ app_name = "api"  # this breaks the automatic routing with viewsets & hyperlinke
 
 urlpatterns = [
     path("status/summary/", views.SummaryView.as_view(), name="status-summary"),
+    path("labelstudio/captures/", views.LabelStudioCapturesView.as_view(), name="labelstudio-captures"),
     path("status/storage/", views.StorageStatus.as_view(), name="status-storage"),
 ]
 
