@@ -29,6 +29,7 @@ from .serializers import (
     EventSerializer,
     JobListSerializer,
     JobSerializer,
+    LabelStudioBatchSerializer,
     LabelStudioDetectionSerializer,
     LabelStudioSourceImageSerializer,
     OccurrenceListSerializer,
@@ -419,6 +420,15 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     queryset = SourceImage.objects.all()
     serializer_class = LabelStudioSourceImageSerializer
 
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return LabelStudioBatchSerializer
+        else:
+            return self.serializer_class
+
     # def list(self, request, *args, **kwargs):
     #     """
     #     Return a list of reversed urls to the API detail views for each object.
@@ -426,15 +436,15 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     #     from rest_framework.reverse import reverse
     #     # import httpresponse
 
-    #     from django.http import HttpResponse
-
     #     # Manually return a text http response with a list of urls to the object details views using reverse.
-    #     response = HttpResponse(content_type="text/plain")
+    #     response = super().list(request, *args, **kwargs)
+    #     response.data = []
     #     for obj in self.get_queryset():
     #         # response.write(request.build_absolute_uri(obj.get_absolute_url()) + "\n")
 
-    #         url = reverse("api:sourceimage-detail", args=[obj.pk], request=request).rstrip("/") + ".json\n"
-    #         response.write(url)
+    #         url = reverse("api:sourceimage-detail", args=[obj.pk], request=request).rstrip("/") + ".json"
+    #         response.data.append({"url": url})
+
     #     return response
 
 

@@ -21,8 +21,8 @@ router.register(r"taxa", views.TaxonViewSet)
 router.register(r"models", views.AlgorithmViewSet)
 router.register(r"classifications", views.ClassificationViewSet)
 router.register(r"jobs", views.JobViewSet)
-router.register(r"labelstudio/captures", views.LabelStudioSourceImageViewSet)
-router.register(r"labelstudio/detections", views.LabelStudioDetectionViewSet)
+router.register(r"labelstudio/captures", views.LabelStudioSourceImageViewSet, basename="labelstudio-captures")
+router.register(r"labelstudio/detections", views.LabelStudioDetectionViewSet, basename="labelstudio-detections")
 
 # Wire up our API using automatic URL routing.
 

@@ -1,4 +1,5 @@
 import datetime
+import typing
 import urllib.parse
 
 from django.contrib.auth.models import Group, User
@@ -22,9 +23,21 @@ from ..models import (
 
 def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
     query_string = urllib.parse.urlencode(params)
-    base_url = reverse(viewname, request=request, args=args, kwargs=kwargs)
+    base_url = reverse(viewname, request=request, args=args, kwargs=kwargs, **extra)
     url = urllib.parse.urlunsplit(("", "", base_url, query_string, ""))
     return url
+
+
+def add_format_to_url(url: str, format: typing.Literal["json", "html", "csv"]) -> str:
+    """
+    Add a format suffix to a URL.
+
+    This is a workaround for the DRF `format_suffix_patterns` decorator not working
+    with the `reverse` function.
+    """
+    url_parts = urllib.parse.urlsplit(url)
+    url_parts = url_parts._replace(path=f"{url_parts.path.rstrip('/')}.{format}")
+    return urllib.parse.urlunsplit(url_parts)
 
 
 class DefaultSerializer(serializers.HyperlinkedModelSerializer):
@@ -812,6 +825,24 @@ class JobSerializer(DefaultSerializer):
 
 class StorageStatusSerializer(serializers.Serializer):
     data_source = serializers.CharField(max_length=200)
+
+
+class LabelStudioBatchSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SourceImage
+        fields = ["url"]
+
+    def get_url(self, obj):
+        # return f"https://example.com/label-studio/captures/{obj.pk}/"
+        url = reverse_with_params(
+            "labelstudio-captures-detail",
+            request=self.context.get("request"),
+            args=[obj.pk],
+        )
+        url = add_format_to_url(url, "json")
+        return url
 
 
 class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
