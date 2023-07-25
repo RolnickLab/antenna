@@ -29,6 +29,8 @@ from .serializers import (
     EventSerializer,
     JobListSerializer,
     JobSerializer,
+    LabelStudioDetectionSerializer,
+    LabelStudioSourceImageSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     ProjectSerializer,
@@ -49,7 +51,7 @@ from .serializers import (
 #     return render(request, "main/index.html")
 
 
-class DefaultViewSet(viewsets.ModelViewSet):
+class DefaultViewSetMixin:
     filter_backends = [
         DjangoFilterBackend,
         OrderingFilter,
@@ -59,6 +61,14 @@ class DefaultViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "updated_at"]
     search_fields = []
     permission_classes = [permissions.AllowAny]
+
+
+class DefaultViewSet(viewsets.ModelViewSet, DefaultViewSetMixin):
+    pass
+
+
+class DefaultReadOnlyViewSet(viewsets.ReadOnlyModelViewSet, DefaultViewSetMixin):
+    pass
 
 
 class ProjectViewSet(DefaultViewSet):
@@ -388,6 +398,7 @@ class JobViewSet(DefaultViewSet):
 
     # The default schema is now returned if the progresr or config attrbutes are empty.
     # def list(self, request, *args, **kwargs):
+    permission_classes = [permissions.AllowAny]
     #     """
     #     Return a list of jobs, with the most recent first.
     #     """
@@ -397,86 +408,38 @@ class JobViewSet(DefaultViewSet):
     #     return response
 
 
-class LabelStudioCapturesView(APIView):
+class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     """
     Endpoint for importing data to annotate in Label Studio.
 
-    Example schema:
-    [{
-        # "data" must contain the "my_text" field defined in the text labeling config as the value and can optionally
-        # include other fields
-        "data": {
-            "my_text": "Opossums are great",
-            "ref_id": 456,
-            "meta_info": {
-            "timestamp": "2020-03-09 18:15:28.212882",
-            "location": "North Pole"
-            }
-        },
-
-        # annotations are not required and are the list of annotation results matching the labeling config schema
-        "annotations": [{
-            "result": [{
-            "from_name": "sentiment_class",
-            "to_name": "message",
-            "type": "choices",
-            "readonly": false,
-            "hidden": false,
-            "value": {
-                "choices": ["Positive"]
-            }
-            }]
-        }],
-
-        # "predictions" are pretty similar to "annotations"
-        # except that they also include some ML-related fields like a prediction "score"
-        "predictions": [{
-            "result": [{
-            "from_name": "sentiment_class",
-            "to_name": "message",
-            "type": "choices",
-            "readonly": false,
-            "hidden": false,
-            "value": {
-                "choices": ["Neutral"]
-            }
-            }],
-        # score is used for active learning sampling mode
-            "score": 0.95
-        }]
-        }]
+    if the request type is TXT then return a list of urls to the images.
+    @TODO use custom renderer: https://www.django-rest-framework.org/api-guide/renderers/#example
     """
 
-    permission_classes = [permissions.AllowAny]
+    queryset = SourceImage.objects.all()
+    serializer_class = LabelStudioSourceImageSerializer
 
-    def get(self, request):
-        """ """
-        captures = SourceImage.objects.all()[:10]
+    # def list(self, request, *args, **kwargs):
+    #     """
+    #     Return a list of reversed urls to the API detail views for each object.
+    #     """
+    #     from rest_framework.reverse import reverse
+    #     # import httpresponse
 
-        data = []
-        for capture in captures:
-            data.append(
-                {
-                    "data": {
-                        "image": capture.url(),
-                        "ami_id": capture.pk,
-                        "timestamp": capture.timestamp,
-                        "deployment": (capture.deployment.name if capture.deployment else None),
-                        "deployment_id": (capture.deployment.pk if capture.deployment else None),
-                        "project": (
-                            capture.deployment.project.name
-                            if capture.deployment and capture.deployment.project
-                            else None
-                        ),
-                        "project_id": (
-                            capture.deployment.project.pk
-                            if capture.deployment and capture.deployment.project
-                            else None
-                        ),
-                    },
-                    "annotations": [],
-                    "predictions": [],
-                }
-            )
+    #     from django.http import HttpResponse
 
-        return Response(data)
+    #     # Manually return a text http response with a list of urls to the object details views using reverse.
+    #     response = HttpResponse(content_type="text/plain")
+    #     for obj in self.get_queryset():
+    #         # response.write(request.build_absolute_uri(obj.get_absolute_url()) + "\n")
+
+    #         url = reverse("api:sourceimage-detail", args=[obj.pk], request=request).rstrip("/") + ".json\n"
+    #         response.write(url)
+    #     return response
+
+
+class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):
+    """ """
+
+    queryset = Detection.objects.all()
+    serializer_class = LabelStudioDetectionSerializer

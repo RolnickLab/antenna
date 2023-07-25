@@ -812,3 +812,101 @@ class JobSerializer(DefaultSerializer):
 
 class StorageStatusSerializer(serializers.Serializer):
     data_source = serializers.CharField(max_length=200)
+
+
+class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
+    """
+    Serialize source images for manual annotation of detected objects in Label Studio.
+
+    Manually specifies the json output to match the Label Studio task format.
+    https://labelstud.io/guide/tasks.html#Example-JSON-format
+    """
+
+    data = serializers.SerializerMethodField()
+    annotations = serializers.SerializerMethodField()
+    predictions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SourceImage
+        fields = ["data", "annotations", "predictions"]
+
+    def get_data(self, obj):
+        return {
+            "image": obj.url(),
+            "ami_id": obj.pk,
+            "timestamp": obj.timestamp,
+            "deployment": (obj.deployment.name if obj.deployment else None),
+            "deployment_id": (obj.deployment.pk if obj.deployment else None),
+            "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
+            "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
+        }
+
+    def get_annotations(self, obj):
+        # @TODO implement if necessary, make optional by URL param
+        return []
+
+    def get_predictions(self, obj):
+        # @TODO implement if necessary, make optional by URL param
+        return []
+
+
+class LabelStudioDetectionSerializer(serializers.ModelSerializer):
+    """
+    Serialize detections for manual annotation of objects of interest in Label Studio.
+
+    Manually specifies the json output to match the Label Studio task format.
+    https://labelstud.io/guide/tasks.html
+    """
+
+    data = serializers.SerializerMethodField()
+    annotations = serializers.SerializerMethodField()
+    predictions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Detection
+        fields = ["data", "annotations", "predictions"]
+
+    def get_data(self, obj):
+        return {
+            "image": obj.url(),
+            "ami_id": obj.pk,
+            "timestamp": obj.timestamp,
+            "deployment": (obj.source_image.deployment.name if obj.source_image.deployment else None),
+            "deployment_id": (obj.source_image.deployment.pk if obj.source_image.deployment else None),
+            "project": (
+                obj.source_image.deployment.project.name
+                if obj.source_image.deployment and obj.source_image.deployment.project
+                else None
+            ),
+            "project_id": (
+                obj.source_image.deployment.project.pk
+                if obj.source_image.deployment and obj.source_image.deployment.project
+                else None
+            ),
+            "source_image": obj.source_image.url(),
+            "source_image_id": obj.source_image.pk,
+        }
+
+    def get_annotations(self, obj):
+        return [
+            {
+                "result": [
+                    {
+                        "type": "choices",
+                        "value": {
+                            "choices": [
+                                "Moth",
+                                "Non-Moth",
+                            ]
+                        },
+                        "choice": "single",
+                        "to_name": "image",
+                        "from_name": "choice",
+                    }
+                ],
+            }
+        ]
+
+    def get_predictions(self, obj):
+        # @TODO implement if necessary, make optional by URL param
+        return []
