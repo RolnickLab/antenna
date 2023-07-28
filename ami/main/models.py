@@ -1,7 +1,9 @@
 import datetime
 import itertools
+import logging
 import textwrap
 import urllib.parse
+from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
@@ -13,12 +15,25 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 _TAXON_RANKS = ("SPECIES", "GENUS", "FAMILY", "ORDER")
 
+
+class TaxonRank(Enum):
+    SPECIES = "Species"
+    GENUS = "Genus"
+    FAMILY = "Family"
+    ORDER = "Order"
+
+    def __str__(self):
+        return self.value
+
+
 # @TODO move to settings & make configurable
 _SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
 _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 
 
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
+
+logger = logging.getLogger(__name__)
 
 
 def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
@@ -66,7 +81,7 @@ class BaseModel(models.Model):
         """All django models should have this method."""
         if hasattr(self, "name"):
             name = getattr(self, "name") or "Untitled"
-            return textwrap.wrap(name, _POST_TITLE_MAX_LENGTH // 4)[0]
+            return name
         else:
             return f"{self.__class__.__name__} #{self.pk}"
 
@@ -717,6 +732,34 @@ class Occurrence(BaseModel):
 
 
 @final
+class TaxaManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset()
+
+    def add_species_parents(self):
+        """Add parents to all species that don't have them.
+
+        Create a genus if it doesn't exist based on the scientific name of the species.
+        This will replace any parents of a species that are not of the GENUS rank.
+        """
+        species = self.get_queryset().filter(rank="SPECIES")  # , parent=None)
+        updated = []
+        for taxon in species:
+            if taxon.parent and taxon.parent.rank == "GENUS":
+                continue
+            genus_name = taxon.name.split()[0]
+            genus = self.get_queryset().filter(name=genus_name, rank="GENUS").first()
+            if not genus:
+                Taxon = self.model
+                genus = Taxon.objects.create(name=genus_name, rank="GENUS")
+            taxon.parent = genus
+            logger.info(f"Added parent {genus} to {taxon}")
+            taxon.save()
+            updated.append(taxon)
+        return updated
+
+
+@final
 class Taxon(BaseModel):
     """A taxonomic classification"""
 
@@ -729,6 +772,18 @@ class Taxon(BaseModel):
     children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
+    lists: models.QuerySet["TaxaList"]
+
+    authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
+    ordering = models.IntegerField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        if self.rank == "SPECIES":
+            return self.name
+        elif self.rank == "GENUS":
+            return f"{self.name} sp."
+        else:
+            return f"{self.name} ({self.rank})"
 
     def num_direct_children(self) -> int:
         return self.direct_children.count()
@@ -770,21 +825,17 @@ class Taxon(BaseModel):
             if detection:
                 yield detection.url()
 
+    def list_names(self) -> str:
+        return ", ".join(self.lists.values_list("name", flat=True))
+
+    objects = TaxaManager()
+
     class Meta:
-        ordering = ["parent__name", "name"]
+        ordering = [
+            "ordering",
+            "name",
+        ]
         verbose_name_plural = "Taxa"
-
-
-@final
-class TaxaListEntry(BaseModel):
-    """A taxon in a checklist"""
-
-    taxon = models.ForeignKey(Taxon, on_delete=models.CASCADE)
-    list = models.ForeignKey("TaxaList", on_delete=models.CASCADE)
-    ordering = models.IntegerField()
-
-    class Meta:
-        ordering = ["ordering"]
 
 
 @final
@@ -794,7 +845,11 @@ class TaxaList(BaseModel):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
-    taxa = models.ManyToManyField(Taxon, related_name="lists", through="TaxaListEntry")
+    taxa = models.ManyToManyField(Taxon, related_name="lists")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name_plural = "Taxa Lists"
 
 
 @final
