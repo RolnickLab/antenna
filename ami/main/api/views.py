@@ -29,8 +29,8 @@ from .serializers import (
     EventSerializer,
     JobListSerializer,
     JobSerializer,
-    LabelStudioBatchSerializer,
     LabelStudioDetectionSerializer,
+    LabelStudioOccurrenceSerializer,
     LabelStudioSourceImageSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
@@ -419,15 +419,16 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
 
     queryset = SourceImage.objects.all()
     serializer_class = LabelStudioSourceImageSerializer
+    paginator = None
 
-    def get_serializer_class(self):
-        """
-        Return different serializers for list and detail views.
-        """
-        if self.action == "list":
-            return LabelStudioBatchSerializer
-        else:
-            return self.serializer_class
+    # def get_serializer_class(self):
+    #     """
+    #     Return different serializers for list and detail views.
+    #     """
+    #     if self.action == "list":
+    #         return LabelStudioBatchSerializer
+    #     else:
+    #         return self.serializer_class
 
     # def list(self, request, *args, **kwargs):
     #     """
@@ -451,5 +452,14 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
 class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):
     """ """
 
-    queryset = Detection.objects.all()
+    queryset = Detection.objects.all()[:3]
     serializer_class = LabelStudioDetectionSerializer
+    paginator = None
+
+
+class LabelStudioOccurrenceViewSet(DefaultReadOnlyViewSet):
+    """ """
+
+    queryset = Occurrence.objects.all()[:3]
+    serializer_class = LabelStudioOccurrenceSerializer
+    paginator = None

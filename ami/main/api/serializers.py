@@ -837,7 +837,7 @@ class LabelStudioBatchSerializer(serializers.ModelSerializer):
     def get_url(self, obj):
         # return f"https://example.com/label-studio/captures/{obj.pk}/"
         url = reverse_with_params(
-            "labelstudio-captures-detail",
+            "api:labelstudio-captures-detail",
             request=self.context.get("request"),
             args=[obj.pk],
         )
@@ -904,6 +904,7 @@ class LabelStudioDetectionSerializer(serializers.ModelSerializer):
             "timestamp": obj.timestamp,
             "deployment": (obj.source_image.deployment.name if obj.source_image.deployment else None),
             "deployment_id": (obj.source_image.deployment.pk if obj.source_image.deployment else None),
+            "occurrence_id": (obj.occurrence.pk if obj.occurrence else None),
             "project": (
                 obj.source_image.deployment.project.name
                 if obj.source_image.deployment and obj.source_image.deployment.project
@@ -920,23 +921,60 @@ class LabelStudioDetectionSerializer(serializers.ModelSerializer):
 
     def get_annotations(self, obj):
         return [
-            {
-                "result": [
-                    {
-                        "type": "choices",
-                        "value": {
-                            "choices": [
-                                "Moth",
-                                "Non-Moth",
-                            ]
-                        },
-                        "choice": "single",
-                        "to_name": "image",
-                        "from_name": "choice",
-                    }
-                ],
-            }
+            # {
+            #     "result": [
+            #         {
+            #             "type": "choices",
+            #             "value": {
+            #                 "choices": [
+            #                     "Moth",  # these become the selected choice!
+            #                     "Non-Moth",
+            #                 ]
+            #             },
+            #             "choice": "single",
+            #             "to_name": "image",
+            #             "from_name": "choice",
+            #         }
+            #     ],
+            # }
         ]
+
+    def get_predictions(self, obj):
+        # @TODO implement if necessary, make optional by URL param
+        return []
+
+
+class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
+    """
+    Serialize occurrences for manual annotation of objects of interest in Label Studio.
+
+    Manually specifies the json output to match the Label Studio task format.
+    https://labelstud.io/guide/tasks.html
+    """
+
+    data = serializers.SerializerMethodField()
+    annotations = serializers.SerializerMethodField()
+    predictions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Occurrence
+        fields = ["data", "annotations", "predictions"]
+
+    def get_data(self, obj):
+        return {
+            "image": obj.url(),
+            "ami_id": obj.pk,
+            "deployment": (obj.deployment.name if obj.deployment else None),
+            "deployment_id": (obj.deployment.pk if obj.deployment else None),
+            "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
+            "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
+            "event": (obj.event.day() if obj.event else None),
+            "source_image": obj.first_appearance().url(),
+            "source_image_id": obj.first_appearance().pk,
+        }
+
+    def get_annotations(self, obj):
+        return []
 
     def get_predictions(self, obj):
         # @TODO implement if necessary, make optional by URL param

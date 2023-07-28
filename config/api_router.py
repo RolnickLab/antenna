@@ -23,6 +23,7 @@ router.register(r"classifications", views.ClassificationViewSet)
 router.register(r"jobs", views.JobViewSet)
 router.register(r"labelstudio/captures", views.LabelStudioSourceImageViewSet, basename="labelstudio-captures")
 router.register(r"labelstudio/detections", views.LabelStudioDetectionViewSet, basename="labelstudio-detections")
+router.register(r"labelstudio/occurrences", views.LabelStudioOccurrenceViewSet, basename="labelstudio-occurrences")
 
 # Wire up our API using automatic URL routing.
 
