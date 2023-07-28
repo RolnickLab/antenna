@@ -21,6 +21,7 @@ router.register(r"taxa", views.TaxonViewSet)
 router.register(r"models", views.AlgorithmViewSet)
 router.register(r"classifications", views.ClassificationViewSet)
 router.register(r"jobs", views.JobViewSet)
+router.register(r"pages", views.PageViewSet)
 
 # Wire up our API using automatic URL routing.
 
