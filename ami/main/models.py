@@ -396,13 +396,17 @@ class Event(BaseModel):
         )
 
         # hours, counts = list(zip(*detections_per_hour))
-        hours, counts = list(
-            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-        )
-        hours, counts = shift_to_nighttime(list(hours), list(counts))
-        # @TODO show a tick for every hour even if there are no detections
-        hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
-        ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+        if detections_per_hour:
+            hours, counts = list(
+                zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+            )
+            hours, counts = shift_to_nighttime(list(hours), list(counts))
+            # @TODO show a tick for every hour even if there are no detections
+            hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
+            ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+        else:
+            hours, counts = [], []
+            ticktext = []
 
         plots.append(
             {
