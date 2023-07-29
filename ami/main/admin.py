@@ -1,6 +1,11 @@
-from django.contrib import admin
+from typing import Any
 
-from .models import BlogPost, Deployment, Project, SourceImage, TaxaList, Taxon
+from django.contrib import admin
+from django.db.models import Count
+from django.db.models.query import QuerySet
+from django.http.request import HttpRequest
+
+from .models import BlogPost, Deployment, Occurrence, Project, SourceImage, TaxaList, Taxon
 
 
 @admin.register(BlogPost)
@@ -21,6 +26,17 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
 @admin.register(SourceImage)
 class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
     """Admin panel example for ``SourceImage`` model."""
+
+
+@admin.register(Occurrence)
+class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
+    """Admin panel example for ``Occurrence`` model."""
+
+    list_display = ("id", "determination", "project", "deployment", "event")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        return qs.select_related("determination", "project", "deployment", "event")
 
 
 class TaxonParentFilter(admin.SimpleListFilter):
@@ -46,9 +62,25 @@ class TaxonParentFilter(admin.SimpleListFilter):
 class TaxonAdmin(admin.ModelAdmin[Taxon]):
     """Admin panel example for ``Taxon`` model."""
 
-    list_display = ("name", "rank", "parent", "ordering", "list_names")
+    list_display = ("name", "occurrence_count", "rank", "parent", "list_names")
     list_filter = ("rank", TaxonParentFilter)
     search_fields = ("name",)
+
+    # annotate queryset with occurrence counts and allow sorting
+    # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.list_display
+    # https://docs.djangoproject.com/en/3.2/ref/models/querysets/#annotate
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+
+        return qs.annotate(occurrence_count=Count("occurrences")).order_by("-occurrence_count")
+
+    @admin.display(
+        description="Occurrences",
+        ordering="occurrence_count",
+    )
+    def occurrence_count(self, obj) -> int:
+        return obj.occurrence_count
 
 
 @admin.register(TaxaList)

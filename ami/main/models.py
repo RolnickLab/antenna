@@ -763,10 +763,12 @@ class TaxaManager(models.Manager):
 class Taxon(BaseModel):
     """A taxonomic classification"""
 
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255, unique=True)
     rank = models.CharField(max_length=255, choices=as_choices(_TAXON_RANKS))
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False)
+    active = models.BooleanField(default=True)
+    synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]

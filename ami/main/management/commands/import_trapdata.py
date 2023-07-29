@@ -63,7 +63,6 @@ class Command(BaseCommand):
         project, created = Project.objects.get_or_create(name="Default Project")
         if created:
             self.stdout.write(self.style.SUCCESS('Successfully created project "%s"' % project))
-        taxon_parent, created = Taxon.objects.get_or_create(name="Lepidoptera", rank="ORDER")
         algorithm, created = Algorithm.objects.get_or_create(name="Latest Model", version="1.0")
         for occurrence in occurrences:
             deployment, created = Deployment.objects.get_or_create(
@@ -80,9 +79,7 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(self.style.SUCCESS('Successfully created event "%s"' % event))
 
-            best_taxon, created = Taxon.objects.get_or_create(
-                name=occurrence["label"], rank="SPECIES", parent=taxon_parent
-            )
+            best_taxon, created = Taxon.objects.get_or_create(name=occurrence["label"])
             occ = Occurrence.objects.create(
                 event=event,
                 deployment=deployment,
@@ -121,9 +118,7 @@ class Command(BaseCommand):
                 else:
                     detection = None
 
-                taxon, created = Taxon.objects.get_or_create(
-                    name=example["label"], rank="SPECIES", parent=taxon_parent
-                )
+                taxon, created = Taxon.objects.get_or_create(name=example["label"])
 
                 if detection:
                     one_day_later = datetime.timedelta(seconds=60 * 60 * 24)
