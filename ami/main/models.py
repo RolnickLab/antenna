@@ -2,6 +2,7 @@ import datetime
 import itertools
 import logging
 import textwrap
+import typing
 import urllib.parse
 from enum import Enum
 from typing import Final, final  # noqa: F401
@@ -13,17 +14,18 @@ from django.db.models import Q
 #: That's how constants should be defined.
 _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
-_TAXON_RANKS = ("SPECIES", "GENUS", "FAMILY", "ORDER")
 
 
 class TaxonRank(Enum):
-    SPECIES = "Species"
-    GENUS = "Genus"
-    FAMILY = "Family"
     ORDER = "Order"
+    FAMILY = "Family"
+    GENUS = "Genus"
+    SPECIES = "Species"
 
-    def __str__(self):
-        return self.value
+    @classmethod
+    def choices(cls):
+        """For use in Django text fields with choices."""
+        return tuple((i.value, i.name) for i in cls)
 
 
 # @TODO move to settings & make configurable
@@ -758,13 +760,33 @@ class TaxaManager(models.Manager):
             updated.append(taxon)
         return updated
 
+    # Method that returns taxa nested in a tree structure
+    def tree(self, root: typing.Optional["Taxon"] = None) -> dict:
+        """Get a taxon and all its children recursively"""
+        root = root or self.root()
+        children = self.get_queryset().filter(parent=root)
+        return {
+            "taxon": root,
+            "children": [self.tree(root=child) for child in children],
+        }
+
+    def root(self):
+        """Get the root taxon, the one with no parent and the highest taxon rank."""
+
+        for rank in list(TaxonRank):
+            taxon = self.get_queryset().filter(parent=None, rank=rank.name).first()
+            if taxon:
+                return taxon
+
+        return self.get_queryset().filter(parent=None).first()
+
 
 @final
 class Taxon(BaseModel):
     """A taxonomic classification"""
 
     name = models.CharField(max_length=255, unique=True)
-    rank = models.CharField(max_length=255, choices=as_choices(_TAXON_RANKS))
+    rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False)
     active = models.BooleanField(default=True)
