@@ -1,0 +1,7 @@
+<View>
+  <Choices name="choice" toName="image" choice="single" showInline="true">
+    <Choice value="Moth"/>
+    <Choice value="Non-Moth"/>
+  </Choices>
+  <Image name="image" value="$image" defaultZoom="original"/>
+</View>

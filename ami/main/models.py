@@ -1,3 +1,4 @@
+import collections
 import datetime
 import itertools
 import logging
@@ -762,13 +763,53 @@ class TaxaManager(models.Manager):
 
     # Method that returns taxa nested in a tree structure
     def tree(self, root: typing.Optional["Taxon"] = None) -> dict:
-        """Get a taxon and all its children recursively"""
+        """Build a recursive tree of taxa."""
+
         root = root or self.root()
-        children = self.get_queryset().filter(parent=root)
-        return {
-            "taxon": root,
-            "children": [self.tree(root=child) for child in children],
-        }
+
+        # Fetch all taxa
+        taxa = self.get_queryset().filter(active=True)
+
+        # Build index of taxa by parent
+        taxa_by_parent = collections.defaultdict(list)
+        for taxon in taxa:
+            taxa_by_parent[taxon.parent].append(taxon)
+
+        # Recursively build a nested tree
+        def _tree(taxon):
+            return {
+                "taxon": taxon,
+                "children": [_tree(child) for child in taxa_by_parent[taxon]],
+            }
+
+        return _tree(root)
+
+    def tree_of_names(self, root: typing.Optional["Taxon"] = None) -> dict:
+        """
+        Build a recursive tree of taxon names.
+
+        Names in the database are not not formatted as nicely as the python-rendered versions.
+        """
+
+        root = root or self.root()
+
+        # Fetch all names and parent names
+        names = self.get_queryset().filter(active=True).values_list("name", "parent__name")
+
+        # Index names by parent name
+        names_by_parent = collections.defaultdict(list)
+        for name, parent_name in names:
+            names_by_parent[parent_name].append(name)
+
+        # Recursively build a nested tree
+
+        def _tree(name):
+            return {
+                "name": name,
+                "children": [_tree(child) for child in names_by_parent[name]],
+            }
+
+        return _tree(root.name)
 
     def root(self):
         """Get the root taxon, the one with no parent and the highest taxon rank."""
@@ -778,7 +819,9 @@ class TaxaManager(models.Manager):
             if taxon:
                 return taxon
 
-        return self.get_queryset().filter(parent=None).first()
+        root = self.get_queryset().filter(parent=None).first()
+        assert root, "No root taxon found"
+        return root
 
 
 @final
@@ -802,12 +845,15 @@ class Taxon(BaseModel):
     ordering = models.IntegerField(null=True, blank=True)
 
     def __str__(self) -> str:
+        # @TODO cache this version of the name in the database?
         if self.rank == "SPECIES":
             return self.name
         elif self.rank == "GENUS":
             return f"{self.name} sp."
-        else:
+        elif self.rank not in ["ORDER", "FAMILY"]:
             return f"{self.name} ({self.rank})"
+        else:
+            return self.name
 
     def num_direct_children(self) -> int:
         return self.direct_children.count()

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.urls import path
 from rest_framework.routers import DefaultRouter, SimpleRouter
 
+from ami.labelstudio.views import LabelStudioConfigViewSet
 from ami.main.api import views
 from ami.users.api.views import UserViewSet
 
@@ -25,6 +26,7 @@ router.register(r"labelstudio/captures", views.LabelStudioSourceImageViewSet, ba
 router.register(r"labelstudio/detections", views.LabelStudioDetectionViewSet, basename="labelstudio-detections")
 router.register(r"labelstudio/occurrences", views.LabelStudioOccurrenceViewSet, basename="labelstudio-occurrences")
 router.register(r"labelstudio/hooks", views.LabelStudioHooksViewSet, basename="labelstudio-hooks")
+router.register(r"labelstudio/config", LabelStudioConfigViewSet, basename="labelstudio-config")
 
 # Wire up our API using automatic URL routing.
 

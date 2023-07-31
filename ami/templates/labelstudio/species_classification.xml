@@ -1,0 +1,6 @@
+<View>
+  <Taxonomy name="species" toName="image" showFullPath="true" pathSeparator="> " maxUsages="1" required="true">
+    {{ label_config.taxonomy_choices_xml|safe }}
+  </Taxonomy>
+  <Image name="image" value="$image" defaultZoom="original"/>
+</View>
