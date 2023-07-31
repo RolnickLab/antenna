@@ -733,6 +733,16 @@ class Occurrence(BaseModel):
     def determination_algorithm(self) -> Algorithm | None:
         return Algorithm.objects.filter(classification__detection__occurrence=self).first()
 
+    def context_url(self):
+        detection = self.best_detection()
+        if detection and detection.source_image and detection.source_image.event:
+            return f"https://app.preview.insectai.org/sessions/{detection.source_image.event.pk}?capture={detection.source_image.pk}&occurrence={self.pk}"  # noqa E501
+        else:
+            return None
+
+    def url(self):
+        return f"https://app.preview.insectai.org/occurrences/{self.pk}"
+
 
 @final
 class TaxaManager(models.Manager):

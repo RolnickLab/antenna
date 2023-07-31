@@ -461,7 +461,7 @@ class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):
 class LabelStudioOccurrenceViewSet(DefaultReadOnlyViewSet):
     """ """
 
-    queryset = Occurrence.objects.all()[:3]
+    queryset = Occurrence.objects.all().order_by("?")[:100]
     serializer_class = LabelStudioOccurrenceSerializer
     paginator = None
 

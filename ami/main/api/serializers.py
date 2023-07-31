@@ -961,16 +961,30 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
         fields = ["data", "annotations", "predictions"]
 
     def get_data(self, obj):
+        best_detection: Detection = obj.best_detection()
+        first_appearance: SourceImage = obj.first_appearance()
         return {
-            "image": obj.url(),
+            "image": best_detection.url(),
             "ami_id": obj.pk,
+            "url": obj.url(),
+            "context_url": obj.context_url(),
             "deployment": (obj.deployment.name if obj.deployment else None),
             "deployment_id": (obj.deployment.pk if obj.deployment else None),
             "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
             "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
             "event": (obj.event.day() if obj.event else None),
-            "source_image": obj.first_appearance().url(),
-            "source_image_id": obj.first_appearance().pk,
+            "source_image": best_detection.url(),
+            "source_image_id": best_detection.pk,
+            "details_link": f"<a href='{obj.url()}' target='_blank'>View Details</a>",
+            "context_link": f"<a href='{obj.context_url()}' target='_blank'>View Context</a>",
+            "details_url": obj.url(),
+            "table": {
+                "Location": (obj.deployment.name if obj.deployment else None),
+                "Date": (obj.event.day().strftime("%B %m, %Y") if obj.event else None),
+                "First Appearance": first_appearance.timestamp.strftime("%I:%M %p")
+                if first_appearance.timestamp
+                else None,
+            },
         }
 
     def get_annotations(self, obj):
