@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
+from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -463,3 +464,25 @@ class LabelStudioOccurrenceViewSet(DefaultReadOnlyViewSet):
     queryset = Occurrence.objects.all()[:3]
     serializer_class = LabelStudioOccurrenceSerializer
     paginator = None
+
+
+class LabelStudioHooksViewSet(viewsets.ViewSet):
+    """Endpoints for Label Studio to send data to."""
+
+    permission_classes = [permissions.AllowAny]
+
+    @action(detail=False, methods=["post"], name="all")
+    def all(self, request):
+        data = request.data
+        hook_name = data.get("action")
+        if hook_name == "PROJECT_UPDATED":
+            return self.update_project(request)
+        else:
+            return Response({"action": "hook_name", "data": data})
+
+    def update_project(self, request):
+        """ """
+        # from ami.labelstudio.hooks import update_project_after_save
+        project = request.data["project"]
+        # update_project_after_save(project=project, request=request)
+        return Response({"action": "update_project", "data": project})

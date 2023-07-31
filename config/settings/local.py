@@ -16,7 +16,13 @@ SECRET_KEY = env(
     default="3T3ckueKQBdtUaY9IcQdpkEK25HnAHYDFAh2FaK4bIjP6ybVfej9fGo2EHeLDaVa",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1", "api.dev.insectai.org"]
+ALLOWED_HOSTS = [
+    "localhost",
+    "0.0.0.0",
+    "127.0.0.1",
+    "api.dev.insectai.org",
+    "fe23-2601-1c0-4700-27-5112-c625-28f-4208.ngrok-free.app",
+]
 
 # CACHES
 # ------------------------------------------------------------------------------
