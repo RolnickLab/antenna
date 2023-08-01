@@ -15,6 +15,7 @@ from ..models import (
     Event,
     Job,
     Occurrence,
+    Page,
     Project,
     SourceImage,
     Taxon,
@@ -825,6 +826,43 @@ class JobSerializer(DefaultSerializer):
 
 class StorageStatusSerializer(serializers.Serializer):
     data_source = serializers.CharField(max_length=200)
+
+
+class PageSerializer(DefaultSerializer):
+    details = serializers.HyperlinkedIdentityField(view_name="page-detail", lookup_field="slug")
+
+    class Meta:
+        model = Page
+        fields = [
+            "id",
+            "details",
+            "name",
+            "slug",
+            "content",
+            "html",
+            "nav_level",
+            "nav_order",
+            "link_class",
+            "published",
+            "updated_at",
+        ]
+
+
+class PageListSerializer(PageSerializer):
+    class Meta:
+        model = Page
+        queryset = Page.objects.filter(published=True)  # This has no effect
+        fields = [
+            "id",
+            "details",
+            "name",
+            "slug",
+            "nav_level",
+            "nav_order",
+            "link_class",
+            "published",
+            "updated_at",
+        ]
 
 
 class LabelStudioBatchSerializer(serializers.ModelSerializer):
