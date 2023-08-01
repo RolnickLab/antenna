@@ -14,6 +14,7 @@ from ..models import (
     Event,
     Job,
     Occurrence,
+    Page,
     Project,
     SourceImage,
     Taxon,
@@ -31,6 +32,8 @@ from .serializers import (
     JobSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
+    PageListSerializer,
+    PageSerializer,
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
@@ -395,3 +398,29 @@ class JobViewSet(DefaultViewSet):
     #     response.data["default_config"] = Job.default_config()
     #     response.data["default_progress"] = Job.default_progress()
     #     return response
+
+
+class PageViewSet(DefaultViewSet):
+    """
+    API endpoint that allows pages to be viewed or edited.
+    """
+
+    queryset = Page.objects.all()
+    serializer_class = PageSerializer
+    lookup_field = "slug"
+    filterset_fields = ["project", "nav_level", "link_class", "published"]
+    ordering_fields = [
+        "nav_level",
+        "nav_order",
+        "created_at",
+        "updated_at",
+    ]
+
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return PageListSerializer
+        else:
+            return PageSerializer
