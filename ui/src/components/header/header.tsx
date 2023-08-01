@@ -1,7 +1,7 @@
 import { Breadcrumbs } from 'components/breadcrumbs/breadcrumbs'
 import { InfoDialog } from 'components/info-dialog/info-dialog'
 import { NavigationBar } from 'design-system/components/navigation/navigation-bar'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useNavItems } from 'utils/useNavItems'
 import ami from './ami.png'
 import styles from './header.module.scss'
@@ -14,7 +14,9 @@ export const Header = () => {
   return (
     <header className={styles.header}>
       <div className={styles.logoBar}>
-        <img src={ami} alt="AMI" width={40} height={36} />
+        <Link to="/">
+          <img src={ami} alt="AMI" width={40} height={36} />
+        </Link>
         <div className={styles.infoPages}>
           {infoPages.map((infoPage) => (
             <InfoDialog
