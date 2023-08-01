@@ -418,7 +418,7 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     @TODO use custom renderer: https://www.django-rest-framework.org/api-guide/renderers/#example
     """
 
-    queryset = SourceImage.objects.all()
+    queryset = SourceImage.objects.all().order_by("?")[:100]
     serializer_class = LabelStudioSourceImageSerializer
     paginator = None
 

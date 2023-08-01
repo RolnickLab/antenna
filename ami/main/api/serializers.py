@@ -862,6 +862,8 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
         fields = ["data", "annotations", "predictions"]
 
     def get_data(self, obj):
+        deployment_name = obj.deployment.name if obj.deployment else ""
+        project_name = obj.deployment.project.name if obj.deployment and obj.deployment.project else ""
         return {
             "image": obj.url(),
             "ami_id": obj.pk,
@@ -870,6 +872,7 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
             "deployment_id": (obj.deployment.pk if obj.deployment else None),
             "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
             "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
+            "location": f"{project_name} / {deployment_name}",
         }
 
     def get_annotations(self, obj):
@@ -963,6 +966,8 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
     def get_data(self, obj):
         best_detection: Detection = obj.best_detection()
         first_appearance: SourceImage = obj.first_appearance()
+        deployment_name = obj.deployment.name if obj.deployment else ""
+        project_name = obj.deployment.project.name if obj.deployment and obj.deployment.project else ""
         return {
             "image": best_detection.url(),
             "ami_id": obj.pk,
@@ -979,7 +984,7 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
             "context_link": f"<a href='{obj.context_url()}' target='_blank'>View Context</a>",
             "details_url": obj.url(),
             "table": {
-                "Location": (obj.deployment.name if obj.deployment else None),
+                "Location": f"{project_name} / {deployment_name}",
                 "Date": (obj.event.day().strftime("%B %m, %Y") if obj.event else None),
                 "First Appearance": first_appearance.timestamp.strftime("%I:%M %p")
                 if first_appearance.timestamp
