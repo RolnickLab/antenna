@@ -12,7 +12,7 @@ export const Header = () => {
   return (
     <header className={styles.header}>
       <div className={styles.logoBar}>
-        <img src={ami} width={40} height={36} />
+        <img src={ami} alt="AMI" width={40} height={36} />
       </div>
       <div className={styles.topBar}>
         <Breadcrumbs navItems={navItems} activeNavItemId={activeNavItemId} />
