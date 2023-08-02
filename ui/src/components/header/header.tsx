@@ -16,7 +16,13 @@ export const Header = () => {
     <header className={styles.header}>
       <div className={styles.logoBar}>
         <Link to="/">
-          <img src={ami} alt="AMI" width={40} height={36} />
+          <img
+            alt="AMI"
+            src={ami}
+            width={40}
+            height={40}
+            className={styles.logo}
+          />
         </Link>
         <div className={styles.infoPages}>
           {pages.map((page) => (

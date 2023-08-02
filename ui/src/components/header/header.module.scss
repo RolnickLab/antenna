@@ -35,6 +35,11 @@
   border-bottom: 1px solid $color-neutral-100;
 }
 
+.logo {
+  object-fit: contain;
+  vertical-align: middle;
+}
+
 .infoPages {
   display: flex;
   gap: 4px;
