@@ -5,8 +5,7 @@
   position: sticky;
   top: 0;
   left: 0;
-  height: 140px;
-  padding: 0 100px;
+  height: 204px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -15,29 +14,56 @@
   z-index: 2;
 }
 
-.topBar {
+.logoBar,
+.topBar,
+.navigationBar {
   width: 100%;
+  padding: 0 100px;
+  box-sizing: border-box;
+}
+
+.logoBar,
+.topBar {
   height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-sizing: border-box;
+}
+
+.logoBar {
+  background-color: $color-generic-white;
+  border-bottom: 1px solid $color-neutral-100;
+}
+
+.logo {
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.infoPages {
+  display: flex;
+  gap: 4px;
 }
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
-  .header {
+  .logoBar,
+  .topBar,
+  .navigationBar {
     padding: 0 32px;
   }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .header {
-    padding: 0;
     height: auto;
   }
 
+  .logoBar,
   .topBar {
-    height: auto;
     padding: 8px 16px;
+  }
+
+  .navigationBar {
+    padding: 0 16px;
   }
 }
