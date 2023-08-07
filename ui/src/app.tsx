@@ -25,7 +25,18 @@ export const App = () => {
           <main className={styles.main}>
             <div className={styles.content}>
               <Routes>
-                <Route path="/" element={<Navigate to="/overview" />} />
+                <Route
+                  path="/"
+                  element={
+                    <Navigate
+                      to={{
+                        pathname: '/overview',
+                        search: location.search,
+                      }}
+                      replace={true}
+                    />
+                  }
+                />
                 <Route path="/overview" element={<Overview />} />
                 <Route path="/jobs/:id?" element={<Jobs />} />
                 <Route path="/deployments/:id?" element={<Deployments />} />
