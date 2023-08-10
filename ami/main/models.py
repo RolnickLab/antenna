@@ -266,9 +266,12 @@ class Deployment(BaseModel):
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
     data_source = models.TextField(default="s3://bucket-name/prefix", blank=True, max_length=255)
+    data_source_last_checked = models.DateTimeField(null=True, blank=True)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     image = models.ImageField(upload_to="deployments", blank=True, null=True)
+
+    # @TODO add S3 config (endpoint & keys) specific to this deployment bucket
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
@@ -473,6 +476,14 @@ class Event(BaseModel):
 
 @final
 class StorageSource(BaseModel):
+    """
+    A remote or local storage source for images. This could be a local directory or s3 bucket.
+
+    Should include a method for resolving a public URL for a given image path.
+
+    @TODO use django-storages for this?
+    """
+
     pass
 
 
@@ -490,16 +501,24 @@ class SourceImage(BaseModel):
     #     ),
     # )
     path = models.CharField(max_length=255, blank=True)
+    # source = models.ForeignKey(StorageSource, on_delete=models.SET_NULL, null=True, related_name="source_images")
+    source = models.CharField(max_length=255, blank=True)
     timestamp = models.DateTimeField(null=True, blank=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
     size = models.IntegerField(null=True, blank=True)
-    md5hash = models.CharField(max_length=32, blank=True)
+    # md5hash = models.CharField(max_length=32, blank=True)
+    last_modified = models.DateTimeField(null=True, blank=True)
+    checksum = models.CharField(max_length=255, blank=True, null=True)
+    checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
 
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures")
 
     detections: models.QuerySet["Detection"]
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
     def detections_count(self) -> int | None:
         # return self.detections.count()
@@ -510,6 +529,27 @@ class SourceImage(BaseModel):
         # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
         url = urllib.parse.urljoin(_SOURCE_IMAGES_URL_BASE, self.path)
         return url
+
+    def extract_timestamp(self) -> datetime.datetime | None:
+        """
+        Extract a timestamp from the filename or EXIF data
+        """
+        # @TODO use EXIF data
+        # @TODO use filename
+        return None
+
+    def get_dimensions(self) -> tuple[int, int] | None:
+        """
+        Calculate the width and height of the image
+
+        @TODO use django storages
+        """
+        pass
+
+    def save(self, *args, **kwargs):
+        if self.path and not self.timestamp:
+            self.timestamp = self.extract_timestamp()
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")

@@ -5,7 +5,7 @@ from django.db.models import Count
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 
-from .models import BlogPost, Deployment, Occurrence, Project, SourceImage, TaxaList, Taxon
+from .models import BlogPost, Deployment, Device, Occurrence, Project, Site, SourceImage, TaxaList, Taxon
 
 
 @admin.register(BlogPost)
@@ -87,7 +87,32 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
 class TaxaListAdmin(admin.ModelAdmin[TaxaList]):
     """Admin panel example for ``TaxaList`` model."""
 
-    list_display = ("name", "taxa_count", "created_at", "updated_at")
-
     def taxa_count(self, obj) -> int:
         return obj.taxa.count()
+
+    list_display = (
+        "path",
+        "timestamp",
+        "event",
+        "deployment",
+        "width",
+        "height",
+        "size",
+        "checksum",
+        "checksum_algorithm",
+    )
+
+    list_filter = (
+        "deployment",
+        "timestamp",
+    )
+
+
+@admin.register(Device)
+class DeviceAdmin(admin.ModelAdmin[Device]):
+    """Admin panel example for ``Device`` model."""
+
+
+@admin.register(Site)
+class SiteAdmin(admin.ModelAdmin[Site]):
+    """Admin panel example for ``Site`` model."""
