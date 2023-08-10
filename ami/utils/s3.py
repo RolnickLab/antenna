@@ -1,3 +1,5 @@
+import io
+import pathlib
 from dataclasses import dataclass
 
 import boto3
@@ -9,6 +11,7 @@ from mypy_boto3_s3.service_resource import Bucket, S3ServiceResource
 
 # import BucketTypeDef
 from mypy_boto3_s3.type_defs import BucketTypeDef
+from PIL import Image
 from rich import print
 
 
@@ -128,6 +131,41 @@ def list_files(config: S3Config, limit: int = 10000):
 
 def public_url(config: S3Config, key: str):
     return f"{config.public_base_url}/{key}"
+
+
+# Methods to resize all images under a prefix
+def resize_images(config: S3Config, prefix: str, width: int, height: int):
+    bucket = get_bucket(config)
+    objects = bucket.objects.filter(Prefix=with_trailing_slash(prefix)).all()
+    for obj in objects:
+        resize_image(config, obj.key, width, height)
+
+
+def resized_key(config: S3Config, key: str, width: int, height: int):
+    path = pathlib.Path(key)
+    new_prefix = f"/resized/{without_trailing_slash(config.prefix)}/{path.parent.name}"
+    new_key = f"{new_prefix}/{path.stem}_{width}x{height}.{path.suffix}"
+    return new_key
+
+
+def resize_image(config: S3Config, key: str, width: int, height: int):
+    client = get_client(config)
+    new_key = resized_key(config, key, width, height)
+    client.put_object(
+        Bucket=config.bucket_name,
+        Key=new_key,
+        Body=resize_image_body(client, config.bucket_name, key, width, height),
+    )
+    return new_key
+
+
+def resize_image_body(client: S3Client, bucket: str, key: str, width: int, height: int):
+    body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+    image = Image.open(io.BytesIO(body))
+    image.thumbnail((width, height))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    return buffer.getvalue()
 
 
 def test():
