@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0007_page"),
+        ("main", "0010_page"),
     ]
 
     operations = [
