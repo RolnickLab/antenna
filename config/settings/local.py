@@ -21,7 +21,6 @@ ALLOWED_HOSTS = [
     "0.0.0.0",
     "127.0.0.1",
     "api.dev.insectai.org",
-    "fe23-2601-1c0-4700-27-5112-c625-28f-4208.ngrok-free.app",
 ]
 
 # CACHES
