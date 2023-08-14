@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0006_alter_sourceimage_options_alter_job_config_and_more"),
+        ("main", "0009_alter_taxon_options_taxon_active_taxon_synonym_of_and_more"),
     ]
 
     operations = [

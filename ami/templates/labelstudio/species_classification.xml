@@ -1,0 +1,10 @@
+<View>
+  Deployment: <Text name="deployment" value="$deployment" />
+<HyperText name="details_link" value="$details_link" inline="true" clickableLinks="true" />
+<HyperText name="context_link" value="$context_link" inline="true" clickableLinks="true" />
+<Taxonomy name="species" toName="image" showFullPath="true" pathSeparator="> " maxUsages="1" required="true">
+    {{ label_config.taxonomy_choices_xml|safe }}
+</Taxonomy>
+<Image name="image" value="$image" defaultZoom="original"/>
+<Table name="metadata" value="$table" />
+</View>

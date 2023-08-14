@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
+from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -30,6 +31,9 @@ from .serializers import (
     EventSerializer,
     JobListSerializer,
     JobSerializer,
+    LabelStudioDetectionSerializer,
+    LabelStudioOccurrenceSerializer,
+    LabelStudioSourceImageSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     PageListSerializer,
@@ -52,7 +56,7 @@ from .serializers import (
 #     return render(request, "main/index.html")
 
 
-class DefaultViewSet(viewsets.ModelViewSet):
+class DefaultViewSetMixin:
     filter_backends = [
         DjangoFilterBackend,
         OrderingFilter,
@@ -62,6 +66,14 @@ class DefaultViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "updated_at"]
     search_fields = []
     permission_classes = [permissions.AllowAny]
+
+
+class DefaultViewSet(viewsets.ModelViewSet, DefaultViewSetMixin):
+    pass
+
+
+class DefaultReadOnlyViewSet(viewsets.ReadOnlyModelViewSet, DefaultViewSetMixin):
+    pass
 
 
 class ProjectViewSet(DefaultViewSet):
@@ -391,6 +403,7 @@ class JobViewSet(DefaultViewSet):
 
     # The default schema is now returned if the progresr or config attrbutes are empty.
     # def list(self, request, *args, **kwargs):
+    permission_classes = [permissions.AllowAny]
     #     """
     #     Return a list of jobs, with the most recent first.
     #     """
@@ -424,3 +437,81 @@ class PageViewSet(DefaultViewSet):
             return PageListSerializer
         else:
             return PageSerializer
+
+
+class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
+    """
+    Endpoint for importing data to annotate in Label Studio.
+
+    if the request type is TXT then return a list of urls to the images.
+    @TODO use custom renderer: https://www.django-rest-framework.org/api-guide/renderers/#example
+    """
+
+    queryset = SourceImage.objects.all().order_by("?")[:100]
+    serializer_class = LabelStudioSourceImageSerializer
+    paginator = None
+
+    # def get_serializer_class(self):
+    #     """
+    #     Return different serializers for list and detail views.
+    #     """
+    #     if self.action == "list":
+    #         return LabelStudioBatchSerializer
+    #     else:
+    #         return self.serializer_class
+
+    # def list(self, request, *args, **kwargs):
+    #     """
+    #     Return a list of reversed urls to the API detail views for each object.
+    #     """
+    #     from rest_framework.reverse import reverse
+    #     # import httpresponse
+
+    #     # Manually return a text http response with a list of urls to the object details views using reverse.
+    #     response = super().list(request, *args, **kwargs)
+    #     response.data = []
+    #     for obj in self.get_queryset():
+    #         # response.write(request.build_absolute_uri(obj.get_absolute_url()) + "\n")
+
+    #         url = reverse("api:sourceimage-detail", args=[obj.pk], request=request).rstrip("/") + ".json"
+    #         response.data.append({"url": url})
+
+    #     return response
+
+
+class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):
+    """ """
+
+    queryset = Detection.objects.all()[:3]
+    serializer_class = LabelStudioDetectionSerializer
+    paginator = None
+
+
+class LabelStudioOccurrenceViewSet(DefaultReadOnlyViewSet):
+    """ """
+
+    queryset = Occurrence.objects.all().order_by("?")[:100]
+    serializer_class = LabelStudioOccurrenceSerializer
+    paginator = None
+
+
+class LabelStudioHooksViewSet(viewsets.ViewSet):
+    """Endpoints for Label Studio to send data to."""
+
+    permission_classes = [permissions.AllowAny]
+
+    @action(detail=False, methods=["post"], name="all")
+    def all(self, request):
+        data = request.data
+        hook_name = data.get("action")
+        if hook_name == "PROJECT_UPDATED":
+            return self.update_project(request)
+        else:
+            return Response({"action": "hook_name", "data": data})
+
+    def update_project(self, request):
+        """ """
+        # from ami.labelstudio.hooks import update_project_after_save
+        project = request.data["project"]
+        # update_project_after_save(project=project, request=request)
+        return Response({"action": "update_project", "data": project})

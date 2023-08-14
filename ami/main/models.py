@@ -1,7 +1,11 @@
+import collections
 import datetime
 import itertools
+import logging
 import textwrap
+import typing
 import urllib.parse
+from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
@@ -11,7 +15,19 @@ from django.db.models import Q
 #: That's how constants should be defined.
 _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
-_TAXON_RANKS = ("SPECIES", "GENUS", "FAMILY", "ORDER")
+
+
+class TaxonRank(Enum):
+    ORDER = "Order"
+    FAMILY = "Family"
+    GENUS = "Genus"
+    SPECIES = "Species"
+
+    @classmethod
+    def choices(cls):
+        """For use in Django text fields with choices."""
+        return tuple((i.value, i.name) for i in cls)
+
 
 # @TODO move to settings & make configurable
 _SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
@@ -19,6 +35,8 @@ _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 
 
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
+
+logger = logging.getLogger(__name__)
 
 
 def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
@@ -66,7 +84,7 @@ class BaseModel(models.Model):
         """All django models should have this method."""
         if hasattr(self, "name"):
             name = getattr(self, "name") or "Untitled"
-            return textwrap.wrap(name, _POST_TITLE_MAX_LENGTH // 4)[0]
+            return name
         else:
             return f"{self.__class__.__name__} #{self.pk}"
 
@@ -719,20 +737,137 @@ class Occurrence(BaseModel):
     def determination_algorithm(self) -> Algorithm | None:
         return Algorithm.objects.filter(classification__detection__occurrence=self).first()
 
+    def context_url(self):
+        detection = self.best_detection()
+        if detection and detection.source_image and detection.source_image.event:
+            return f"https://app.preview.insectai.org/sessions/{detection.source_image.event.pk}?capture={detection.source_image.pk}&occurrence={self.pk}"  # noqa E501
+        else:
+            return None
+
+    def url(self):
+        return f"https://app.preview.insectai.org/occurrences/{self.pk}"
+
+
+@final
+class TaxaManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset()
+
+    def add_species_parents(self):
+        """Add parents to all species that don't have them.
+
+        Create a genus if it doesn't exist based on the scientific name of the species.
+        This will replace any parents of a species that are not of the GENUS rank.
+        """
+        species = self.get_queryset().filter(rank="SPECIES")  # , parent=None)
+        updated = []
+        for taxon in species:
+            if taxon.parent and taxon.parent.rank == "GENUS":
+                continue
+            genus_name = taxon.name.split()[0]
+            genus = self.get_queryset().filter(name=genus_name, rank="GENUS").first()
+            if not genus:
+                Taxon = self.model
+                genus = Taxon.objects.create(name=genus_name, rank="GENUS")
+            taxon.parent = genus
+            logger.info(f"Added parent {genus} to {taxon}")
+            taxon.save()
+            updated.append(taxon)
+        return updated
+
+    # Method that returns taxa nested in a tree structure
+    def tree(self, root: typing.Optional["Taxon"] = None) -> dict:
+        """Build a recursive tree of taxa."""
+
+        root = root or self.root()
+
+        # Fetch all taxa
+        taxa = self.get_queryset().filter(active=True)
+
+        # Build index of taxa by parent
+        taxa_by_parent = collections.defaultdict(list)
+        for taxon in taxa:
+            taxa_by_parent[taxon.parent].append(taxon)
+
+        # Recursively build a nested tree
+        def _tree(taxon):
+            return {
+                "taxon": taxon,
+                "children": [_tree(child) for child in taxa_by_parent[taxon]],
+            }
+
+        return _tree(root)
+
+    def tree_of_names(self, root: typing.Optional["Taxon"] = None) -> dict:
+        """
+        Build a recursive tree of taxon names.
+
+        Names in the database are not not formatted as nicely as the python-rendered versions.
+        """
+
+        root = root or self.root()
+
+        # Fetch all names and parent names
+        names = self.get_queryset().filter(active=True).values_list("name", "parent__name")
+
+        # Index names by parent name
+        names_by_parent = collections.defaultdict(list)
+        for name, parent_name in names:
+            names_by_parent[parent_name].append(name)
+
+        # Recursively build a nested tree
+
+        def _tree(name):
+            return {
+                "name": name,
+                "children": [_tree(child) for child in names_by_parent[name]],
+            }
+
+        return _tree(root.name)
+
+    def root(self):
+        """Get the root taxon, the one with no parent and the highest taxon rank."""
+
+        for rank in list(TaxonRank):
+            taxon = self.get_queryset().filter(parent=None, rank=rank.name).first()
+            if taxon:
+                return taxon
+
+        root = self.get_queryset().filter(parent=None).first()
+        assert root, "No root taxon found"
+        return root
+
 
 @final
 class Taxon(BaseModel):
     """A taxonomic classification"""
 
-    name = models.CharField(max_length=255)
-    rank = models.CharField(max_length=255, choices=as_choices(_TAXON_RANKS))
+    name = models.CharField(max_length=255, unique=True)
+    rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False)
+    active = models.BooleanField(default=True)
+    synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
+    lists: models.QuerySet["TaxaList"]
+
+    authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
+    ordering = models.IntegerField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        # @TODO cache this version of the name in the database?
+        if self.rank == "SPECIES":
+            return self.name
+        elif self.rank == "GENUS":
+            return f"{self.name} sp."
+        elif self.rank not in ["ORDER", "FAMILY"]:
+            return f"{self.name} ({self.rank})"
+        else:
+            return self.name
 
     def num_direct_children(self) -> int:
         return self.direct_children.count()
@@ -774,21 +909,17 @@ class Taxon(BaseModel):
             if detection:
                 yield detection.url()
 
+    def list_names(self) -> str:
+        return ", ".join(self.lists.values_list("name", flat=True))
+
+    objects = TaxaManager()
+
     class Meta:
-        ordering = ["parent__name", "name"]
+        ordering = [
+            "ordering",
+            "name",
+        ]
         verbose_name_plural = "Taxa"
-
-
-@final
-class TaxaListEntry(BaseModel):
-    """A taxon in a checklist"""
-
-    taxon = models.ForeignKey(Taxon, on_delete=models.CASCADE)
-    list = models.ForeignKey("TaxaList", on_delete=models.CASCADE)
-    ordering = models.IntegerField()
-
-    class Meta:
-        ordering = ["ordering"]
 
 
 @final
@@ -798,7 +929,11 @@ class TaxaList(BaseModel):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
-    taxa = models.ManyToManyField(Taxon, related_name="lists", through="TaxaListEntry")
+    taxa = models.ManyToManyField(Taxon, related_name="lists")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name_plural = "Taxa Lists"
 
 
 @final

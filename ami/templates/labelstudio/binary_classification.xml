@@ -1,0 +1,11 @@
+<View>
+  <Choices name="choice" toName="image" choice="single" showInline="true">
+    <Choice value="Moth"/>
+    <Choice value="Non-Moth"/>
+  </Choices>
+  Deployment: <Text name="deployment" value="$deployment" />
+<HyperText name="details_link" value="$details_link" inline="true" clickableLinks="true" />
+<HyperText name="context_link" value="$context_link" inline="true" clickableLinks="true" />
+<Image name="image" value="$image" defaultZoom="original"/>
+<Table name="metadata" value="$table" />
+</View>
