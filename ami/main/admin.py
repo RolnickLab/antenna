@@ -26,6 +26,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source",
+        "data_source_last_checked",
         "captures_count",
     )
 

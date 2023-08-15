@@ -352,6 +352,9 @@ class Deployment(BaseModel):
             else:
                 print(f"SourceImage {source_image.pk} {source_image.path} already exists")
 
+        deployment.data_source_last_checked = datetime.datetime.now()
+        deployment.save()
+
         return source_images
 
 
