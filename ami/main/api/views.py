@@ -4,6 +4,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -161,7 +162,7 @@ class SourceImageViewSet(DefaultViewSet):
         .all()
     )
     serializer_class = SourceImageSerializer
-    filterset_fields = ["event", "deployment"]
+    filterset_fields = ["event", "deployment", "project"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -439,6 +440,24 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
+class LabelStudioFlatPaginator(PageNumberPagination):
+    """
+    A custom paginator that does not nest the data under a "results" key.
+
+    This is needed for Label Studio to work. Generally you will want all of the results in one page.
+
+    @TODO eventually each task should be it's own JSON file and this will not be needed.
+    """
+
+    page_size = 1000
+    page_size_query_param = "page_size"
+    page_query_param = "page"
+    max_page_size = 10000
+
+    def get_paginated_response(self, data):
+        return Response(data)
+
+
 class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     """
     Endpoint for importing data to annotate in Label Studio.
@@ -447,9 +466,10 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     @TODO use custom renderer: https://www.django-rest-framework.org/api-guide/renderers/#example
     """
 
-    queryset = SourceImage.objects.all().order_by("?")[:100]
+    queryset = SourceImage.objects.all()
     serializer_class = LabelStudioSourceImageSerializer
-    paginator = None
+    pagination_class = LabelStudioFlatPaginator
+    filterset_fields = ["event", "deployment", "deployment__project"]
 
     # def get_serializer_class(self):
     #     """
@@ -482,17 +502,19 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
 class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):
     """ """
 
-    queryset = Detection.objects.all()[:3]
+    queryset = Detection.objects.all()
     serializer_class = LabelStudioDetectionSerializer
-    paginator = None
+    filterset_fields = ["source_image__event", "source_image__deployment", "source_image__deployment__project"]
+    pagination_class = LabelStudioFlatPaginator
 
 
 class LabelStudioOccurrenceViewSet(DefaultReadOnlyViewSet):
     """ """
 
-    queryset = Occurrence.objects.all().order_by("?")[:100]
+    queryset = Occurrence.objects.all()
     serializer_class = LabelStudioOccurrenceSerializer
-    paginator = None
+    filterset_fields = ["event", "deployment", "project"]
+    pagination_class = LabelStudioFlatPaginator
 
 
 class LabelStudioHooksViewSet(viewsets.ViewSet):
