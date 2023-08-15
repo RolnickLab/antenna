@@ -22,6 +22,27 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
 class DeploymentAdmin(admin.ModelAdmin[Deployment]):
     """Admin panel example for ``Deployment`` model."""
 
+    list_display = (
+        "name",
+        "project",
+        "data_source",
+        "captures_count",
+    )
+
+    # list action that runs deployment.import_captures and displays a message
+    # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
+    @admin.action(description="Import captures from deployment's data source")
+    def import_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
+        captures = []
+        deployments = []
+        for deployment in queryset:
+            deployments.append(deployment)
+            captures += deployment.import_captures()
+        msg = f"Imported {len(captures)} captures for {len(deployments)} deployments."
+        self.message_user(request, msg)
+
+    actions = [import_captures]
+
 
 @admin.register(SourceImage)
 class SourceImageAdmin(admin.ModelAdmin[SourceImage]):

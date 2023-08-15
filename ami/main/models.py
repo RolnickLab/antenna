@@ -9,8 +9,11 @@ from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
+
+from ami.utils import s3 as s3_utils
 
 #: That's how constants should be defined.
 _POST_TITLE_MAX_LENGTH: Final = 80
@@ -311,6 +314,45 @@ class Deployment(BaseModel):
 
     def capture_images(self, num=5) -> list[str]:
         return [c.url() for c in self.example_captures(num)]
+
+    def import_captures(self) -> list["SourceImage"]:
+        """Import images from the deployment's data source"""
+
+        deployment = self
+        assert deployment.data_source, f"Deployment {deployment.name} has no data source configured"
+
+        if not deployment.data_source.startswith("s3://"):
+            raise ValueError(f"Only s3:// data sources are currently supported, not {deployment.data_source}")
+
+        bucket_name, prefix = s3_utils.split_uri(deployment.data_source)
+        s3_config = s3_utils.S3Config(
+            bucket_name=bucket_name,
+            prefix=prefix,
+            # @TODO move access key settings to Deployment or DataSource config
+            endpoint_url=settings.S3_ENDPOINT_URL,
+            access_key_id=settings.S3_ACCESS_KEY_ID,
+            secret_access_key=settings.S3_SECRET_ACCESS_KEY,
+        )
+        objects = s3_utils.list_files(s3_config)
+        source_images = []
+        for obj in objects:
+            source_image, created = SourceImage.objects.get_or_create(
+                deployment=deployment,
+                path=obj.key,
+                defaults={
+                    "last_modified": obj.last_modified,
+                    "size": obj.size,
+                    "checksum": obj.e_tag.strip('"'),
+                    "checksum_algorithm": obj.checksum_algorithm,
+                },
+            )
+            if created:
+                print(f"Created SourceImage {source_image.pk} {source_image.path}")
+                source_images.append(source_image)
+            else:
+                print(f"SourceImage {source_image.pk} {source_image.path} already exists")
+
+        return source_images
 
 
 @final
