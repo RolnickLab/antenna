@@ -557,8 +557,8 @@ class SourceImage(BaseModel):
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
 
-    deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures")
+    deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
 
     detections: models.QuerySet["Detection"]
 
