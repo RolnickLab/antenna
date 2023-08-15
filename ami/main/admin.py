@@ -27,6 +27,23 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
 class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
     """Admin panel example for ``SourceImage`` model."""
 
+    list_display = (
+        "path",
+        "timestamp",
+        "event",
+        "deployment",
+        "width",
+        "height",
+        "size",
+        "checksum",
+        "checksum_algorithm",
+    )
+
+    list_filter = (
+        "deployment",
+        "timestamp",
+    )
+
 
 @admin.register(Occurrence)
 class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
@@ -87,25 +104,10 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
 class TaxaListAdmin(admin.ModelAdmin[TaxaList]):
     """Admin panel example for ``TaxaList`` model."""
 
+    list_display = ("name", "taxa_count", "created_at", "updated_at")
+
     def taxa_count(self, obj) -> int:
         return obj.taxa.count()
-
-    list_display = (
-        "path",
-        "timestamp",
-        "event",
-        "deployment",
-        "width",
-        "height",
-        "size",
-        "checksum",
-        "checksum_algorithm",
-    )
-
-    list_filter = (
-        "deployment",
-        "timestamp",
-    )
 
 
 @admin.register(Device)
