@@ -121,16 +121,20 @@ def count_files(config: S3Config):
     return count
 
 
-def list_files(config: S3Config, limit: int = 10000):
-    # bucket.objects.filter(Prefix=prefix).all()
+def list_files(config: S3Config, limit: int | None = 10000):
+    # @TODO raise a warning about potential cost for large buckets
     bucket = get_bucket(config)
     print(f"Scanning {bucket.name}/{config.prefix}")
-    objects = bucket.objects.filter(Prefix=with_trailing_slash(config.prefix)).limit(limit).all()
+    q = bucket.objects.filter(Prefix=with_trailing_slash(config.prefix))
+    if limit:
+        objects = q.limit(limit).all()
+    else:
+        objects = q.all()
     return objects
 
 
 def public_url(config: S3Config, key: str):
-    return f"{config.public_base_url}/{key}"
+    return f"{config.public_base_url}/{key.lstrip('/')}"
 
 
 # Methods to resize all images under a prefix
@@ -148,7 +152,7 @@ def resized_key(config: S3Config, key: str, width: int, height: int):
     return new_key
 
 
-def resize_image(config: S3Config, key: str, width: int, height: int):
+def resize_image(config: S3Config, key: str, width: int, height: int) -> str:
     client = get_client(config)
     new_key = resized_key(config, key, width, height)
     client.put_object(
@@ -159,7 +163,7 @@ def resize_image(config: S3Config, key: str, width: int, height: int):
     return new_key
 
 
-def resize_image_body(client: S3Client, bucket: str, key: str, width: int, height: int):
+def resize_image_body(client: S3Client, bucket: str, key: str, width: int, height: int) -> bytes:
     body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
     image = Image.open(io.BytesIO(body))
     image.thumbnail((width, height))

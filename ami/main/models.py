@@ -9,7 +9,6 @@ from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
-from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
@@ -268,8 +267,9 @@ class Deployment(BaseModel):
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
-    data_source = models.TextField(default="s3://bucket-name/prefix", blank=True, max_length=255)
-    data_source_last_checked = models.DateTimeField(null=True, blank=True)
+    # data_source_old = models.TextField(default="s3://bucket-name/prefix", blank=True, max_length=255)
+    # data_source_last_checked = models.DateTimeField(null=True, blank=True)
+    data_source = models.ForeignKey("S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     image = models.ImageField(upload_to="deployments", blank=True, null=True)
@@ -321,21 +321,13 @@ class Deployment(BaseModel):
         deployment = self
         assert deployment.data_source, f"Deployment {deployment.name} has no data source configured"
 
-        if not deployment.data_source.startswith("s3://"):
-            raise ValueError(f"Only s3:// data sources are currently supported, not {deployment.data_source}")
-
-        bucket_name, prefix = s3_utils.split_uri(deployment.data_source)
-        s3_config = s3_utils.S3Config(
-            bucket_name=bucket_name,
-            prefix=prefix,
-            # @TODO move access key settings to Deployment or DataSource config
-            endpoint_url=settings.S3_ENDPOINT_URL,
-            access_key_id=settings.S3_ACCESS_KEY_ID,
-            secret_access_key=settings.S3_SECRET_ACCESS_KEY,
-        )
-        objects = s3_utils.list_files(s3_config)
+        s3_config = deployment.data_source.config
         source_images = []
-        for obj in objects:
+        total_size = 0
+        total_files = 0
+        for obj in s3_utils.list_files(s3_config):
+            total_files += 1
+            total_size += obj.size
             source_image, created = SourceImage.objects.get_or_create(
                 deployment=deployment,
                 path=obj.key,
@@ -352,8 +344,10 @@ class Deployment(BaseModel):
             else:
                 print(f"SourceImage {source_image.pk} {source_image.path} already exists")
 
-        deployment.data_source_last_checked = datetime.datetime.now()
-        deployment.save()
+        deployment.data_source.last_checked = datetime.datetime.now()
+        deployment.data_source.total_size = total_size
+        deployment.data_source.total_files = total_files
+        deployment.data_source.save()
 
         return source_images
 
@@ -520,16 +514,54 @@ class Event(BaseModel):
 
 
 @final
-class StorageSource(BaseModel):
+class S3StorageSource(BaseModel):
     """
-    A remote or local storage source for images. This could be a local directory or s3 bucket.
-
-    Should include a method for resolving a public URL for a given image path.
-
-    @TODO use django-storages for this?
+    Per-deployment configuration for an S3 bucket.
     """
 
-    pass
+    name = models.CharField(max_length=255)
+    bucket = models.CharField(max_length=255)
+    prefix = models.CharField(max_length=255, blank=True)
+    access_key = models.TextField()
+    secret_key = models.TextField()
+    endpoint_url = models.CharField(max_length=255, blank=True, null=True)
+    public_base_url = models.CharField(max_length=255, blank=True)
+    total_size = models.BigIntegerField(null=True, blank=True)
+    total_files = models.BigIntegerField(null=True, blank=True)
+    last_checked = models.DateTimeField(null=True, blank=True)
+    # use_signed_urls = models.BooleanField(default=False)
+
+    @property
+    def config(self):
+        return s3_utils.S3Config(
+            bucket_name=self.bucket,
+            prefix=self.prefix,
+            access_key_id=self.access_key,
+            secret_access_key=self.secret_key,
+            endpoint_url=self.endpoint_url,
+            public_base_url=self.public_base_url,
+        )
+
+    def list_files(self, limit=None):
+        """Recursively list files in the bucket/prefix."""
+
+        return s3_utils.list_files(self.config, limit=limit)
+
+    def count_files(self):
+        """Count & save the number of files in the bucket/prefix."""
+
+        count = s3_utils.count_files(self.config)
+        self.total_files = count
+        self.save()
+        return count
+
+    def calculate_size(self):
+        """Calculate the total size of all files in the bucket/prefix."""
+
+        size = sum([obj.size for obj in self.list_files()])
+        self.total_size = size
+        self.save()
+        return size
 
 
 @final

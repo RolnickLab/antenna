@@ -4,8 +4,20 @@ from django.contrib import admin
 from django.db.models import Count
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
+from django.template.defaultfilters import filesizeformat
 
-from .models import BlogPost, Deployment, Device, Occurrence, Project, Site, SourceImage, TaxaList, Taxon
+from .models import (
+    BlogPost,
+    Deployment,
+    Device,
+    Occurrence,
+    Project,
+    S3StorageSource,
+    Site,
+    SourceImage,
+    TaxaList,
+    Taxon,
+)
 
 
 @admin.register(BlogPost)
@@ -26,9 +38,15 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source",
-        "data_source_last_checked",
         "captures_count",
+        "captures_size",
     )
+
+    def captures_size(self, obj) -> str | None:
+        if obj.data_source:
+            return filesizeformat(obj.data_source.total_size)
+        else:
+            return None
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
@@ -43,6 +61,14 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         self.message_user(request, msg)
 
     actions = [import_captures]
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        # Use select_related to avoid extra queries when displaying related fields
+        qs = qs.select_related("project", "data_source")
+        # Annotate queryset with capture counts
+        qs = qs.annotate(captures_count=Count("captures"))
+        return qs
 
 
 @admin.register(SourceImage)
@@ -64,7 +90,11 @@ class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
     list_filter = (
         "deployment",
         "timestamp",
+        "deployment__data_source",
     )
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
 
 
 @admin.register(Occurrence)
@@ -140,3 +170,28 @@ class DeviceAdmin(admin.ModelAdmin[Device]):
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin[Site]):
     """Admin panel example for ``Site`` model."""
+
+
+@admin.register(S3StorageSource)
+class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
+    """Admin panel example for ``S3StorageSource`` model."""
+
+    list_display = ("name", "bucket", "prefix", "size", "total_files", "last_checked")
+
+    def size(self, obj) -> str:
+        return filesizeformat(obj.total_size)
+
+    @admin.action()
+    def caclulate_size(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
+        for source in queryset:
+            source.calculate_size()
+        self.message_user(request, f"Size calculated for {queryset.count()} source(s).")
+
+    @admin.action()
+    def count_files(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
+        # measure the time elapsed for the action
+        for source in queryset:
+            source.count_files()
+        self.message_user(request, f"File count calculated for {queryset.count()} source(s).")
+
+    actions = [caclulate_size, count_files]
