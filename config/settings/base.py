@@ -352,9 +352,3 @@ SPECTACULAR_SETTINGS = {
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
-
-
-# Storage defaults
-S3_ENDPOINT_URL = env("S3_ENDPOINT_URL", None)
-S3_ACCESS_KEY_ID = env("S3_ACCESS_KEY_ID", None)
-S3_SECRET_ACCESS_KEY = env("S3_SECRET_ACCESS_KEY", None)
