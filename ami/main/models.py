@@ -278,6 +278,7 @@ class Deployment(BaseModel):
     data_source_regex = models.CharField(max_length=255, blank=True, null=True)
     data_source_size = models.BigIntegerField(blank=True, null=True)
     data_source_last_checked = models.DateTimeField(blank=True, null=True)
+    # data_source_last_check_duration = models.DurationField(blank=True, null=True)
 
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
@@ -324,7 +325,7 @@ class Deployment(BaseModel):
 
     def data_source_uri(self) -> str | None:
         if self.data_source:
-            uri = self.data_source.uri()
+            uri = self.data_source.uri().rstrip("/")
             if self.data_source_subdir:
                 uri = f"{uri}/{self.data_source_subdir.strip('/')}/"
             if self.data_source_regex:
@@ -551,6 +552,7 @@ class S3StorageSource(BaseModel):
     total_size = models.BigIntegerField(null=True, blank=True)
     total_files = models.BigIntegerField(null=True, blank=True)
     last_checked = models.DateTimeField(null=True, blank=True)
+    # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
 
     deployments: models.QuerySet["Deployment"]
@@ -580,7 +582,7 @@ class S3StorageSource(BaseModel):
         return count
 
     def calculate_size(self):
-        """Calculate the total size of all files in the bucket/prefix."""
+        """Calculate the total size and count of all files in the bucket/prefix."""
 
         sizes = [obj.size for obj in self.list_files()]
         size = sum(sizes)

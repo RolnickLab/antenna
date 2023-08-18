@@ -128,15 +128,15 @@ def count_files(config: S3Config):
 
 
 def list_files(
-    config: S3Config, limit: int | None = 10000, subdir: str | None = None, regex_filter: str | None = None
+    config: S3Config, limit: int | None = 100000, subdir: str | None = None, regex_filter: str | None = None
 ) -> typing.Generator[ObjectSummary, typing.Any, None]:
     # @TODO raise a warning about potential cost for large buckets
     bucket = get_bucket(config)
     if subdir:
-        full_prefix = with_trailing_slash(urllib.parse.urljoin(config.prefix, subdir.lstrip("/")))
+        full_prefix = urllib.parse.urljoin(config.prefix, subdir.lstrip("/")).strip("/")
     else:
-        full_prefix = with_trailing_slash(config.prefix)
-    logger.info(f"Scanning {bucket.name}/{full_prefix}")
+        full_prefix = config.prefix.strip("/")
+    logger.info(f"Scanning {bucket.name}/{full_prefix}/")
     q = bucket.objects.filter(Prefix=full_prefix)
     if limit:
         objects = q.limit(limit).all()

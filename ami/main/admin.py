@@ -6,6 +6,8 @@ from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
 
+from ami import tasks
+
 from .models import (
     BlogPost,
     Deployment,
@@ -50,14 +52,10 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
-    @admin.action(description="Import captures from deployment's data source")
+    @admin.action(description="Import captures from deployment's data source (async)")
     def import_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        num_captures = 0
-        deployments = []
-        for deployment in queryset:
-            deployments.append(deployment)
-            num_captures += deployment.import_captures()
-        msg = f"Imported {num_captures} captures for {len(deployments)} deployments."
+        queued_tasks = [tasks.import_source_images.delay(deployment.pk) for deployment in queryset]
+        msg = f"Importing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
         self.message_user(request, msg)
 
     actions = [import_captures]
@@ -182,10 +180,12 @@ class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
         return filesizeformat(obj.total_size)
 
     @admin.action()
-    def caclulate_size(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
-        for source in queryset:
-            source.calculate_size()
-        self.message_user(request, f"Size calculated for {queryset.count()} source(s).")
+    def calculate_size_async(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
+        queued_tasks = [tasks.calculate_storage_size.apply_async([source.pk]) for source in queryset]
+        self.message_user(
+            request,
+            f"Calculating size & file counts for {len(queued_tasks)} source(s) background tasks: {queued_tasks}.",
+        )
 
     @admin.action()
     def count_files(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
@@ -194,4 +194,4 @@ class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
             source.count_files()
         self.message_user(request, f"File count calculated for {queryset.count()} source(s).")
 
-    actions = [caclulate_size, count_files]
+    actions = [calculate_size_async, count_files]
