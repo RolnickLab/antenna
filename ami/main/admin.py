@@ -37,8 +37,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
     list_display = (
         "name",
         "project",
-        "data_source",
-        "data_source_subdir",
+        "data_source_uri",
         "captures_count",
         "captures_size",
     )
@@ -53,12 +52,12 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
     @admin.action(description="Import captures from deployment's data source")
     def import_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        captures = []
+        num_captures = 0
         deployments = []
         for deployment in queryset:
             deployments.append(deployment)
-            captures += deployment.import_captures()
-        msg = f"Imported {len(captures)} captures for {len(deployments)} deployments."
+            num_captures += deployment.import_captures()
+        msg = f"Imported {num_captures} captures for {len(deployments)} deployments."
         self.message_user(request, msg)
 
     actions = [import_captures]
