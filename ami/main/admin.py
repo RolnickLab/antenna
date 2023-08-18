@@ -38,13 +38,14 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source",
+        "data_source_subdir",
         "captures_count",
         "captures_size",
     )
 
     def captures_size(self, obj) -> str | None:
         if obj.data_source:
-            return filesizeformat(obj.data_source.total_size)
+            return filesizeformat(obj.data_source_size)
         else:
             return None
 

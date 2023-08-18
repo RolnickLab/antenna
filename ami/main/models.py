@@ -12,7 +12,7 @@ from django.apps import apps
 from django.db import models
 from django.db.models import Q
 
-from ami.utils import s3 as s3_utils
+import ami.utils
 
 #: That's how constants should be defined.
 _POST_TITLE_MAX_LENGTH: Final = 80
@@ -263,18 +263,25 @@ class Site(BaseModel):
 
 @final
 class Deployment(BaseModel):
-    """ """
+    """
+    Class that describes a deployment of a device (camera & hardware) at a research site.
+    """
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
-    # data_source_old = models.TextField(default="s3://bucket-name/prefix", blank=True, max_length=255)
-    # data_source_last_checked = models.DateTimeField(null=True, blank=True)
-    data_source = models.ForeignKey("S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True)
+
+    # @TODO consider sharing only the "data source auth/config" then a one-to-one config for each deployment
+    data_source = models.ForeignKey(
+        "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
+    )
+    data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
+    data_source_regex = models.CharField(max_length=255, blank=True, null=True)
+    data_source_size = models.BigIntegerField(blank=True, null=True)
+    data_source_last_checked = models.DateTimeField(blank=True, null=True)
+
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     image = models.ImageField(upload_to="deployments", blank=True, null=True)
-
-    # @TODO add S3 config (endpoint & keys) specific to this deployment bucket
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
@@ -315,17 +322,31 @@ class Deployment(BaseModel):
     def capture_images(self, num=5) -> list[str]:
         return [c.url() for c in self.example_captures(num)]
 
-    def import_captures(self) -> list["SourceImage"]:
+    def data_source_uri(self) -> str | None:
+        if self.data_source:
+            uri = self.data_source.uri()
+            if self.data_source_subdir:
+                uri = f"{uri}/{self.data_source_subdir.strip('/')}/"
+            if self.data_source_regex:
+                uri = f"{uri}?regex={self.data_source_regex}"
+        else:
+            uri = None
+        return uri
+
+    def import_captures(self) -> int:
         """Import images from the deployment's data source"""
 
         deployment = self
         assert deployment.data_source, f"Deployment {deployment.name} has no data source configured"
 
         s3_config = deployment.data_source.config
-        source_images = []
         total_size = 0
         total_files = 0
-        for obj in s3_utils.list_files(s3_config):
+        for obj in ami.utils.s3.list_files(
+            s3_config,
+            subdir=self.data_source_subdir,
+            regex_filter=self.data_source_regex,
+        ):
             total_files += 1
             total_size += obj.size
             source_image, created = SourceImage.objects.get_or_create(
@@ -340,16 +361,17 @@ class Deployment(BaseModel):
             )
             if created:
                 print(f"Created SourceImage {source_image.pk} {source_image.path}")
-                source_images.append(source_image)
             else:
                 print(f"SourceImage {source_image.pk} {source_image.path} already exists")
 
-        deployment.data_source.last_checked = datetime.datetime.now()
-        deployment.data_source.total_size = total_size
-        deployment.data_source.total_files = total_files
-        deployment.data_source.save()
+        deployment.data_source_last_checked = datetime.datetime.now()
+        deployment.data_source_size = total_size
+        deployment.save()
 
-        return source_images
+        # @TODO compare total_files to the number of SourceImages for this deployment
+        # @TODO decide if we should delete SourceImages that are no longer in the data source
+
+        return total_files
 
 
 @final
@@ -531,9 +553,11 @@ class S3StorageSource(BaseModel):
     last_checked = models.DateTimeField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
 
+    deployments: models.QuerySet["Deployment"]
+
     @property
     def config(self):
-        return s3_utils.S3Config(
+        return ami.utils.s3.S3Config(
             bucket_name=self.bucket,
             prefix=self.prefix,
             access_key_id=self.access_key,
@@ -545,12 +569,12 @@ class S3StorageSource(BaseModel):
     def list_files(self, limit=None):
         """Recursively list files in the bucket/prefix."""
 
-        return s3_utils.list_files(self.config, limit=limit)
+        return ami.utils.s3.list_files(self.config, limit=limit)
 
     def count_files(self):
         """Count & save the number of files in the bucket/prefix."""
 
-        count = s3_utils.count_files(self.config)
+        count = ami.utils.s3.count_files(self.config)
         self.total_files = count
         self.save()
         return count
@@ -558,33 +582,45 @@ class S3StorageSource(BaseModel):
     def calculate_size(self):
         """Calculate the total size of all files in the bucket/prefix."""
 
-        size = sum([obj.size for obj in self.list_files()])
+        sizes = [obj.size for obj in self.list_files()]
+        size = sum(sizes)
+        count = len(sizes)
         self.total_size = size
+        self.total_files = count
         self.save()
         return size
+
+    def uri(self, path: str | None = None):
+        """Return the full URI for the given path."""
+
+        full_path = "/".join(str(part).strip("/") for part in [self.bucket, self.prefix, path] if part)
+        return f"s3://{full_path}"
+
+    def public_url(self, path: str):
+        """Return the public URL for the given path."""
+
+        return ami.utils.s3.public_url(self.config, path)
+
+    # If the public_base_url has changed, update all the source images
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            old = S3StorageSource.objects.get(pk=self.pk)
+            if old.public_base_url != self.public_base_url:
+                for deployment in self.deployments.all():
+                    deployment.captures.update(public_base_url=self.public_base_url)
+        super().save(*args, **kwargs)
 
 
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
 
-    # file = (
-    #     models.ImageField(
-    #         null=True,
-    #         blank=True,
-    #         upload_to="source_images",
-    #         width_field="width",
-    #         height_field="height",
-    #     ),
-    # )
     path = models.CharField(max_length=255, blank=True)
-    # source = models.ForeignKey(StorageSource, on_delete=models.SET_NULL, null=True, related_name="source_images")
-    source = models.CharField(max_length=255, blank=True)
+    public_base_url = models.CharField(max_length=255, blank=True)
     timestamp = models.DateTimeField(null=True, blank=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
     size = models.IntegerField(null=True, blank=True)
-    # md5hash = models.CharField(max_length=32, blank=True)
     last_modified = models.DateTimeField(null=True, blank=True)
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
@@ -597,23 +633,49 @@ class SourceImage(BaseModel):
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
+    def public_url(self) -> str:
+        """
+        Return the public URL for this image.
+
+        The base URL is determined by the deployment's data source and is cached
+        on the source image. If the deployment's data source changes, the URLs
+        for all source images will be updated.
+
+        @TODO use signed URLs if necessary.
+        @TODO add support for thumbnail URLs here?
+        @TODO consider if we ever need to access the original image directly!
+        """
+        return urllib.parse.urljoin(self.public_base_url or "/", self.path)
+
+    # backwards compatibility
+    url = public_url
+
     def detections_count(self) -> int | None:
         # return self.detections.count()
         return None
 
-    def url(self) -> str:
-        # @TODO use settings or deployment storage base
-        # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-        url = urllib.parse.urljoin(_SOURCE_IMAGES_URL_BASE, self.path)
-        return url
+    def get_base_url(self) -> str:
+        """
+        Determine the public URL from the deployment's data source.
+
+        If there is no data source, return a relative URL.
+        """
+        if self.deployment and self.deployment.data_source and self.deployment.data_source.public_base_url:
+            return self.deployment.data_source.public_base_url
+        else:
+            return "/"
 
     def extract_timestamp(self) -> datetime.datetime | None:
         """
         Extract a timestamp from the filename or EXIF data
         """
-        # @TODO use EXIF data
-        # @TODO use filename
-        return None
+        # @TODO use EXIF data if necessary (use methods in AMI data companion repo)
+        timestamp = ami.utils.dates.get_image_timestamp_from_filename(self.path)
+        if not timestamp:
+            # timestamp = ami.utils.dates.get_image_timestamp_from_exif(self.path)
+            msg = f"No timestamp could be extracted from the filename or EXIF data of {self.path}"
+            logger.error(msg)
+        return timestamp
 
     def get_dimensions(self) -> tuple[int, int] | None:
         """
@@ -626,6 +688,8 @@ class SourceImage(BaseModel):
     def save(self, *args, **kwargs):
         if self.path and not self.timestamp:
             self.timestamp = self.extract_timestamp()
+        if self.path and not self.public_base_url:
+            self.public_base_url = self.get_base_url()
         super().save(*args, **kwargs)
 
     class Meta:

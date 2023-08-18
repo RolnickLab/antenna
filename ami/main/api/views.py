@@ -459,44 +459,12 @@ class LabelStudioFlatPaginator(PageNumberPagination):
 
 
 class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
-    """
-    Endpoint for importing data to annotate in Label Studio.
+    """Endpoint for importing data to annotate in Label Studio."""
 
-    if the request type is TXT then return a list of urls to the images.
-    @TODO use custom renderer: https://www.django-rest-framework.org/api-guide/renderers/#example
-    """
-
-    queryset = SourceImage.objects.all()
+    queryset = SourceImage.objects.select_related("event", "event__deployment", "event__deployment__data_source")
     serializer_class = LabelStudioSourceImageSerializer
     pagination_class = LabelStudioFlatPaginator
     filterset_fields = ["event", "deployment", "deployment__project"]
-
-    # def get_serializer_class(self):
-    #     """
-    #     Return different serializers for list and detail views.
-    #     """
-    #     if self.action == "list":
-    #         return LabelStudioBatchSerializer
-    #     else:
-    #         return self.serializer_class
-
-    # def list(self, request, *args, **kwargs):
-    #     """
-    #     Return a list of reversed urls to the API detail views for each object.
-    #     """
-    #     from rest_framework.reverse import reverse
-    #     # import httpresponse
-
-    #     # Manually return a text http response with a list of urls to the object details views using reverse.
-    #     response = super().list(request, *args, **kwargs)
-    #     response.data = []
-    #     for obj in self.get_queryset():
-    #         # response.write(request.build_absolute_uri(obj.get_absolute_url()) + "\n")
-
-    #         url = reverse("api:sourceimage-detail", args=[obj.pk], request=request).rstrip("/") + ".json"
-    #         response.data.append({"url": url})
-
-    #     return response
 
 
 class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):

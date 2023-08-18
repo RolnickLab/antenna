@@ -1,5 +1,9 @@
 import io
+import logging
 import pathlib
+import re
+import typing
+import urllib.parse
 from dataclasses import dataclass
 
 import boto3
@@ -7,12 +11,14 @@ import boto3.resources.base
 import botocore
 import botocore.config
 from mypy_boto3_s3.client import S3Client
-from mypy_boto3_s3.service_resource import Bucket, S3ServiceResource
+from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResource
 
 # import BucketTypeDef
 from mypy_boto3_s3.type_defs import BucketTypeDef
 from PIL import Image
 from rich import print
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -121,20 +127,62 @@ def count_files(config: S3Config):
     return count
 
 
-def list_files(config: S3Config, limit: int | None = 10000):
+def list_files(
+    config: S3Config, limit: int | None = 10000, subdir: str | None = None, regex_filter: str | None = None
+) -> typing.Generator[ObjectSummary, typing.Any, None]:
     # @TODO raise a warning about potential cost for large buckets
     bucket = get_bucket(config)
-    print(f"Scanning {bucket.name}/{config.prefix}")
-    q = bucket.objects.filter(Prefix=with_trailing_slash(config.prefix))
+    if subdir:
+        full_prefix = with_trailing_slash(urllib.parse.urljoin(config.prefix, subdir.lstrip("/")))
+    else:
+        full_prefix = with_trailing_slash(config.prefix)
+    logger.info(f"Scanning {bucket.name}/{full_prefix}")
+    q = bucket.objects.filter(Prefix=full_prefix)
     if limit:
         objects = q.limit(limit).all()
     else:
         objects = q.all()
-    return objects
+    bucket_iter = objects
+    regex = re.compile(str(regex_filter)) if regex_filter else None
+    for obj in bucket_iter:
+        if obj.key.endswith("/"):
+            logger.debug(obj.key + " is skipped because it is a folder")
+            continue
+        if regex and not regex.match(obj.key):
+            logger.debug(obj.key + " is skipped by regex filter")
+            continue
+        logger.debug(f"Yielding {obj.key}")
+        yield obj
+
+
+def iterkeys(self):
+    client, bucket = self.get_client_and_bucket()
+    if self.prefix:
+        list_kwargs = {"Prefix": self.prefix.rstrip("/") + "/"}
+        if not self.recursive_scan:
+            list_kwargs["Delimiter"] = "/"
+        bucket_iter = bucket.objects.filter(**list_kwargs).all()
+    else:
+        bucket_iter = bucket.objects.all()
+    regex = re.compile(str(self.regex_filter)) if self.regex_filter else None
+    for obj in bucket_iter:
+        key = obj.key
+        if key.endswith("/"):
+            logger.debug(key + " is skipped because it is a folder")
+            continue
+        if regex and not regex.match(key):
+            logger.debug(key + " is skipped by regex filter")
+            continue
+        yield key
 
 
 def public_url(config: S3Config, key: str):
-    return f"{config.public_base_url}/{key.lstrip('/')}"
+    """
+    Return public URL for a given key.
+
+    @TODO Handle non-public buckets with signed URLs
+    """
+    return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
 
 
 # Methods to resize all images under a prefix
