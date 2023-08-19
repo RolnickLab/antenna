@@ -11,6 +11,7 @@ import boto3.resources.base
 import botocore
 import botocore.config
 from mypy_boto3_s3.client import S3Client
+from mypy_boto3_s3.paginator import ListObjectsV2Paginator
 from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResource
 
 # import BucketTypeDef
@@ -127,6 +128,22 @@ def count_files(config: S3Config):
     return count
 
 
+def count_files_paginated(config: S3Config):
+    client = get_client(config)
+    paginator = client.get_paginator("list_objects_v2")
+    page_iterator: ListObjectsV2Paginator = paginator.paginate(
+        Bucket=config.bucket_name,
+        Prefix=config.prefix,
+        PaginationConfig={
+            "PageSize": 10000,
+        },  # "MaxItems": 1000000}
+    )
+    count = 0
+    for page in page_iterator:
+        count += page["KeyCount"]
+    return count
+
+
 def list_files(
     config: S3Config, limit: int | None = 100000, subdir: str | None = None, regex_filter: str | None = None
 ) -> typing.Generator[ObjectSummary, typing.Any, None]:
@@ -155,25 +172,36 @@ def list_files(
         yield obj
 
 
-def iterkeys(self):
-    client, bucket = self.get_client_and_bucket()
-    if self.prefix:
-        list_kwargs = {"Prefix": self.prefix.rstrip("/") + "/"}
-        if not self.recursive_scan:
-            list_kwargs["Delimiter"] = "/"
-        bucket_iter = bucket.objects.filter(**list_kwargs).all()
+def list_files_paginated(
+    config: S3Config,
+    subdir: str | None = None,
+    regex_filter: str | None = None,
+) -> typing.Generator[dict, typing.Any, None]:
+    """
+    List files in a bucket, with pagination to increase performance.
+    """
+    client = get_client(config)
+    if subdir:
+        full_prefix = urllib.parse.urljoin(config.prefix, subdir.lstrip("/")).strip("/")
     else:
-        bucket_iter = bucket.objects.all()
-    regex = re.compile(str(self.regex_filter)) if self.regex_filter else None
-    for obj in bucket_iter:
-        key = obj.key
-        if key.endswith("/"):
-            logger.debug(key + " is skipped because it is a folder")
-            continue
-        if regex and not regex.match(key):
-            logger.debug(key + " is skipped by regex filter")
-            continue
-        yield key
+        full_prefix = config.prefix.strip("/")
+    logger.info(f"Scanning {config.bucket_name}/{full_prefix}/")
+    paginator: ListObjectsV2Paginator = client.get_paginator("list_objects_v2")
+    regex = re.compile(str(regex_filter)) if regex_filter else None
+    for page in paginator.paginate(Bucket=config.bucket_name, Prefix=full_prefix):
+        if "Contents" in page:
+            for obj in page["Contents"]:
+                if obj["Key"].endswith("/"):
+                    logger.debug(obj["Key"] + " is skipped because it is a folder")
+                    continue
+                if regex and not regex.match(obj["Key"]):
+                    # @TODO can we use JMESPath to filter and return a whole page?
+                    logger.debug(obj["Key"] + " is skipped by regex filter")
+                    continue
+                logger.debug(f"Yielding {obj['Key']}")
+                yield obj
+        else:
+            logger.debug("No Contents in page")
 
 
 def public_url(config: S3Config, key: str):

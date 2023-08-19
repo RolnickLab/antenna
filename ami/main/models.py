@@ -343,27 +343,33 @@ class Deployment(BaseModel):
         s3_config = deployment.data_source.config
         total_size = 0
         total_files = 0
-        for obj in ami.utils.s3.list_files(
+        new_source_images = []
+        # @TODO should probably return the page and insert in batches
+        for obj in ami.utils.s3.list_files_paginated(
             s3_config,
             subdir=self.data_source_subdir,
             regex_filter=self.data_source_regex,
         ):
             total_files += 1
-            total_size += obj.size
-            source_image, created = SourceImage.objects.get_or_create(
-                deployment=deployment,
-                path=obj.key,
-                defaults={
-                    "last_modified": obj.last_modified,
-                    "size": obj.size,
-                    "checksum": obj.e_tag.strip('"'),
-                    "checksum_algorithm": obj.checksum_algorithm,
-                },
-            )
-            if created:
-                print(f"Created SourceImage {source_image.pk} {source_image.path}")
-            else:
-                print(f"SourceImage {source_image.pk} {source_image.path} already exists")
+            print(obj)
+            total_size += obj["Size"]
+            try:
+                SourceImage.objects.get(deployment=deployment, path=obj["Key"])
+            except SourceImage.DoesNotExist:
+                source_image = SourceImage(
+                    deployment=deployment,
+                    path=obj["Key"],
+                    last_modified=obj["LastModified"],
+                    size=obj["Size"],
+                    checksum=obj["ETag"].strip('"'),
+                    checksum_algorithm=obj.get("ChecksumAlgorithm"),
+                )
+                print(f"Creating SourceImage  {source_image.path}")
+                new_source_images.append(source_image)
+
+        if new_source_images:
+            print(f"Bulk inserting {len(new_source_images)} new SourceImage(s)")
+            SourceImage.objects.bulk_create(new_source_images)
 
         deployment.data_source_last_checked = datetime.datetime.now()
         deployment.data_source_size = total_size
@@ -571,12 +577,12 @@ class S3StorageSource(BaseModel):
     def list_files(self, limit=None):
         """Recursively list files in the bucket/prefix."""
 
-        return ami.utils.s3.list_files(self.config, limit=limit)
+        return ami.utils.s3.list_files_paginated(self.config)
 
     def count_files(self):
         """Count & save the number of files in the bucket/prefix."""
 
-        count = ami.utils.s3.count_files(self.config)
+        count = ami.utils.s3.count_files_paginated(self.config)
         self.total_files = count
         self.save()
         return count
@@ -584,7 +590,7 @@ class S3StorageSource(BaseModel):
     def calculate_size(self):
         """Calculate the total size and count of all files in the bucket/prefix."""
 
-        sizes = [obj.size for obj in self.list_files()]
+        sizes = [obj["Size"] for obj in self.list_files()]
         size = sum(sizes)
         count = len(sizes)
         self.total_size = size
