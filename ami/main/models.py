@@ -344,14 +344,12 @@ class Deployment(BaseModel):
         total_size = 0
         total_files = 0
         new_source_images = []
-        # @TODO should probably return the page and insert in batches
         for obj in ami.utils.s3.list_files_paginated(
             s3_config,
             subdir=self.data_source_subdir,
             regex_filter=self.data_source_regex,
         ):
             total_files += 1
-            print(obj)
             total_size += obj["Size"]
             try:
                 SourceImage.objects.get(deployment=deployment, path=obj["Key"])
@@ -365,7 +363,13 @@ class Deployment(BaseModel):
                     checksum_algorithm=obj.get("ChecksumAlgorithm"),
                 )
                 print(f"Creating SourceImage  {source_image.path}")
+                source_image.update_calculated_fields()
                 new_source_images.append(source_image)
+
+            if len(new_source_images) >= 1000:
+                print(f"Bulk inserting batch of {len(new_source_images)} new SourceImages")
+                SourceImage.objects.bulk_create(new_source_images)
+                new_source_images = []
 
         if new_source_images:
             print(f"Bulk inserting {len(new_source_images)} new SourceImage(s)")
@@ -628,7 +632,7 @@ class SourceImage(BaseModel):
     timestamp = models.DateTimeField(null=True, blank=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
-    size = models.IntegerField(null=True, blank=True)
+    size = models.BigIntegerField(null=True, blank=True)
     last_modified = models.DateTimeField(null=True, blank=True)
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
@@ -693,11 +697,14 @@ class SourceImage(BaseModel):
         """
         pass
 
-    def save(self, *args, **kwargs):
+    def update_calculated_fields(self):
         if self.path and not self.timestamp:
             self.timestamp = self.extract_timestamp()
         if self.path and not self.public_base_url:
             self.public_base_url = self.get_base_url()
+
+    def save(self, *args, **kwargs):
+        self.update_calculated_fields()
         super().save(*args, **kwargs)
 
     class Meta:

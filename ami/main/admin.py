@@ -83,6 +83,7 @@ class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
         "size",
         "checksum",
         "checksum_algorithm",
+        "created_at",
     )
 
     list_filter = (
