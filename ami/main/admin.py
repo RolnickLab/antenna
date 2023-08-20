@@ -6,12 +6,14 @@ from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
 
+import ami.utils
 from ami import tasks
 
 from .models import (
     BlogPost,
     Deployment,
     Device,
+    Event,
     Occurrence,
     Project,
     S3StorageSource,
@@ -67,6 +69,32 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         # Annotate queryset with capture counts
         qs = qs.annotate(captures_count=Count("captures"))
         return qs
+
+
+@admin.register(Event)
+class EventAdmin(admin.ModelAdmin[Event]):
+    """Admin panel example for ``Event`` model."""
+
+    list_display = ("name", "deployment", "start", "duration_display", "captures_count")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        from django.db.models import Count, ExpressionWrapper, F
+        from django.db.models.fields import DurationField
+
+        return qs.select_related("deployment", "deployment__project").annotate(
+            captures_count=Count("captures"),
+            time_duration=ExpressionWrapper(F("end") - F("start"), output_field=DurationField()),
+        )
+
+    @admin.display(
+        description="Duration",
+        ordering="time_duration",
+    )
+    def duration_display(self, obj) -> str:
+        return ami.utils.dates.format_timedelta(obj.time_duration)
+
+    list_filter = ("deployment", "deployment__project", "start")
 
 
 @admin.register(SourceImage)

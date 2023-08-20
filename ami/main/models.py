@@ -5,6 +5,7 @@ import logging
 import textwrap
 import typing
 import urllib.parse
+from datetime import timedelta
 from enum import Enum
 from typing import Final, final  # noqa: F401
 
@@ -54,26 +55,6 @@ def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]
     values = values[split_index:] + values[:split_index]
 
     return hours, values
-
-
-def format_timedelta(duration: datetime.timedelta | None) -> str:
-    """Format the duration for display.
-    @TODO try the humanize library
-    # return humanize.naturaldelta(self.duration())
-
-    Examples:
-    5 minutes
-    2 hours 30 min
-    2 days 5 hours
-    """
-    if not duration:
-        return ""
-    if duration < datetime.timedelta(hours=1):
-        return f"{duration.seconds // 60} minutes"
-    if duration < datetime.timedelta(days=1):
-        return f"{duration.seconds // 3600} hours {duration.seconds % 3600 // 60} min"
-    else:
-        return f"{duration.days} days {duration.seconds // 3600} hours"
 
 
 class BaseModel(models.Model):
@@ -379,6 +360,8 @@ class Deployment(BaseModel):
         deployment.data_source_size = total_size
         deployment.save()
 
+        group_images_into_events(deployment)
+
         # @TODO compare total_files to the number of SourceImages for this deployment
         # @TODO decide if we should delete SourceImages that are no longer in the data source
 
@@ -434,7 +417,7 @@ class Event(BaseModel):
         return self.end - self.start
 
     def duration_label(self) -> str:
-        return format_timedelta(self.duration())
+        return ami.utils.dates.format_timedelta(self.duration())
 
     # These are now loaded with annotations in EventViewSet
     # But the serializer complains if they're not defined here.
@@ -519,9 +502,12 @@ class Event(BaseModel):
             .order_by("-num_detections")
         )
 
-        taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
-        taxa = [t or "Unknown" for t in taxa]
-        counts = [c or 0 for c in counts]
+        if top_taxa:
+            taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
+            taxa = [t or "Unknown" for t in taxa]
+            counts = [c or 0 for c in counts]
+        else:
+            taxa, counts = [], []
 
         plots.append(
             {
@@ -544,6 +530,42 @@ class Event(BaseModel):
             if last:
                 self.end = last["timestamp"]
         super().save(*args, **kwargs)
+
+
+def group_images_into_events(deployment: Deployment, max_time_gap=timedelta(minutes=120)) -> list[Event]:
+    image_timestamps = list(
+        SourceImage.objects.filter(deployment=deployment)
+        .exclude(timestamp=None)
+        .values_list("timestamp", flat=True)
+        .order_by("timestamp")
+        .distinct()
+    )
+
+    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
+
+    events = []
+    for group in timestamp_groups:
+        first_date = group[0]
+        last_date = group[-1]
+
+        # Print debugging info about groups
+        delta = last_date - first_date
+        hours = round(delta.seconds / 60 / 60, 1)
+        logger.debug(
+            f"Found session starting at {first_date} with {len(group)} images that ran for {hours} hours.\n"
+            f"From {first_date.strftime('%c')} to {last_date.strftime('%c')}."
+        )
+
+        # Creating events & assigning images
+        event, _ = Event.objects.get_or_create(
+            deployment=deployment,
+            start=first_date,
+            end=last_date,
+        )
+        events.append(event)
+        SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+
+    return events
 
 
 @final
@@ -637,6 +659,7 @@ class SourceImage(BaseModel):
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
 
+    # project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="source_images")
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
 
@@ -709,6 +732,14 @@ class SourceImage(BaseModel):
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")
+
+        # Add two "unique together" constraints to prevent duplicate images
+        constraints = [
+            # deployment + path (only one image per deployment with a given file path)
+            models.UniqueConstraint(fields=["deployment", "path"], name="unique_deployment_path"),
+            # deployment + timestamp (only on image per deployment at a given moment in time)
+            models.UniqueConstraint(fields=["deployment", "timestamp"], name="unique_deployment_timestamp"),
+        ]
 
 
 @final
@@ -914,7 +945,7 @@ class Occurrence(BaseModel):
             return None
 
     def duration_label(self) -> str | None:
-        return format_timedelta(self.duration())
+        return ami.utils.dates.format_timedelta(self.duration())
 
     def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:

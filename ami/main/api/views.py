@@ -162,7 +162,7 @@ class SourceImageViewSet(DefaultViewSet):
         .all()
     )
     serializer_class = SourceImageSerializer
-    filterset_fields = ["event", "deployment", "project"]
+    filterset_fields = ["event", "deployment", "deployment__project"]
     ordering_fields = [
         "created_at",
         "updated_at",

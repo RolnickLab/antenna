@@ -41,3 +41,70 @@ def get_image_timestamp_from_filename(img_path) -> datetime.datetime:
         return date
     else:
         raise ValueError(f"Could not parse date from filename '{img_path}'")
+
+
+def format_timedelta(duration: datetime.timedelta | None) -> str:
+    """Format the duration for display.
+    @TODO try the humanize library
+    # return humanize.naturaldelta(self.duration())
+
+    Examples:
+    5 minutes
+    2 hours 30 min
+    2 days 5 hours
+    """
+    if not duration:
+        return ""
+    if duration < datetime.timedelta(hours=1):
+        return f"{duration.seconds // 60} minutes"
+    if duration < datetime.timedelta(days=1):
+        return f"{duration.seconds // 3600} hours {duration.seconds % 3600 // 60} min"
+    else:
+        return f"{duration.days} days {duration.seconds // 3600} hours"
+
+
+def group_datetimes_by_gap(
+    timestamps: list[datetime.datetime],
+    max_time_gap=datetime.timedelta(minutes=120),
+) -> list[list[datetime.datetime]]:
+    """
+    Divide a list of timestamps into groups based on a maximum time gap.
+
+    >>> timestamps = [
+    ...     datetime.datetime(2021, 1, 1, 0, 0, 0),
+    ...     datetime.datetime(2021, 1, 1, 0, 1, 0),
+    ...     datetime.datetime(2021, 1, 1, 0, 2, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 0, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 1, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 2, 0),]
+    >>> result = group_dates_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=120))
+    >>> len(result)
+    2
+    >>> result = group_dates_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=1))
+    >>> len(result)
+    6
+    >>> result = group_dates_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=60))
+    >>> len(result)
+    4
+    """
+    timestamps.sort()
+    prev_timestamp: datetime.datetime | None = None
+    current_group: list[datetime.datetime] = []
+    groups: list[list[datetime.datetime]] = []
+
+    for timestamp in timestamps:
+        if prev_timestamp:
+            delta = timestamp - prev_timestamp
+        else:
+            delta = datetime.timedelta(0)
+
+        if delta >= max_time_gap:
+            groups.append(current_group)
+            current_group = []
+
+        current_group.append(timestamp)
+        prev_timestamp = timestamp
+
+    groups.append(current_group)
+
+    return groups
