@@ -366,6 +366,7 @@ class Deployment(BaseModel):
         deployment.data_source_last_checked = datetime.datetime.now()
         deployment.save()
 
+        # @TODO can we create events during the initial indexing of images so we don't have to wait?
         events = group_images_into_events(deployment)
         for event in events:
             set_dimensions_from_first_image(event)
