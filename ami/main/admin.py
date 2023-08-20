@@ -1,7 +1,7 @@
 from typing import Any
 
 from django.contrib import admin
-from django.db.models import Count
+from django.db.models import Count, Sum
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
@@ -47,10 +47,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
     )
 
     def captures_size(self, obj) -> str | None:
-        if obj.data_source:
-            return filesizeformat(obj.data_source_size)
-        else:
-            return None
+        return filesizeformat(obj.captures_size)
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
@@ -68,6 +65,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         qs = qs.select_related("project", "data_source")
         # Annotate queryset with capture counts
         qs = qs.annotate(captures_count=Count("captures"))
+        qs = qs.annotate(captures_size=Sum("captures__size"))
         return qs
 
 
@@ -115,6 +113,7 @@ class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
     )
 
     list_filter = (
+        "deployment__project",
         "deployment",
         "timestamp",
         "deployment__data_source",

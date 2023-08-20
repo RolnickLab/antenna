@@ -2,7 +2,7 @@ import time
 
 from django.core.management.base import BaseCommand, CommandError  # noqa
 
-from ...models import Deployment, Project, SourceImage, TaxaList, Taxon
+from ...models import Deployment, Device, Event, Project, Site, SourceImage, TaxaList, Taxon
 
 
 class Command(BaseCommand):
@@ -26,10 +26,15 @@ class Command(BaseCommand):
             Deployment.objects.all().delete()
             TaxaList.objects.all().delete()
             Taxon.objects.all().delete()
+            Event.objects.all().delete()
             SourceImage.objects.all().delete()
 
         project, _ = Project.objects.get_or_create(name="Default Project")
-        deployment, _ = Deployment.objects.get_or_create(project=project, name="Default Deployment")
+        research_site, _ = Site.objects.get_or_create(name="Default Research Site")
+        device, _ = Device.objects.get_or_create(name="Default Device Config")
+        deployment, _ = Deployment.objects.get_or_create(
+            project=project, name="Default Deployment", defaults={"device": device, "resarch_site": research_site}
+        )
 
         taxa_list, _ = TaxaList.objects.get_or_create(name="Default Taxa List")
 

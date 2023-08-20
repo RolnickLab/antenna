@@ -1,11 +1,14 @@
 import datetime
+import logging
 import pathlib
 import re
 
 import dateutil.parser
 
+logger = logging.getLogger(__name__)
 
-def get_image_timestamp_from_filename(img_path) -> datetime.datetime:
+
+def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.datetime | None:
     """
     Parse the date and time a photo was taken from its filename.
 
@@ -35,12 +38,15 @@ def get_image_timestamp_from_filename(img_path) -> datetime.datetime:
     if matches:
         date = datetime.datetime.strptime(matches.group(), "%Y%m%d%H%M%S")
     else:
-        date = dateutil.parser.parse(name, fuzzy=False)  # Fuzzy will interpret "DSC_1974" as 1974-01-01
+        try:
+            date = dateutil.parser.parse(name, fuzzy=False)  # Fuzzy will interpret "DSC_1974" as 1974-01-01
+        except dateutil.parser.ParserError:
+            pass
 
-    if date:
-        return date
-    else:
+    if not date and raise_error:
         raise ValueError(f"Could not parse date from filename '{img_path}'")
+    else:
+        return date
 
 
 def format_timedelta(duration: datetime.timedelta | None) -> str:

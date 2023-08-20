@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
-from django.db import models
+from django.db import IntegrityError, models
 from django.db.models import Q
 
 import ami.utils
@@ -257,7 +257,7 @@ class Deployment(BaseModel):
     )
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
     data_source_regex = models.CharField(max_length=255, blank=True, null=True)
-    data_source_size = models.BigIntegerField(blank=True, null=True)
+    # data_source_size = models.BigIntegerField(blank=True, null=True)
     data_source_last_checked = models.DateTimeField(blank=True, null=True)
     # data_source_last_check_duration = models.DurationField(blank=True, null=True)
 
@@ -332,35 +332,41 @@ class Deployment(BaseModel):
         ):
             total_files += 1
             total_size += obj["Size"]
-            try:
-                SourceImage.objects.get(deployment=deployment, path=obj["Key"])
-            except SourceImage.DoesNotExist:
+
+            timestamp = ami.utils.dates.get_image_timestamp_from_filename(obj["Key"])
+            existing = SourceImage.objects.filter(
+                Q(deployment=deployment, path=obj["Key"]) | Q(deployment=deployment, timestamp=timestamp)
+            ).first()
+            if existing:
+                logger.info(f"Skipping existing SourceImage {existing.path}")
+            else:
                 source_image = SourceImage(
                     deployment=deployment,
                     path=obj["Key"],
+                    timestamp=timestamp,
                     last_modified=obj["LastModified"],
                     size=obj["Size"],
                     checksum=obj["ETag"].strip('"'),
                     checksum_algorithm=obj.get("ChecksumAlgorithm"),
                 )
-                print(f"Creating SourceImage  {source_image.path}")
+                logger.debug(f"Preparing to create SourceImage {source_image.path}")
                 source_image.update_calculated_fields()
                 new_source_images.append(source_image)
 
-            if len(new_source_images) >= 1000:
-                print(f"Bulk inserting batch of {len(new_source_images)} new SourceImages")
-                SourceImage.objects.bulk_create(new_source_images)
-                new_source_images = []
-
-        if new_source_images:
-            print(f"Bulk inserting {len(new_source_images)} new SourceImage(s)")
-            SourceImage.objects.bulk_create(new_source_images)
+        logger.info(f"Bulk inserting batch of {len(new_source_images)} new SourceImages")
+        try:
+            # If there are duplicate SourceImages with a batch, ignore_conflicts should prevent an error.
+            # But i'm not sure what the downstream effects of this are.
+            SourceImage.objects.bulk_create(new_source_images, batch_size=500, ignore_conflicts=True)
+        except IntegrityError as e:
+            logger.error(f"Error bulk inserting batch of SourceImages: {e}")
 
         deployment.data_source_last_checked = datetime.datetime.now()
-        deployment.data_source_size = total_size
         deployment.save()
 
-        group_images_into_events(deployment)
+        events = group_images_into_events(deployment)
+        for event in events:
+            set_dimensions_from_first_image(event)
 
         # @TODO compare total_files to the number of SourceImages for this deployment
         # @TODO decide if we should delete SourceImages that are no longer in the data source
@@ -372,13 +378,35 @@ class Deployment(BaseModel):
 class Event(BaseModel):
     """A monitoring session"""
 
-    start = models.DateTimeField()
-    end = models.DateTimeField(null=True, blank=True)
+    group_by = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text=(
+            "A unique identifier for this event, used to group images into events. "
+            "This allows images to be prepended or appended to an existing event. "
+            "The default value is the day the event started, in the format YYYY-MM-DD. "
+            "However images could also be grouped by camera settings, image dimensions, hour of day, "
+            "or a random sample."
+        ),
+    )
+
+    start = models.DateTimeField(db_index=True, help_text="The timestamp of the first image in the event.")
+    end = models.DateTimeField(null=True, blank=True, help_text="The timestamp of the last image in the event.")
 
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="events")
 
     captures: models.QuerySet["SourceImage"]
     occurrences: models.QuerySet["Occurrence"]
+
+    class Meta:
+        ordering = ["start"]
+        indexes = [
+            models.Index(fields=["group_by"]),
+            models.Index(fields=["start"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["deployment", "group_by"], name="unique_event"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.start.strftime('%A')}, {self.date_label()}"
@@ -521,6 +549,10 @@ class Event(BaseModel):
         return plots
 
     def save(self, *args, **kwargs):
+        if not self.group_by and self.start:
+            # If no group_by is set, use the start "day"
+            self.group_by = self.start.date()
+
         if self.pk is not None:
             # Can only update start and end times if this is an update to an existing event
             first = self.captures.order_by("timestamp").values("timestamp").first()
@@ -532,7 +564,9 @@ class Event(BaseModel):
         super().save(*args, **kwargs)
 
 
-def group_images_into_events(deployment: Deployment, max_time_gap=timedelta(minutes=120)) -> list[Event]:
+def group_images_into_events(
+    deployment: Deployment, max_time_gap=timedelta(minutes=120), delete_empty=True
+) -> list[Event]:
     image_timestamps = list(
         SourceImage.objects.filter(deployment=deployment)
         .exclude(timestamp=None)
@@ -545,27 +579,55 @@ def group_images_into_events(deployment: Deployment, max_time_gap=timedelta(minu
 
     events = []
     for group in timestamp_groups:
-        first_date = group[0]
-        last_date = group[-1]
+        start_date = group[0]
+        end_date = group[-1]
 
         # Print debugging info about groups
-        delta = last_date - first_date
+        delta = end_date - start_date
         hours = round(delta.seconds / 60 / 60, 1)
         logger.debug(
-            f"Found session starting at {first_date} with {len(group)} images that ran for {hours} hours.\n"
-            f"From {first_date.strftime('%c')} to {last_date.strftime('%c')}."
+            f"Found session starting at {start_date} with {len(group)} images that ran for {hours} hours.\n"
+            f"From {start_date.strftime('%c')} to {end_date.strftime('%c')}."
         )
 
         # Creating events & assigning images
+        group_by = start_date.date()
         event, _ = Event.objects.get_or_create(
             deployment=deployment,
-            start=first_date,
-            end=last_date,
+            group_by=group_by,
+            defaults={"start": start_date, "end": end_date},
         )
         events.append(event)
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+        logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
+
+    if delete_empty:
+        delete_empty_events()
 
     return events
+
+
+def delete_empty_events(dry_run=False):
+    """
+    Delete events that have no images, occurrences or other related records.
+    """
+
+    # @TODO Search all models that have a foreign key to Event
+    # related_models = [
+    #     f.related_model
+    #     for f in Event._meta.get_fields()
+    #     if f.one_to_many or f.one_to_one or (f.many_to_many and f.auto_created)
+    # ]
+
+    events = Event.objects.annotate(num_images=models.Count("captures")).filter(num_images=0)
+    events = events.annotate(num_occurrences=models.Count("occurrences")).filter(num_occurrences=0)
+
+    if dry_run:
+        for event in events:
+            print(f"Would delete event {event}")
+    else:
+        print(f"Deleting {events.count()} empty events")
+        events.delete()
 
 
 @final
@@ -651,7 +713,7 @@ class SourceImage(BaseModel):
 
     path = models.CharField(max_length=255, blank=True)
     public_base_url = models.CharField(max_length=255, blank=True)
-    timestamp = models.DateTimeField(null=True, blank=True)
+    timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
     size = models.BigIntegerField(null=True, blank=True)
@@ -660,7 +722,7 @@ class SourceImage(BaseModel):
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
 
     # project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="source_images")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures")
+    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
 
     detections: models.QuerySet["Detection"]
@@ -712,13 +774,16 @@ class SourceImage(BaseModel):
             logger.error(msg)
         return timestamp
 
-    def get_dimensions(self) -> tuple[int, int] | None:
-        """
-        Calculate the width and height of the image
-
-        @TODO use django storages
-        """
-        pass
+    def get_dimensions(self) -> tuple[int | None, int | None]:
+        """Calculate the width and height of the original image."""
+        if self.path and self.deployment and self.deployment.data_source:
+            config = self.deployment.data_source.config
+            img = ami.utils.s3.read_image(config=config, key=self.path)
+            self.width, self.height = img.size
+            self.save()
+            return self.width, self.height
+        else:
+            return None, None
 
     def update_calculated_fields(self):
         if self.path and not self.timestamp:
@@ -740,6 +805,32 @@ class SourceImage(BaseModel):
             # deployment + timestamp (only on image per deployment at a given moment in time)
             models.UniqueConstraint(fields=["deployment", "timestamp"], name="unique_deployment_timestamp"),
         ]
+
+        indexes = [
+            models.Index(fields=["timestamp"]),
+            models.Index(fields=["event"]),
+        ]
+
+
+def set_dimensions_from_first_image(event: Event, replace_existing: bool = False):
+    """
+    Calculate the width and height of the first image in an event and
+    update all of the images in the event with the same dimensions.
+    """
+
+    first_image = event.captures.first()
+    if first_image:
+        if not first_image.width or not first_image.height:
+            first_image.get_dimensions()
+        logger.info(
+            f"Setting dimensions for {event.captures.count()} images in event {event.pk} to "
+            f"{first_image.width}x{first_image.height}"
+        )
+        if replace_existing:
+            captures = event.captures.all()
+        else:
+            captures = event.captures.filter(width__isnull=True, height__isnull=True)
+        captures.update(width=first_image.width, height=first_image.height)
 
 
 @final

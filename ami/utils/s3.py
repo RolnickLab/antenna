@@ -13,9 +13,7 @@ import botocore.config
 from mypy_boto3_s3.client import S3Client
 from mypy_boto3_s3.paginator import ListObjectsV2Paginator
 from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResource
-
-# import BucketTypeDef
-from mypy_boto3_s3.type_defs import BucketTypeDef
+from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef
 from PIL import Image
 from rich import print
 
@@ -128,10 +126,10 @@ def count_files(config: S3Config):
     return count
 
 
-def count_files_paginated(config: S3Config):
+def count_files_paginated(config: S3Config) -> int:
     client = get_client(config)
-    paginator = client.get_paginator("list_objects_v2")
-    page_iterator: ListObjectsV2Paginator = paginator.paginate(
+    paginator: ListObjectsV2Paginator = client.get_paginator("list_objects_v2")
+    page_iterator = paginator.paginate(
         Bucket=config.bucket_name,
         Prefix=config.prefix,
         PaginationConfig={
@@ -176,7 +174,7 @@ def list_files_paginated(
     config: S3Config,
     subdir: str | None = None,
     regex_filter: str | None = None,
-) -> typing.Generator[dict, typing.Any, None]:
+) -> typing.Generator[ObjectTypeDef, typing.Any, None]:
     """
     List files in a bucket, with pagination to increase performance.
     """
@@ -191,6 +189,7 @@ def list_files_paginated(
     for page in paginator.paginate(Bucket=config.bucket_name, Prefix=full_prefix):
         if "Contents" in page:
             for obj in page["Contents"]:
+                assert "Key" in obj, f"Key is missing from object: {obj}"
                 if obj["Key"].endswith("/"):
                     logger.debug(obj["Key"] + " is skipped because it is a folder")
                     continue
@@ -202,6 +201,23 @@ def list_files_paginated(
                 yield obj
         else:
             logger.debug("No Contents in page")
+
+
+def read_file(config: S3Config, key: str) -> bytes:
+    bucket = get_bucket(config)
+    obj = bucket.Object(key)
+    return obj.get()["Body"].read()
+
+
+def read_image(config: S3Config, key: str) -> Image.Image:
+    """
+    Download an image from S3 and return as a PIL Image.
+    """
+    bucket = get_bucket(config)
+    obj = bucket.Object(key)
+    logger.info(f"Fetching image {key} from S3")
+    img = Image.open(obj.get()["Body"])
+    return img
 
 
 def public_url(config: S3Config, key: str):
