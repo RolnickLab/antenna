@@ -127,6 +127,7 @@ class Project(BaseModel):
             .order_by("timestamp__date")
         )
         days, counts = list(zip(*captures_per_date))
+        days = [day for day in days if day]
         # tickvals_per_month = [f"{d:%b}" for d in days]
         tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
         days = [f"{d:%b %d}" for d in days]
@@ -580,6 +581,9 @@ def group_images_into_events(
 
     events = []
     for group in timestamp_groups:
+        if not len(group):
+            continue
+
         start_date = group[0]
         end_date = group[-1]
 
