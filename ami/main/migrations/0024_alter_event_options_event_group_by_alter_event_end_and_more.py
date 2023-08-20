@@ -22,7 +22,6 @@ class Migration(migrations.Migration):
                 default=datetime.date(2023, 8, 20),
                 help_text="A unique identifier for this event, used to group images into events. This allows images to be prepended or appended to an existing event. The recommended value is the day the event started, in the format YYYY-MM-DD.",
                 max_length=255,
-                unique=True,
             ),
             preserve_default=False,
         ),
@@ -37,7 +36,7 @@ class Migration(migrations.Migration):
             model_name="event",
             name="start",
             field=models.DateTimeField(
-                db_index=True, help_text="The timestamp of the first image in the event.", unique=True
+                db_index=True, help_text="The timestamp of the first image in the event.", 
             ),
         ),
         migrations.AddIndex(
