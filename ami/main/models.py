@@ -257,9 +257,10 @@ class Deployment(BaseModel):
     )
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
     data_source_regex = models.CharField(max_length=255, blank=True, null=True)
-    # data_source_size = models.BigIntegerField(blank=True, null=True)
     data_source_last_checked = models.DateTimeField(blank=True, null=True)
     # data_source_last_check_duration = models.DurationField(blank=True, null=True)
+    # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
+    # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
 
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
