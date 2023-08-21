@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
-import { ReactNode, RefObject, useCallback } from 'react'
+import classNames from 'classnames'
+import { ReactNode, RefObject } from 'react'
 import styles from './capture-list.module.scss'
-import { useIntersectionObserver } from './useIntersectionObserver'
 
 export const CaptureList = ({
   children,
@@ -22,39 +22,45 @@ export const CaptureList = ({
   isLoadingPrev?: boolean
   onNext?: () => void
   onPrev?: () => void
+}) => (
+  <div ref={innerRef} className={styles.captures}>
+    <ActionRow
+      label={hasPrev ? 'Load previous' : 'Session start'}
+      loading={isLoadingPrev}
+      disabled={!hasPrev || isLoadingPrev}
+      onClick={onPrev}
+    />
+    {children}
+    <ActionRow
+      label={hasNext ? 'Load next' : 'Session end'}
+      loading={isLoadingNext}
+      disabled={!hasNext || isLoadingNext}
+      onClick={onNext}
+    />
+  </div>
+)
+
+const ActionRow = ({
+  disabled,
+  label,
+  loading,
+  onClick,
+}: {
+  disabled?: boolean
+  label: string
+  loading?: boolean
+  onClick: () => void
 }) => {
-  const _onNext = useCallback(() => {
-    if (!isLoadingNext && hasNext) {
-      onNext()
-    }
-  }, [isLoadingNext, hasNext])
-
-  const _onPrev = useCallback(() => {
-    if (!isLoadingPrev && hasPrev) {
-      onPrev()
-    }
-  }, [isLoadingPrev, hasPrev])
-
-  const nextLoader = useIntersectionObserver({ onIntersect: _onNext })
-  const prevLoader = useIntersectionObserver({ onIntersect: _onPrev })
-
   return (
-    <div ref={innerRef} className={styles.captures}>
-      <div ref={prevLoader} />
-      <MessageRow
-        message={isLoadingPrev ? 'Loading...' : hasPrev ? '' : 'Session start'}
-      />
-      {children}
-      <MessageRow
-        message={isLoadingNext ? 'Loading...' : hasNext ? '' : 'Session end'}
-      />
-      <div ref={nextLoader} />
-    </div>
+    <p className={styles.action}>
+      <span
+        className={classNames(styles.actionText, {
+          [styles.disabled]: disabled,
+        })}
+        onClick={!disabled ? onClick : undefined}
+      >
+        {loading ? `${label}...` : label}
+      </span>
+    </p>
   )
 }
-
-const MessageRow = ({ message }: { message: string }) => (
-  <p className={styles.message}>
-    <span className={styles.messageText}>{message}</span>
-  </p>
-)
