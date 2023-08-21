@@ -8,13 +8,13 @@ import {
   useMap,
   useMapEvent,
 } from 'react-leaflet'
-import { MAX_BOUNDS, setup, TILE_LAYER_URL } from './config'
+import { MAX_BOUNDS, TILE_LAYER_URL, setup } from './config'
 
 setup()
 
 const MINIMAP_BOUNDS_OPTIONS = { weight: 1 }
 const MINIMAP_STYLE = { height: 80, width: 80 }
-const MINIMAP_ZOOM = 1
+const MINIMAP_ZOOM = 0
 
 const MinimapBounds = ({
   parentMap,
