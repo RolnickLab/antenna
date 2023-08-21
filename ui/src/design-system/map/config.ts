@@ -10,7 +10,7 @@ export const TILE_LAYER_URL =
 
 export const DEFAULT_ZOOM = 10
 
-export const MIN_ZOOM = 2
+export const MIN_ZOOM = 1
 
 export const MAX_BOUNDS = new L.LatLngBounds([-90, -180], [90, 180])
 
