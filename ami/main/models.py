@@ -126,11 +126,16 @@ class Project(BaseModel):
             .annotate(num_capture=models.Count("id"))
             .order_by("timestamp__date")
         )
-        days, counts = list(zip(*captures_per_date))
-        days = [day for day in days if day]
-        # tickvals_per_month = [f"{d:%b}" for d in days]
-        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-        days = [f"{d:%b %d}" for d in days]
+
+        if captures_per_date.count():
+            days, counts = list(zip(*captures_per_date))
+            days = [day for day in days if day]
+            # tickvals_per_month = [f"{d:%b}" for d in days]
+            tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+            days = [f"{d:%b %d}" for d in days]
+        else:
+            days, counts = [], []
+            tickvals = []
 
         plots.append(
             {
@@ -150,21 +155,18 @@ class Project(BaseModel):
         )
 
         # hours, counts = list(zip(*detections_per_hour))
-        hours, counts = list(
-            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-        )
-        hours, counts = shift_to_nighttime(list(hours), list(counts))
-        # @TODO show a tick for every hour even if there are no detections
-        hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
-        ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+        if detections_per_hour.count():
+            hours, counts = list(
+                zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+            )
+            hours, counts = shift_to_nighttime(list(hours), list(counts))
+            # @TODO show a tick for every hour even if there are no detections
+            hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
+            ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+        else:
+            hours, counts = [], []
+            ticktext = []
 
-        # Detections per hour
-        Detection = apps.get_model("main", "Detection")
-        detections_per_hour = (
-            Detection.objects.filter(source_image__deployment__project=self)
-            .values("source_image__timestamp__hour")
-            .annotate(num_detections=models.Count("id"))
-        )
         plots.append(
             {
                 "title": "Detections per hour",
@@ -181,12 +183,16 @@ class Project(BaseModel):
             .order_by("event__start")
         )
 
-        days, counts = list(zip(*occurrences_per_day))
-        # Accumulate the counts
-        counts = list(itertools.accumulate(counts))
-        # tickvals = [f"{d:%b %d}" for d in days]
-        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-        days = [f"{d:%b %d}" for d in days]
+        if occurrences_per_day.count():
+            days, counts = list(zip(*occurrences_per_day))
+            # Accumulate the counts
+            counts = list(itertools.accumulate(counts))
+            # tickvals = [f"{d:%b %d}" for d in days]
+            tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+            days = [f"{d:%b %d}" for d in days]
+        else:
+            days, counts = [], []
+            tickvals = []
 
         plots.append(
             {
@@ -374,6 +380,16 @@ class Deployment(BaseModel):
         # @TODO decide if we should delete SourceImages that are no longer in the data source
 
         return total_files
+
+    def save(self, *args, **kwargs):
+        # Since Occurrences have their own relationship to Project, we need to update
+        # the project on all occurrences when the deployment's project changes.
+        # @TODO consider if Occurrences need their own relationship to Project.
+        if self.pk is not None:
+            old = Deployment.objects.get(pk=self.pk)
+            if old.project != self.project:
+                self.occurrences.update(project=self.project)
+        super().save(*args, **kwargs)
 
 
 @final
