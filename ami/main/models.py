@@ -138,13 +138,22 @@ class Project(BaseModel):
         #     tickvals = []
 
         # Captures per week
-        SourceImage = apps.get_model("main", "SourceImage")
+        # SourceImage = apps.get_model("main", "SourceImage")
+        # captures_per_week = (
+        #     SourceImage.objects.filter(deployment__project=self)
+        #     .values_list("timestamp__week")
+        #     .annotate(num_captures=models.Count("id"))
+        #     .order_by("timestamp__week")
+        #     .distinct()
+        # )
+
+        # Events per week
+        Event = apps.get_model("main", "Event")
         captures_per_week = (
-            SourceImage.objects.filter(deployment__project=self)
-            .values_list("timestamp__week")
+            Event.objects.filter(deployment__project=self)
+            .values_list("start__week")
             .annotate(num_captures=models.Count("id"))
-            .order_by("timestamp__week")
-            .distinct()
+            .order_by("start__week")
         )
 
         if captures_per_week.count():
@@ -158,7 +167,7 @@ class Project(BaseModel):
 
         plots.append(
             {
-                "title": "Captures per week",
+                "title": "Sessions per week",
                 "data": {"x": labels, "y": counts, "tickvals": tickvals},
                 "type": "bar",
             },

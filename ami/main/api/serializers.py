@@ -178,7 +178,6 @@ class ProjectListSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "image",
-            "summary_data",
         ]
 
 
@@ -189,6 +188,7 @@ class ProjectSerializer(DefaultSerializer):
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
+            "summary_data",  # @TODO move to a 2nd request, it's too slow
         ]
 
 

@@ -39,6 +39,7 @@ from .serializers import (
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
+    ProjectListSerializer,
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
@@ -85,6 +86,15 @@ class ProjectViewSet(DefaultViewSet):
     queryset = Project.objects.prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
 
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return ProjectListSerializer
+        else:
+            return ProjectSerializer
+
 
 class DeploymentViewSet(DefaultViewSet):
     """
@@ -114,7 +124,6 @@ class EventViewSet(DefaultViewSet):
     API endpoint that allows events to be viewed or edited.
     """
 
-    # @TODO add annotations for counts
     queryset = (
         Event.objects.select_related("deployment")
         .annotate(
