@@ -118,29 +118,48 @@ class Project(BaseModel):
 
         plots = []
 
-        # Capture counts per day
+        # # Capture counts per day
+        # SourceImage = apps.get_model("main", "SourceImage")
+        # captures_per_date = (
+        #     SourceImage.objects.filter(deployment__project=self)
+        #     .values_list("timestamp__date")
+        #     .annotate(num_captures=models.Count("id"))
+        #     .order_by("timestamp__date").distinct()
+        # )
+
+        # if captures_per_date.count():
+        #     days, counts = list(zip(*captures_per_date))
+        #     days = [day for day in days if day]
+        #     # tickvals_per_month = [f"{d:%b}" for d in days]
+        #     tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+        #     labels = [f"{d:%b %d}" for d in days]
+        # else:
+        #     labels, counts = [], []
+        #     tickvals = []
+
+        # Captures per week
         SourceImage = apps.get_model("main", "SourceImage")
-        captures_per_date = (
+        captures_per_week = (
             SourceImage.objects.filter(deployment__project=self)
-            .values_list("timestamp__date")
-            .annotate(num_capture=models.Count("id"))
-            .order_by("timestamp__date")
+            .values_list("timestamp__week")
+            .annotate(num_captures=models.Count("id"))
+            .order_by("timestamp__week")
+            .distinct()
         )
 
-        if captures_per_date.count():
-            days, counts = list(zip(*captures_per_date))
-            days = [day for day in days if day]
+        if captures_per_week.count():
+            weeks, counts = list(zip(*captures_per_week))
             # tickvals_per_month = [f"{d:%b}" for d in days]
-            tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-            days = [f"{d:%b %d}" for d in days]
+            tickvals = [f"{weeks[0]}", f"{weeks[-1]}"]
+            labels = [f"{d}" for d in weeks]
         else:
-            days, counts = [], []
+            labels, counts = [], []
             tickvals = []
 
         plots.append(
             {
-                "title": "Captures per day",
-                "data": {"x": days, "y": counts, "tickvals": tickvals},
+                "title": "Captures per week",
+                "data": {"x": labels, "y": counts, "tickvals": tickvals},
                 "type": "bar",
             },
         )
@@ -250,6 +269,26 @@ class Site(BaseModel):
 
 
 @final
+class DeploymentManager(models.Manager):
+    """
+    Custom manager that adds counts of related objects to the default queryset.
+    """
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .annotate(
+                events_count=models.Count("events"),
+                # These are very slow as the numbers increase (1M captures)
+                # occurrences_count=models.Count("occurrences"),
+                # captures_count=models.Count("captures"),
+                # detections_count=models.Count("captures__detections")
+            )
+        )
+
+
+@final
 class Deployment(BaseModel):
     """
     Class that describes a deployment of a device (camera & hardware) at a research site.
@@ -288,23 +327,30 @@ class Deployment(BaseModel):
     captures: models.QuerySet["SourceImage"]
     occurrences: models.QuerySet["Occurrence"]
 
-    def events_count(self) -> int:
-        return self.events.count()
+    objects = DeploymentManager()
 
-    def captures_count(self) -> int:
-        return self.captures.count()
+    def events_count(self) -> int | None:
+        # return self.events.count()
+        return None
 
-    def detections_count(self) -> int:
-        return Detection.objects.filter(Q(source_image__deployment=self)).count()
+    def captures_count(self) -> int | None:
+        # return self.captures.count()
+        return None
 
-    def occurrences_count(self) -> int:
-        return self.occurrences.count()
+    def detections_count(self) -> int | None:
+        # return Detection.objects.filter(Q(source_image__deployment=self)).count()
+        return None
+
+    def occurrences_count(self) -> int | None:
+        # return self.occurrences.count()
+        return None
 
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
 
-    def taxa_count(self) -> int:
-        return self.taxa().count()
+    def taxa_count(self) -> int | None:
+        # return self.taxa().count()
+        return None
 
     def example_captures(self, num=10) -> models.QuerySet["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("-size")[:num]
