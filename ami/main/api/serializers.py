@@ -60,7 +60,6 @@ class GroupSerializer(DefaultSerializer):
 class SourceImageNestedSerializer(DefaultSerializer):
     class Meta:
         model = SourceImage
-        queryset = SourceImage.objects.annotate(detections_count=Count("detections"))
         fields = [
             "id",
             "details",
@@ -158,10 +157,10 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
             "latitude",
             "longitude",
             "events_count",
-            "captures_count",
-            "detections_count",
-            "occurrences_count",
-            "taxa_count",
+            # "captures_count",
+            # "detections_count",
+            # "occurrences_count",
+            # "taxa_count",
         ]
 
 

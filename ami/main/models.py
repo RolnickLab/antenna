@@ -334,23 +334,23 @@ class Deployment(BaseModel):
         return None
 
     def captures_count(self) -> int | None:
-        # return self.captures.count()
-        return None
+        return self.captures.count()
+        # return None
 
     def detections_count(self) -> int | None:
-        # return Detection.objects.filter(Q(source_image__deployment=self)).count()
-        return None
+        return Detection.objects.filter(Q(source_image__deployment=self)).count()
+        # return None
 
     def occurrences_count(self) -> int | None:
-        # return self.occurrences.count()
-        return None
+        return self.occurrences.count()
+        # return None
 
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
 
     def taxa_count(self) -> int | None:
-        # return self.taxa().count()
-        return None
+        return self.taxa().count()
+        # return None
 
     def example_captures(self, num=10) -> models.QuerySet["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("-size")[:num]
