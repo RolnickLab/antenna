@@ -13,6 +13,7 @@ from django.apps import apps
 from django.db import IntegrityError, models
 from django.db.models import Q
 
+import ami.tasks
 import ami.utils
 
 #: That's how constants should be defined.
@@ -774,13 +775,12 @@ class S3StorageSource(BaseModel):
 
         return ami.utils.s3.public_url(self.config, path)
 
-    # If the public_base_url has changed, update all the source images
     def save(self, *args, **kwargs):
-        if self.pk is not None:
-            old = S3StorageSource.objects.get(pk=self.pk)
-            if old.public_base_url != self.public_base_url:
-                for deployment in self.deployments.all():
-                    deployment.captures.update(public_base_url=self.public_base_url)
+        # If public_base_url has changed, update the urls for all source images
+        old = S3StorageSource.objects.get(pk=self.pk)
+        if old.public_base_url != self.public_base_url:
+            for deployment in self.deployments.all():
+                ami.tasks.update_public_urls.delay(deployment.pk, self.public_base_url)
         super().save(*args, **kwargs)
 
 

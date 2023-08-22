@@ -1,7 +1,7 @@
 from typing import Any
 
 from django.contrib import admin
-from django.db.models import Count, Sum
+from django.db.models import Count
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
@@ -42,8 +42,8 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source_uri",
-        "captures_count",
-        "captures_size",
+        # "captures_count",
+        # "captures_size",
     )
 
     def captures_size(self, obj) -> str | None:
@@ -64,8 +64,8 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         # Use select_related to avoid extra queries when displaying related fields
         qs = qs.select_related("project", "data_source")
         # Annotate queryset with capture counts
-        qs = qs.annotate(captures_count=Count("captures"))
-        qs = qs.annotate(captures_size=Sum("captures__size"))
+        # qs = qs.annotate(captures_count=Count("captures"))
+        # qs = qs.annotate(captures_size=Sum("captures__size"))
         return qs
 
 
