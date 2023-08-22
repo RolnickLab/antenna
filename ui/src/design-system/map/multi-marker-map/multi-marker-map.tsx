@@ -54,7 +54,6 @@ export const MultiMarkerMap = ({
     <MapContainer
       center={bounds.getCenter()}
       className={styles.mapContainer}
-      dragging={false}
       maxBounds={MAX_BOUNDS}
       minZoom={MIN_ZOOM}
       ref={mapRef}
