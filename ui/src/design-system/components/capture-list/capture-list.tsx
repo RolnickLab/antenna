@@ -32,7 +32,7 @@ export const CaptureList = ({
     />
     {children}
     <ActionRow
-      label={hasNext ? 'Load next' : 'Session end'}
+      label={hasNext ? 'Load more' : 'Session end'}
       loading={isLoadingNext}
       disabled={!hasNext || isLoadingNext}
       onClick={onNext}
