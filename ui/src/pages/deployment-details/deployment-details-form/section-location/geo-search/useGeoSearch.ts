@@ -4,7 +4,7 @@ import _ from 'lodash'
 import { useEffect, useState } from 'react'
 import { SearchResult, ServerSearchResult } from './types'
 
-const API_URL = '/nominatim'
+const API_URL = 'https://nominatim.openstreetmap.org/search'
 const MAX_NUM_RESULTS = 5
 
 const convertServerResult = (result: ServerSearchResult): SearchResult => {
