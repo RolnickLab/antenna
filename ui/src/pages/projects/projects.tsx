@@ -1,6 +1,7 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
 import { Error } from 'pages/error/error'
+import { STRING, translate } from 'utils/language'
 import { ProjectGallery } from './project-gallery'
 import styles from './projects.module.scss'
 
@@ -16,7 +17,7 @@ export const Projects = () => {
       <div className={styles.infoWrapper}>
         {isFetching && <FetchInfo isLoading={isLoading} />}
       </div>
-      <h1 className={styles.title}>Projects</h1>
+      <h1 className={styles.title}>{translate(STRING.NAV_ITEM_PROJECTS)}</h1>
       <div className={styles.divider} />
       <ProjectGallery projects={projects} isLoading={isLoading} />
     </>
