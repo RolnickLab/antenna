@@ -35,6 +35,7 @@ export const Frame = ({
     if (src) {
       imageRef.current.src = src
       imageRef.current.onload = () => setIsLoading(false)
+      imageRef.current.onerror = () => setIsLoading(false)
     }
   }, [src])
 
