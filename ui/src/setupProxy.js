@@ -8,11 +8,4 @@ module.exports = function (app) {
       changeOrigin: true,
     })
   )
-  app.use(
-    '/nominatim',
-    createProxyMiddleware({
-      target: 'https://nominatim.openstreetmap.org/search',
-      changeOrigin: true,
-    })
-  )
 }
