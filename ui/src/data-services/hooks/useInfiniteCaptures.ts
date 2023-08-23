@@ -5,10 +5,9 @@ import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
 
 const COLLECTION = 'captures'
+const PER_PAGE = 200
 
 const convertServerRecord = (record: ServerCapture) => new Capture(record)
-
-const PER_PAGE = 20
 
 const fetchCaptures = async (sessionId: string, page: number) => {
   const fetchUrl = getFetchUrl({
