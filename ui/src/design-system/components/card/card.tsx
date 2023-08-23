@@ -1,5 +1,11 @@
+import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './card.module.scss'
+
+export enum CardSize {
+  Medium = 'medium',
+  Large = 'large',
+}
 
 interface CardProps {
   title: string
@@ -9,9 +15,16 @@ interface CardProps {
     alt?: string
   }
   maxWidth?: string
+  size?: CardSize
 }
 
-export const Card = ({ title, subTitle, image, maxWidth }: CardProps) => {
+export const Card = ({
+  title,
+  subTitle,
+  image,
+  maxWidth,
+  size = CardSize.Medium,
+}: CardProps) => {
   return (
     <div className={styles.container} style={{ maxWidth }}>
       <div className={styles.square}>
@@ -28,8 +41,22 @@ export const Card = ({ title, subTitle, image, maxWidth }: CardProps) => {
         )}
       </div>
       <div className={styles.footer}>
-        <span className={styles.title}>{title}</span>
-        <span className={styles.subTitle}>{subTitle}</span>
+        <span
+          className={classNames(styles.title, {
+            [styles.medium]: size === CardSize.Medium,
+            [styles.large]: size === CardSize.Large,
+          })}
+        >
+          {title}
+        </span>
+        <span
+          className={classNames(styles.subTitle, {
+            [styles.medium]: size === CardSize.Medium,
+            [styles.large]: size === CardSize.Large,
+          })}
+        >
+          {subTitle}
+        </span>
       </div>
     </div>
   )

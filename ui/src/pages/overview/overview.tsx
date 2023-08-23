@@ -1,12 +1,19 @@
-import { useProject } from 'data-services/hooks/useProjects'
+import { Project } from 'data-services/models/project'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Plot } from 'design-system/components/plot/plot'
 import { Error } from 'pages/error/error'
+import { useOutletContext } from 'react-router-dom'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import styles from './overview.module.scss'
 
 export const Overview = () => {
-  const { project, isLoading, error } = useProject()
+  const { project, isLoading, error } = useOutletContext<{
+    project?: Project
+    isLoading: boolean
+    isFetching: boolean
+    error?: unknown
+  }>()
 
   if (!isLoading && error) {
     return <Error />
@@ -24,7 +31,15 @@ export const Overview = () => {
     <>
       <div className={styles.about}>
         <div className={styles.aboutImage}>
-          <img src={project?.image} alt="" />
+          {project.image ? (
+            <img src={project.image} alt="" />
+          ) : (
+            <Icon
+              type={IconType.Photograph}
+              theme={IconTheme.Neutral}
+              size={32}
+            />
+          )}
         </div>
         <div className={styles.aboutInfo}>
           <h1 className={styles.title}>{project.name}</h1>

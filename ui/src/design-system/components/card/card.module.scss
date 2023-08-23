@@ -40,13 +40,28 @@
 }
 
 .title {
-  @include paragraph-small();
   color: $color-neutral-800;
   font-style: italic;
   word-break: break-word;
+
+  &.medium {
+    @include paragraph-small();
+  }
+
+  &.large {
+    @include paragraph-medium();
+    margin-bottom: 2px;
+  }
 }
 
 .subTitle {
-  @include paragraph-xx-small();
   color: $color-neutral-600;
+
+  &.medium {
+    @include paragraph-xx-small();
+  }
+
+  &.large {
+    @include paragraph-x-small();
+  }
 }
