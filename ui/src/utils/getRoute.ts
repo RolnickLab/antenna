@@ -15,20 +15,26 @@ type FilterType =
   | 'capture'
 
 export const getRoute = ({
+  projectId,
   collection,
   itemId,
   filters = {},
   keepSearchParams,
 }: {
-  collection: CollectionType
+  projectId: string
+  collection?: CollectionType
   itemId?: string
   filters?: Partial<Record<FilterType, string | undefined>>
   keepSearchParams?: boolean
 }) => {
-  let url = `/${collection}`
+  let url = `/projects/${projectId}`
 
-  if (itemId?.length) {
-    url = `${url}/${itemId}`
+  if (collection) {
+    url = `${url}/${collection}`
+
+    if (itemId?.length) {
+      url = `${url}/${itemId}`
+    }
   }
 
   const searchParams = new URLSearchParams(

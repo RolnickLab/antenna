@@ -21,7 +21,7 @@ import { SpeciesGallery } from './species-gallery'
 import styles from './species.module.scss'
 
 export const Species = () => {
-  const { id } = useParams()
+  const { projectId, id } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
@@ -59,7 +59,7 @@ export const Species = () => {
             <Table
               items={species}
               isLoading={isLoading}
-              columns={columns}
+              columns={columns(projectId as string)}
               sortable
               sortSettings={sort}
               onSortSettingsChange={setSort}
@@ -89,13 +89,20 @@ export const Species = () => {
 
 const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
+  const { projectId } = useParams()
   const { species, isLoading } = useSpeciesDetails(id)
 
   return (
     <Dialog.Root
       open={!!id}
       onOpenChange={() =>
-        navigate(getRoute({ collection: 'species', keepSearchParams: true }))
+        navigate(
+          getRoute({
+            projectId: projectId as string,
+            collection: 'species',
+            keepSearchParams: true,
+          })
+        )
       }
     >
       <Dialog.Content

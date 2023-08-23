@@ -4,7 +4,7 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { Plot } from 'design-system/components/plot/plot'
 import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
-import { useLocation, useParams } from 'react-router'
+import { useLocation, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { Playback } from './playback/playback'
 import { useActiveCaptureId } from './playback/useActiveCapture'

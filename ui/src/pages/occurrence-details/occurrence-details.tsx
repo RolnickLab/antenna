@@ -6,7 +6,7 @@ import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
@@ -16,6 +16,8 @@ export const OccurrenceDetails = ({
 }: {
   occurrence: Occurrence
 }) => {
+  const { projectId } = useParams()
+
   const blueprintItems = useMemo(
     () =>
       occurrence.detections.length
@@ -27,6 +29,7 @@ export const OccurrenceDetails = ({
             .map((item) => ({
               ...item,
               to: getRoute({
+                projectId: projectId as string,
                 collection: 'sessions',
                 itemId: occurrence.sessionId,
                 filters: {
@@ -44,6 +47,7 @@ export const OccurrenceDetails = ({
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: occurrence.deploymentLabel,
       to: getRoute({
+        projectId: projectId as string,
         collection: 'deployments',
         itemId: occurrence.deploymentId,
       }),
@@ -52,6 +56,7 @@ export const OccurrenceDetails = ({
       label: translate(STRING.FIELD_LABEL_SESSION),
       value: occurrence.sessionLabel,
       to: getRoute({
+        projectId: projectId as string,
         collection: 'sessions',
         itemId: occurrence.sessionId,
         filters: { occurrence: occurrence.id },
@@ -80,6 +85,7 @@ export const OccurrenceDetails = ({
       <div className={styles.header}>
         <Link
           to={getRoute({
+            projectId: projectId as string,
             collection: 'species',
             itemId: occurrence.determinationId,
           })}

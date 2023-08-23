@@ -10,7 +10,9 @@ import { Link } from 'react-router-dom'
 import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: TableColumn<Occurrence>[] = [
+export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
+  projectId: string
+) => [
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_MOST_RECENT),
@@ -34,6 +36,7 @@ export const columns: TableColumn<Occurrence>[] = [
     renderCell: (item: Occurrence) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'occurrences',
           itemId: item.id,
           keepSearchParams: true,
@@ -52,7 +55,11 @@ export const columns: TableColumn<Occurrence>[] = [
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
       <Link
-        to={getRoute({ collection: 'deployments', itemId: item.deploymentId })}
+        to={getRoute({
+          projectId,
+          collection: 'deployments',
+          itemId: item.deploymentId,
+        })}
       >
         <BasicTableCell
           value={item.deploymentLabel}
@@ -65,7 +72,13 @@ export const columns: TableColumn<Occurrence>[] = [
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Occurrence) => (
-      <Link to={getRoute({ collection: 'sessions', itemId: item.sessionId })}>
+      <Link
+        to={getRoute({
+          projectId,
+          collection: 'sessions',
+          itemId: item.sessionId,
+        })}
+      >
         <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
       </Link>
     ),

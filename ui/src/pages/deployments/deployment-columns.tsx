@@ -9,7 +9,9 @@ import { Link } from 'react-router-dom'
 import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: TableColumn<Deployment>[] = [
+export const columns: (projectId: string) => TableColumn<Deployment>[] = (
+  projectId: string
+) => [
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
@@ -17,6 +19,7 @@ export const columns: TableColumn<Deployment>[] = [
     renderCell: (item: Deployment) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'deployments',
           itemId: item.id,
           keepSearchParams: true,
@@ -36,6 +39,7 @@ export const columns: TableColumn<Deployment>[] = [
     renderCell: (item: Deployment) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'sessions',
           filters: { deployment: item.id },
         })}
@@ -74,6 +78,7 @@ export const columns: TableColumn<Deployment>[] = [
     renderCell: (item: Deployment) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'occurrences',
           filters: { deployment: item.id },
         })}
@@ -92,6 +97,7 @@ export const columns: TableColumn<Deployment>[] = [
     renderCell: (item: Deployment) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'species',
           filters: { occurrences__deployment: item.id },
         })}

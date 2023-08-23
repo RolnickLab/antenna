@@ -11,7 +11,9 @@ import { Link } from 'react-router-dom'
 import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: TableColumn<Species>[] = [
+export const columns: (projectId: string) => TableColumn<Species>[] = (
+  projectId: string
+) => [
   {
     id: 'snapshots',
     sortField: 'updated_at',
@@ -37,6 +39,7 @@ export const columns: TableColumn<Species>[] = [
     renderCell: (item: Species) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'species',
           itemId: item.id,
           keepSearchParams: true,
@@ -65,6 +68,7 @@ export const columns: TableColumn<Species>[] = [
     renderCell: (item: Species) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'occurrences',
           filters: { determination: item.id },
         })}
