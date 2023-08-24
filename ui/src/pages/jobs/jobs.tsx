@@ -16,7 +16,10 @@ import styles from './jobs.module.scss'
 export const Jobs = () => {
   const { projectId, id } = useParams()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { jobs, total, isLoading, isFetching, error } = useJobs({ pagination })
+  const { jobs, total, isLoading, isFetching, error } = useJobs({
+    projectId,
+    pagination,
+  })
 
   if (!isLoading && error) {
     return <Error />
