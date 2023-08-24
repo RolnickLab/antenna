@@ -5,6 +5,7 @@ from django.db.models import Count
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
+from django.utils.formats import number_format
 
 import ami.utils
 from ami import tasks
@@ -42,22 +43,26 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source_uri",
-        # "captures_count",
-        # "captures_size",
+        "captures_count",
+        "captures_size",
     )
 
     def captures_size(self, obj) -> str | None:
-        return filesizeformat(obj.captures_size)
+        return filesizeformat(obj.data_source_total_size)
+
+    def captures_count(self, obj) -> str | None:
+        total_files = obj.data_source_total_files
+        return number_format(total_files, force_grouping=True, use_l10n=True)
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
-    @admin.action(description="Import captures from deployment's data source (async)")
-    def import_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        queued_tasks = [tasks.import_source_images.delay(deployment.pk) for deployment in queryset]
-        msg = f"Importing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
+    @admin.action(description="Sync captures from deployment's data source (async)")
+    def sync_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
+        queued_tasks = [tasks.sync_source_images.delay(deployment.pk) for deployment in queryset]
+        msg = f"Syncing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
         self.message_user(request, msg)
 
-    actions = [import_captures]
+    actions = [sync_captures]
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)

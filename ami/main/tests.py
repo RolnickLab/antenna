@@ -81,3 +81,26 @@ class TestImageGrouping(TestCase):
             for capture in event.captures.all():
                 # print(capture.path, capture.width, capture.height)
                 assert (capture.width == image_width) and (capture.height == image_height)
+
+
+# This test is disabled because it requires certain data to be present in the database
+# and data in a configured S3 bucket. Will require Minio or something like it to be running.
+# from unittest import TestCase as UnitTestCase
+# class TestExistingDatabase(UnitTestCase):
+#     def test_sync_source_images(self):
+#         from django.db import models
+#
+#         from ami.main.models import Deployment
+#         from ami.tasks import sync_source_images
+#
+#         deployment = Deployment.objects.get(
+#             name="Test",
+#         )
+#         sync_source_images(deployment.pk)
+#
+#         # Get deployment with the most captures
+#         deployment = (
+#             Deployment.objects.annotate(captures_count=models.Count("captures")).order_by("-captures_count").first()
+#         )
+#         if deployment:
+#             sync_source_images(deployment.pk)

@@ -10,12 +10,12 @@ two_days = one_hour * 24 * 2
 
 
 @celery_app.task(soft_time_limit=two_days, time_limit=two_days + one_hour)
-def import_source_images(deployment_id: int) -> int:
+def sync_source_images(deployment_id: int) -> int:
     from ami.main.models import Deployment
 
     deployment = Deployment.objects.get(id=deployment_id)
     logger.info(f"Importing source images for {deployment}")
-    return deployment.import_captures()
+    return deployment.sync_captures()
 
 
 @celery_app.task(soft_time_limit=two_days, time_limit=two_days + one_hour)

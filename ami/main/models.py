@@ -298,6 +298,66 @@ class DeploymentManager(models.Manager):
         )
 
 
+def _create_source_image_for_sync(
+    deployment: "Deployment",
+    obj: ami.utils.s3.ObjectTypeDef,
+) -> typing.Union["SourceImage", None]:
+    assert "Key" in obj, f"File in object store response has no Key: {obj}"
+
+    source_image = SourceImage(
+        deployment=deployment,
+        path=obj["Key"],
+        last_modified=obj.get("LastModified"),
+        size=obj.get("Size"),
+        checksum=obj.get("ETag", "").strip('"'),
+        checksum_algorithm=obj.get("ChecksumAlgorithm"),
+    )
+    logger.debug(f"Preparing to create or update SourceImage {source_image.path}")
+    source_image.update_calculated_fields()
+    return source_image
+
+
+def _insert_or_update_batch_for_sync(
+    deployment: "Deployment",
+    source_images: list["SourceImage"],
+    total_files: int,
+    total_size: int,
+    sql_batch_size=500,
+):
+    logger.info(f"Bulk inserting or updating batch of {len(source_images)} SourceImages")
+    try:
+        SourceImage.objects.bulk_create(
+            source_images,
+            batch_size=sql_batch_size,
+            update_conflicts=True,
+            unique_fields=["deployment", "path"],
+            update_fields=["last_modified", "size", "checksum", "checksum_algorithm"],
+        )
+    except IntegrityError as e:
+        logger.error(f"Error bulk inserting batch of SourceImages: {e}")
+
+    deployment.data_source_total_files = total_files
+    deployment.data_source_total_size = total_size
+    deployment.data_source_last_checked = datetime.datetime.now()
+    deployment.save()
+
+    events = group_images_into_events(deployment)
+    for event in events:
+        set_dimensions_from_first_image(event)
+
+
+def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
+    # @TODO compare total_files to the number of SourceImages for this deployment
+    existing_file_count = SourceImage.objects.filter(deployment=deployment).count()
+    delta = abs(existing_file_count - total_files_found)
+    if delta > 0:
+        logger.warning(
+            f"Deployment '{deployment}' has {existing_file_count} SourceImages "
+            f"but the data source has {total_files_found} files "
+            f"(+- {delta})"
+        )
+
+
 @final
 class Deployment(BaseModel):
     """
@@ -311,6 +371,8 @@ class Deployment(BaseModel):
     data_source = models.ForeignKey(
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
+    data_source_total_files = models.IntegerField(blank=True, null=True)
+    data_source_total_size = models.BigIntegerField(blank=True, null=True)
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
     data_source_regex = models.CharField(max_length=255, blank=True, null=True)
     data_source_last_checked = models.DateTimeField(blank=True, null=True)
@@ -379,7 +441,7 @@ class Deployment(BaseModel):
             uri = None
         return uri
 
-    def import_captures(self) -> int:
+    def sync_captures(self, batch_size=1000) -> int:
         """Import images from the deployment's data source"""
 
         deployment = self
@@ -388,54 +450,32 @@ class Deployment(BaseModel):
         s3_config = deployment.data_source.config
         total_size = 0
         total_files = 0
-        new_source_images = []
+        source_images = []
+        django_batch_size = batch_size
+        sql_batch_size = 1000
+
         for obj in ami.utils.s3.list_files_paginated(
             s3_config,
             subdir=self.data_source_subdir,
             regex_filter=self.data_source_regex,
         ):
-            total_files += 1
-            total_size += obj["Size"]
+            source_image = _create_source_image_for_sync(deployment, obj)
+            if source_image:
+                total_files += 1
+                total_size += obj.get("Size", 0)
+                source_images.append(source_image)
 
-            timestamp = ami.utils.dates.get_image_timestamp_from_filename(obj["Key"])
-            existing = SourceImage.objects.filter(
-                Q(deployment=deployment, path=obj["Key"]) | Q(deployment=deployment, timestamp=timestamp)
-            ).first()
-            if existing:
-                logger.info(f"Skipping existing SourceImage {existing.path}")
-            else:
-                source_image = SourceImage(
-                    deployment=deployment,
-                    path=obj["Key"],
-                    timestamp=timestamp,
-                    last_modified=obj["LastModified"],
-                    size=obj["Size"],
-                    checksum=obj["ETag"].strip('"'),
-                    checksum_algorithm=obj.get("ChecksumAlgorithm"),
-                )
-                logger.debug(f"Preparing to create SourceImage {source_image.path}")
-                source_image.update_calculated_fields()
-                new_source_images.append(source_image)
+            if len(source_images) >= django_batch_size:
+                _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
+                source_images = []
 
-        logger.info(f"Bulk inserting batch of {len(new_source_images)} new SourceImages")
-        try:
-            # If there are duplicate SourceImages with a batch, ignore_conflicts should prevent an error.
-            # But i'm not sure what the downstream effects of this are.
-            SourceImage.objects.bulk_create(new_source_images, batch_size=500, ignore_conflicts=True)
-        except IntegrityError as e:
-            logger.error(f"Error bulk inserting batch of SourceImages: {e}")
+        if source_images:
+            # Insert/update the last batch
+            _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
 
-        deployment.data_source_last_checked = datetime.datetime.now()
-        deployment.save()
+        _compare_totals_for_sync(deployment, total_files)
 
-        # @TODO can we create events during the initial indexing of images so we don't have to wait?
-        events = group_images_into_events(deployment)
-        for event in events:
-            set_dimensions_from_first_image(event)
-
-        # @TODO compare total_files to the number of SourceImages for this deployment
         # @TODO decide if we should delete SourceImages that are no longer in the data source
-
         return total_files
 
     def save(self, *args, **kwargs):
@@ -642,6 +682,23 @@ class Event(BaseModel):
 def group_images_into_events(
     deployment: Deployment, max_time_gap=timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
+    # Log a warning if multiple SourceImages have the same timestamp
+    dupes = (
+        SourceImage.objects.filter(deployment=deployment)
+        .values("timestamp")
+        .annotate(count=models.Count("id"))
+        .filter(count__gt=1)
+    )
+    if dupes.count():
+        values = "\n".join(
+            [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
+        )
+        logger.warning(
+            f"Found multiple images with the same timestamp in deployment '{deployment}':\n "
+            f"{values}\n"
+            f"Only one image will be used for each timestamp for each event."
+        )
+
     image_timestamps = list(
         SourceImage.objects.filter(deployment=deployment)
         .exclude(timestamp=None)
@@ -879,13 +936,12 @@ class SourceImage(BaseModel):
         constraints = [
             # deployment + path (only one image per deployment with a given file path)
             models.UniqueConstraint(fields=["deployment", "path"], name="unique_deployment_path"),
-            # deployment + timestamp (only on image per deployment at a given moment in time)
-            models.UniqueConstraint(fields=["deployment", "timestamp"], name="unique_deployment_timestamp"),
         ]
 
         indexes = [
+            models.Index(fields=["deployment", "timestamp"]),
+            models.Index(fields=["event", "timestamp"]),
             models.Index(fields=["timestamp"]),
-            models.Index(fields=["event"]),
         ]
 
 
