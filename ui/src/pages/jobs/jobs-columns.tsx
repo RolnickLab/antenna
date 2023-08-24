@@ -7,13 +7,16 @@ import { Link } from 'react-router-dom'
 import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: TableColumn<Job>[] = [
+export const columns: (projectId: string) => TableColumn<Job>[] = (
+  projectId: string
+) => [
   {
     id: 'job',
     name: 'Job',
     renderCell: (item: Job) => (
       <Link
         to={getRoute({
+          projectId,
           collection: 'jobs',
           itemId: item.id,
           keepSearchParams: true,

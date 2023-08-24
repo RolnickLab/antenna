@@ -1,0 +1,22 @@
+@import 'design-system/variables/variables.scss';
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.infoWrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+}
+
+.title {
+  @include heading-4-italic();
+  color: $color-primary-1-600;
+  margin: 0;
+}
+
+.divider {
+  height: 2px;
+  margin: 24px 0;
+  background-color: $color-neutral-200;
+}

@@ -19,7 +19,7 @@ export class Project {
 
   public constructor(project: ServerProject) {
     this._project = project
-    this._deployments = project.deployments.map(
+    this._deployments = (project.deployments ?? []).map(
       (deployment: ServerDeployment) => new Deployment(deployment)
     )
   }
@@ -32,8 +32,8 @@ export class Project {
     return `${this._project.id}`
   }
 
-  get image(): string {
-    return `${this._project.image}`
+  get image(): string | undefined {
+    return this._project.image ? `${this._project.image}` : undefined
   }
 
   get name(): string {

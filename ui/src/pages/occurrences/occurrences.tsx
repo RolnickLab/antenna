@@ -12,7 +12,7 @@ import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router-dom'
 import { getRoute } from 'utils/getRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
@@ -22,7 +22,7 @@ import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
-  const { id } = useParams()
+  const { projectId, id } = useParams()
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -37,6 +37,7 @@ export const Occurrences = () => {
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
+    projectId,
     pagination,
     sort,
     filters,
@@ -69,7 +70,7 @@ export const Occurrences = () => {
           <div className={styles.tableContent}>
             <div className={styles.settingsWrapper}>
               <ColumnSettings
-                columns={columns}
+                columns={columns(projectId as string)}
                 columnSettings={columnSettings}
                 onColumnSettingsChange={setColumnSettings}
               />
@@ -77,7 +78,9 @@ export const Occurrences = () => {
             <Table
               items={occurrences}
               isLoading={isLoading}
-              columns={columns.filter((column) => !!columnSettings[column.id])}
+              columns={columns(projectId as string).filter(
+                (column) => !!columnSettings[column.id]
+              )}
               sortable
               sortSettings={sort}
               onSortSettingsChange={setSort}
@@ -109,6 +112,7 @@ export const Occurrences = () => {
 
 const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
+  const { projectId } = useParams()
   const { occurrence, isLoading } = useOccurrenceDetails(id)
 
   return (
@@ -116,7 +120,11 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
       open={!!id}
       onOpenChange={() =>
         navigate(
-          getRoute({ collection: 'occurrences', keepSearchParams: true })
+          getRoute({
+            projectId: projectId as string,
+            collection: 'occurrences',
+            keepSearchParams: true,
+          })
         )
       }
     >

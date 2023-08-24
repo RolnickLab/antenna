@@ -5,34 +5,15 @@
   position: sticky;
   top: 0;
   left: 0;
-  height: 204px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  background-color: $color-neutral-50;
-  z-index: 2;
-}
-
-.logoBar,
-.topBar,
-.navigationBar {
-  width: 100%;
-  padding: 0 100px;
-  box-sizing: border-box;
-}
-
-.logoBar,
-.topBar {
   height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.logoBar {
+  padding: 0 100px;
   background-color: $color-generic-white;
   border-bottom: 1px solid $color-neutral-100;
+  box-sizing: border-box;
+  z-index: 2;
 }
 
 .logo {
@@ -46,24 +27,13 @@
 }
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
-  .logoBar,
-  .topBar,
-  .navigationBar {
+  .header {
     padding: 0 32px;
   }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .header {
-    height: auto;
-  }
-
-  .logoBar,
-  .topBar {
-    padding: 8px 16px;
-  }
-
-  .navigationBar {
     padding: 0 16px;
   }
 }

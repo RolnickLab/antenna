@@ -8,6 +8,7 @@ import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
@@ -17,6 +18,7 @@ import { SessionGallery } from './session-gallery'
 import styles from './sessions.module.scss'
 
 export const Sessions = () => {
+  const { projectId } = useParams()
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -31,6 +33,7 @@ export const Sessions = () => {
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({
+    projectId,
     sort,
     pagination,
     filters,
@@ -63,7 +66,7 @@ export const Sessions = () => {
           <div className={styles.tableContent}>
             <div className={styles.settingsWrapper}>
               <ColumnSettings
-                columns={columns}
+                columns={columns(projectId as string)}
                 columnSettings={columnSettings}
                 onColumnSettingsChange={setColumnSettings}
               />
@@ -71,7 +74,9 @@ export const Sessions = () => {
             <Table
               items={sessions}
               isLoading={isLoading}
-              columns={columns.filter((column) => !!columnSettings[column.id])}
+              columns={columns(projectId as string).filter(
+                (column) => !!columnSettings[column.id]
+              )}
               sortable
               sortSettings={sort}
               onSortSettingsChange={setSort}

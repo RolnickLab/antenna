@@ -25,16 +25,23 @@ const convertServerRecord = (record: ServerStatus): Status => ({
   numSpecies: record.num_species,
 })
 
-export const useStatus = (): {
+export const useStatus = (
+  projectId?: string
+): {
   status?: Status
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({ collection: COLLECTION })
+  const params = { projectId }
+
+  const fetchUrl = getFetchUrl({
+    collection: COLLECTION,
+    params,
+  })
 
   const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: [COLLECTION],
+    queryKey: [COLLECTION, params],
     queryFn: () =>
       axios
         .get<ServerStatus>(fetchUrl)

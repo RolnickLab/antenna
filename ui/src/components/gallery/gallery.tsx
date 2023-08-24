@@ -1,16 +1,21 @@
 import classNames from 'classnames'
-import { Card } from 'design-system/components/card/card'
+import { Card, CardSize } from 'design-system/components/card/card'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './gallery.module.scss'
 
 export const Gallery = ({
-  items,
+  cardSize,
   isLoading,
+  items,
+  style,
 }: {
+  cardSize?: CardSize
+  isLoading: boolean
   items: {
     id: string
-    image: {
+    image?: {
       src: string
       alt?: string
     }
@@ -18,15 +23,20 @@ export const Gallery = ({
     title: string
     to: string
   }[]
-  isLoading: boolean
+
+  style?: CSSProperties
 }) => (
-  <div className={classNames(styles.gallery, { [styles.loading]: isLoading })}>
+  <div
+    className={classNames(styles.gallery, { [styles.loading]: isLoading })}
+    style={style}
+  >
     {items?.map((item) => (
       <Link key={item.id} to={item.to}>
         <Card
           title={item.title}
           subTitle={item.subTitle ?? ''}
           image={item.image}
+          size={cardSize}
         />
       </Link>
     ))}

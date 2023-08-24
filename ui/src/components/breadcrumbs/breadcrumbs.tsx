@@ -13,8 +13,12 @@ export const Breadcrumbs = ({
   navItems: { id: string; title: string; path: string }[]
   activeNavItemId: string
 }) => {
-  const { mainBreadcrumb, detailBreadcrumb, setMainBreadcrumb } =
-    useContext(BreadcrumbContext)
+  const {
+    projectBreadcrumb,
+    mainBreadcrumb,
+    detailBreadcrumb,
+    setMainBreadcrumb,
+  } = useContext(BreadcrumbContext)
 
   useEffect(() => {
     const activeNavItem =
@@ -29,7 +33,8 @@ export const Breadcrumbs = ({
   }, [navItems, activeNavItemId])
 
   const breadcrumbs = [
-    { title: translate(STRING.NAV_ITEM_PROJECT), path: '/' },
+    { title: translate(STRING.NAV_ITEM_PROJECTS), path: '/' },
+    projectBreadcrumb,
     mainBreadcrumb,
     detailBreadcrumb,
   ].filter((breadcrumb) => !!breadcrumb) as Breadcrumb[]

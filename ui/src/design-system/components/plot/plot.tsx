@@ -90,11 +90,11 @@ export const Plot = ({
           automargin: true,
           ...(showRangeSlider
             ? {
-              range: [0, 3],
-              rangeslider: {
-                visible: true,
-              },
-            }
+                range: [0, 3],
+                rangeslider: {
+                  visible: true,
+                },
+              }
             : {}),
         },
         bargap: 2 / 3,

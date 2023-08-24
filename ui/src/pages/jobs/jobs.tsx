@@ -14,9 +14,12 @@ import { columns } from './jobs-columns'
 import styles from './jobs.module.scss'
 
 export const Jobs = () => {
-  const { id } = useParams()
+  const { projectId, id } = useParams()
   const { pagination, setPrevPage, setNextPage } = usePagination()
-  const { jobs, total, isLoading, isFetching, error } = useJobs({ pagination })
+  const { jobs, total, isLoading, isFetching, error } = useJobs({
+    projectId,
+    pagination,
+  })
 
   if (!isLoading && error) {
     return <Error />
@@ -29,7 +32,11 @@ export const Jobs = () => {
           <FetchInfo isLoading={isLoading} />
         </div>
       )}
-      <Table items={jobs} isLoading={isLoading} columns={columns} />
+      <Table
+        items={jobs}
+        isLoading={isLoading}
+        columns={columns(projectId as string)}
+      />
       {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
       {jobs?.length ? (
         <PaginationBar
@@ -46,13 +53,20 @@ export const Jobs = () => {
 
 const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
+  const { projectId } = useParams()
   const { job, isLoading, isFetching } = useJobDetails(id)
 
   return (
     <Dialog.Root
       open={!!id}
       onOpenChange={() =>
-        navigate(getRoute({ collection: 'jobs', keepSearchParams: true }))
+        navigate(
+          getRoute({
+            projectId: projectId as string,
+            collection: 'jobs',
+            keepSearchParams: true,
+          })
+        )
       }
     >
       <Dialog.Content
