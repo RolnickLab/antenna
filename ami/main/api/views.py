@@ -234,7 +234,7 @@ class OccurrenceViewSet(DefaultViewSet):
         .all()
     )
     serializer_class = OccurrenceSerializer
-    filterset_fields = ["event", "deployment", "determination"]
+    filterset_fields = ["event", "deployment", "determination", "project"]
     ordering_fields = ["created_at", "updated_at", "timestamp"]
 
     def get_serializer_class(self):
@@ -324,21 +324,41 @@ class ClassificationViewSet(DefaultViewSet):
 
 class SummaryView(APIView):
     permission_classes = [permissions.AllowAny]
+    filterset_fields = ["project"]
 
     def get(self, request):
         """
         Return counts of all models.
         """
-        data = {
-            "projects_count": Project.objects.count(),
-            "deployments_count": Deployment.objects.count(),
-            "events_count": Event.objects.count(),
-            "captures_count": SourceImage.objects.count(),
-            "detections_count": Detection.objects.count(),
-            "occurrences_count": Occurrence.objects.count(),
-            "taxa_count": Taxon.objects.distinct().count(),
-            "last_updated": timezone.now(),
-        }
+        project_id = request.query_params.get("project")
+        if project_id:
+            project = Project.objects.get(id=project_id)
+            data = {
+                "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
+                "deployments_count": Deployment.objects.filter(project=project).count(),
+                "events_count": Event.objects.filter(deployment__project=project).count(),
+                "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
+                "detections_count": Detection.objects.filter(source_image__deployment__project=project).count(),
+                "occurrences_count": Occurrence.objects.filter(project=project).count(),
+                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+                .filter(occurrences_count__gt=0)
+                .filter(occurrences__project=project)
+                .distinct()
+                .count(),
+            }
+        else:
+            data = {
+                "projects_count": Project.objects.count(),
+                "deployments_count": Deployment.objects.count(),
+                "events_count": Event.objects.count(),
+                "captures_count": SourceImage.objects.count(),
+                "detections_count": Detection.objects.count(),
+                "occurrences_count": Occurrence.objects.count(),
+                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+                .filter(occurrences_count__gt=0)
+                .count(),
+                "last_updated": timezone.now(),
+            }
 
         aliases = {
             "num_sessions": data["events_count"],
