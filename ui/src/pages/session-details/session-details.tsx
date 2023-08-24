@@ -4,8 +4,9 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { Plot } from 'design-system/components/plot/plot'
 import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
+import { getRoute } from 'utils/getRoute'
 import { Playback } from './playback/playback'
 import { useActiveCaptureId } from './playback/useActiveCapture'
 import { useActiveOccurrences } from './playback/useActiveOccurrences'
@@ -13,8 +14,7 @@ import styles from './session-details.module.scss'
 import { SessionInfo } from './session-info/session-info'
 
 export const SessionDetails = () => {
-  const location = useLocation()
-  const { id } = useParams()
+  const { projectId, id } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { activeOccurrences } = useActiveOccurrences()
   const { activeCaptureId } = useActiveCaptureId()
@@ -26,13 +26,17 @@ export const SessionDetails = () => {
   useEffect(() => {
     setDetailBreadcrumb({
       title: session?.label ?? '',
-      path: location.pathname,
+      path: getRoute({
+        projectId: projectId as string,
+        collection: 'sessions',
+        itemId: id,
+      }),
     })
 
     return () => {
       setDetailBreadcrumb(undefined)
     }
-  }, [session, location.pathname])
+  }, [session])
 
   if (isLoading) {
     return (

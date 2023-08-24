@@ -18,6 +18,7 @@ import {
   BreadcrumbContext,
   BreadcrumbContextProvider,
 } from 'utils/breadcrumbContext'
+import { getRoute } from 'utils/getRoute'
 import styles from './app.module.scss'
 
 const queryClient = new QueryClient()
@@ -42,7 +43,7 @@ export const App = () => {
                 />
               }
             />
-            <Route path="login" element={<Login />} />
+            <Route path="login" element={<LoginContainer />} />
             <Route path="projects" element={<ProjectsContainer />} />
             <Route path="projects/:projectId" element={<ProjectContainer />}>
               <Route path="" element={<Overview />} />
@@ -61,7 +62,7 @@ export const App = () => {
   )
 }
 
-const Login = () => (
+const LoginContainer = () => (
   <>
     <main className={styles.main}>
       <div className={styles.content}>
@@ -89,13 +90,13 @@ const ProjectContainer = () => {
   useEffect(() => {
     setProjectBreadcrumb({
       title: projectDetails.project?.name ?? '',
-      path: location.pathname,
+      path: getRoute({ projectId: projectId as string }),
     })
 
     return () => {
       setProjectBreadcrumb(undefined)
     }
-  }, [projectDetails.project, location.pathname])
+  }, [projectDetails.project])
 
   return (
     <>
