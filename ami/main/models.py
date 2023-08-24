@@ -876,7 +876,7 @@ class SourceImage(BaseModel):
         @TODO add support for thumbnail URLs here?
         @TODO consider if we ever need to access the original image directly!
         """
-        return urllib.parse.urljoin(self.public_base_url or "/", self.path)
+        return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
 
     # backwards compatibility
     url = public_url
