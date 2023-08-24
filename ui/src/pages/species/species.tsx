@@ -26,6 +26,7 @@ export const Species = () => {
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
+    projectId,
     sort,
     pagination,
     filters,

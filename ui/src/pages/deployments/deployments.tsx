@@ -11,7 +11,10 @@ import styles from './deployments.module.scss'
 
 export const Deployments = () => {
   const { projectId, id } = useParams()
-  const { deployments, isLoading, isFetching, error } = useDeployments()
+  const { deployments, isLoading, isFetching, error } = useDeployments({
+    projectId,
+    pagination: { page: 0, perPage: 200 },
+  })
   const { sortedItems, sort, setSort } = useClientSideSort({
     items: deployments,
     defaultSort: { field: 'name', order: 'desc' },

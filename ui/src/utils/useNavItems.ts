@@ -17,7 +17,7 @@ interface NavigationItem {
 export const useNavItems = () => {
   const location = useLocation()
   const { projectId } = useParams()
-  const { status } = useStatus()
+  const { status } = useStatus(projectId)
 
   const navItems: NavigationItem[] = useMemo(
     () => [

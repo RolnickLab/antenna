@@ -12,6 +12,9 @@ export const getFetchUrl = ({
 }) => {
   const queryParams: QueryParams = {}
 
+  if (params?.projectId) {
+    queryParams.project = params?.projectId
+  }
   if (params?.sort) {
     const order = params.sort.order === 'asc' ? '' : '-'
     const field = params.sort.field

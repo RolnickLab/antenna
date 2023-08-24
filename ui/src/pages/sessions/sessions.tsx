@@ -33,6 +33,7 @@ export const Sessions = () => {
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({
+    projectId,
     sort,
     pagination,
     filters,

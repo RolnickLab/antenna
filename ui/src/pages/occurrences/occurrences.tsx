@@ -37,6 +37,7 @@ export const Occurrences = () => {
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
+    projectId,
     pagination,
     sort,
     filters,
