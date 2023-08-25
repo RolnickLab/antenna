@@ -10,6 +10,8 @@ flower==2.0.0  # https://github.com/mher/flower
 uvicorn[standard]==0.22.0  # https://github.com/encode/uvicorn
 rich==13.5.0
 markdown==3.4.4
+boto3==1.28
+rich==13.5
 
 # Django
 # ------------------------------------------------------------------------------
@@ -26,3 +28,4 @@ django-cors-headers==4.1.0  # https://github.com/adamchainz/django-cors-headers
 # DRF-spectacular for api documentation
 drf-spectacular==0.26.3  # https://github.com/tfranzel/drf-spectacular
 django-filter==23.2  # https://github.com/carltongibson/django-filter
+django-storages[boto3]==1.13.2  # https://github.com/jschneier/django-storages

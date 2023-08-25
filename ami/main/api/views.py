@@ -4,6 +4,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -38,6 +39,7 @@ from .serializers import (
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
+    ProjectListSerializer,
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
@@ -84,6 +86,15 @@ class ProjectViewSet(DefaultViewSet):
     queryset = Project.objects.prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
 
+    def get_serializer_class(self):
+        """
+        Return different serializers for list and detail views.
+        """
+        if self.action == "list":
+            return ProjectListSerializer
+        else:
+            return ProjectSerializer
+
 
 class DeploymentViewSet(DefaultViewSet):
     """
@@ -113,7 +124,6 @@ class EventViewSet(DefaultViewSet):
     API endpoint that allows events to be viewed or edited.
     """
 
-    # @TODO add annotations for counts
     queryset = (
         Event.objects.select_related("deployment")
         .annotate(
@@ -161,7 +171,7 @@ class SourceImageViewSet(DefaultViewSet):
         .all()
     )
     serializer_class = SourceImageSerializer
-    filterset_fields = ["event", "deployment"]
+    filterset_fields = ["event", "deployment", "deployment__project"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -224,7 +234,7 @@ class OccurrenceViewSet(DefaultViewSet):
         .all()
     )
     serializer_class = OccurrenceSerializer
-    filterset_fields = ["event", "deployment", "determination"]
+    filterset_fields = ["event", "deployment", "determination", "project"]
     ordering_fields = ["created_at", "updated_at", "timestamp"]
 
     def get_serializer_class(self):
@@ -314,21 +324,41 @@ class ClassificationViewSet(DefaultViewSet):
 
 class SummaryView(APIView):
     permission_classes = [permissions.AllowAny]
+    filterset_fields = ["project"]
 
     def get(self, request):
         """
         Return counts of all models.
         """
-        data = {
-            "projects_count": Project.objects.count(),
-            "deployments_count": Deployment.objects.count(),
-            "events_count": Event.objects.count(),
-            "captures_count": SourceImage.objects.count(),
-            "detections_count": Detection.objects.count(),
-            "occurrences_count": Occurrence.objects.count(),
-            "taxa_count": Taxon.objects.distinct().count(),
-            "last_updated": timezone.now(),
-        }
+        project_id = request.query_params.get("project")
+        if project_id:
+            project = Project.objects.get(id=project_id)
+            data = {
+                "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
+                "deployments_count": Deployment.objects.filter(project=project).count(),
+                "events_count": Event.objects.filter(deployment__project=project).count(),
+                "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
+                "detections_count": Detection.objects.filter(source_image__deployment__project=project).count(),
+                "occurrences_count": Occurrence.objects.filter(project=project).count(),
+                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+                .filter(occurrences_count__gt=0)
+                .filter(occurrences__project=project)
+                .distinct()
+                .count(),
+            }
+        else:
+            data = {
+                "projects_count": Project.objects.count(),
+                "deployments_count": Deployment.objects.count(),
+                "events_count": Event.objects.count(),
+                "captures_count": SourceImage.objects.count(),
+                "detections_count": Detection.objects.count(),
+                "occurrences_count": Occurrence.objects.count(),
+                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+                .filter(occurrences_count__gt=0)
+                .count(),
+                "last_updated": timezone.now(),
+            }
 
         aliases = {
             "num_sessions": data["events_count"],
@@ -439,60 +469,49 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
+class LabelStudioFlatPaginator(PageNumberPagination):
+    """
+    A custom paginator that does not nest the data under a "results" key.
+
+    This is needed for Label Studio to work. Generally you will want all of the results in one page.
+
+    @TODO eventually each task should be it's own JSON file and this will not be needed.
+    """
+
+    page_size = 1000
+    page_size_query_param = "page_size"
+    page_query_param = "page"
+    max_page_size = 10000
+
+    def get_paginated_response(self, data):
+        return Response(data)
+
+
 class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
-    """
-    Endpoint for importing data to annotate in Label Studio.
+    """Endpoint for importing data to annotate in Label Studio."""
 
-    if the request type is TXT then return a list of urls to the images.
-    @TODO use custom renderer: https://www.django-rest-framework.org/api-guide/renderers/#example
-    """
-
-    queryset = SourceImage.objects.all().order_by("?")[:100]
+    queryset = SourceImage.objects.select_related("event", "event__deployment", "event__deployment__data_source")
     serializer_class = LabelStudioSourceImageSerializer
-    paginator = None
-
-    # def get_serializer_class(self):
-    #     """
-    #     Return different serializers for list and detail views.
-    #     """
-    #     if self.action == "list":
-    #         return LabelStudioBatchSerializer
-    #     else:
-    #         return self.serializer_class
-
-    # def list(self, request, *args, **kwargs):
-    #     """
-    #     Return a list of reversed urls to the API detail views for each object.
-    #     """
-    #     from rest_framework.reverse import reverse
-    #     # import httpresponse
-
-    #     # Manually return a text http response with a list of urls to the object details views using reverse.
-    #     response = super().list(request, *args, **kwargs)
-    #     response.data = []
-    #     for obj in self.get_queryset():
-    #         # response.write(request.build_absolute_uri(obj.get_absolute_url()) + "\n")
-
-    #         url = reverse("api:sourceimage-detail", args=[obj.pk], request=request).rstrip("/") + ".json"
-    #         response.data.append({"url": url})
-
-    #     return response
+    pagination_class = LabelStudioFlatPaginator
+    filterset_fields = ["event", "deployment", "deployment__project"]
 
 
 class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):
     """ """
 
-    queryset = Detection.objects.all()[:3]
+    queryset = Detection.objects.all()
     serializer_class = LabelStudioDetectionSerializer
-    paginator = None
+    filterset_fields = ["source_image__event", "source_image__deployment", "source_image__deployment__project"]
+    pagination_class = LabelStudioFlatPaginator
 
 
 class LabelStudioOccurrenceViewSet(DefaultReadOnlyViewSet):
     """ """
 
-    queryset = Occurrence.objects.all().order_by("?")[:100]
+    queryset = Occurrence.objects.all()
     serializer_class = LabelStudioOccurrenceSerializer
-    paginator = None
+    filterset_fields = ["event", "deployment", "project"]
+    pagination_class = LabelStudioFlatPaginator
 
 
 class LabelStudioHooksViewSet(viewsets.ViewSet):

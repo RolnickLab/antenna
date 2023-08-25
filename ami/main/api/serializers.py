@@ -60,7 +60,6 @@ class GroupSerializer(DefaultSerializer):
 class SourceImageNestedSerializer(DefaultSerializer):
     class Meta:
         model = SourceImage
-        queryset = SourceImage.objects.annotate(detections_count=Count("detections"))
         fields = [
             "id",
             "details",
@@ -158,10 +157,10 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
             "latitude",
             "longitude",
             "events_count",
-            "captures_count",
-            "detections_count",
-            "occurrences_count",
-            "taxa_count",
+            # "captures_count",
+            # "detections_count",
+            # "occurrences_count",
+            # "taxa_count",
         ]
 
 
@@ -179,7 +178,6 @@ class ProjectListSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "image",
-            "summary_data",
         ]
 
 
@@ -190,6 +188,7 @@ class ProjectSerializer(DefaultSerializer):
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
+            "summary_data",  # @TODO move to a 2nd request, it's too slow
         ]
 
 
@@ -288,6 +287,7 @@ class DeploymentSerializer(DefaultSerializer):
     events = DeploymentEventNestedSerializer(many=True, read_only=True)
     occurrences = serializers.SerializerMethodField()
     example_captures = DeploymentCaptureNestedSerializer(many=True, read_only=True)
+    data_source = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Deployment
@@ -297,6 +297,9 @@ class DeploymentSerializer(DefaultSerializer):
             "example_captures",
             # "capture_images",
         ]
+
+    def get_data_source(self, obj):
+        return obj.data_source_uri()
 
     def get_occurrences(self, obj):
         """
@@ -902,8 +905,9 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
     def get_data(self, obj):
         deployment_name = obj.deployment.name if obj.deployment else ""
         project_name = obj.deployment.project.name if obj.deployment and obj.deployment.project else ""
+        # public_url = obj.deployment.data_source.public_url(obj.path)
         return {
-            "image": obj.url(),
+            "image": obj.public_url(),
             "ami_id": obj.pk,
             "timestamp": obj.timestamp,
             "deployment": (obj.deployment.name if obj.deployment else None),
@@ -939,8 +943,10 @@ class LabelStudioDetectionSerializer(serializers.ModelSerializer):
         fields = ["data", "annotations", "predictions"]
 
     def get_data(self, obj):
+        # public_url = obj.deployment.data_source.public_url(obj.path)
+
         return {
-            "image": obj.url(),
+            "image": obj.public_url(),
             "ami_id": obj.pk,
             "timestamp": obj.timestamp,
             "deployment": (obj.source_image.deployment.name if obj.source_image.deployment else None),

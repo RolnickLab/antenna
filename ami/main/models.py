@@ -5,12 +5,16 @@ import logging
 import textwrap
 import typing
 import urllib.parse
+from datetime import timedelta
 from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
-from django.db import models
+from django.db import IntegrityError, models
 from django.db.models import Q
+
+import ami.tasks
+import ami.utils
 
 #: That's how constants should be defined.
 _POST_TITLE_MAX_LENGTH: Final = 80
@@ -52,26 +56,6 @@ def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]
     values = values[split_index:] + values[:split_index]
 
     return hours, values
-
-
-def format_timedelta(duration: datetime.timedelta | None) -> str:
-    """Format the duration for display.
-    @TODO try the humanize library
-    # return humanize.naturaldelta(self.duration())
-
-    Examples:
-    5 minutes
-    2 hours 30 min
-    2 days 5 hours
-    """
-    if not duration:
-        return ""
-    if duration < datetime.timedelta(hours=1):
-        return f"{duration.seconds // 60} minutes"
-    if duration < datetime.timedelta(days=1):
-        return f"{duration.seconds // 3600} hours {duration.seconds % 3600 // 60} min"
-    else:
-        return f"{duration.days} days {duration.seconds // 3600} hours"
 
 
 class BaseModel(models.Model):
@@ -135,23 +119,57 @@ class Project(BaseModel):
 
         plots = []
 
-        # Capture counts per day
-        SourceImage = apps.get_model("main", "SourceImage")
-        captures_per_date = (
-            SourceImage.objects.filter(deployment__project=self)
-            .values_list("timestamp__date")
-            .annotate(num_capture=models.Count("id"))
-            .order_by("timestamp__date")
+        # # Capture counts per day
+        # SourceImage = apps.get_model("main", "SourceImage")
+        # captures_per_date = (
+        #     SourceImage.objects.filter(deployment__project=self)
+        #     .values_list("timestamp__date")
+        #     .annotate(num_captures=models.Count("id"))
+        #     .order_by("timestamp__date").distinct()
+        # )
+
+        # if captures_per_date.count():
+        #     days, counts = list(zip(*captures_per_date))
+        #     days = [day for day in days if day]
+        #     # tickvals_per_month = [f"{d:%b}" for d in days]
+        #     tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+        #     labels = [f"{d:%b %d}" for d in days]
+        # else:
+        #     labels, counts = [], []
+        #     tickvals = []
+
+        # Captures per week
+        # SourceImage = apps.get_model("main", "SourceImage")
+        # captures_per_week = (
+        #     SourceImage.objects.filter(deployment__project=self)
+        #     .values_list("timestamp__week")
+        #     .annotate(num_captures=models.Count("id"))
+        #     .order_by("timestamp__week")
+        #     .distinct()
+        # )
+
+        # Events per week
+        Event = apps.get_model("main", "Event")
+        captures_per_week = (
+            Event.objects.filter(deployment__project=self)
+            .values_list("start__week")
+            .annotate(num_captures=models.Count("id"))
+            .order_by("start__week")
         )
-        days, counts = list(zip(*captures_per_date))
-        # tickvals_per_month = [f"{d:%b}" for d in days]
-        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-        days = [f"{d:%b %d}" for d in days]
+
+        if captures_per_week.count():
+            weeks, counts = list(zip(*captures_per_week))
+            # tickvals_per_month = [f"{d:%b}" for d in days]
+            tickvals = [f"{weeks[0]}", f"{weeks[-1]}"]
+            labels = [f"{d}" for d in weeks]
+        else:
+            labels, counts = [], []
+            tickvals = []
 
         plots.append(
             {
-                "title": "Captures per day",
-                "data": {"x": days, "y": counts, "tickvals": tickvals},
+                "title": "Sessions per week",
+                "data": {"x": labels, "y": counts, "tickvals": tickvals},
                 "type": "bar",
             },
         )
@@ -166,21 +184,18 @@ class Project(BaseModel):
         )
 
         # hours, counts = list(zip(*detections_per_hour))
-        hours, counts = list(
-            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-        )
-        hours, counts = shift_to_nighttime(list(hours), list(counts))
-        # @TODO show a tick for every hour even if there are no detections
-        hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
-        ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+        if detections_per_hour.count():
+            hours, counts = list(
+                zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+            )
+            hours, counts = shift_to_nighttime(list(hours), list(counts))
+            # @TODO show a tick for every hour even if there are no detections
+            hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
+            ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
+        else:
+            hours, counts = [], []
+            ticktext = []
 
-        # Detections per hour
-        Detection = apps.get_model("main", "Detection")
-        detections_per_hour = (
-            Detection.objects.filter(source_image__deployment__project=self)
-            .values("source_image__timestamp__hour")
-            .annotate(num_detections=models.Count("id"))
-        )
         plots.append(
             {
                 "title": "Detections per hour",
@@ -197,12 +212,16 @@ class Project(BaseModel):
             .order_by("event__start")
         )
 
-        days, counts = list(zip(*occurrences_per_day))
-        # Accumulate the counts
-        counts = list(itertools.accumulate(counts))
-        # tickvals = [f"{d:%b %d}" for d in days]
-        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-        days = [f"{d:%b %d}" for d in days]
+        if occurrences_per_day.count():
+            days, counts = list(zip(*occurrences_per_day))
+            # Accumulate the counts
+            counts = list(itertools.accumulate(counts))
+            # tickvals = [f"{d:%b %d}" for d in days]
+            tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+            days = [f"{d:%b %d}" for d in days]
+        else:
+            days, counts = [], []
+            tickvals = []
 
         plots.append(
             {
@@ -260,12 +279,107 @@ class Site(BaseModel):
 
 
 @final
+class DeploymentManager(models.Manager):
+    """
+    Custom manager that adds counts of related objects to the default queryset.
+    """
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .annotate(
+                events_count=models.Count("events"),
+                # These are very slow as the numbers increase (1M captures)
+                # occurrences_count=models.Count("occurrences"),
+                # captures_count=models.Count("captures"),
+                # detections_count=models.Count("captures__detections")
+            )
+        )
+
+
+def _create_source_image_for_sync(
+    deployment: "Deployment",
+    obj: ami.utils.s3.ObjectTypeDef,
+) -> typing.Union["SourceImage", None]:
+    assert "Key" in obj, f"File in object store response has no Key: {obj}"
+
+    source_image = SourceImage(
+        deployment=deployment,
+        path=obj["Key"],
+        last_modified=obj.get("LastModified"),
+        size=obj.get("Size"),
+        checksum=obj.get("ETag", "").strip('"'),
+        checksum_algorithm=obj.get("ChecksumAlgorithm"),
+    )
+    logger.debug(f"Preparing to create or update SourceImage {source_image.path}")
+    source_image.update_calculated_fields()
+    return source_image
+
+
+def _insert_or_update_batch_for_sync(
+    deployment: "Deployment",
+    source_images: list["SourceImage"],
+    total_files: int,
+    total_size: int,
+    sql_batch_size=500,
+):
+    logger.info(f"Bulk inserting or updating batch of {len(source_images)} SourceImages")
+    try:
+        SourceImage.objects.bulk_create(
+            source_images,
+            batch_size=sql_batch_size,
+            update_conflicts=True,
+            unique_fields=["deployment", "path"],
+            update_fields=["last_modified", "size", "checksum", "checksum_algorithm"],
+        )
+    except IntegrityError as e:
+        logger.error(f"Error bulk inserting batch of SourceImages: {e}")
+
+    deployment.data_source_total_files = total_files
+    deployment.data_source_total_size = total_size
+    deployment.data_source_last_checked = datetime.datetime.now()
+    deployment.save()
+
+    events = group_images_into_events(deployment)
+    for event in events:
+        set_dimensions_from_first_image(event)
+
+
+def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
+    # @TODO compare total_files to the number of SourceImages for this deployment
+    existing_file_count = SourceImage.objects.filter(deployment=deployment).count()
+    delta = abs(existing_file_count - total_files_found)
+    if delta > 0:
+        logger.warning(
+            f"Deployment '{deployment}' has {existing_file_count} SourceImages "
+            f"but the data source has {total_files_found} files "
+            f"(+- {delta})"
+        )
+
+
+@final
 class Deployment(BaseModel):
-    """ """
+    """
+    Class that describes a deployment of a device (camera & hardware) at a research site.
+    """
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
-    data_source = models.TextField(default="s3://bucket-name/prefix", blank=True, max_length=255)
+
+    # @TODO consider sharing only the "data source auth/config" then a one-to-one config for each deployment
+    data_source = models.ForeignKey(
+        "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
+    )
+    data_source_total_files = models.IntegerField(blank=True, null=True)
+    data_source_total_size = models.BigIntegerField(blank=True, null=True)
+    data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
+    data_source_regex = models.CharField(max_length=255, blank=True, null=True)
+    data_source_last_checked = models.DateTimeField(blank=True, null=True)
+    # data_source_last_check_duration = models.DurationField(blank=True, null=True)
+    # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
+    # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
+
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     image = models.ImageField(upload_to="deployments", blank=True, null=True)
@@ -285,23 +399,30 @@ class Deployment(BaseModel):
     captures: models.QuerySet["SourceImage"]
     occurrences: models.QuerySet["Occurrence"]
 
-    def events_count(self) -> int:
-        return self.events.count()
+    objects = DeploymentManager()
 
-    def captures_count(self) -> int:
+    def events_count(self) -> int | None:
+        # return self.events.count()
+        return None
+
+    def captures_count(self) -> int | None:
         return self.captures.count()
+        # return None
 
-    def detections_count(self) -> int:
+    def detections_count(self) -> int | None:
         return Detection.objects.filter(Q(source_image__deployment=self)).count()
+        # return None
 
-    def occurrences_count(self) -> int:
+    def occurrences_count(self) -> int | None:
         return self.occurrences.count()
+        # return None
 
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
 
-    def taxa_count(self) -> int:
+    def taxa_count(self) -> int | None:
         return self.taxa().count()
+        # return None
 
     def example_captures(self, num=10) -> models.QuerySet["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("-size")[:num]
@@ -309,18 +430,98 @@ class Deployment(BaseModel):
     def capture_images(self, num=5) -> list[str]:
         return [c.url() for c in self.example_captures(num)]
 
+    def data_source_uri(self) -> str | None:
+        if self.data_source:
+            uri = self.data_source.uri().rstrip("/")
+            if self.data_source_subdir:
+                uri = f"{uri}/{self.data_source_subdir.strip('/')}/"
+            if self.data_source_regex:
+                uri = f"{uri}?regex={self.data_source_regex}"
+        else:
+            uri = None
+        return uri
+
+    def sync_captures(self, batch_size=1000) -> int:
+        """Import images from the deployment's data source"""
+
+        deployment = self
+        assert deployment.data_source, f"Deployment {deployment.name} has no data source configured"
+
+        s3_config = deployment.data_source.config
+        total_size = 0
+        total_files = 0
+        source_images = []
+        django_batch_size = batch_size
+        sql_batch_size = 1000
+
+        for obj in ami.utils.s3.list_files_paginated(
+            s3_config,
+            subdir=self.data_source_subdir,
+            regex_filter=self.data_source_regex,
+        ):
+            source_image = _create_source_image_for_sync(deployment, obj)
+            if source_image:
+                total_files += 1
+                total_size += obj.get("Size", 0)
+                source_images.append(source_image)
+
+            if len(source_images) >= django_batch_size:
+                _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
+                source_images = []
+
+        if source_images:
+            # Insert/update the last batch
+            _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
+
+        _compare_totals_for_sync(deployment, total_files)
+
+        # @TODO decide if we should delete SourceImages that are no longer in the data source
+        return total_files
+
+    def save(self, *args, **kwargs):
+        # Since Occurrences have their own relationship to Project, we need to update
+        # the project on all occurrences when the deployment's project changes.
+        # @TODO consider if Occurrences need their own relationship to Project.
+        if self.pk is not None:
+            old = Deployment.objects.get(pk=self.pk)
+            if old.project != self.project:
+                self.occurrences.update(project=self.project)
+        super().save(*args, **kwargs)
+
 
 @final
 class Event(BaseModel):
     """A monitoring session"""
 
-    start = models.DateTimeField()
-    end = models.DateTimeField(null=True, blank=True)
+    group_by = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text=(
+            "A unique identifier for this event, used to group images into events. "
+            "This allows images to be prepended or appended to an existing event. "
+            "The default value is the day the event started, in the format YYYY-MM-DD. "
+            "However images could also be grouped by camera settings, image dimensions, hour of day, "
+            "or a random sample."
+        ),
+    )
+
+    start = models.DateTimeField(db_index=True, help_text="The timestamp of the first image in the event.")
+    end = models.DateTimeField(null=True, blank=True, help_text="The timestamp of the last image in the event.")
 
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="events")
 
     captures: models.QuerySet["SourceImage"]
     occurrences: models.QuerySet["Occurrence"]
+
+    class Meta:
+        ordering = ["start"]
+        indexes = [
+            models.Index(fields=["group_by"]),
+            models.Index(fields=["start"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["deployment", "group_by"], name="unique_event"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.start.strftime('%A')}, {self.date_label()}"
@@ -359,7 +560,7 @@ class Event(BaseModel):
         return self.end - self.start
 
     def duration_label(self) -> str:
-        return format_timedelta(self.duration())
+        return ami.utils.dates.format_timedelta(self.duration())
 
     # These are now loaded with annotations in EventViewSet
     # But the serializer complains if they're not defined here.
@@ -444,9 +645,12 @@ class Event(BaseModel):
             .order_by("-num_detections")
         )
 
-        taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
-        taxa = [t or "Unknown" for t in taxa]
-        counts = [c or 0 for c in counts]
+        if top_taxa:
+            taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
+            taxa = [t or "Unknown" for t in taxa]
+            counts = [c or 0 for c in counts]
+        else:
+            taxa, counts = [], []
 
         plots.append(
             {
@@ -460,6 +664,10 @@ class Event(BaseModel):
         return plots
 
     def save(self, *args, **kwargs):
+        if not self.group_by and self.start:
+            # If no group_by is set, use the start "day"
+            self.group_by = self.start.date()
+
         if self.pk is not None:
             # Can only update start and end times if this is an update to an existing event
             first = self.captures.order_by("timestamp").values("timestamp").first()
@@ -471,48 +679,291 @@ class Event(BaseModel):
         super().save(*args, **kwargs)
 
 
+def group_images_into_events(
+    deployment: Deployment, max_time_gap=timedelta(minutes=120), delete_empty=True
+) -> list[Event]:
+    # Log a warning if multiple SourceImages have the same timestamp
+    dupes = (
+        SourceImage.objects.filter(deployment=deployment)
+        .values("timestamp")
+        .annotate(count=models.Count("id"))
+        .filter(count__gt=1)
+    )
+    if dupes.count():
+        values = "\n".join(
+            [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
+        )
+        logger.warning(
+            f"Found multiple images with the same timestamp in deployment '{deployment}':\n "
+            f"{values}\n"
+            f"Only one image will be used for each timestamp for each event."
+        )
+
+    image_timestamps = list(
+        SourceImage.objects.filter(deployment=deployment)
+        .exclude(timestamp=None)
+        .values_list("timestamp", flat=True)
+        .order_by("timestamp")
+        .distinct()
+    )
+
+    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
+
+    events = []
+    for group in timestamp_groups:
+        if not len(group):
+            continue
+
+        start_date = group[0]
+        end_date = group[-1]
+
+        # Print debugging info about groups
+        delta = end_date - start_date
+        hours = round(delta.seconds / 60 / 60, 1)
+        logger.debug(
+            f"Found session starting at {start_date} with {len(group)} images that ran for {hours} hours.\n"
+            f"From {start_date.strftime('%c')} to {end_date.strftime('%c')}."
+        )
+
+        # Creating events & assigning images
+        group_by = start_date.date()
+        event, _ = Event.objects.get_or_create(
+            deployment=deployment,
+            group_by=group_by,
+            defaults={"start": start_date, "end": end_date},
+        )
+        events.append(event)
+        SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+        logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
+
+    if delete_empty:
+        delete_empty_events()
+
+    return events
+
+
+def delete_empty_events(dry_run=False):
+    """
+    Delete events that have no images, occurrences or other related records.
+    """
+
+    # @TODO Search all models that have a foreign key to Event
+    # related_models = [
+    #     f.related_model
+    #     for f in Event._meta.get_fields()
+    #     if f.one_to_many or f.one_to_one or (f.many_to_many and f.auto_created)
+    # ]
+
+    events = Event.objects.annotate(num_images=models.Count("captures")).filter(num_images=0)
+    events = events.annotate(num_occurrences=models.Count("occurrences")).filter(num_occurrences=0)
+
+    if dry_run:
+        for event in events:
+            print(f"Would delete event {event}")
+    else:
+        print(f"Deleting {events.count()} empty events")
+        events.delete()
+
+
 @final
-class StorageSource(BaseModel):
-    pass
+class S3StorageSource(BaseModel):
+    """
+    Per-deployment configuration for an S3 bucket.
+    """
+
+    name = models.CharField(max_length=255)
+    bucket = models.CharField(max_length=255)
+    prefix = models.CharField(max_length=255, blank=True)
+    access_key = models.TextField()
+    secret_key = models.TextField()
+    endpoint_url = models.CharField(max_length=255, blank=True, null=True)
+    public_base_url = models.CharField(max_length=255, blank=True)
+    total_size = models.BigIntegerField(null=True, blank=True)
+    total_files = models.BigIntegerField(null=True, blank=True)
+    last_checked = models.DateTimeField(null=True, blank=True)
+    # last_check_duration = models.DurationField(null=True, blank=True)
+    # use_signed_urls = models.BooleanField(default=False)
+
+    deployments: models.QuerySet["Deployment"]
+
+    @property
+    def config(self):
+        return ami.utils.s3.S3Config(
+            bucket_name=self.bucket,
+            prefix=self.prefix,
+            access_key_id=self.access_key,
+            secret_access_key=self.secret_key,
+            endpoint_url=self.endpoint_url,
+            public_base_url=self.public_base_url,
+        )
+
+    def list_files(self, limit=None):
+        """Recursively list files in the bucket/prefix."""
+
+        return ami.utils.s3.list_files_paginated(self.config)
+
+    def count_files(self):
+        """Count & save the number of files in the bucket/prefix."""
+
+        count = ami.utils.s3.count_files_paginated(self.config)
+        self.total_files = count
+        self.save()
+        return count
+
+    def calculate_size(self):
+        """Calculate the total size and count of all files in the bucket/prefix."""
+
+        sizes = [obj["Size"] for obj in self.list_files()]
+        size = sum(sizes)
+        count = len(sizes)
+        self.total_size = size
+        self.total_files = count
+        self.save()
+        return size
+
+    def uri(self, path: str | None = None):
+        """Return the full URI for the given path."""
+
+        full_path = "/".join(str(part).strip("/") for part in [self.bucket, self.prefix, path] if part)
+        return f"s3://{full_path}"
+
+    def public_url(self, path: str):
+        """Return the public URL for the given path."""
+
+        return ami.utils.s3.public_url(self.config, path)
+
+    def save(self, *args, **kwargs):
+        # If public_base_url has changed, update the urls for all source images
+        old = S3StorageSource.objects.get(pk=self.pk)
+        if old.public_base_url != self.public_base_url:
+            for deployment in self.deployments.all():
+                ami.tasks.update_public_urls.delay(deployment.pk, self.public_base_url)
+        super().save(*args, **kwargs)
 
 
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
 
-    # file = (
-    #     models.ImageField(
-    #         null=True,
-    #         blank=True,
-    #         upload_to="source_images",
-    #         width_field="width",
-    #         height_field="height",
-    #     ),
-    # )
     path = models.CharField(max_length=255, blank=True)
-    timestamp = models.DateTimeField(null=True, blank=True)
+    public_base_url = models.CharField(max_length=255, blank=True)
+    timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
-    size = models.IntegerField(null=True, blank=True)
-    md5hash = models.CharField(max_length=32, blank=True)
+    size = models.BigIntegerField(null=True, blank=True)
+    last_modified = models.DateTimeField(null=True, blank=True)
+    checksum = models.CharField(max_length=255, blank=True, null=True)
+    checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
 
+    # project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="source_images")
+    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures")
 
     detections: models.QuerySet["Detection"]
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__} #{self.pk} {self.path}"
+
+    def public_url(self) -> str:
+        """
+        Return the public URL for this image.
+
+        The base URL is determined by the deployment's data source and is cached
+        on the source image. If the deployment's data source changes, the URLs
+        for all source images will be updated.
+
+        @TODO use signed URLs if necessary.
+        @TODO add support for thumbnail URLs here?
+        @TODO consider if we ever need to access the original image directly!
+        """
+        return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
+
+    # backwards compatibility
+    url = public_url
 
     def detections_count(self) -> int | None:
         # return self.detections.count()
         return None
 
-    def url(self) -> str:
-        # @TODO use settings or deployment storage base
-        # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-        url = urllib.parse.urljoin(_SOURCE_IMAGES_URL_BASE, self.path)
-        return url
+    def get_base_url(self) -> str:
+        """
+        Determine the public URL from the deployment's data source.
+
+        If there is no data source, return a relative URL.
+        """
+        if self.deployment and self.deployment.data_source and self.deployment.data_source.public_base_url:
+            return self.deployment.data_source.public_base_url
+        else:
+            return "/"
+
+    def extract_timestamp(self) -> datetime.datetime | None:
+        """
+        Extract a timestamp from the filename or EXIF data
+        """
+        # @TODO use EXIF data if necessary (use methods in AMI data companion repo)
+        timestamp = ami.utils.dates.get_image_timestamp_from_filename(self.path)
+        if not timestamp:
+            # timestamp = ami.utils.dates.get_image_timestamp_from_exif(self.path)
+            msg = f"No timestamp could be extracted from the filename or EXIF data of {self.path}"
+            logger.error(msg)
+        return timestamp
+
+    def get_dimensions(self) -> tuple[int | None, int | None]:
+        """Calculate the width and height of the original image."""
+        if self.path and self.deployment and self.deployment.data_source:
+            config = self.deployment.data_source.config
+            img = ami.utils.s3.read_image(config=config, key=self.path)
+            self.width, self.height = img.size
+            self.save()
+            return self.width, self.height
+        else:
+            return None, None
+
+    def update_calculated_fields(self):
+        if self.path and not self.timestamp:
+            self.timestamp = self.extract_timestamp()
+        if self.path and not self.public_base_url:
+            self.public_base_url = self.get_base_url()
+
+    def save(self, *args, **kwargs):
+        self.update_calculated_fields()
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")
+
+        # Add two "unique together" constraints to prevent duplicate images
+        constraints = [
+            # deployment + path (only one image per deployment with a given file path)
+            models.UniqueConstraint(fields=["deployment", "path"], name="unique_deployment_path"),
+        ]
+
+        indexes = [
+            models.Index(fields=["deployment", "timestamp"]),
+            models.Index(fields=["event", "timestamp"]),
+            models.Index(fields=["timestamp"]),
+        ]
+
+
+def set_dimensions_from_first_image(event: Event, replace_existing: bool = False):
+    """
+    Calculate the width and height of the first image in an event and
+    update all of the images in the event with the same dimensions.
+    """
+
+    first_image = event.captures.first()
+    if first_image:
+        if not first_image.width or not first_image.height:
+            first_image.get_dimensions()
+        logger.info(
+            f"Setting dimensions for {event.captures.count()} images in event {event.pk} to "
+            f"{first_image.width}x{first_image.height}"
+        )
+        if replace_existing:
+            captures = event.captures.all()
+        else:
+            captures = event.captures.filter(width__isnull=True, height__isnull=True)
+        captures.update(width=first_image.width, height=first_image.height)
 
 
 @final
@@ -718,7 +1169,7 @@ class Occurrence(BaseModel):
             return None
 
     def duration_label(self) -> str | None:
-        return format_timedelta(self.duration())
+        return ami.utils.dates.format_timedelta(self.duration())
 
     def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
