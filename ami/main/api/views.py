@@ -135,9 +135,7 @@ class EventViewSet(DefaultViewSet):
         .distinct()
     )  # .prefetch_related("captures").all()
     serializer_class = EventSerializer
-    filterset_fields = [
-        "deployment",
-    ]  # "project"]
+    filterset_fields = ["deployment", "project"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -269,6 +267,7 @@ class TaxonViewSet(DefaultViewSet):
         "parent",
         "occurrences__event",
         "occurrences__deployment",
+        "occurrences__project",
     ]
     ordering_fields = [
         "created_at",

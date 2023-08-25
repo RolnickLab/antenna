@@ -86,15 +86,16 @@ class Project(BaseModel):
 
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
+    events: models.QuerySet["Event"]
+    occurrences: models.QuerySet["Occurrence"]
+    taxa: models.QuerySet["Taxon"]
+    taxa_lists: models.QuerySet["TaxaList"]
 
     def deployments_count(self) -> int:
         return self.deployments.count()
 
-    def taxa(self) -> models.QuerySet["Taxon"]:
-        return Taxon.objects.filter(Q(occurrences__project=self)).distinct()
-
     def taxa_count(self):
-        return self.taxa().count()
+        return self.taxa.all().count()
 
     def summary_data(self):
         """
@@ -478,14 +479,31 @@ class Deployment(BaseModel):
         # @TODO decide if we should delete SourceImages that are no longer in the data source
         return total_files
 
+    def update_children_project(self):
+        """
+        Update the project on all child objects.
+        """
+
+        # All the child models that have a foreign key to project
+        child_models = [
+            "Event",
+            "Occurrence",
+            "SourceImage",
+        ]
+        for model_name in child_models:
+            model = apps.get_model("main", model_name)
+            project_values = model.objects.filter(deployment=self).values_list("project", flat=True).distinct()
+            if len(project_values) > 1:
+                logger.warning(
+                    f"Deployment {self} has alternate projects set on {model_name} "
+                    f"objects: {project_values}. Updating them!"
+                )
+            model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
+
     def save(self, *args, **kwargs):
-        # Since Occurrences have their own relationship to Project, we need to update
-        # the project on all occurrences when the deployment's project changes.
-        # @TODO consider if Occurrences need their own relationship to Project.
-        if self.pk is not None:
-            old = Deployment.objects.get(pk=self.pk)
-            if old.project != self.project:
-                self.occurrences.update(project=self.project)
+        if self.project:
+            self.update_children_project()
+            # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
         super().save(*args, **kwargs)
 
 
@@ -508,6 +526,7 @@ class Event(BaseModel):
     start = models.DateTimeField(db_index=True, help_text="The timestamp of the first image in the event.")
     end = models.DateTimeField(null=True, blank=True, help_text="The timestamp of the last image in the event.")
 
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="events")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="events")
 
     captures: models.QuerySet["SourceImage"]
@@ -855,9 +874,9 @@ class SourceImage(BaseModel):
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
 
-    # project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="source_images")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
+    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
 
     detections: models.QuerySet["Detection"]
 
@@ -1202,7 +1221,7 @@ class Occurrence(BaseModel):
 @final
 class TaxaManager(models.Manager):
     def get_queryset(self):
-        return super().get_queryset()
+        return super().get_queryset().distinct()
 
     def add_species_parents(self):
         """Add parents to all species that don't have them.
@@ -1299,6 +1318,7 @@ class Taxon(BaseModel):
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
+    projects = models.ManyToManyField("Project", related_name="taxa")
 
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
@@ -1381,6 +1401,7 @@ class TaxaList(BaseModel):
     description = models.TextField(blank=True)
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
+    projects = models.ManyToManyField("Project", related_name="taxa_lists")
 
     class Meta:
         ordering = ["-created_at"]

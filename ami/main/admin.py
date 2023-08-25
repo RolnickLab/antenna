@@ -78,14 +78,21 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
 class EventAdmin(admin.ModelAdmin[Event]):
     """Admin panel example for ``Event`` model."""
 
-    list_display = ("name", "deployment", "start", "duration_display", "captures_count")
+    list_display = (
+        "name",
+        "deployment",
+        "start",
+        "duration_display",
+        "captures_count",
+        "project",
+    )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
         from django.db.models import Count, ExpressionWrapper, F
         from django.db.models.fields import DurationField
 
-        return qs.select_related("deployment", "deployment__project").annotate(
+        return qs.select_related("deployment", "project").annotate(
             captures_count=Count("captures"),
             time_duration=ExpressionWrapper(F("end") - F("start"), output_field=DurationField()),
         )
@@ -97,7 +104,7 @@ class EventAdmin(admin.ModelAdmin[Event]):
     def duration_display(self, obj) -> str:
         return ami.utils.dates.format_timedelta(obj.time_duration)
 
-    list_filter = ("deployment", "deployment__project", "start")
+    list_filter = ("deployment", "project", "start")
 
 
 @admin.register(SourceImage)
