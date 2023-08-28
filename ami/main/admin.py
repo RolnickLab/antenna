@@ -1,7 +1,7 @@
 from typing import Any
 
 from django.contrib import admin
-from django.db.models import Count
+from django.db import models
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
@@ -45,7 +45,25 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "data_source_uri",
         "captures_count",
         "captures_size",
+        "events_count",
+        "start_date",
+        "end_date",
     )
+
+    def start_date(self, obj) -> str | None:
+        result = SourceImage.objects.filter(event__deployment=obj).aggregate(
+            models.Min("timestamp"),
+        )
+        return result["timestamp__min"].date() if result["timestamp__min"] else None
+
+    def end_date(self, obj) -> str | None:
+        result = SourceImage.objects.filter(deployment=obj).aggregate(
+            models.Max("timestamp"),
+        )
+        return result["timestamp__max"].date() if result["timestamp__max"] else None
+
+    def events_count(self, obj) -> str | None:
+        return number_format(obj.events.count(), force_grouping=True, use_l10n=True)
 
     def captures_size(self, obj) -> str | None:
         return filesizeformat(obj.data_source_total_size)
@@ -89,11 +107,11 @@ class EventAdmin(admin.ModelAdmin[Event]):
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
-        from django.db.models import Count, ExpressionWrapper, F
+        from django.db.models import ExpressionWrapper, F
         from django.db.models.fields import DurationField
 
         return qs.select_related("deployment", "project").annotate(
-            captures_count=Count("captures"),
+            captures_count=models.Count("captures"),
             time_duration=ExpressionWrapper(F("end") - F("start"), output_field=DurationField()),
         )
 
@@ -180,7 +198,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
 
-        return qs.annotate(occurrence_count=Count("occurrences")).order_by("-occurrence_count")
+        return qs.annotate(occurrence_count=models.Count("occurrences")).order_by("-occurrence_count")
 
     @admin.display(
         description="Occurrences",
