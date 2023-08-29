@@ -97,8 +97,26 @@ export const OccurrenceDetails = ({
         <div className={styles.column}>
           <div className={styles.info}>
             <div className={styles.fields}>
-              {/* TODO: Replace with tabs below when classifications are in place */}
-              <InfoBlock fields={fields} />
+              <Tabs.Root defaultValue="fields">
+                <Tabs.List>
+                  <Tabs.Trigger
+                    value="fields"
+                    label={translate(STRING.TAB_ITEM_FIELDS)}
+                  />
+                  <Tabs.Trigger
+                    value="identification"
+                    label={translate(STRING.TAB_ITEM_IDENTIFICATION)}
+                  />
+                </Tabs.List>
+                <Tabs.Content value="fields">
+                  <InfoBlock fields={fields} />
+                </Tabs.Content>
+                <Tabs.Content value="identification">
+                  <span className={styles.placeholder}>
+                    This feature is coming soon.
+                  </span>
+                </Tabs.Content>
+              </Tabs.Root>
             </div>
           </div>
         </div>
@@ -111,26 +129,3 @@ export const OccurrenceDetails = ({
     </div>
   )
 }
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
-const InfoTabs = () => (
-  <Tabs.Root defaultValue="fields">
-    <Tabs.List>
-      <Tabs.Trigger value="fields" label={translate(STRING.TAB_ITEM_FIELDS)} />
-      <Tabs.Trigger
-        value="classification"
-        label={translate(STRING.TAB_ITEM_CLASSIFICATION)}
-      />
-    </Tabs.List>
-    <Tabs.Content value="fields">
-      <div className={styles.fields}>
-        <InfoBlock fields={[]} />
-      </div>
-    </Tabs.Content>
-    <Tabs.Content value="classification">
-      <div className={styles.fields}>
-        <InfoBlock fields={[]} />
-      </div>
-    </Tabs.Content>
-  </Tabs.Root>
-)
