@@ -502,8 +502,6 @@ class Deployment(BaseModel):
 
         e.g. Events, Occurrences, SourceImages must belong to same project as their deployment. But
         they have their own copy of that attribute to reduce the number of joins required to query them.
-
-        @TODO Write a test for this.
         """
 
         # All the child models that have a foreign key to project
@@ -705,10 +703,13 @@ class Event(BaseModel):
 
         return plots
 
-    def save(self, *args, **kwargs):
+    def update_calculated_fields(self):
         if not self.group_by and self.start:
             # If no group_by is set, use the start "day"
             self.group_by = self.start.date()
+
+        if not self.project and self.deployment:
+            self.project = self.deployment.project
 
         if self.pk is not None:
             # Can only update start and end times if this is an update to an existing event
@@ -718,6 +719,9 @@ class Event(BaseModel):
                 self.start = first["timestamp"]
             if last:
                 self.end = last["timestamp"]
+
+    def save(self, *args, **kwargs):
+        self.update_calculated_fields()
         super().save(*args, **kwargs)
 
 
@@ -966,6 +970,8 @@ class SourceImage(BaseModel):
             self.timestamp = self.extract_timestamp()
         if self.path and not self.public_base_url:
             self.public_base_url = self.get_base_url()
+        if not self.project and self.deployment:
+            self.project = self.deployment.project
 
     def save(self, *args, **kwargs):
         self.update_calculated_fields()
