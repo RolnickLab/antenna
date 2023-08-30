@@ -310,8 +310,8 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
-    # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticatedOrReadOnly",),
+    # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "PAGE_SIZE": 10,
@@ -335,7 +335,9 @@ DJOSER = {
     "SEND_CONFIRMATION_EMAIL": True,
     # "SEND_ACTIVATION_EMAIL": True,
     "LOGIN_FIELD": "email",  # Technically not needed because we have a custom User model
-    # "SERIALIZERS": {},
+    "SERIALIZERS": {
+        "user": "ami.users.api.serializers.UserSerializer",
+    },
 }
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
@@ -344,8 +346,8 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Automated Monitoring of Insects ML Platform API",
     "DESCRIPTION": "Documentation of API endpoints of Automated Monitoring of Insects ML Platform",
     "VERSION": "1.0.0",
-    # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
+    # "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
