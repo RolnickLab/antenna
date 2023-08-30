@@ -50,6 +50,7 @@
   border-radius: 4px;
   padding: 8px 12px;
   @include paragraph-small();
+  background-color: $color-generic-white;
   color: $color-neutral-800;
   border: 1px solid $color-neutral-300;
   box-sizing: border-box;

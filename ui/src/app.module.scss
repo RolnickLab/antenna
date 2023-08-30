@@ -16,6 +16,11 @@
   width: 100%;
   min-width: $page-min-width;
   box-sizing: border-box;
+
+  &.fullscreen {
+    padding: 0 !important;
+    height: calc(100% - 64px);
+  }
 }
 
 .content {

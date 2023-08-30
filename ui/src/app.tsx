@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import classNames from 'classnames'
 import { Header } from 'components/header/header'
 import { Menu } from 'components/menu/menu'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
+import { Login } from 'pages/login/login'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Overview } from 'pages/overview/overview'
 import { Projects } from 'pages/projects/projects'
@@ -63,23 +65,17 @@ export const App = () => {
 }
 
 const LoginContainer = () => (
-  <>
-    <main className={styles.main}>
-      <div className={styles.content}>
-        <UnderConstruction message="Login page is under construction!" />
-      </div>
-    </main>
-  </>
+  <main className={classNames(styles.main, styles.fullscreen)}>
+    <Login />
+  </main>
 )
 
 const ProjectsContainer = () => (
-  <>
-    <main className={styles.main}>
-      <div className={styles.content}>
-        <Projects />
-      </div>
-    </main>
-  </>
+  <main className={styles.main}>
+    <div className={styles.content}>
+      <Projects />
+    </div>
+  </main>
 )
 
 const ProjectContainer = () => {

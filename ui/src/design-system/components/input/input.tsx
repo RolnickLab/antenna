@@ -9,7 +9,7 @@ interface InputProps {
   name: string
   placeholder?: string
   value?: string | number
-  type?: 'text' | 'number'
+  type?: 'text' | 'number' | 'password'
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   onFocus?: (e: FocusEvent<HTMLInputElement>) => void
