@@ -377,6 +377,8 @@ class Deployment(BaseModel):
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
     data_source_regex = models.CharField(max_length=255, blank=True, null=True)
     data_source_last_checked = models.DateTimeField(blank=True, null=True)
+    # data_source_start_date = models.DateTimeField(blank=True, null=True)
+    # data_source_end_date = models.DateTimeField(blank=True, null=True)
     # data_source_last_check_duration = models.DurationField(blank=True, null=True)
     # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
@@ -430,6 +432,21 @@ class Deployment(BaseModel):
 
     def capture_images(self, num=5) -> list[str]:
         return [c.url() for c in self.example_captures(num)]
+
+    def first_capture(self) -> typing.Optional["SourceImage"]:
+        return SourceImage.objects.filter(deployment=self).order_by("timestamp").first()
+
+    def last_capture(self) -> typing.Optional["SourceImage"]:
+        return SourceImage.objects.filter(deployment=self).order_by("-timestamp").first()
+
+    def first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
+        # Retrieve the timestamps of the first and last capture in a single query
+        first, last = (
+            SourceImage.objects.filter(deployment=self)
+            .aggregate(first=models.Min("timestamp"), last=models.Max("timestamp"))
+            .values()
+        )
+        return first or last
 
     def data_source_uri(self) -> str | None:
         if self.data_source:
