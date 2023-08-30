@@ -496,9 +496,14 @@ class Deployment(BaseModel):
         # @TODO decide if we should delete SourceImages that are no longer in the data source
         return total_files
 
-    def update_children_project(self):
+    def update_children(self):
         """
-        Update the project on all child objects.
+        Update all attribute on all child objects that should be equal to their deployment values.
+
+        e.g. Events, Occurrences, SourceImages must belong to same project as their deployment. But
+        they have their own copy of that attribute to reduce the number of joins required to query them.
+
+        @TODO Write a test for this.
         """
 
         # All the child models that have a foreign key to project
@@ -519,7 +524,8 @@ class Deployment(BaseModel):
 
     def save(self, *args, **kwargs):
         if self.project:
-            self.update_children_project()
+            self.update_children()
+            # @TODO this isn't working as a background task
             # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
         super().save(*args, **kwargs)
 
