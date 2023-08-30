@@ -1,4 +1,6 @@
+from django.core import exceptions
 from django.db import models
+from django.db.models.query import QuerySet
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
@@ -135,9 +137,7 @@ class EventViewSet(DefaultViewSet):
         .distinct()
     )  # .prefetch_related("captures").all()
     serializer_class = EventSerializer
-    filterset_fields = [
-        "deployment",
-    ]  # "project"]
+    filterset_fields = ["deployment", "project"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -269,6 +269,8 @@ class TaxonViewSet(DefaultViewSet):
         "parent",
         "occurrences__event",
         "occurrences__deployment",
+        "occurrences__project",
+        "projects",
     ]
     ordering_fields = [
         "created_at",
@@ -288,6 +290,44 @@ class TaxonViewSet(DefaultViewSet):
             return TaxonListSerializer
         else:
             return TaxonSerializer
+
+    def filter_by_occurrence(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter taxa by when/where it has occurred.
+
+        Supports querying by occurrence, project, deployment, or event.
+
+        @TODO Consider using a custom filter class for this (see get_filter_name)
+        """
+
+        occurrence_id = self.request.query_params.get("occurrence")
+        project_id = self.request.query_params.get("project")
+        deployment_id = self.request.query_params.get("deployment")
+        event_id = self.request.query_params.get("event")
+
+        if occurrence_id:
+            occurrence = Occurrence.objects.get(id=occurrence_id)
+            return queryset.filter(occurrences=occurrence).distinct()
+        elif project_id:
+            project = Project.objects.get(id=project_id)
+            return super().get_queryset().filter(occurrences__project=project).distinct()
+        elif deployment_id:
+            deployment = Deployment.objects.get(id=deployment_id)
+            return super().get_queryset().filter(occurrences__deployment=deployment).distinct()
+        elif event_id:
+            event = Event.objects.get(id=event_id)
+            return super().get_queryset().filter(occurrences__event=event).distinct()
+        else:
+            return queryset
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        try:
+            return self.filter_by_occurrence(qs)
+        except exceptions.ObjectDoesNotExist as e:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound(detail=str(e))
 
 
 class AlgorithmViewSet(DefaultViewSet):
