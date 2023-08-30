@@ -1,35 +1,40 @@
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { RADIUS, STROKE_WIDTH, THEMES } from './constants'
 import styles from './identification-status.module.scss'
-import { StatusTheme } from './types'
 
 interface IdentificationStatusProps {
-  iconType: IconType.Identifiers | IconType.BatchId
+  isVerified?: boolean
 
-  theme?: StatusTheme
+  /** Integer in range [0, 1] */
+  score: number
 
-  /** Integer in range [0, 100] */
-  value: number
+  /** Integer in range [0, 1] */
+  scoreThreshold?: number
 }
 
 export const IdentificationStatus = ({
-  iconType = IconType.Identifiers,
-  theme = StatusTheme.Success,
-  value,
+  isVerified,
+  scoreThreshold = 0.6,
+  score,
 }: IdentificationStatusProps) => {
   const normalizedRadius = RADIUS - STROKE_WIDTH * 2
   const circumference = normalizedRadius * 2 * Math.PI
-  const strokeDashoffset = circumference - (value / 100) * circumference
+  const strokeDashoffset = circumference - score * circumference
+  const theme = score >= scoreThreshold ? THEMES.success : THEMES.alert
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.iconWrapper}>
-        <Icon type={iconType} theme={IconTheme.Primary} size={16} />
+        <Icon
+          type={isVerified ? IconType.Identifiers : IconType.BatchId}
+          theme={IconTheme.Primary}
+          size={16}
+        />
       </div>
       <svg height={RADIUS * 2} width={RADIUS * 2} transform="rotate(-90)">
         <circle
           fill="transparent"
-          stroke={THEMES[theme].bg}
+          stroke={theme.bg}
           strokeWidth={STROKE_WIDTH}
           r={normalizedRadius}
           cx={RADIUS}
@@ -37,7 +42,7 @@ export const IdentificationStatus = ({
         />
         <circle
           fill="transparent"
-          stroke={THEMES[theme].fg}
+          stroke={theme.fg}
           strokeWidth={STROKE_WIDTH}
           strokeDasharray={circumference + ' ' + circumference}
           strokeLinecap="round"

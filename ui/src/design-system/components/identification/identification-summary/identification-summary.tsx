@@ -4,15 +4,15 @@ import { IdentificationBreadcrumbs } from '../identification-breadcrumbs/identif
 import styles from './identification-summary.module.scss'
 
 interface IdentificationSummaryProps {
-  nodes: {
-    id: string
-    title: string
-  }[]
-  result: {
+  identification: {
     id: string
     overridden?: boolean
     title: string
   }
+  ranks: {
+    id: string
+    title: string
+  }[]
   user?: {
     username: string
     profileImage?: string
@@ -20,8 +20,8 @@ interface IdentificationSummaryProps {
 }
 
 export const IdentificationSummary = ({
-  nodes,
-  result,
+  identification,
+  ranks,
   user,
 }: IdentificationSummaryProps) => (
   <div>
@@ -47,11 +47,11 @@ export const IdentificationSummary = ({
     </div>
     <span
       className={classNames(styles.title, {
-        [styles.overridden]: result.overridden,
+        [styles.overridden]: identification.overridden,
       })}
     >
-      {result.title}
+      {identification.title}
     </span>
-    <IdentificationBreadcrumbs nodes={nodes} />
+    <IdentificationBreadcrumbs items={ranks} />
   </div>
 )

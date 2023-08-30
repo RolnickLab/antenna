@@ -10,56 +10,65 @@ export default {
 
 export const Default: Meta = {
   args: {
-    user: {
-      username: 'Andre Poremski',
-      profileImage: 'https://placekitten.com/600/400',
+    identification: {
+      id: 'lycomorphodes-sordida',
+      title: 'Lycomorphodes sordida',
     },
-    result: { id: 'lycomorphodes-sordida', title: 'Lycomorphodes sordida' },
-    nodes: [
+    ranks: [
       { id: 'erebidae', title: 'Erebidae' },
       { id: 'arctiinae', title: 'Arctiinae' },
       { id: 'lithosiini', title: 'Lithosiini' },
     ],
+    user: {
+      username: 'Andre Poremski',
+      profileImage: 'https://placekitten.com/600/400',
+    },
   },
 }
 
 export const WithoutProfileImage: Meta = {
   args: {
-    user: {
-      username: 'Andre Poremski',
+    identification: {
+      id: 'lycomorphodes-sordida',
+      title: 'Lycomorphodes sordida',
     },
-    result: { id: 'lycomorphodes-sordida', title: 'Lycomorphodes sordida' },
-    nodes: [
+    ranks: [
       { id: 'erebidae', title: 'Erebidae' },
       { id: 'arctiinae', title: 'Arctiinae' },
       { id: 'lithosiini', title: 'Lithosiini' },
     ],
+    user: {
+      username: 'Andre Poremski',
+    },
   },
 }
 
 export const Overridden: Meta = {
   args: {
-    user: {
-      username: 'Andre Poremski',
-      profileImage: 'https://placekitten.com/600/400',
-    },
-    result: {
+    identification: {
       id: 'lycomorphodes-sordida',
       title: 'Lycomorphodes sordida',
       overridden: true,
     },
-    nodes: [
+    ranks: [
       { id: 'erebidae', title: 'Erebidae' },
       { id: 'arctiinae', title: 'Arctiinae' },
       { id: 'lithosiini', title: 'Lithosiini' },
     ],
+    user: {
+      username: 'Andre Poremski',
+      profileImage: 'https://placekitten.com/600/400',
+    },
   },
 }
 
 export const ByMachine: Meta = {
   args: {
-    result: { id: 'lycomorphodes-sordida', title: 'Lycomorphodes sordida' },
-    nodes: [
+    identification: {
+      id: 'lycomorphodes-sordida',
+      title: 'Lycomorphodes sordida',
+    },
+    ranks: [
       { id: 'erebidae', title: 'Erebidae' },
       { id: 'arctiinae', title: 'Arctiinae' },
       { id: 'lithosiini', title: 'Lithosiini' },

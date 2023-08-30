@@ -2,22 +2,22 @@ import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './identification-breadcrumbs.module.scss'
 
 interface IdentificationBreadcrumbsProps {
-  nodes: {
+  items: {
     id: string
     title: string
   }[]
 }
 
 export const IdentificationBreadcrumbs = ({
-  nodes,
+  items,
 }: IdentificationBreadcrumbsProps) => (
   <div className={styles.breadcrumbs}>
-    {nodes.map((node, index) => (
+    {items.map((item, index) => (
       <>
         <span key={index} className={styles.breadcrumb}>
-          {node.title}
+          {item.title}
         </span>
-        {index < nodes.length - 1 ? (
+        {index < items.length - 1 ? (
           <Icon
             type={IconType.ToggleRight}
             theme={IconTheme.Neutral}
