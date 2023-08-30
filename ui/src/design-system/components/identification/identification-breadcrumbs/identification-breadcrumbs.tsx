@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './identification-breadcrumbs.module.scss'
 
@@ -13,10 +14,8 @@ export const IdentificationBreadcrumbs = ({
 }: IdentificationBreadcrumbsProps) => (
   <div className={styles.breadcrumbs}>
     {items.map((item, index) => (
-      <>
-        <span key={index} className={styles.breadcrumb}>
-          {item.title}
-        </span>
+      <Fragment key={item.id}>
+        <span className={styles.breadcrumb}>{item.title}</span>
         {index < items.length - 1 ? (
           <Icon
             type={IconType.ToggleRight}
@@ -24,7 +23,7 @@ export const IdentificationBreadcrumbs = ({
             size={8}
           />
         ) : null}
-      </>
+      </Fragment>
     ))}
   </div>
 )
