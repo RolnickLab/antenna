@@ -36,15 +36,9 @@ jobs:
   # With no caching at all the entire ci process takes 4m 30s to complete!
   pytest:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code Repository
         uses: actions/checkout@v3
-
-      - name: "Create env file"
-        run: |
-          touch .env
-          echo "${{ secrets.ENV_FILE }}" >> .env
 
       - name: Build the Stack
         run: docker-compose -f local.yml build
