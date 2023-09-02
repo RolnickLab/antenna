@@ -44,6 +44,22 @@ def add_format_to_url(url: str, format: typing.Literal["json", "html", "csv"]) -
 class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     url_field_name = "details"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        # Add placeholder object-level permissions to each object
+        # For this placeholder, everyone can read,
+        # logged-in users can edit, and superusers can delete
+        permissions = set()
+        if hasattr(instance, "user_permissions"):
+            permissions.update(instance.user_permissions)
+        elif self.context["request"].user.is_authenticated:
+            permissions.update(["update", "create"])
+            if self.context["request"].user.is_superuser:
+                permissions.update(["delete"])
+        data["user_permissions"] = permissions
+        return data
+
 
 class UserSerializer(DefaultSerializer):
     class Meta:
