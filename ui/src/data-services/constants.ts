@@ -1,9 +1,11 @@
 export const API_URL = '/api/v2'
 
 export const API_ROUTES = {
-  ME: 'auth/users/me',
+  DEPLOYMENTS: 'deployments',
+
   LOGIN: 'auth/token/login',
   LOGOUT: 'auth/token/logout',
+  ME: 'auth/users/me',
 }
 
 export const STATUS_CODES = {

@@ -1,3 +1,4 @@
+import { User } from 'utils/user/types'
 import { API_URL } from './constants'
 import { FetchParams } from './types'
 
@@ -75,4 +76,8 @@ export const serverErrorToString = (error: any): string => {
   }
 
   return 'Unknown error'
+}
+
+export const getAuthHeader = (user: User) => {
+  return user.token ? { Authorization: `Token ${user.token}` } : undefined
 }

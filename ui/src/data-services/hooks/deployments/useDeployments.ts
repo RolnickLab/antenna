@@ -1,9 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { API_ROUTES } from 'data-services/constants'
 import { Deployment, ServerDeployment } from 'data-services/models/deployment'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { COLLECTION } from './constants'
+import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerDeployment) => new Deployment(record)
 
@@ -16,20 +15,19 @@ export const useDeployments = (
   error?: unknown
 } => {
   const fetchUrl = getFetchUrl({
-    collection: COLLECTION,
+    collection: API_ROUTES.DEPLOYMENTS,
     params,
   })
 
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: [COLLECTION, params],
-    queryFn: () =>
-      axios
-        .get<{ results: ServerDeployment[] }>(fetchUrl)
-        .then((res) => res.data.results.map(convertServerRecord)),
+  const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
+    results: ServerDeployment[]
+  }>({
+    queryKey: [API_ROUTES.DEPLOYMENTS, params],
+    url: fetchUrl,
   })
 
   return {
-    deployments: data,
+    deployments: data?.results.map(convertServerRecord),
     isLoading,
     isFetching,
     error,
