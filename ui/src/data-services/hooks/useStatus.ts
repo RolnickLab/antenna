@@ -1,5 +1,6 @@
 import { API_ROUTES } from 'data-services/constants'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from './auth/useAuthorizedQuery'
 
 type ServerStatus = any // TODO: Update this type
@@ -46,8 +47,13 @@ export const useStatus = (
       refetchInterval: REFETCH_INTERVAL,
     })
 
+  const status = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    status: data ? convertServerRecord(data) : undefined,
+    status,
     isLoading,
     isFetching,
     error,

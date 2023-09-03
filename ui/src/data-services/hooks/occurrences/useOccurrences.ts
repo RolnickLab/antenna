@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
 import { Occurrence, ServerOccurrence } from '../../models/occurrence'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
@@ -25,8 +26,13 @@ export const useOccurrences = (
     url: fetchUrl,
   })
 
+  const occurrences = useMemo(
+    () => data?.results.map(convertServerRecord),
+    [data]
+  )
+
   return {
-    occurrences: data?.results.map(convertServerRecord),
+    occurrences,
     total: data?.count ?? 0,
     isLoading,
     isFetching,

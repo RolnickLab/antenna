@@ -4,6 +4,7 @@ import {
   ServerSpeciesDetails,
   SpeciesDetails,
 } from 'data-services/models/species-details'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerSpeciesDetails) =>
@@ -23,8 +24,13 @@ export const useSpeciesDetails = (
       url: `${API_URL}/${API_ROUTES.SPECIES}/${id}`,
     })
 
+  const species = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    species: data ? convertServerRecord(data) : undefined,
+    species,
     isLoading,
     isFetching,
     error,

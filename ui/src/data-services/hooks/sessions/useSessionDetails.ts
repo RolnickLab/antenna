@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { getFetchDetailsUrl } from 'data-services/utils'
 import _ from 'lodash'
+import { useMemo } from 'react'
 import {
   ServerEventDetails,
   SessionDetails,
@@ -32,8 +33,13 @@ export const useSessionDetails = (
     url: fetchUrl,
   })
 
+  const session = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    session: data ? convertServerRecord(data) : undefined,
+    session,
     isLoading,
     isFetching,
     error,

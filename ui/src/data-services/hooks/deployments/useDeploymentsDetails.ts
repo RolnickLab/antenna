@@ -3,6 +3,7 @@ import {
   DeploymentDetails,
   ServerDeploymentDetails,
 } from 'data-services/models/deployment-details'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerDeploymentDetails) =>
@@ -22,8 +23,13 @@ export const useDeploymentDetails = (
       url: `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}`,
     })
 
+  const deployment = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    deployment: data ? convertServerRecord(data) : undefined,
+    deployment,
     isLoading,
     isFetching,
     error,

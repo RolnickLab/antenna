@@ -1,5 +1,6 @@
 import { API_ROUTES, API_URL } from 'data-services/constants'
 import { Project, ServerProject } from 'data-services/models/project'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerProject) => new Project(record)
@@ -17,8 +18,13 @@ export const useProjectDetails = (
     url: `${API_URL}/${API_ROUTES.PROJECTS}/${projectId}`,
   })
 
+  const project = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    project: data ? convertServerRecord(data) : undefined,
+    project,
     isLoading,
     isFetching,
     error,

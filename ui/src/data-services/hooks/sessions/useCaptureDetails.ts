@@ -3,6 +3,7 @@ import {
   CaptureDetails,
   ServerCaptureDetails,
 } from 'data-services/models/capture-details'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerCaptureDetails) =>
@@ -22,8 +23,13 @@ export const useCaptureDetails = (
       url: `${API_URL}/${API_ROUTES.CAPTURES}/${id}`,
     })
 
+  const capture = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    capture: data ? convertServerRecord(data) : undefined,
+    capture,
     isLoading,
     isFetching,
     error,

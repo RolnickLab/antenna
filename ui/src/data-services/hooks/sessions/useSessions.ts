@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
 import { ServerEvent, Session } from '../../models/session'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
@@ -25,8 +26,10 @@ export const useSessions = (
     url: fetchUrl,
   })
 
+  const sessions = useMemo(() => data?.results.map(convertServerRecord), [data])
+
   return {
-    sessions: data?.results.map(convertServerRecord),
+    sessions,
     total: data?.count ?? 0,
     isLoading,
     isFetching,

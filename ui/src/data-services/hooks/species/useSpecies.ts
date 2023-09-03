@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
 import { ServerSpecies, Species } from '../../models/species'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
@@ -25,8 +26,10 @@ export const useSpecies = (
     url: fetchUrl,
   })
 
+  const species = useMemo(() => data?.results.map(convertServerRecord), [data])
+
   return {
-    species: data?.results.map(convertServerRecord),
+    species,
     total: data?.count ?? 0,
     isLoading,
     isFetching,

@@ -2,6 +2,7 @@ import { API_ROUTES } from 'data-services/constants'
 import { Project, ServerProject } from 'data-services/models/project'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerProject) => new Project(record)
@@ -25,8 +26,10 @@ export const useProjects = (
     url: fetchUrl,
   })
 
+  const projects = useMemo(() => data?.results.map(convertServerRecord), [data])
+
   return {
-    projects: data?.results.map(convertServerRecord),
+    projects,
     total: data?.count ?? 0,
     isLoading,
     isFetching,

@@ -2,6 +2,7 @@ import { API_ROUTES } from 'data-services/constants'
 import { Job, ServerJob } from 'data-services/models/job'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerJob) => new Job(record)
@@ -25,8 +26,10 @@ export const useJobs = (
     url: fetchUrl,
   })
 
+  const jobs = useMemo(() => data?.results.map(convertServerRecord), [data])
+
   return {
-    jobs: data?.results.map(convertServerRecord),
+    jobs,
     total: data?.count ?? 0,
     isLoading,
     isFetching,

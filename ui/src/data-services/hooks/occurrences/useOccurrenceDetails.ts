@@ -3,6 +3,7 @@ import {
   OccurrenceDetails,
   ServerOccurrenceDetails,
 } from 'data-services/models/occurrence-details'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerOccurrenceDetails) =>
@@ -22,8 +23,13 @@ export const useOccurrenceDetails = (
       url: `${API_URL}/${API_ROUTES.OCCURRENCES}/${id}`,
     })
 
+  const occurrence = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    occurrence: data ? convertServerRecord(data) : undefined,
+    occurrence,
     isLoading,
     isFetching,
     error,

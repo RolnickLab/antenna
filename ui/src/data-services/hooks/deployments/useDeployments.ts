@@ -2,6 +2,7 @@ import { API_ROUTES } from 'data-services/constants'
 import { Deployment, ServerDeployment } from 'data-services/models/deployment'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerDeployment) => new Deployment(record)
@@ -26,8 +27,13 @@ export const useDeployments = (
     url: fetchUrl,
   })
 
+  const deployments = useMemo(
+    () => data?.results.map(convertServerRecord),
+    [data]
+  )
+
   return {
-    deployments: data?.results.map(convertServerRecord),
+    deployments,
     isLoading,
     isFetching,
     error,
