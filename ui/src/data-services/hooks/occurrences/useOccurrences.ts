@@ -1,32 +1,32 @@
 import { API_ROUTES } from 'data-services/constants'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { ServerSpecies, Species } from '../../models/species'
+import { Occurrence, ServerOccurrence } from '../../models/occurrence'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
-const convertServerRecord = (record: ServerSpecies) => new Species(record)
+const convertServerRecord = (record: ServerOccurrence) => new Occurrence(record)
 
-export const useSpecies = (
+export const useOccurrences = (
   params?: FetchParams
 ): {
-  species?: Species[]
+  occurrences?: Occurrence[]
   total: number
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({ collection: API_ROUTES.SPECIES, params })
+  const fetchUrl = getFetchUrl({ collection: API_ROUTES.OCCURRENCES, params })
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
-    results: ServerSpecies[]
+    results: ServerOccurrence[]
     count: number
   }>({
-    queryKey: [API_ROUTES.SPECIES, params],
+    queryKey: [API_ROUTES.OCCURRENCES, params],
     url: fetchUrl,
   })
 
   return {
-    species: data?.results.map(convertServerRecord),
+    occurrences: data?.results.map(convertServerRecord),
     total: data?.count ?? 0,
     isLoading,
     isFetching,

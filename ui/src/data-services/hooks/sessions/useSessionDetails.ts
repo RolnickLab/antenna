@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { API_ROUTES } from 'data-services/constants'
 import { getFetchDetailsUrl } from 'data-services/utils'
 import _ from 'lodash'
-import { ServerEventDetails, SessionDetails } from '../models/session-details'
-
-const COLLECTION = 'events'
+import {
+  ServerEventDetails,
+  SessionDetails,
+} from '../../models/session-details'
+import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerEventDetails) =>
   new SessionDetails(record)
@@ -19,21 +20,20 @@ export const useSessionDetails = (
   error?: unknown
 } => {
   const fetchUrl = getFetchDetailsUrl({
-    collection: COLLECTION,
+    collection: API_ROUTES.SESSIONS,
     itemId: id,
     queryParams: _.pickBy(params, (param) => param !== undefined),
   })
 
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: [COLLECTION, id],
-    queryFn: () =>
-      axios
-        .get<ServerEventDetails[]>(fetchUrl)
-        .then((res) => convertServerRecord(res.data)),
+  const { data, isLoading, isFetching, error } = useAuthorizedQuery<
+    ServerEventDetails[]
+  >({
+    queryKey: [API_ROUTES.SESSIONS, id],
+    url: fetchUrl,
   })
 
   return {
-    session: data,
+    session: data ? convertServerRecord(data) : undefined,
     isLoading,
     isFetching,
     error,

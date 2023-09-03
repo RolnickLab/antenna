@@ -1,12 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
-import { API_URL } from 'data-services/constants'
+import { API_ROUTES, API_URL } from 'data-services/constants'
 
 import {
   ServerSpeciesDetails,
   SpeciesDetails,
 } from 'data-services/models/species-details'
-import { COLLECTION } from './constants'
+import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerSpeciesDetails) =>
   new SpeciesDetails(record)
@@ -19,16 +17,14 @@ export const useSpeciesDetails = (
   isFetching: boolean
   error?: unknown
 } => {
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: [COLLECTION, id],
-    queryFn: () =>
-      axios
-        .get<SpeciesDetails>(`${API_URL}/${COLLECTION}/${id}`)
-        .then((res) => convertServerRecord(res.data)),
-  })
+  const { data, isLoading, isFetching, error } =
+    useAuthorizedQuery<SpeciesDetails>({
+      queryKey: [API_ROUTES.SPECIES, id],
+      url: `${API_URL}/${API_ROUTES.SPECIES}/${id}`,
+    })
 
   return {
-    species: data,
+    species: data ? convertServerRecord(data) : undefined,
     isLoading,
     isFetching,
     error,
