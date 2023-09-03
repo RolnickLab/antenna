@@ -29,6 +29,7 @@ export const useAuthorizedQuery = <T>({
     onError: (error: any) => {
       if (error.response?.status === STATUS_CODES.FORBIDDEN) {
         clearToken()
+        // TODO: Invalidate queries here
       }
     },
   })
