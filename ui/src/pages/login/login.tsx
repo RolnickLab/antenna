@@ -1,8 +1,11 @@
+import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
+import { useLogin } from 'data-services/hooks/auth/useLogin'
+import { serverErrorToString } from 'data-services/utils'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { useForm } from 'react-hook-form'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import styles from './login.module.scss'
 
 interface LoginFormValues {
@@ -26,7 +29,13 @@ const config: FormConfig = {
 }
 
 export const Login = () => {
-  const { control, handleSubmit } = useForm<LoginFormValues>()
+  const navigate = useNavigate()
+  const { login, isLoading, error } = useLogin({
+    onSuccess: () => navigate('/'),
+  })
+  const { control, handleSubmit } = useForm<LoginFormValues>({
+    defaultValues: { email: '', password: '' },
+  })
 
   return (
     <div className={styles.wrapper}>
@@ -42,9 +51,7 @@ export const Login = () => {
         <h1 className={styles.title}>Welcome to AMI Platform!</h1>
         <form
           className={styles.form}
-          onSubmit={handleSubmit((values) => {
-            console.log('values: ', values)
-          })}
+          onSubmit={handleSubmit((values) => login(values))}
         >
           <FormField
             name="email"
@@ -58,7 +65,17 @@ export const Login = () => {
             config={config}
             control={control}
           />
-          <Button label="Login" type="submit" theme={ButtonTheme.Success} />
+          <Button
+            label="Login"
+            type="submit"
+            theme={ButtonTheme.Success}
+            loading={isLoading}
+          />
+          {error ? (
+            <p className={classNames(styles.text, styles.error)}>
+              {serverErrorToString(error)}
+            </p>
+          ) : null}
           <p className={styles.text}>
             No account? <Link to="#">Sign up</Link>
           </p>

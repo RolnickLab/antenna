@@ -60,3 +60,19 @@ export const getFetchDetailsUrl = ({
 
   return `${baseUrl}?${queryString}`
 }
+
+export const serverErrorToString = (error: any): string => {
+  if (error.response?.data) {
+    const [field, details] = Object.entries(error.response.data)[0]
+    if (field) {
+      if (field === 'non_field_errors') {
+        return `${details}`
+      }
+      return `Please check field "${field}". ${details}`
+    }
+  } else if (error.message) {
+    return error.message
+  }
+
+  return 'Unknown error'
+}

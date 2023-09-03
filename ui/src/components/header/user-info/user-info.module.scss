@@ -1,0 +1,17 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.userInfo {
+  width: 32px;
+  height: 32px;
+  background-color: $color-primary-2-50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  @include paragraph-small();
+  font-weight: 600;
+  color: $color-primary-1-600;
+  text-transform: uppercase;
+  cursor: default;
+}

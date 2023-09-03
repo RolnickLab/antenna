@@ -31,6 +31,7 @@
   @include heading-4-italic();
   color: $color-primary-1-600;
   margin: 0;
+  text-align: center;
 }
 
 .text {
@@ -43,6 +44,11 @@
     color: $color-primary-1-600;
     border-bottom: 1px dashed $color-primary-1-600;
   }
+
+  &.error {
+    @include paragraph-x-small();
+    color: $color-destructive-600;
+  }
 }
 
 .form {
@@ -51,5 +57,5 @@
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 32px;
+  gap: 24px;
 }
