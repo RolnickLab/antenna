@@ -1,11 +1,10 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_ROUTES, API_URL, STATUS_CODES } from 'data-services/constants'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 export const useLogout = () => {
-  const queryClient = useQueryClient()
   const { clearToken, user } = useUser()
   const { mutate, isLoading, error } = useMutation({
     mutationFn: () =>
@@ -14,7 +13,6 @@ export const useLogout = () => {
       }),
     onSuccess: () => {
       clearToken()
-      queryClient.invalidateQueries([API_ROUTES.ME])
     },
     onError: (error: any) => {
       if (error.response?.status === STATUS_CODES.FORBIDDEN) {

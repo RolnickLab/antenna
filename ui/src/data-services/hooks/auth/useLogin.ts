@@ -13,7 +13,6 @@ export const useLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
         .then((res) => res.data.auth_token),
     onSuccess: (token) => {
       setToken(token)
-      queryClient.invalidateQueries([API_ROUTES.ME])
       onSuccess?.()
     },
   })
