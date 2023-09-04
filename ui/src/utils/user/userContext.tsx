@@ -22,15 +22,15 @@ export const UserContextProvider = ({ children }: { children: ReactNode }) => {
   })
 
   const setToken = (token: string) => {
-    queryClient.clear()
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token)
     setUser({ loggedIn: true, token })
+    queryClient.removeQueries()
   }
 
   const clearToken = () => {
-    queryClient.clear()
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
     setUser({ loggedIn: false })
+    queryClient.removeQueries()
   }
 
   return (

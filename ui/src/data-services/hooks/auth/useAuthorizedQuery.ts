@@ -1,7 +1,7 @@
 import { QueryKey, useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { STATUS_CODES } from 'data-services/constants'
-import { getAuthHeader, getAuthQueryKey } from 'data-services/utils'
+import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 export const useAuthorizedQuery = <T>({
@@ -17,7 +17,7 @@ export const useAuthorizedQuery = <T>({
 
   const { data, isLoading, isFetching, error } = useQuery({
     refetchInterval,
-    queryKey: [...queryKey, getAuthQueryKey(user)],
+    queryKey,
     queryFn: () =>
       axios
         .get<T>(url, {

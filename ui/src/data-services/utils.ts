@@ -80,7 +80,3 @@ export const serverErrorToString = (error: any): string => {
 
 export const getAuthHeader = (user: User) =>
   user.token ? { Authorization: `Token ${user.token}` } : undefined
-
-export const getAuthQueryKey = (user: User) => ({
-  loggedIn: user.loggedIn,
-})
