@@ -24,7 +24,7 @@ export const useCreateDeployment = () => {
   const { mutateAsync, isLoading, error } = useMutation({
     mutationFn: (fieldValues: DeploymentFieldValues) =>
       axios.post(
-        `${API_URL}/${API_ROUTES.DEPLOYMENTS}`,
+        `${API_URL}/${API_ROUTES.DEPLOYMENTS}/`,
         convertToServerFieldValues(fieldValues),
         {
           headers: getAuthHeader(user),

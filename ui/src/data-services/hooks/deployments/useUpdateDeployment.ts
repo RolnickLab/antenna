@@ -20,7 +20,7 @@ export const useUpdateDeployment = (id: string) => {
   const { mutate, isLoading, error, isSuccess } = useMutation({
     mutationFn: (fieldValues: DeploymentFieldValues) =>
       axios.patch(
-        `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}`,
+        `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}/`,
         convertToServerFieldValues(fieldValues),
         {
           headers: getAuthHeader(user),

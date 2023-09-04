@@ -13,7 +13,7 @@ export const useJobDetails = (
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerJobDetails>({
       queryKey: [API_ROUTES.JOBS, id],
-      url: `${API_URL}/${API_ROUTES.JOBS}/${id}`,
+      url: `${API_URL}/${API_ROUTES.JOBS}/${id}/`,
     })
 
   return {

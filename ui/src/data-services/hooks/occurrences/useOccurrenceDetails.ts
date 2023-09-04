@@ -20,7 +20,7 @@ export const useOccurrenceDetails = (
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerOccurrenceDetails>({
       queryKey: [API_ROUTES.OCCURRENCES, id],
-      url: `${API_URL}/${API_ROUTES.OCCURRENCES}/${id}`,
+      url: `${API_URL}/${API_ROUTES.OCCURRENCES}/${id}/`,
     })
 
   const occurrence = useMemo(

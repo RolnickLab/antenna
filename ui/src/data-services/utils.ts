@@ -40,7 +40,7 @@ export const getFetchUrl = ({
     return baseUrl
   }
 
-  return `${baseUrl}?${queryString}`
+  return `${baseUrl}/?${queryString}`
 }
 
 export const getFetchDetailsUrl = ({
@@ -59,14 +59,14 @@ export const getFetchDetailsUrl = ({
     return baseUrl
   }
 
-  return `${baseUrl}?${queryString}`
+  return `${baseUrl}/?${queryString}`
 }
 
 export const serverErrorToString = (error: any): string => {
   if (error.response?.data) {
     const [field, details] = Object.entries(error.response.data)[0]
     if (field) {
-      if (field === 'non_field_errors') {
+      if (field === 'non_field_errors' || field === 'detail') {
         return `${details}`
       }
       return `Please check field "${field}". ${details}`
@@ -78,6 +78,5 @@ export const serverErrorToString = (error: any): string => {
   return 'Unknown error'
 }
 
-export const getAuthHeader = (user: User) => {
-  return user.token ? { Authorization: `Token ${user.token}` } : undefined
-}
+export const getAuthHeader = (user: User) =>
+  user.token ? { Authorization: `Token ${user.token}` } : undefined

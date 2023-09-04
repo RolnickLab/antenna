@@ -13,7 +13,7 @@ export const usePageDetails = (
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<PageDetails>({
       queryKey: [API_ROUTES.PAGES, slug],
-      url: `${API_URL}/${API_ROUTES.PAGES}/${slug}`,
+      url: `${API_URL}/${API_ROUTES.PAGES}/${slug}/`,
     })
 
   return {

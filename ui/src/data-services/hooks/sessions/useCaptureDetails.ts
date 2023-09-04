@@ -20,7 +20,7 @@ export const useCaptureDetails = (
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<CaptureDetails>({
       queryKey: [API_ROUTES.CAPTURES, id],
-      url: `${API_URL}/${API_ROUTES.CAPTURES}/${id}`,
+      url: `${API_URL}/${API_ROUTES.CAPTURES}/${id}/`,
     })
 
   const capture = useMemo(

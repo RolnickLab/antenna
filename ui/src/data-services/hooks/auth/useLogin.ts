@@ -9,7 +9,7 @@ export const useLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
   const { mutate, isLoading, error } = useMutation({
     mutationFn: (data: { email: string; password: string }) =>
       axios
-        .post<{ auth_token: string }>(`${API_URL}/${API_ROUTES.LOGIN}`, data)
+        .post<{ auth_token: string }>(`${API_URL}/${API_ROUTES.LOGIN}/`, data)
         .then((res) => res.data.auth_token),
     onSuccess: (token) => {
       setToken(token)

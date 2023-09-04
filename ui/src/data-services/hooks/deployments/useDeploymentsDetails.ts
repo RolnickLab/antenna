@@ -20,7 +20,7 @@ export const useDeploymentDetails = (
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<DeploymentDetails>({
       queryKey: [API_ROUTES.DEPLOYMENTS, id],
-      url: `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}`,
+      url: `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}/`,
     })
 
   const deployment = useMemo(

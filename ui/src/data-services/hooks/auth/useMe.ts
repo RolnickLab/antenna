@@ -8,7 +8,7 @@ export const useMe = () => {
     name?: string
   }>({
     queryKey: [API_ROUTES.ME],
-    url: `${API_URL}/${API_ROUTES.ME}`,
+    url: `${API_URL}/${API_ROUTES.ME}/`,
   })
 
   return { user: data, isLoading, error }
