@@ -404,19 +404,22 @@ class Deployment(BaseModel):
 
     objects = DeploymentManager()
 
+    class Meta:
+        ordering = ["name"]
+
     def events_count(self) -> int | None:
         # return self.events.count()
+        # Uses the annotated value from the custom manager
         return None
 
-    def captures_count(self) -> int | None:
-        return self.captures.count()
-        # return None
+    def captures_count(self) -> int:
+        return self.data_source_total_files or 0
 
-    def detections_count(self) -> int | None:
+    def detections_count(self) -> int:
         return Detection.objects.filter(Q(source_image__deployment=self)).count()
         # return None
 
-    def occurrences_count(self) -> int | None:
+    def occurrences_count(self) -> int:
         return self.occurrences.count()
         # return None
 
@@ -520,8 +523,18 @@ class Deployment(BaseModel):
                 )
             model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
 
+    def update_calculated_fields(self, save=False):
+        """Update calculated fields on the deployment."""
+
+        self.data_source_total_files = self.captures.count()
+        self.data_source_total_size = self.captures.aggregate(total_size=models.Sum("size")).get("total_size")
+
+        if save:
+            self.save()
+
     def save(self, *args, **kwargs):
         if self.project:
+            self.update_calculated_fields()
             self.update_children()
             # @TODO this isn't working as a background task
             # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
