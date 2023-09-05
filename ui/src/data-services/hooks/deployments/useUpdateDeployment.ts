@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import { API_ROUTES, API_URL, STATUS_CODES } from 'data-services/constants'
+import { API_ROUTES, API_URL } from 'data-services/constants'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
@@ -28,11 +28,6 @@ export const useUpdateDeployment = (id: string) => {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.DEPLOYMENTS])
-    },
-    onError: (error: any) => {
-      if (error.response?.status === STATUS_CODES.FORBIDDEN) {
-        clearToken()
-      }
     },
   })
 

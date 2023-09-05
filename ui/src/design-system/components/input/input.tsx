@@ -50,6 +50,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             aria-describedby={descriptionId}
             aria-errormessage={errorId}
             aria-invalid={hasError}
+            autoComplete="on"
             className={classNames(styles.input, {
               [styles.password]: initialType === 'password',
             })}
