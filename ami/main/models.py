@@ -340,7 +340,7 @@ def _insert_or_update_batch_for_sync(
     deployment.data_source_total_files = total_files
     deployment.data_source_total_size = total_size
     deployment.data_source_last_checked = datetime.datetime.now()
-    deployment.save()
+    deployment.save(update_calculated_fields=False)
 
     events = group_images_into_events(deployment)
     for event in events:
@@ -497,6 +497,7 @@ class Deployment(BaseModel):
         _compare_totals_for_sync(deployment, total_files)
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
+        self.save()
         return total_files
 
     def update_children(self):
@@ -532,12 +533,13 @@ class Deployment(BaseModel):
         if save:
             self.save()
 
-    def save(self, *args, **kwargs):
-        if self.project:
+    def save(self, *args, update_calculated_fields=True, **kwargs):
+        if update_calculated_fields:
             self.update_calculated_fields()
-            self.update_children()
-            # @TODO this isn't working as a background task
-            # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+            if self.project:
+                self.update_children()
+                # @TODO this isn't working as a background task
+                # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
         super().save(*args, **kwargs)
 
 
