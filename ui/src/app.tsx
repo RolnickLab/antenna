@@ -4,9 +4,11 @@ import classNames from 'classnames'
 import { Header } from 'components/header/header'
 import { Menu } from 'components/menu/menu'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import { Auth } from 'pages/auth/auth'
+import { Login } from 'pages/auth/login'
+import { SignUp } from 'pages/auth/sign-up'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
-import { Login } from 'pages/login/login'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Overview } from 'pages/overview/overview'
 import { Projects } from 'pages/projects/projects'
@@ -47,7 +49,10 @@ export const App = () => {
                   />
                 }
               />
-              <Route path="login" element={<LoginContainer />} />
+              <Route path="auth" element={<AuthContainer />}>
+                <Route path="login" element={<Login />} />
+                <Route path="sign-up" element={<SignUp />} />
+              </Route>
               <Route path="projects" element={<ProjectsContainer />} />
               <Route path="projects/:projectId" element={<ProjectContainer />}>
                 <Route path="" element={<Overview />} />
@@ -67,9 +72,11 @@ export const App = () => {
   )
 }
 
-const LoginContainer = () => (
+const AuthContainer = () => (
   <main className={classNames(styles.main, styles.fullscreen)}>
-    <Login />
+    <Auth>
+      <Outlet />
+    </Auth>
   </main>
 )
 

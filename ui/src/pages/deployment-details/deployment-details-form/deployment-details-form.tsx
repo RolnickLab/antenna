@@ -2,7 +2,7 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { serverErrorToString } from 'data-services/utils'
+import { parseServerError } from 'data-services/utils'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper as _FormStepper } from 'design-system/components/form-stepper/form-stepper'
@@ -177,7 +177,7 @@ const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
 }
 
 const FormError = ({ error }: { error: any }) => {
-  const message = serverErrorToString(error)
+  const message = parseServerError(error).message
 
   return (
     <div className={styles.formError}>

@@ -62,19 +62,25 @@ export const getFetchDetailsUrl = ({
   return `${baseUrl}/?${queryString}`
 }
 
-export const serverErrorToString = (error: any): string => {
+export const parseServerError = (error: any) => {
+  let message = 'Something went wrong.'
+  const fieldErrors: { key: string; message: string }[] = []
+
   if (error.response?.data && typeof error.response.data === 'object') {
-    const [field, details] = Object.entries(error.response.data)[0]
-    if (field && details) {
-      if (field === 'non_field_errors' || field === 'detail') {
-        return `${details}`
+    Object.entries(error.response.data).forEach(([key, details]) => {
+      if (key && details) {
+        if (key === 'non_field_errors' || key === 'detail') {
+          message = details as string
+        } else {
+          fieldErrors.push({ key, message: `${(details as string[])[0]}` })
+        }
       }
-      return `Please check field "${field}". ${details}`
-    }
+    })
   } else if (error.message) {
-    return error.message
+    message = error.message
   }
-  return 'Unknown error'
+
+  return { message, fieldErrors }
 }
 
 export const getAuthHeader = (user: User) =>

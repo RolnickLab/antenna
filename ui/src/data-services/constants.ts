@@ -13,6 +13,7 @@ export const API_ROUTES = {
   SESSIONS: 'events',
   SPECIES: 'taxa',
   SUMMARY: 'status/summary',
+  USERS: 'auth/users',
 }
 
 export const STATUS_CODES = {

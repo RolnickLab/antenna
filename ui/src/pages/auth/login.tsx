@@ -1,0 +1,79 @@
+import classNames from 'classnames'
+import { FormField } from 'components/form/form-field'
+import { FormConfig } from 'components/form/types'
+import { useLogin } from 'data-services/hooks/auth/useLogin'
+import { parseServerError } from 'data-services/utils'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { useForm } from 'react-hook-form'
+import { Link, useNavigate } from 'react-router-dom'
+import { LINKS } from 'utils/constants'
+import styles from './auth.module.scss'
+
+interface LoginFormValues {
+  email: string
+  password: string
+}
+
+const config: FormConfig = {
+  email: {
+    label: 'Email',
+    rules: {
+      required: true,
+    },
+  },
+  password: {
+    label: 'Password',
+    rules: {
+      required: true,
+    },
+  },
+}
+
+export const Login = () => {
+  const navigate = useNavigate()
+  const { login, isLoading, error } = useLogin({
+    onSuccess: () => navigate(LINKS.HOME),
+  })
+  const { control, handleSubmit } = useForm<LoginFormValues>({
+    defaultValues: { email: '', password: '' },
+  })
+
+  return (
+    <>
+      <h1 className={styles.title}>Login</h1>
+      <form
+        className={styles.form}
+        onSubmit={handleSubmit((values) => login(values))}
+      >
+        <FormField name="email" type="text" config={config} control={control} />
+        <FormField
+          name="password"
+          type="password"
+          config={config}
+          control={control}
+        />
+        <Button
+          label="Login"
+          type="submit"
+          theme={ButtonTheme.Success}
+          loading={isLoading}
+        />
+        {error ? (
+          <p className={classNames(styles.text, styles.error)}>
+            {parseServerError(error).message}
+          </p>
+        ) : null}
+        <p className={styles.text}>
+          No account yet? <Link to={LINKS.SIGN_UP}>Sign up</Link>
+        </p>
+        <p className={classNames(styles.text, styles.divider)}>OR</p>
+        <Button
+          label="Skip to projects"
+          type="button"
+          theme={ButtonTheme.Default}
+          onClick={() => navigate(LINKS.HOME)}
+        />
+      </form>
+    </>
+  )
+}
