@@ -749,6 +749,7 @@ def group_images_into_events(
         .values("timestamp")
         .annotate(count=models.Count("id"))
         .filter(count__gt=1)
+        .exclude(timestamp=None)
     )
     if dupes.count():
         values = "\n".join(
