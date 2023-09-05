@@ -1,7 +1,8 @@
 # PostgreSQL
 # ------------------------------------------------------------------------------
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-POSTGRES_DB=ami
-POSTGRES_USER=xekSryPnqczJXkOnTAeDmDyIapSRrGEE
-POSTGRES_PASSWORD=gyh3WMCrNgt1ArgqaqLtsJzHa3bRyfh5dv4M8QKbGs6QSKn4sL1VviE7lQAgEZsn
+POSTGRES_VERSION = 14
+POSTGRES_HOST = postgres
+POSTGRES_PORT = 5432
+POSTGRES_DB = ami
+POSTGRES_USER = xekSryPnqczJXkOnTAeDmDyIapSRrGEE
+POSTGRES_PASSWORD = gyh3WMCrNgt1ArgqaqLtsJzHa3bRyfh5dv4M8QKbGs6QSKn4sL1VviE7lQAgEZsn
