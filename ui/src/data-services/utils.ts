@@ -63,9 +63,9 @@ export const getFetchDetailsUrl = ({
 }
 
 export const serverErrorToString = (error: any): string => {
-  if (error.response?.data) {
+  if (error.response?.data && typeof error.response.data === 'object') {
     const [field, details] = Object.entries(error.response.data)[0]
-    if (field) {
+    if (field && details) {
       if (field === 'non_field_errors' || field === 'detail') {
         return `${details}`
       }
@@ -74,7 +74,6 @@ export const serverErrorToString = (error: any): string => {
   } else if (error.message) {
     return error.message
   }
-
   return 'Unknown error'
 }
 
