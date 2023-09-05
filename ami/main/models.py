@@ -340,7 +340,7 @@ def _insert_or_update_batch_for_sync(
     deployment.data_source_total_files = total_files
     deployment.data_source_total_size = total_size
     deployment.data_source_last_checked = datetime.datetime.now()
-    deployment.save()
+    deployment.save(update_calculated_fields=False)
 
     events = group_images_into_events(deployment)
     for event in events:
@@ -404,19 +404,22 @@ class Deployment(BaseModel):
 
     objects = DeploymentManager()
 
+    class Meta:
+        ordering = ["name"]
+
     def events_count(self) -> int | None:
         # return self.events.count()
+        # Uses the annotated value from the custom manager
         return None
 
-    def captures_count(self) -> int | None:
-        return self.captures.count()
-        # return None
+    def captures_count(self) -> int:
+        return self.data_source_total_files or 0
 
-    def detections_count(self) -> int | None:
+    def detections_count(self) -> int:
         return Detection.objects.filter(Q(source_image__deployment=self)).count()
         # return None
 
-    def occurrences_count(self) -> int | None:
+    def occurrences_count(self) -> int:
         return self.occurrences.count()
         # return None
 
@@ -494,6 +497,7 @@ class Deployment(BaseModel):
         _compare_totals_for_sync(deployment, total_files)
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
+        self.save()
         return total_files
 
     def update_children(self):
@@ -520,11 +524,22 @@ class Deployment(BaseModel):
                 )
             model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
 
-    def save(self, *args, **kwargs):
-        if self.project:
-            self.update_children()
-            # @TODO this isn't working as a background task
-            # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+    def update_calculated_fields(self, save=False):
+        """Update calculated fields on the deployment."""
+
+        self.data_source_total_files = self.captures.count()
+        self.data_source_total_size = self.captures.aggregate(total_size=models.Sum("size")).get("total_size")
+
+        if save:
+            self.save()
+
+    def save(self, *args, update_calculated_fields=True, **kwargs):
+        if update_calculated_fields:
+            self.update_calculated_fields()
+            if self.project:
+                self.update_children()
+                # @TODO this isn't working as a background task
+                # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
         super().save(*args, **kwargs)
 
 
@@ -734,6 +749,7 @@ def group_images_into_events(
         .values("timestamp")
         .annotate(count=models.Count("id"))
         .filter(count__gt=1)
+        .exclude(timestamp=None)
     )
     if dupes.count():
         values = "\n".join(
