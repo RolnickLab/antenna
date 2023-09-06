@@ -796,6 +796,7 @@ def group_images_into_events(
         )
         events.append(event)
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+        event.save()  # Update start and end times and other cached fields
         logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
 
     if delete_empty:
