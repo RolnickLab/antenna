@@ -122,7 +122,15 @@ class EventAdmin(admin.ModelAdmin[Event]):
     def duration_display(self, obj) -> str:
         return ami.utils.dates.format_timedelta(obj.time_duration)
 
+    # Save all events in queryset
+    @admin.action(description="Re-save events to update cached values")
+    def save_events(self, request: HttpRequest, queryset: QuerySet[Event]) -> None:
+        for event in queryset:
+            event.save()
+        self.message_user(request, f"Updated {queryset.count()} events.")
+
     list_filter = ("deployment", "project", "start")
+    actions = [save_events]
 
 
 @admin.register(SourceImage)

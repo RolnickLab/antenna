@@ -534,7 +534,7 @@ class Deployment(BaseModel):
             self.save()
 
     def save(self, *args, update_calculated_fields=True, **kwargs):
-        if update_calculated_fields:
+        if self.pk and update_calculated_fields:
             self.update_calculated_fields()
             if self.project:
                 self.update_children()
@@ -796,6 +796,7 @@ def group_images_into_events(
         )
         events.append(event)
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+        event.save()  # Update start and end times and other cached fields
         logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
 
     if delete_empty:
@@ -825,6 +826,23 @@ def delete_empty_events(dry_run=False):
     else:
         print(f"Deleting {events.count()} empty events")
         events.delete()
+
+
+def sample_events(deployment: Deployment, day_interval: int = 3) -> typing.Generator[Event, None, None]:
+    """
+    Return a sample of events from the deployment, evenly spaced apart by day_interval.
+    """
+
+    last_event = None
+    for event in Event.objects.filter(deployment=deployment).order_by("start"):
+        if not last_event:
+            yield event
+            last_event = event
+        else:
+            delta = event.start - last_event.start
+            if delta.days >= day_interval:
+                yield event
+                last_event = event
 
 
 @final
@@ -1028,6 +1046,30 @@ def set_dimensions_from_first_image(event: Event, replace_existing: bool = False
         else:
             captures = event.captures.filter(width__isnull=True, height__isnull=True)
         captures.update(width=first_image.width, height=first_image.height)
+
+
+def sample_captures(
+    deployment: Deployment, minute_interval: int = 10, events: list[Event] = []
+) -> typing.Generator[SourceImage, None, None]:
+    """
+    Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
+    """
+
+    last_capture = None
+    if events:
+        qs = SourceImage.objects.filter(event__in=events).exclude(timestamp=None).order_by("timestamp")
+    else:
+        qs = SourceImage.objects.filter(deployment=deployment).exclude(timestamp=None).order_by("timestamp")
+    for capture in qs.all():
+        if not last_capture:
+            yield capture
+            last_capture = capture
+        else:
+            assert capture.timestamp and last_capture.timestamp
+            delta: datetime.timedelta = capture.timestamp - last_capture.timestamp
+            if delta.total_seconds() >= minute_interval * 60:
+                yield capture
+                last_capture = capture
 
 
 @final

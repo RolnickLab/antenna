@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 volumes:
   production_postgres_data: {}
@@ -28,6 +28,7 @@ services:
     volumes:
       - production_postgres_data:/var/lib/postgresql/data
       - production_postgres_data_backups:/backups
+      - ./compose/production/postgres/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
     env_file:
       - ./.envs/.production/.postgres
 
@@ -41,9 +42,9 @@ services:
     volumes:
       - production_traefik:/etc/traefik/acme
     ports:
-      - '0.0.0.0:80:80'
-      - '0.0.0.0:443:443'
-      - '0.0.0.0:5555:5555'
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:5555:5555"
 
   redis:
     image: redis:6
