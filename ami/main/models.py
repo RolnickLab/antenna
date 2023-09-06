@@ -337,14 +337,17 @@ def _insert_or_update_batch_for_sync(
     except IntegrityError as e:
         logger.error(f"Error bulk inserting batch of SourceImages: {e}")
 
-    deployment.data_source_total_files = total_files
-    deployment.data_source_total_size = total_size
+    if total_files > (deployment.data_source_total_files or 0):
+        deployment.data_source_total_files = total_files
+    if total_size > (deployment.data_source_total_size or 0):
+        deployment.data_source_total_size = total_size
     deployment.data_source_last_checked = datetime.datetime.now()
-    deployment.save(update_calculated_fields=False)
 
     events = group_images_into_events(deployment)
     for event in events:
-        set_dimensions_from_first_image(event)
+        set_dimensions_for_collection(event)
+
+    deployment.save(update_calculated_fields=False)
 
 
 def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
@@ -992,12 +995,15 @@ class SourceImage(BaseModel):
         """Calculate the width and height of the original image."""
         if self.path and self.deployment and self.deployment.data_source:
             config = self.deployment.data_source.config
-            img = ami.utils.s3.read_image(config=config, key=self.path)
-            self.width, self.height = img.size
-            self.save()
-            return self.width, self.height
-        else:
-            return None, None
+            try:
+                img = ami.utils.s3.read_image(config=config, key=self.path)
+            except Exception as e:
+                logger.error(f"Could not determine image dimensions for {self.path}: {e}")
+            else:
+                self.width, self.height = img.size
+                self.save()
+                return self.width, self.height
+        return None, None
 
     def update_calculated_fields(self):
         if self.path and not self.timestamp:
@@ -1027,25 +1033,48 @@ class SourceImage(BaseModel):
         ]
 
 
-def set_dimensions_from_first_image(event: Event, replace_existing: bool = False):
+def set_dimensions_for_collection(event: Event, replace_existing: bool = False):
     """
-    Calculate the width and height of the first image in an event and
-    update all of the images in the event with the same dimensions.
+    Set the width & height of all of the images in the event based on one image.
+
+    This will look for the first image in the event that already has dimensions.
+    If no images have dimensions, the first image be retrieved from the data source.
+
+    This is much more practical than fetching each image. However if a deployment
+    does ever have images with mixed dimensions, another method will be needed.
+
+    @TODO consider adding "assumed image dimensions" to the Deployment instance itself.
     """
 
-    first_image = event.captures.first()
-    if first_image:
-        if not first_image.width or not first_image.height:
-            first_image.get_dimensions()
+    # Try retrieving dimensions from deployment
+    height, width = getattr(event.deployment, "assumed_image_dimensions", (None, None))
+
+    if not height or not width:
+        # Try retrieving dimensions from the first image that has them already
+        image = event.captures.exclude(width__isnull=True, height__isnull=True).first()
+        if image:
+            height, width = image.height, image.width
+
+    if not height or not width:
+        image = event.captures.first()
+        if image:
+            height, width = image.get_dimensions()
+
+    if height and width:
         logger.info(
-            f"Setting dimensions for {event.captures.count()} images in event {event.pk} to "
-            f"{first_image.width}x{first_image.height}"
+            f"Setting dimensions for {event.captures.count()} images in event {event.pk} to " f"{width}x{height}"
         )
         if replace_existing:
             captures = event.captures.all()
         else:
             captures = event.captures.filter(width__isnull=True, height__isnull=True)
-        captures.update(width=first_image.width, height=first_image.height)
+        captures.update(width=width, height=height)
+
+    else:
+        logger.warning(
+            f"Could not determine image dimensions for event {event.pk}. "
+            f"Width & height will not be set on any source images."
+        )
 
 
 def sample_captures(
