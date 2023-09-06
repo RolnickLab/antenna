@@ -73,8 +73,8 @@ class SourceImageNestedSerializer(DefaultSerializer):
             "width",
             "height",
             "timestamp",
-            "detections_count",
-            "detections",
+            # "detections_count",
+            # "detections",
         ]
 
 
