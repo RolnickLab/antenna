@@ -1,5 +1,6 @@
 import collections
 import datetime
+import functools
 import itertools
 import logging
 import textwrap
@@ -445,6 +446,7 @@ class Deployment(BaseModel):
     def last_capture(self) -> typing.Optional["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("-timestamp").first()
 
+    @functools.cached_property
     def first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
         # Retrieve the timestamps of the first and last capture in a single query
         first, last = (
@@ -452,7 +454,17 @@ class Deployment(BaseModel):
             .aggregate(first=models.Min("timestamp"), last=models.Max("timestamp"))
             .values()
         )
-        return first or last
+        return (first, last)
+
+    def first_date(self) -> datetime.date | None:
+        date, _ = self.first_and_last_timestamps
+        if date:
+            return date.date()
+
+    def last_date(self) -> datetime.date | None:
+        _, date = self.first_and_last_timestamps
+        if date:
+            return date.date()
 
     def data_source_uri(self) -> str | None:
         if self.data_source:

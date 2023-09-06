@@ -107,7 +107,10 @@ class DeploymentViewSet(DefaultViewSet):
     queryset = Deployment.objects.annotate(
         events_count=models.Count("events", distinct=True),
         occurrences_count=models.Count("occurrences", distinct=True),
-    )
+        taxa_count=models.Count("occurrences__determination", distinct=True),
+        first_date=models.Min("events__start__date"),
+        last_date=models.Max("events__start__date"),
+    ).select_related("project")
     filterset_fields = ["project"]
     ordering_fields = ["created_at", "updated_at", "occurrences_count", "events_count"]
 

@@ -33,7 +33,7 @@ export const DeploymentsMapPopupContent = ({
         </span>
         <br />
         <span>
-          {translate(STRING.FIELD_LABEL_DETECTIONS)}: {deployment.numDetections}
+          {translate(STRING.FIELD_LABEL_OCCURRENCES)}: {deployment.numOccurrences}
         </span>
       </p>
     </>

@@ -33,10 +33,6 @@ export class Deployment {
     return this._deployment.name
   }
 
-  get numDetections(): number {
-    return this._deployment.detections_count
-  }
-
   get numEvents(): number {
     return this._deployment.events_count
   }
@@ -51,5 +47,13 @@ export class Deployment {
 
   get numSpecies(): number {
     return this._deployment.taxa_count
+  }
+
+  get firstDate(): number {
+    return this._deployment.first_date
+  }
+
+  get lastDate(): number {
+    return this._deployment.last_date
   }
 }

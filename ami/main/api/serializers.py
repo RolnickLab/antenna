@@ -97,7 +97,6 @@ class DeploymentListSerializer(DefaultSerializer):
             "occurrences",
             "events_count",
             "captures_count",
-            "detections_count",
             "occurrences_count",
             "taxa_count",
             "project",
@@ -105,6 +104,8 @@ class DeploymentListSerializer(DefaultSerializer):
             "updated_at",
             "latitude",
             "longitude",
+            "first_date",
+            "last_date",
         ]
 
     def get_events(self, obj):
