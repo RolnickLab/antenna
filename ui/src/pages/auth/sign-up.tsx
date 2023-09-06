@@ -26,7 +26,7 @@ const config: FormConfig = {
   password: {
     label: 'Password',
     description:
-      'The password must contain at least 8 characters and cannot be entery numeric.',
+      'The password must contain at least 8 characters and cannot be entirely numeric.',
     rules: {
       required: true,
       minLength: 8,
