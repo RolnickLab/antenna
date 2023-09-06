@@ -916,6 +916,8 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
             "image": obj.public_url(),
             "ami_id": obj.pk,
             "timestamp": obj.timestamp,
+            "event": obj.event.date_label() if obj.event else None,
+            "event_id": obj.event.pk if obj.event else None,
             "deployment": (obj.deployment.name if obj.deployment else None),
             "deployment_id": (obj.deployment.pk if obj.deployment else None),
             "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),

@@ -827,24 +827,21 @@ def delete_empty_events(dry_run=False):
         events.delete()
 
 
-def sample_events(deployment: Deployment, day_interval: int = 3, max_num: int | None = None) -> list[Event]:
+def sample_events(deployment: Deployment, day_interval: int = 3) -> typing.Generator[Event, None, None]:
     """
     Return a sample of events from the deployment, evenly spaced apart by day_interval.
     """
 
-    events = []
     last_event = None
     for event in Event.objects.filter(deployment=deployment).order_by("start"):
-        if max_num and len(events) >= max_num:
-            break
-        if last_event:
+        if not last_event:
+            yield event
+            last_event = event
+        else:
             delta = event.start - last_event.start
             if delta.days >= day_interval:
-                events.append(event)
-
-        last_event = event
-
-    return events
+                yield event
+                last_event = event
 
 
 @final
@@ -1051,29 +1048,27 @@ def set_dimensions_from_first_image(event: Event, replace_existing: bool = False
 
 
 def sample_captures(
-    deployment: Deployment, minute_interval: int = 10, events: list[Event] = [], max_num: int | None = None
-) -> list[SourceImage]:
+    deployment: Deployment, minute_interval: int = 10, events: list[Event] = []
+) -> typing.Generator[SourceImage, None, None]:
     """
     Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
     """
 
-    captures = []
     last_capture = None
     if events:
-        qs = SourceImage.objects.filter(event__in=events).order_by("timestamp")
+        qs = SourceImage.objects.filter(event__in=events).exclude(timestamp=None).order_by("timestamp")
     else:
-        qs = SourceImage.objects.filter(deployment=deployment).order_by("timestamp")
+        qs = SourceImage.objects.filter(deployment=deployment).exclude(timestamp=None).order_by("timestamp")
     for capture in qs.all():
-        if max_num and len(captures) >= max_num:
-            break
-        if last_capture and capture.timestamp and last_capture.timestamp:
+        if not last_capture:
+            yield capture
+            last_capture = capture
+        else:
+            assert capture.timestamp and last_capture.timestamp
             delta: datetime.timedelta = capture.timestamp - last_capture.timestamp
             if delta.total_seconds() >= minute_interval * 60:
-                captures.append(capture)
-
-        last_capture = capture
-
-    return captures
+                yield capture
+                last_capture = capture
 
 
 @final

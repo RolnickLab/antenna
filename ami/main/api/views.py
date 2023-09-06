@@ -566,9 +566,12 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
             deployments = Deployment.objects.all()
         for deployment in deployments:
             events = sample_events(deployment=deployment, day_interval=day_interval)
-            captures += sample_captures(
-                deployment=deployment, events=events, minute_interval=minute_interval, max_num=max_num
-            )
+            for capture in sample_captures(
+                deployment=deployment, events=list(events), minute_interval=minute_interval
+            ):
+                captures.append(capture)
+                if len(captures) >= max_num:
+                    break
         return Response(self.get_serializer(captures, many=True).data)
 
 
