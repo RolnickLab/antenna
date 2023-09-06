@@ -7,17 +7,19 @@ export const useAuthorizedQuery = <T>({
   onError,
   queryKey,
   refetchInterval,
+  retry,
   url,
 }: {
   onError?: (error: unknown) => void
   queryKey: QueryKey
   refetchInterval?: number
+  retry?: number
   url: string
 }) => {
   const { user } = useUser()
 
   const { data, isLoading, isFetching, error } = useQuery({
-    refetchInterval,
+    onError,
     queryKey,
     queryFn: () =>
       axios
@@ -25,7 +27,8 @@ export const useAuthorizedQuery = <T>({
           headers: getAuthHeader(user),
         })
         .then((res) => res.data),
-    onError,
+    refetchInterval,
+    retry,
   })
 
   return { data, isLoading, isFetching, error }
