@@ -178,15 +178,15 @@ class Project(BaseModel):
 
         # Detections per hour
         Detection = apps.get_model("main", "Detection")
-        detections_per_hour = (
-            Detection.objects.filter(source_image__deployment__project=self)
+        detections_per_hour = list(
+            Detection.objects.filter(occurrence__project=self)
             .values("source_image__timestamp__hour")
             .annotate(num_detections=models.Count("id"))
             .order_by("source_image__timestamp__hour")
         )
 
         # hours, counts = list(zip(*detections_per_hour))
-        if detections_per_hour.count():
+        if detections_per_hour:
             hours, counts = list(
                 zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
             )
