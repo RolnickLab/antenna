@@ -25,21 +25,32 @@ const config: FormConfig = {
   },
   password: {
     label: 'Password',
+    description:
+      'The password must contain at least 8 characters and cannot be entery numeric.',
     rules: {
       required: true,
+      minLength: 8,
     },
   },
 }
 
 export const SignUp = () => {
   const [serverError, setServerError] = useState<string | undefined>()
+  const [signedUpEmail, setSignedUpEmail] = useState<string | undefined>()
+
   const navigate = useNavigate()
-  const { control, handleSubmit, reset, setError } = useForm<SignUpFormValues>({
-    defaultValues: { email: '', password: '' },
-  })
+  const { control, getValues, handleSubmit, resetField, setError } =
+    useForm<SignUpFormValues>({
+      defaultValues: { email: '', password: '' },
+    })
   const { signUp, isLoading, isSuccess, error } = useSignUp({
-    onSuccess: reset,
+    onSuccess: () => {
+      setSignedUpEmail(getValues('email'))
+      resetField('email')
+      resetField('password')
+    },
   })
+
   useEffect(() => {
     if (error) {
       const { message, fieldErrors } = parseServerError(error)
@@ -94,11 +105,16 @@ export const SignUp = () => {
           ) : (
             <span>Already have an account?</span>
           )}
-          <Link to={LINKS.LOGIN}>Login</Link>
+          <Link
+            to={LINKS.LOGIN}
+            state={isSuccess ? { email: signedUpEmail } : undefined}
+          >
+            Login
+          </Link>
         </p>
         <p className={classNames(styles.text, styles.divider)}>OR</p>
         <Button
-          label="Skip to projects"
+          label="View public projects"
           type="button"
           theme={ButtonTheme.Default}
           onClick={() => navigate(LINKS.HOME)}

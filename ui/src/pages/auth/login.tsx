@@ -5,7 +5,7 @@ import { useLogin } from 'data-services/hooks/auth/useLogin'
 import { parseServerError } from 'data-services/utils'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { useForm } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LINKS } from 'utils/constants'
 import styles from './auth.module.scss'
 
@@ -30,12 +30,13 @@ const config: FormConfig = {
 }
 
 export const Login = () => {
+  const { state } = useLocation()
   const navigate = useNavigate()
   const { login, isLoading, error } = useLogin({
     onSuccess: () => navigate(LINKS.HOME),
   })
   const { control, handleSubmit } = useForm<LoginFormValues>({
-    defaultValues: { email: '', password: '' },
+    defaultValues: { email: state?.email ?? '', password: '' },
   })
 
   return (
@@ -68,7 +69,7 @@ export const Login = () => {
         </p>
         <p className={classNames(styles.text, styles.divider)}>OR</p>
         <Button
-          label="Skip to projects"
+          label="View public projects"
           type="button"
           theme={ButtonTheme.Default}
           onClick={() => navigate(LINKS.HOME)}
