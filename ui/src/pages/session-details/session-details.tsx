@@ -1,5 +1,5 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
-import { useSessionDetails } from 'data-services/hooks/useSessionDetails'
+import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Plot } from 'design-system/components/plot/plot'
 import { Error } from 'pages/error/error'

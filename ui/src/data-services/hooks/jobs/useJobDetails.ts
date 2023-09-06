@@ -1,10 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
-import { API_URL } from 'data-services/constants'
+import { API_ROUTES, API_URL } from 'data-services/constants'
 import { JobDetails, ServerJobDetails } from 'data-services/models/job-details'
-import { COLLECTION, REFETCH_INTERVAL } from './constants'
-
-const convertServerRecord = (record: ServerJobDetails) => new JobDetails(record)
+import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 export const useJobDetails = (
   id: string
@@ -14,14 +10,11 @@ export const useJobDetails = (
   isFetching: boolean
   error?: unknown
 } => {
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: [COLLECTION, id],
-    queryFn: () =>
-      axios
-        .get<ServerJobDetails>(`${API_URL}/${COLLECTION}/${id}`)
-        .then((res) => convertServerRecord(res.data)),
-    refetchInterval: REFETCH_INTERVAL,
-  })
+  const { data, isLoading, isFetching, error } =
+    useAuthorizedQuery<ServerJobDetails>({
+      queryKey: [API_ROUTES.JOBS, id],
+      url: `${API_URL}/${API_ROUTES.JOBS}/${id}/`,
+    })
 
   return {
     job: data,

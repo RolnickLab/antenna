@@ -1,36 +1,35 @@
 import { API_ROUTES, API_URL } from 'data-services/constants'
-
 import {
-  ServerSpeciesDetails,
-  SpeciesDetails,
-} from 'data-services/models/species-details'
+  CaptureDetails,
+  ServerCaptureDetails,
+} from 'data-services/models/capture-details'
 import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
-const convertServerRecord = (record: ServerSpeciesDetails) =>
-  new SpeciesDetails(record)
+const convertServerRecord = (record: ServerCaptureDetails) =>
+  new CaptureDetails(record)
 
-export const useSpeciesDetails = (
+export const useCaptureDetails = (
   id: string
 ): {
-  species?: SpeciesDetails
+  capture?: CaptureDetails
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
   const { data, isLoading, isFetching, error } =
-    useAuthorizedQuery<SpeciesDetails>({
-      queryKey: [API_ROUTES.SPECIES, id],
-      url: `${API_URL}/${API_ROUTES.SPECIES}/${id}/`,
+    useAuthorizedQuery<CaptureDetails>({
+      queryKey: [API_ROUTES.CAPTURES, id],
+      url: `${API_URL}/${API_ROUTES.CAPTURES}/${id}/`,
     })
 
-  const species = useMemo(
+  const capture = useMemo(
     () => (data ? convertServerRecord(data) : undefined),
     [data]
   )
 
   return {
-    species,
+    capture,
     isLoading,
     isFetching,
     error,

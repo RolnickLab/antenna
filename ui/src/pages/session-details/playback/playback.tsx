@@ -1,4 +1,4 @@
-import { useInfiniteCaptures } from 'data-services/hooks/useInfiniteCaptures'
+import { useInfiniteCaptures } from 'data-services/hooks/sessions/useInfiniteCaptures'
 import { SessionDetails } from 'data-services/models/session-details'
 import { useState } from 'react'
 import { CapturePicker } from './capture-picker/capture-picker'

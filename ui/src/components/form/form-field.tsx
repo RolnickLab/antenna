@@ -16,7 +16,7 @@ export const FormField = <
   onBlur,
 }: Pick<ControllerProps<TFieldValues, TName>, 'name' | 'control'> & {
   config: FormConfig
-  type?: 'number' | 'text'
+  type?: 'number' | 'text' | 'password'
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
 }) => {
   const fieldConfig = config[name]

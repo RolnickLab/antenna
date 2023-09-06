@@ -1,3 +1,4 @@
+import { User } from 'utils/user/types'
 import { API_URL } from './constants'
 import { FetchParams } from './types'
 
@@ -39,7 +40,7 @@ export const getFetchUrl = ({
     return baseUrl
   }
 
-  return `${baseUrl}?${queryString}`
+  return `${baseUrl}/?${queryString}`
 }
 
 export const getFetchDetailsUrl = ({
@@ -58,5 +59,29 @@ export const getFetchDetailsUrl = ({
     return baseUrl
   }
 
-  return `${baseUrl}?${queryString}`
+  return `${baseUrl}/?${queryString}`
 }
+
+export const parseServerError = (error: any) => {
+  let message = 'Something went wrong.'
+  const fieldErrors: { key: string; message: string }[] = []
+
+  if (error.response?.data && typeof error.response.data === 'object') {
+    Object.entries(error.response.data).forEach(([key, details]) => {
+      if (key && details) {
+        if (key === 'non_field_errors' || key === 'detail') {
+          message = details as string
+        } else {
+          fieldErrors.push({ key, message: `${(details as string[])[0]}` })
+        }
+      }
+    })
+  } else if (error.message) {
+    message = error.message
+  }
+
+  return { message, fieldErrors }
+}
+
+export const getAuthHeader = (user: User) =>
+  user.token ? { Authorization: `Token ${user.token}` } : undefined

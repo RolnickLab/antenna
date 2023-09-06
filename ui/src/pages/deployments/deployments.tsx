@@ -19,6 +19,7 @@ export const Deployments = () => {
     items: deployments,
     defaultSort: { field: 'name', order: 'desc' },
   })
+  const canCreate = deployments?.some((deployment) => deployment.canCreate)
 
   if (!isLoading && error) {
     return <Error />
@@ -41,9 +42,9 @@ export const Deployments = () => {
       />
       {!isLoading && id ? (
         <DeploymentDetailsDialog id={id} />
-      ) : (
+      ) : canCreate ? (
         <NewDeploymentDialog />
-      )}
+      ) : null}
     </>
   )
 }

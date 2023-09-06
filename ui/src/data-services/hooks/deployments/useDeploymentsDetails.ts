@@ -1,11 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
-import { API_URL } from 'data-services/constants'
+import { API_ROUTES, API_URL } from 'data-services/constants'
 import {
   DeploymentDetails,
   ServerDeploymentDetails,
 } from 'data-services/models/deployment-details'
-import { COLLECTION } from './constants'
+import { useMemo } from 'react'
+import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerDeploymentDetails) =>
   new DeploymentDetails(record)
@@ -18,16 +17,19 @@ export const useDeploymentDetails = (
   isFetching: boolean
   error?: unknown
 } => {
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: [COLLECTION, id],
-    queryFn: () =>
-      axios
-        .get<DeploymentDetails>(`${API_URL}/${COLLECTION}/${id}`)
-        .then((res) => convertServerRecord(res.data)),
-  })
+  const { data, isLoading, isFetching, error } =
+    useAuthorizedQuery<DeploymentDetails>({
+      queryKey: [API_ROUTES.DEPLOYMENTS, id],
+      url: `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}/`,
+    })
+
+  const deployment = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
 
   return {
-    deployment: data,
+    deployment,
     isLoading,
     isFetching,
     error,

@@ -1,39 +1,39 @@
 import { API_ROUTES } from 'data-services/constants'
-import { Deployment, ServerDeployment } from 'data-services/models/deployment'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
+import { Occurrence, ServerOccurrence } from '../../models/occurrence'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
-const convertServerRecord = (record: ServerDeployment) => new Deployment(record)
+const convertServerRecord = (record: ServerOccurrence) => new Occurrence(record)
 
-export const useDeployments = (
+export const useOccurrences = (
   params?: FetchParams
 ): {
-  deployments?: Deployment[]
+  occurrences?: Occurrence[]
+  total: number
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({
-    collection: API_ROUTES.DEPLOYMENTS,
-    params,
-  })
+  const fetchUrl = getFetchUrl({ collection: API_ROUTES.OCCURRENCES, params })
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
-    results: ServerDeployment[]
+    results: ServerOccurrence[]
+    count: number
   }>({
-    queryKey: [API_ROUTES.DEPLOYMENTS, params],
+    queryKey: [API_ROUTES.OCCURRENCES, params],
     url: fetchUrl,
   })
 
-  const deployments = useMemo(
+  const occurrences = useMemo(
     () => data?.results.map(convertServerRecord),
     [data]
   )
 
   return {
-    deployments,
+    occurrences,
+    total: data?.count ?? 0,
     isLoading,
     isFetching,
     error,

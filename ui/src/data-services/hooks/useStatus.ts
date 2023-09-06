@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { API_ROUTES } from 'data-services/constants'
 import { getFetchUrl } from 'data-services/utils'
+import { useMemo } from 'react'
+import { useAuthorizedQuery } from './auth/useAuthorizedQuery'
 
 type ServerStatus = any // TODO: Update this type
 
@@ -13,7 +14,6 @@ interface Status {
   numSpecies: number
 }
 
-const COLLECTION = 'status/summary'
 const REFETCH_INTERVAL = 10000 // Refetch every 10 second
 
 const convertServerRecord = (record: ServerStatus): Status => ({
@@ -36,21 +36,24 @@ export const useStatus = (
   const params = { projectId }
 
   const fetchUrl = getFetchUrl({
-    collection: COLLECTION,
+    collection: API_ROUTES.SUMMARY,
     params,
   })
 
-  const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: [COLLECTION, params],
-    queryFn: () =>
-      axios
-        .get<ServerStatus>(fetchUrl)
-        .then((res) => convertServerRecord(res.data)),
-    refetchInterval: REFETCH_INTERVAL,
-  })
+  const { data, isLoading, error, isFetching } =
+    useAuthorizedQuery<ServerStatus>({
+      queryKey: [API_ROUTES.SUMMARY, params],
+      url: fetchUrl,
+      refetchInterval: REFETCH_INTERVAL,
+    })
+
+  const status = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
 
   return {
-    status: data,
+    status,
     isLoading,
     isFetching,
     error,

@@ -1,3 +1,5 @@
+import { UserPermission } from 'utils/user/types'
+
 export type ServerDeployment = any // TODO: Update this type
 
 export class Deployment {
@@ -5,6 +7,14 @@ export class Deployment {
 
   public constructor(deployment: ServerDeployment) {
     this._deployment = deployment
+  }
+
+  get canCreate(): boolean {
+    return this._deployment.user_permissions.includes(UserPermission.Create)
+  }
+
+  get canUpdate(): boolean {
+    return this._deployment.user_permissions.includes(UserPermission.Update)
   }
 
   get id(): string {

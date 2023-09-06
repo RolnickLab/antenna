@@ -1,5 +1,5 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
-import { useSessions } from 'data-services/hooks/useSessions'
+import { useSessions } from 'data-services/hooks/sessions/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
