@@ -534,7 +534,7 @@ class Deployment(BaseModel):
             self.save()
 
     def save(self, *args, update_calculated_fields=True, **kwargs):
-        if update_calculated_fields:
+        if self.pk and update_calculated_fields:
             self.update_calculated_fields()
             if self.project:
                 self.update_children()

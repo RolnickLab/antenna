@@ -31,7 +31,6 @@ services:
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
       - ami_local_postgres_data_backups:/backups
-      - ./compose/production/postgres/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
     env_file:
       - ./.envs/.local/.postgres
 
