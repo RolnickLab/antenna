@@ -6,7 +6,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -509,7 +509,7 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
-class LabelStudioFlatPaginator(PageNumberPagination):
+class LabelStudioFlatPaginator(LimitOffsetPagination):
     """
     A custom paginator that does not nest the data under a "results" key.
 
@@ -518,10 +518,7 @@ class LabelStudioFlatPaginator(PageNumberPagination):
     @TODO eventually each task should be it's own JSON file and this will not be needed.
     """
 
-    page_size = 1000
-    page_size_query_param = "page_size"
-    page_query_param = "page"
-    max_page_size = 10000
+    limit = 100
 
     def get_paginated_response(self, data):
         return Response(data)
@@ -534,6 +531,41 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     serializer_class = LabelStudioSourceImageSerializer
     pagination_class = LabelStudioFlatPaginator
     filterset_fields = ["event", "deployment", "deployment__project"]
+
+    @action(detail=False, methods=["get"], name="interval")
+    def interval(self, request):
+        """
+        Return a sample of captures based on time intervals.
+
+        URL parameters:
+
+        - `project`: limit to a specific project<br>
+        - `event_day_interval`: number of days between events<br>
+        - `capture_minute_interval`: number of minutes between captures<br>
+        - `limit`: maximum number of captures to return<br>
+
+        Example: `/api/labelstudio/captures/interval/?project=1&event_day_interval=3&capture_minute_interval=30&limit=100`  # noqa
+
+        Objects are returned in a format ready to import as a list of Label Studio tasks.
+        """
+        from ami.main.models import sample_captures, sample_events
+
+        project_id = request.query_params.get("project", None)
+        day_interval = int(request.query_params.get("event_day_interval", 3))
+        minute_interval = int(request.query_params.get("capture_minute_interval", 30))
+        max_num = int(request.query_params.get("limit", 100))
+        captures = []
+        if project_id:
+            project = Project.objects.get(id=project_id)
+            deployments = Deployment.objects.filter(project=project)
+        else:
+            deployments = Deployment.objects.all()
+        for deployment in deployments.all():
+            events = sample_events(deployment=deployment, day_interval=day_interval)
+            captures += sample_captures(
+                deployment=deployment, events=events, minute_interval=minute_interval, max_num=max_num
+            )
+        return Response(self.get_serializer(captures, many=True).data)
 
 
 class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):

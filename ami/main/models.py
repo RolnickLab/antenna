@@ -827,6 +827,26 @@ def delete_empty_events(dry_run=False):
         events.delete()
 
 
+def sample_events(deployment: Deployment, day_interval: int = 3, max_num: int | None = None) -> list[Event]:
+    """
+    Return a sample of events from the deployment, evenly spaced apart by day_interval.
+    """
+
+    events = []
+    last_event = None
+    for event in Event.objects.filter(deployment=deployment).order_by("start"):
+        if max_num and len(events) >= max_num:
+            break
+        if last_event:
+            delta = event.start - last_event.start
+            if delta.days >= day_interval:
+                events.append(event)
+
+        last_event = event
+
+    return events
+
+
 @final
 class S3StorageSource(BaseModel):
     """
@@ -1028,6 +1048,32 @@ def set_dimensions_from_first_image(event: Event, replace_existing: bool = False
         else:
             captures = event.captures.filter(width__isnull=True, height__isnull=True)
         captures.update(width=first_image.width, height=first_image.height)
+
+
+def sample_captures(
+    deployment: Deployment, minute_interval: int = 10, events: list[Event] = [], max_num: int | None = None
+) -> list[SourceImage]:
+    """
+    Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
+    """
+
+    captures = []
+    last_capture = None
+    if events:
+        qs = SourceImage.objects.filter(event__in=events).order_by("timestamp")
+    else:
+        qs = SourceImage.objects.filter(deployment=deployment).order_by("timestamp")
+    for capture in qs.all():
+        if max_num and len(captures) >= max_num:
+            break
+        if last_capture and capture.timestamp and last_capture.timestamp:
+            delta: datetime.timedelta = capture.timestamp - last_capture.timestamp
+            if delta.total_seconds() >= minute_interval * 60:
+                captures.append(capture)
+
+        last_capture = capture
+
+    return captures
 
 
 @final
