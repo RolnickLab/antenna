@@ -539,7 +539,8 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
 
         URL parameters:
 
-        - `project`: limit to a specific project<br>
+        - `deployment`: limit to a specific deployment<br>
+        - `project`: limit to all deployments in a specific project<br>
         - `event_day_interval`: number of days between events<br>
         - `capture_minute_interval`: number of minutes between captures<br>
         - `limit`: maximum number of captures to return<br>
@@ -550,17 +551,20 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
         """
         from ami.main.models import sample_captures, sample_events
 
+        deployment_id = request.query_params.get("deployment", None)
         project_id = request.query_params.get("project", None)
         day_interval = int(request.query_params.get("event_day_interval", 3))
         minute_interval = int(request.query_params.get("capture_minute_interval", 30))
         max_num = int(request.query_params.get("limit", 100))
         captures = []
-        if project_id:
+        if deployment_id:
+            deployments = [Deployment.objects.get(id=deployment_id)]
+        elif project_id:
             project = Project.objects.get(id=project_id)
             deployments = Deployment.objects.filter(project=project)
         else:
             deployments = Deployment.objects.all()
-        for deployment in deployments.all():
+        for deployment in deployments:
             events = sample_events(deployment=deployment, day_interval=day_interval)
             captures += sample_captures(
                 deployment=deployment, events=events, minute_interval=minute_interval, max_num=max_num
