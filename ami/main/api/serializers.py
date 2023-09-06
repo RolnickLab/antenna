@@ -20,6 +20,7 @@ from ..models import (
     SourceImage,
     Taxon,
 )
+from .permissions import add_object_level_permissions
 
 
 def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
@@ -47,18 +48,7 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
 
-        # Add placeholder object-level permissions to each object
-        # For this placeholder, everyone can read,
-        # logged-in users can edit, and superusers can delete
-        permissions = set()
-        if hasattr(instance, "user_permissions"):
-            permissions.update(instance.user_permissions)
-        elif self.context["request"].user.is_authenticated:
-            permissions.update(["update", "create"])
-            if self.context["request"].user.is_superuser:
-                permissions.update(["delete"])
-        data["user_permissions"] = permissions
-        return data
+        return add_object_level_permissions(self.context.get("request").user, data)
 
 
 class UserSerializer(DefaultSerializer):
