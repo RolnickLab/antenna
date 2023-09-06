@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { API_ROUTES, STATUS_CODES } from 'data-services/constants'
+import { API_ROUTES } from 'data-services/constants'
 import { Capture, ServerCapture } from 'data-services/models/capture'
 import { getAuthHeader, getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
@@ -34,7 +34,7 @@ const fetchCaptures = async (sessionId: string, page: number, user: User) => {
 }
 
 export const useInfiniteCaptures = (sessionId: string, offset?: number) => {
-  const { user, clearToken } = useUser()
+  const { user } = useUser()
   const queryKey = [API_ROUTES.CAPTURES, { event: sessionId }]
   const startPage = offset !== undefined ? Math.floor(offset / PER_PAGE) : 0
 
@@ -63,11 +63,6 @@ export const useInfiniteCaptures = (sessionId: string, offset?: number) => {
         }
 
         return firstPage.page - 1
-      },
-      onError: (error: any) => {
-        if (error.response?.status === STATUS_CODES.FORBIDDEN) {
-          clearToken()
-        }
       },
     }
   )

@@ -1,19 +1,20 @@
 import { QueryKey, useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { STATUS_CODES } from 'data-services/constants'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 export const useAuthorizedQuery = <T>({
-  refetchInterval,
+  onError,
   queryKey,
+  refetchInterval,
   url,
 }: {
-  refetchInterval?: number
+  onError?: (error: unknown) => void
   queryKey: QueryKey
+  refetchInterval?: number
   url: string
 }) => {
-  const { user, clearToken } = useUser()
+  const { user } = useUser()
 
   const { data, isLoading, isFetching, error } = useQuery({
     refetchInterval,
@@ -24,11 +25,7 @@ export const useAuthorizedQuery = <T>({
           headers: getAuthHeader(user),
         })
         .then((res) => res.data),
-    onError: (error: any) => {
-      if (error.response?.status === STATUS_CODES.FORBIDDEN) {
-        clearToken()
-      }
-    },
+    onError,
   })
 
   return { data, isLoading, isFetching, error }

@@ -18,7 +18,7 @@ const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
 })
 
 export const useCreateDeployment = () => {
-  const { user, clearToken } = useUser()
+  const { user } = useUser()
   const queryClient = useQueryClient()
 
   const { mutateAsync, isLoading, error } = useMutation({

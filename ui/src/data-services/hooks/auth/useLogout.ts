@@ -11,12 +11,12 @@ export const useLogout = () => {
       axios.post(`${API_URL}/${API_ROUTES.LOGOUT}/`, undefined, {
         headers: getAuthHeader(user),
       }),
-    onSuccess: () => {
-      clearToken()
-    },
+    onSuccess: clearToken,
     onError: (error: any) => {
       if (error.response?.status === STATUS_CODES.FORBIDDEN) {
-        clearToken()
+        if (user.loggedIn) {
+          clearToken()
+        }
       }
     },
   })
