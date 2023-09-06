@@ -381,7 +381,7 @@ class SummaryView(APIView):
                 "deployments_count": Deployment.objects.filter(project=project).count(),
                 "events_count": Event.objects.filter(deployment__project=project).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
-                "detections_count": Detection.objects.filter(source_image__deployment__project=project).count(),
+                "detections_count": Detection.objects.filter(occurrence__project=project).count(),
                 "occurrences_count": Occurrence.objects.filter(project=project).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
                 .filter(occurrences_count__gt=0)
