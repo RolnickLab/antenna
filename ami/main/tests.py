@@ -110,7 +110,7 @@ class TestImageGrouping(TestCase):
         assert remaining_events.count() == 0
 
     def test_setting_image_dimensions(self):
-        from ami.main.models import set_dimensions_from_first_image
+        from ami.main.models import set_dimensions_for_collection
 
         image_width, image_height = 100, 100
 
@@ -122,7 +122,7 @@ class TestImageGrouping(TestCase):
             assert first_image is not None
             first_image.width, first_image.height = image_width, image_height
             first_image.save()
-            set_dimensions_from_first_image(event=event)
+            set_dimensions_for_collection(event=event)
 
             for capture in event.captures.all():
                 # print(capture.path, capture.width, capture.height)
