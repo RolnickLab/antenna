@@ -8,7 +8,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Species>[] = (
@@ -38,7 +38,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: Species) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'species',
           itemId: item.id,
@@ -67,7 +67,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     },
     renderCell: (item: Species) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'occurrences',
           filters: { determination: item.id },

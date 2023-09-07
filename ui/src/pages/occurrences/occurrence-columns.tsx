@@ -7,7 +7,7 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
@@ -35,7 +35,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_ID),
     renderCell: (item: Occurrence) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'occurrences',
           itemId: item.id,
@@ -55,7 +55,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'deployments',
           itemId: item.deploymentId,
@@ -73,7 +73,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Occurrence) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'sessions',
           itemId: item.sessionId,

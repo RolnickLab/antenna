@@ -1,7 +1,7 @@
 import { Session } from 'data-services/models/session'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './session-info.module.scss'
 
@@ -12,7 +12,7 @@ export const SessionInfo = ({ session }: { session: Session }) => {
     {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: session.deploymentLabel,
-      to: getRoute({
+      to: getAppRoute({
         projectId: projectId as string,
         collection: 'deployments',
         itemId: session.deploymentId,
@@ -41,7 +41,7 @@ export const SessionInfo = ({ session }: { session: Session }) => {
     {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value: session.numOccurrences,
-      to: getRoute({
+      to: getAppRoute({
         projectId: projectId as string,
         collection: 'occurrences',
         filters: { event: session.id },
@@ -50,7 +50,7 @@ export const SessionInfo = ({ session }: { session: Session }) => {
     {
       label: translate(STRING.FIELD_LABEL_SPECIES),
       value: session.numSpecies,
-      to: getRoute({
+      to: getAppRoute({
         projectId: projectId as string,
         collection: 'species',
         filters: { occurrences__event: session.id },

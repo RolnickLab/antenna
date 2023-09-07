@@ -1,3 +1,5 @@
+import { APP_ROUTES } from './constants'
+
 type CollectionType =
   | 'jobs'
   | 'deployments'
@@ -14,7 +16,7 @@ type FilterType =
   | 'occurrence'
   | 'capture'
 
-export const getRoute = ({
+export const getAppRoute = ({
   projectId,
   collection,
   itemId,
@@ -27,7 +29,7 @@ export const getRoute = ({
   filters?: Partial<Record<FilterType, string | undefined>>
   keepSearchParams?: boolean
 }) => {
-  let url = `/projects/${projectId}`
+  let url = `${APP_ROUTES.PROJECTS}/${projectId}`
 
   if (collection) {
     url = `${url}/${collection}`

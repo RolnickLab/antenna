@@ -8,7 +8,7 @@ import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
-import { LINKS } from 'utils/constants'
+import { APP_ROUTES } from 'utils/constants'
 import styles from './auth.module.scss'
 
 interface SignUpFormValues {
@@ -106,7 +106,7 @@ export const SignUp = () => {
             <span>Already have an account?</span>
           )}
           <Link
-            to={LINKS.LOGIN}
+            to={APP_ROUTES.LOGIN}
             state={isSuccess ? { email: signedUpEmail } : undefined}
           >
             Login
@@ -117,7 +117,7 @@ export const SignUp = () => {
           label="View public projects"
           type="button"
           theme={ButtonTheme.Default}
-          onClick={() => navigate(LINKS.HOME)}
+          onClick={() => navigate(APP_ROUTES.HOME)}
         />
       </form>
     </>

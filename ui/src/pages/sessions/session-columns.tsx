@@ -8,7 +8,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Session>[] = (
@@ -36,7 +36,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Session) => (
       <Link
-        to={getRoute({ projectId, collection: 'sessions', itemId: item.id })}
+        to={getAppRoute({ projectId, collection: 'sessions', itemId: item.id })}
       >
         <BasicTableCell value={item.label} theme={CellTheme.Primary} />
       </Link>
@@ -47,7 +47,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     renderCell: (item: Session) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'deployments',
           itemId: item.deploymentId,
@@ -111,7 +111,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     },
     renderCell: (item: Session) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'occurrences',
           filters: { event: item.id },
@@ -129,7 +129,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     },
     renderCell: (item: Session) => (
       <Link
-        to={getRoute({
+        to={getAppRoute({
           projectId,
           collection: 'species',
           filters: { occurrences__event: item.id },

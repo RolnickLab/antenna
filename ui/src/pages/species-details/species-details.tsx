@@ -6,7 +6,7 @@ import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './species-details.module.scss'
 
@@ -21,7 +21,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
             .filter((item): item is BlueprintItem => !!item)
             .map((item) => ({
               ...item,
-              to: getRoute({
+              to: getAppRoute({
                 projectId: projectId as string,
                 collection: 'occurrences',
                 itemId: item.id,
@@ -39,7 +39,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
     {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value: species.numOccurrences,
-      to: getRoute({
+      to: getAppRoute({
         projectId: projectId as string,
         collection: 'occurrences',
         filters: { determination: species.id },

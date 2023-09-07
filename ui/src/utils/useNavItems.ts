@@ -2,7 +2,7 @@ import { useStatus } from 'data-services/hooks/useStatus'
 import { IconType } from 'design-system/components/icon/icon'
 import { useMemo } from 'react'
 import { matchPath, useLocation, useParams } from 'react-router-dom'
-import { getRoute } from './getRoute'
+import { getAppRoute } from './getAppRoute'
 import { STRING, translate } from './language'
 
 interface NavigationItem {
@@ -25,7 +25,7 @@ export const useNavItems = () => {
         id: 'overview',
         title: translate(STRING.NAV_ITEM_OVERVIEW),
         icon: IconType.Overview,
-        path: getRoute({
+        path: getAppRoute({
           projectId: projectId as string,
           collection: undefined,
         }),
@@ -35,7 +35,10 @@ export const useNavItems = () => {
         id: 'jobs',
         title: translate(STRING.NAV_ITEM_JOBS),
         icon: IconType.BatchId,
-        path: getRoute({ projectId: projectId as string, collection: 'jobs' }),
+        path: getAppRoute({
+          projectId: projectId as string,
+          collection: 'jobs',
+        }),
         matchPath: '/projects/:projectId/jobs/*',
       },
       {
@@ -43,7 +46,7 @@ export const useNavItems = () => {
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
         count: status?.numDeployments,
-        path: getRoute({
+        path: getAppRoute({
           projectId: projectId as string,
           collection: 'deployments',
         }),
@@ -54,7 +57,7 @@ export const useNavItems = () => {
         title: translate(STRING.NAV_ITEM_SESSIONS),
         icon: IconType.Sessions,
         count: status?.numSessions,
-        path: getRoute({
+        path: getAppRoute({
           projectId: projectId as string,
           collection: 'sessions',
         }),
@@ -65,7 +68,7 @@ export const useNavItems = () => {
         title: translate(STRING.NAV_ITEM_OCCURRENCES),
         icon: IconType.Occurrences,
         count: status?.numOccurrences,
-        path: getRoute({
+        path: getAppRoute({
           projectId: projectId as string,
           collection: 'occurrences',
         }),
@@ -76,7 +79,7 @@ export const useNavItems = () => {
         title: translate(STRING.NAV_ITEM_SPECIES),
         icon: IconType.Species,
         count: status?.numSpecies,
-        path: getRoute({
+        path: getAppRoute({
           projectId: projectId as string,
           collection: 'species',
         }),

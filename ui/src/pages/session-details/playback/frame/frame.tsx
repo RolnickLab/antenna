@@ -4,7 +4,7 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
@@ -160,7 +160,7 @@ const FrameDetections = ({
             content={detection?.label ?? ''}
             frame={containerRef.current}
             open={isActive ? isActive : undefined}
-            to={getRoute({
+            to={getAppRoute({
               projectId: projectId as string,
               collection: 'occurrences',
               itemId: detection.occurrenceId,

@@ -2,7 +2,7 @@ import { Gallery } from 'components/gallery/gallery'
 import { Species } from 'data-services/models/species'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 
 export const SpeciesGallery = ({
   species = [],
@@ -19,7 +19,7 @@ export const SpeciesGallery = ({
         id: s.id,
         image: s.images[0],
         title: s.name,
-        to: getRoute({
+        to: getAppRoute({
           projectId: projectId as string,
           collection: 'species',
           itemId: s.id,

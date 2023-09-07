@@ -1,6 +1,6 @@
 import { Deployment } from 'data-services/models/deployment'
 import { Link, useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const DeploymentsMapPopupContent = ({
@@ -14,7 +14,7 @@ export const DeploymentsMapPopupContent = ({
     <>
       <p>
         <Link
-          to={getRoute({
+          to={getAppRoute({
             projectId: projectId as string,
             collection: 'deployments',
             itemId: deployment.id,
@@ -33,7 +33,8 @@ export const DeploymentsMapPopupContent = ({
         </span>
         <br />
         <span>
-          {translate(STRING.FIELD_LABEL_OCCURRENCES)}: {deployment.numOccurrences}
+          {translate(STRING.FIELD_LABEL_OCCURRENCES)}:{' '}
+          {deployment.numOccurrences}
         </span>
       </p>
     </>

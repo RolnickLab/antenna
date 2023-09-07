@@ -22,7 +22,7 @@ import {
   BreadcrumbContext,
   BreadcrumbContextProvider,
 } from 'utils/breadcrumbContext'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 import { UserContextProvider } from 'utils/user/userContext'
 import styles from './app.module.scss'
 
@@ -96,7 +96,7 @@ const ProjectContainer = () => {
   useEffect(() => {
     setProjectBreadcrumb({
       title: projectDetails.project?.name ?? '',
-      path: getRoute({ projectId: projectId as string }),
+      path: getAppRoute({ projectId: projectId as string }),
     })
 
     return () => {

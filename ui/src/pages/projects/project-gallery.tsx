@@ -2,7 +2,7 @@ import { Gallery } from 'components/gallery/gallery'
 import { Project } from 'data-services/models/project'
 import { CardSize } from 'design-system/components/card/card'
 import { useMemo } from 'react'
-import { getRoute } from 'utils/getRoute'
+import { getAppRoute } from 'utils/getAppRoute'
 
 export const ProjectGallery = ({
   projects = [],
@@ -22,7 +22,7 @@ export const ProjectGallery = ({
           : undefined,
         title: p.name,
         subTitle: p.description,
-        to: getRoute({
+        to: getAppRoute({
           projectId: p.id,
         }),
       })),
