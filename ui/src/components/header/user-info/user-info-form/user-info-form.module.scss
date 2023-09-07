@@ -1,0 +1,40 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.section {
+  margin: 32px;
+  box-sizing: border-box;
+
+  &:not(:last-child) {
+    padding-bottom: 32px;
+    border-bottom: 1px solid $color-neutral-100;
+  }
+}
+
+.sectionContent {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+
+  &:not(:last-child) {
+    margin-bottom: 32px;
+  }
+}
+
+.sectionRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+}
+
+.formActions {
+  display: flex;
+  gap: 16px;
+}
+
+.formError {
+  @include paragraph-x-small();
+  padding: 16px 32px;
+  color: $color-destructive-600;
+  border-bottom: 2px solid $color-neutral-100;
+}

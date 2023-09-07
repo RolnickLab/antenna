@@ -1,19 +1,43 @@
-import { useMe } from 'data-services/hooks/auth/useMe'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
+import * as Dialog from 'design-system/components/dialog/dialog'
+import { STRING, translate } from 'utils/language'
+import { UserInfoForm } from './user-info-form/user-info-form'
 import styles from './user-info.module.scss'
 
 export const UserInfo = () => {
-  const { user } = useMe()
+  const { userInfo } = useUserInfo()
 
-  if (!user) {
+  if (!userInfo) {
     return null
   }
 
-  const name = user.name ?? user.email
+  const name = userInfo.name ?? userInfo.email
 
   return (
-    <Tooltip content={name}>
-      <div className={styles.userInfo}>{name.charAt(0)}</div>
-    </Tooltip>
+    <>
+      <Dialog.Root>
+        <Dialog.Trigger>
+          <div
+            role="button"
+            tabIndex={0}
+            className={styles.userInfo}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.currentTarget.click()
+              }
+            }}
+          >
+            {name.charAt(0)}
+          </div>
+        </Dialog.Trigger>
+        <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
+          <Dialog.Header title="Edit user info" />
+          <div className={styles.content}>
+            <UserInfoForm userInfo={userInfo} />
+          </div>
+        </Dialog.Content>
+      </Dialog.Root>
+    </>
   )
 }
