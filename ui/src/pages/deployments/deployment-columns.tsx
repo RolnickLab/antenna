@@ -6,6 +6,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
@@ -19,9 +20,10 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     renderCell: (item: Deployment) => (
       <Link
         to={getAppRoute({
-          projectId,
-          collection: 'deployments',
-          itemId: item.id,
+          to: APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId,
+            deploymentId: item.id,
+          }),
           keepSearchParams: true,
         })}
       >
@@ -39,8 +41,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     renderCell: (item: Deployment) => (
       <Link
         to={getAppRoute({
-          projectId,
-          collection: 'sessions',
+          to: APP_ROUTES.SESSIONS({ projectId }),
           filters: { deployment: item.id },
         })}
       >
@@ -67,8 +68,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     renderCell: (item: Deployment) => (
       <Link
         to={getAppRoute({
-          projectId,
-          collection: 'occurrences',
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
           filters: { deployment: item.id },
         })}
       >
@@ -86,8 +86,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     renderCell: (item: Deployment) => (
       <Link
         to={getAppRoute({
-          projectId,
-          collection: 'species',
+          to: APP_ROUTES.SPECIES({ projectId }),
           filters: { occurrences__deployment: item.id },
         })}
       >

@@ -2,7 +2,7 @@ import { Gallery } from 'components/gallery/gallery'
 import { Session } from 'data-services/models/session'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { getAppRoute } from 'utils/getAppRoute'
+import { APP_ROUTES } from 'utils/constants'
 
 export const SessionGallery = ({
   sessions = [],
@@ -19,10 +19,9 @@ export const SessionGallery = ({
         id: s.id,
         image: s.exampleCaptures?.[0],
         title: s.label,
-        to: getAppRoute({
+        to: APP_ROUTES.SESSION_DETAILS({
           projectId: projectId as string,
-          collection: 'sessions',
-          itemId: s.id,
+          sessionId: s.id,
         }),
       })),
     [sessions, projectId]

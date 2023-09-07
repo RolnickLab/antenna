@@ -13,6 +13,7 @@ import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
@@ -121,8 +122,7 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
       onOpenChange={() =>
         navigate(
           getAppRoute({
-            projectId: projectId as string,
-            collection: 'occurrences',
+            to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )

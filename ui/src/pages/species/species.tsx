@@ -12,6 +12,7 @@ import { Error } from 'pages/error/error'
 import { SpeciesDetails } from 'pages/species-details/species-details'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
@@ -99,8 +100,7 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
       onOpenChange={() =>
         navigate(
           getAppRoute({
-            projectId: projectId as string,
-            collection: 'species',
+            to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )

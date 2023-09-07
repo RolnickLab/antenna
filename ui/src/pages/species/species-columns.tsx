@@ -8,6 +8,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
@@ -39,9 +40,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     renderCell: (item: Species) => (
       <Link
         to={getAppRoute({
-          projectId,
-          collection: 'species',
-          itemId: item.id,
+          to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
           keepSearchParams: true,
         })}
       >
@@ -68,8 +67,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     renderCell: (item: Species) => (
       <Link
         to={getAppRoute({
-          projectId,
-          collection: 'occurrences',
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
           filters: { determination: item.id },
         })}
       >
