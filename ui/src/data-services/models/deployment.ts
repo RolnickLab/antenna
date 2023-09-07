@@ -9,10 +9,6 @@ export class Deployment {
     this._deployment = deployment
   }
 
-  get canCreate(): boolean {
-    return this._deployment.user_permissions.includes(UserPermission.Create)
-  }
-
   get canUpdate(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Update)
   }
