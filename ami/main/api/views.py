@@ -107,7 +107,10 @@ class DeploymentViewSet(DefaultViewSet):
     queryset = Deployment.objects.annotate(
         events_count=models.Count("events", distinct=True),
         occurrences_count=models.Count("occurrences", distinct=True),
-    )
+        taxa_count=models.Count("occurrences__determination", distinct=True),
+        first_date=models.Min("events__start__date"),
+        last_date=models.Max("events__start__date"),
+    ).select_related("project")
     filterset_fields = ["project"]
     ordering_fields = ["created_at", "updated_at", "occurrences_count", "events_count"]
 
@@ -129,12 +132,12 @@ class EventViewSet(DefaultViewSet):
     queryset = (
         Event.objects.select_related("deployment")
         .annotate(
-            captures_count=models.Count("captures", distinct=True),
-            detections_count=models.Count("captures__detections", distinct=True),
-            occurrences_count=models.Count("occurrences", distinct=True),
+            captures_count=models.Count("captures"),
+            detections_count=models.Count("captures__detections"),
+            occurrences_count=models.Count("occurrences"),
             taxa_count=models.Count("occurrences__determination", distinct=True),
         )
-        .distinct()
+        .select_related("deployment", "project")
     )  # .prefetch_related("captures").all()
     serializer_class = EventSerializer
     filterset_fields = ["deployment", "project"]
@@ -378,7 +381,7 @@ class SummaryView(APIView):
                 "deployments_count": Deployment.objects.filter(project=project).count(),
                 "events_count": Event.objects.filter(deployment__project=project).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
-                "detections_count": Detection.objects.filter(source_image__deployment__project=project).count(),
+                "detections_count": Detection.objects.filter(occurrence__project=project).count(),
                 "occurrences_count": Occurrence.objects.filter(project=project).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
                 .filter(occurrences_count__gt=0)

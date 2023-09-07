@@ -42,6 +42,8 @@ export enum STRING {
   FIELD_LABEL_STATUS,
   FIELD_LABEL_TIME,
   FIELD_LABEL_TRAINING_IMAGES,
+  FIELD_LABEL_FIRST_DATE,
+  FIELD_LABEL_LAST_DATE,
 
   /* MESSAGE */
   MESSAGE_VALUE_INVALID,
@@ -122,6 +124,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_STATUS]: 'Status',
   [STRING.FIELD_LABEL_TIME]: 'Time',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Training images',
+  [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
+  [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
 
   /* MESSAGE */
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
@@ -130,7 +134,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
-  [STRING.NAV_ITEM_JOBS]: 'Batch ID',
+  [STRING.NAV_ITEM_JOBS]: 'Status',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
   [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
   [STRING.NAV_ITEM_PROJECTS]: 'Projects',

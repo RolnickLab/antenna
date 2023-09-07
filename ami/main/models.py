@@ -1,6 +1,6 @@
 import collections
 import datetime
-import itertools
+import functools
 import logging
 import textwrap
 import typing
@@ -15,6 +15,7 @@ from django.db.models import Q
 
 import ami.tasks
 import ami.utils
+from ami.main import charts
 
 #: That's how constants should be defined.
 _POST_TITLE_MAX_LENGTH: Final = 80
@@ -41,21 +42,6 @@ _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 logger = logging.getLogger(__name__)
-
-
-def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
-    """Shift hours so that the x-axis is centered around 12PM."""
-
-    split_index = 0
-    for i, hour in enumerate(hours):
-        if hour > 12:
-            split_index = i
-            break
-
-    hours = hours[split_index:] + hours[:split_index]
-    values = values[split_index:] + values[:split_index]
-
-    return hours, values
 
 
 class BaseModel(models.Model):
@@ -100,137 +86,17 @@ class Project(BaseModel):
     def summary_data(self):
         """
         Data prepared for rendering charts with plotly.js on the overview page.
-
-        const EXAMPLE_DATA = {
-            y: [18, 45, 98, 120, 109, 113, 43],
-            x: ['8PM', '9PM', '10PM', '11PM', '12PM', '13PM', '14PM'],
-            tickvals: ['8PM', '', '', '', '', '', '14PM'],
-        }
-
-        const EXAMPLE_PLOTS = [
-        { title: '19 Jun', data: EXAMPLE_DATA, type: 'bar' },
-        { title: '20 Jun', data: EXAMPLE_DATA, type: 'scatter' },
-        {
-            title: '21 Jun',
-            data: EXAMPLE_DATA,
-            type: 'scatter',
-            showRangeSlider: true,
-        }
         """
 
         plots = []
 
-        # # Capture counts per day
-        # SourceImage = apps.get_model("main", "SourceImage")
-        # captures_per_date = (
-        #     SourceImage.objects.filter(deployment__project=self)
-        #     .values_list("timestamp__date")
-        #     .annotate(num_captures=models.Count("id"))
-        #     .order_by("timestamp__date").distinct()
-        # )
-
-        # if captures_per_date.count():
-        #     days, counts = list(zip(*captures_per_date))
-        #     days = [day for day in days if day]
-        #     # tickvals_per_month = [f"{d:%b}" for d in days]
-        #     tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-        #     labels = [f"{d:%b %d}" for d in days]
-        # else:
-        #     labels, counts = [], []
-        #     tickvals = []
-
-        # Captures per week
-        # SourceImage = apps.get_model("main", "SourceImage")
-        # captures_per_week = (
-        #     SourceImage.objects.filter(deployment__project=self)
-        #     .values_list("timestamp__week")
-        #     .annotate(num_captures=models.Count("id"))
-        #     .order_by("timestamp__week")
-        #     .distinct()
-        # )
-
-        # Events per week
-        Event = apps.get_model("main", "Event")
-        captures_per_week = (
-            Event.objects.filter(deployment__project=self)
-            .values_list("start__week")
-            .annotate(num_captures=models.Count("id"))
-            .order_by("start__week")
-        )
-
-        if captures_per_week.count():
-            weeks, counts = list(zip(*captures_per_week))
-            # tickvals_per_month = [f"{d:%b}" for d in days]
-            tickvals = [f"{weeks[0]}", f"{weeks[-1]}"]
-            labels = [f"{d}" for d in weeks]
+        plots.append(charts.captures_per_hour(project_pk=self.pk))
+        if self.occurrences.exists():
+            plots.append(charts.detections_per_hour(project_pk=self.pk))
+            plots.append(charts.occurrences_accumulated(project_pk=self.pk))
         else:
-            labels, counts = [], []
-            tickvals = []
-
-        plots.append(
-            {
-                "title": "Sessions per week",
-                "data": {"x": labels, "y": counts, "tickvals": tickvals},
-                "type": "bar",
-            },
-        )
-
-        # Detections per hour
-        Detection = apps.get_model("main", "Detection")
-        detections_per_hour = (
-            Detection.objects.filter(source_image__deployment__project=self)
-            .values("source_image__timestamp__hour")
-            .annotate(num_detections=models.Count("id"))
-            .order_by("source_image__timestamp__hour")
-        )
-
-        # hours, counts = list(zip(*detections_per_hour))
-        if detections_per_hour.count():
-            hours, counts = list(
-                zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-            )
-            hours, counts = shift_to_nighttime(list(hours), list(counts))
-            # @TODO show a tick for every hour even if there are no detections
-            hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
-            ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
-        else:
-            hours, counts = [], []
-            ticktext = []
-
-        plots.append(
-            {
-                "title": "Detections per hour",
-                "data": {"x": hours, "y": counts, "ticktext": ticktext},
-                "type": "bar",
-            },
-        )
-
-        # Line chart of the accumulated number of occurrnces over time throughout the season
-        occurrences_per_day = (
-            Occurrence.objects.filter(project=self)
-            .values_list("event__start")
-            .annotate(num_occurrences=models.Count("id"))
-            .order_by("event__start")
-        )
-
-        if occurrences_per_day.count():
-            days, counts = list(zip(*occurrences_per_day))
-            # Accumulate the counts
-            counts = list(itertools.accumulate(counts))
-            # tickvals = [f"{d:%b %d}" for d in days]
-            tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-            days = [f"{d:%b %d}" for d in days]
-        else:
-            days, counts = [], []
-            tickvals = []
-
-        plots.append(
-            {
-                "title": "Accumulation of occurrences",
-                "data": {"x": days, "y": counts, "tickvals": tickvals},
-                "type": "line",
-            },
-        )
+            plots.append(charts.events_per_month(project_pk=self.pk))
+            # plots.append(charts.captures_per_month(project_pk=self.pk))
 
         return plots
 
@@ -445,6 +311,7 @@ class Deployment(BaseModel):
     def last_capture(self) -> typing.Optional["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("-timestamp").first()
 
+    @functools.cached_property
     def first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
         # Retrieve the timestamps of the first and last capture in a single query
         first, last = (
@@ -452,7 +319,17 @@ class Deployment(BaseModel):
             .aggregate(first=models.Min("timestamp"), last=models.Max("timestamp"))
             .values()
         )
-        return first or last
+        return (first, last)
+
+    def first_date(self) -> datetime.date | None:
+        date, _ = self.first_and_last_timestamps
+        if date:
+            return date.date()
+
+    def last_date(self) -> datetime.date | None:
+        _, date = self.first_and_last_timestamps
+        if date:
+            return date.date()
 
     def data_source_uri(self) -> str | None:
         if self.data_source:
@@ -663,61 +540,8 @@ class Event(BaseModel):
         """
         plots = []
 
-        # Detections per hour
-        Detection = apps.get_model("main", "Detection")
-        detections_per_hour = (
-            Detection.objects.filter(source_image__event=self)
-            .values("source_image__timestamp__hour")
-            .annotate(num_detections=models.Count("id"))
-            .order_by("source_image__timestamp__hour")
-        )
-
-        # hours, counts = list(zip(*detections_per_hour))
-        if detections_per_hour:
-            hours, counts = list(
-                zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-            )
-            hours, counts = shift_to_nighttime(list(hours), list(counts))
-            # @TODO show a tick for every hour even if there are no detections
-            hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
-            ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
-        else:
-            hours, counts = [], []
-            ticktext = []
-
-        plots.append(
-            {
-                "title": "Detections per hour",
-                "data": {"x": hours, "y": counts, "ticktext": ticktext},
-                "type": "bar",
-            },
-        )
-
-        # Horiziontal bar chart of top taxa
-        Taxon = apps.get_model("main", "Taxon")
-        top_taxa = (
-            Taxon.objects.filter(occurrences__event=self)
-            .values("name")
-            # .annotate(num_detections=models.Count("occurrences__detections"))
-            .annotate(num_detections=models.Count("occurrences"))
-            .order_by("-num_detections")
-        )
-
-        if top_taxa:
-            taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
-            taxa = [t or "Unknown" for t in taxa]
-            counts = [c or 0 for c in counts]
-        else:
-            taxa, counts = [], []
-
-        plots.append(
-            {
-                "title": "Top species",
-                "data": {"x": counts, "y": taxa},
-                "type": "bar",
-                "orientation": "h",
-            },
-        )
+        plots.append(charts.event_detections_per_hour(event_pk=self.pk))
+        plots.append(charts.event_top_taxa(event_pk=self.pk))
 
         return plots
 

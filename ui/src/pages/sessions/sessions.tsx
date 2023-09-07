@@ -22,6 +22,7 @@ export const Sessions = () => {
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
+    deployment: true,
     snapshots: true,
     session: true,
     images: true,
