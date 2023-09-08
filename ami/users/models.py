@@ -32,4 +32,5 @@ class User(AbstractUser):
             str: URL for user detail.
 
         """
-        return reverse("users:detail", kwargs={"pk": self.id})
+        # @TODO return frontend URL, not API URL
+        return reverse("api:user-detail", kwargs={"id": self.pk})

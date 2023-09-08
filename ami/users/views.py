@@ -8,6 +8,8 @@ from django.views.generic import DetailView, RedirectView, UpdateView
 User = get_user_model()
 
 
+# This is currently obsolete because we are using Djoser
+# However it may be easier to use this custom ViewSet in the future.
 class UserDetailView(LoginRequiredMixin, DetailView):
     model = User
     slug_field = "id"
