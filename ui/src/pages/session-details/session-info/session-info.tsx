@@ -1,7 +1,8 @@
 import { Session } from 'data-services/models/session'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './session-info.module.scss'
 
@@ -12,10 +13,9 @@ export const SessionInfo = ({ session }: { session: Session }) => {
     {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: session.deploymentLabel,
-      to: getRoute({
+      to: APP_ROUTES.DEPLOYMENT_DETAILS({
         projectId: projectId as string,
-        collection: 'deployments',
-        itemId: session.deploymentId,
+        deploymentId: session.deploymentId,
       }),
     },
     {
@@ -41,18 +41,16 @@ export const SessionInfo = ({ session }: { session: Session }) => {
     {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value: session.numOccurrences,
-      to: getRoute({
-        projectId: projectId as string,
-        collection: 'occurrences',
+      to: getAppRoute({
+        to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
         filters: { event: session.id },
       }),
     },
     {
       label: translate(STRING.FIELD_LABEL_SPECIES),
       value: session.numSpecies,
-      to: getRoute({
-        projectId: projectId as string,
-        collection: 'species',
+      to: getAppRoute({
+        to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
         filters: { occurrences__event: session.id },
       }),
     },

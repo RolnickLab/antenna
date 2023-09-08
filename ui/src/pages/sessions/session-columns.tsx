@@ -8,7 +8,8 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Session>[] = (
@@ -35,9 +36,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Session) => (
-      <Link
-        to={getRoute({ projectId, collection: 'sessions', itemId: item.id })}
-      >
+      <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
         <BasicTableCell value={item.label} theme={CellTheme.Primary} />
       </Link>
     ),
@@ -47,10 +46,9 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     renderCell: (item: Session) => (
       <Link
-        to={getRoute({
+        to={APP_ROUTES.DEPLOYMENT_DETAILS({
           projectId,
-          collection: 'deployments',
-          itemId: item.deploymentId,
+          deploymentId: item.deploymentId,
         })}
       >
         <BasicTableCell
@@ -111,9 +109,8 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     },
     renderCell: (item: Session) => (
       <Link
-        to={getRoute({
-          projectId,
-          collection: 'occurrences',
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
           filters: { event: item.id },
         })}
       >
@@ -129,9 +126,8 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     },
     renderCell: (item: Session) => (
       <Link
-        to={getRoute({
-          projectId,
-          collection: 'species',
+        to={getAppRoute({
+          to: APP_ROUTES.SPECIES({ projectId }),
           filters: { occurrences__event: item.id },
         })}
       >

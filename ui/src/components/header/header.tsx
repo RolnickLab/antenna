@@ -3,7 +3,7 @@ import { useLogout } from 'data-services/hooks/auth/useLogout'
 import { usePages } from 'data-services/hooks/pages/usePages'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Link, useNavigate } from 'react-router-dom'
-import { LINKS } from 'utils/constants'
+import { APP_ROUTES } from 'utils/constants'
 import { useUser } from 'utils/user/userContext'
 import ami from './ami.png'
 import styles from './header.module.scss'
@@ -33,7 +33,7 @@ export const Header = () => {
         <Button
           label="Sign up"
           theme={ButtonTheme.Plain}
-          onClick={() => navigate(LINKS.SIGN_UP)}
+          onClick={() => navigate(APP_ROUTES.SIGN_UP)}
         />
         {user.loggedIn ? (
           <>
@@ -49,7 +49,7 @@ export const Header = () => {
           <Button
             label="Login"
             theme={ButtonTheme.Plain}
-            onClick={() => navigate(LINKS.LOGIN)}
+            onClick={() => navigate(APP_ROUTES.LOGIN)}
           />
         )}
       </div>
