@@ -2,11 +2,11 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useLogin } from 'data-services/hooks/auth/useLogin'
-import { parseServerError } from 'data-services/utils'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LINKS } from 'utils/constants'
+import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from './auth.module.scss'
 
 interface LoginFormValues {
