@@ -15,7 +15,7 @@ BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 APPS_DIR = BASE_DIR / "ami"
 env = environ.Env()
 
-READ_DOT_ENV_FILE = env.bool("DJANGO_READ_DOT_ENV_FILE", default=False)
+READ_DOT_ENV_FILE = env.bool("DJANGO_READ_DOT_ENV_FILE", default=False)  # type: ignore[no-untyped-call]
 if READ_DOT_ENV_FILE:
     # OS environment variables take precedence over variables from .env
     env.read_env(str(BASE_DIR / ".env"))
@@ -23,7 +23,7 @@ if READ_DOT_ENV_FILE:
 # GENERAL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
-DEBUG = env.bool("DJANGO_DEBUG", False)
+DEBUG = env.bool("DJANGO_DEBUG", False)  # type: ignore[no-untyped-call]
 # Local time zone. Choices are
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
 # though not all of them may be available with every OS.
@@ -221,14 +221,14 @@ X_FRAME_OPTIONS = "DENY"
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
 EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",
-    default="django.core.mail.backends.smtp.EmailBackend",
+    default="django.core.mail.backends.smtp.EmailBackend",  # type: ignore[no-untyped-call]
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
 EMAIL_TIMEOUT = 5
 
 # Sendgrid
 ANYMAIL = {
-    "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default=None),
+    "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default=None),  # type: ignore[no-untyped-call]
 }
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
@@ -322,7 +322,11 @@ REST_FRAMEWORK = {
 CORS_URLS_REGEX = r"^/api/.*$"
 
 CSRF_TRUSTED_ORIGINS = env.list(
-    "DJANGO_CSRF_TRUSTED_ORIGINS", default=["https://api.dev.insectai.org", "http://api.dev.insectai.org"]
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    default=[
+        "https://api.dev.insectai.org",
+        "http://api.dev.insectai.org",
+    ],  # type: ignore[no-untyped-call]
 )
 
 # User authentication and registration via REST API endpoints

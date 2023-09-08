@@ -890,7 +890,7 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html#Example-JSON-format
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 
@@ -932,7 +932,7 @@ class LabelStudioDetectionSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 
@@ -997,7 +997,7 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 
