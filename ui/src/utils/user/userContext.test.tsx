@@ -27,7 +27,7 @@ class LocalStorageMock {
 
 global.localStorage = new LocalStorageMock() as any
 
-// Mock app
+// Mock app context
 const queryClient = new QueryClient()
 
 const wrapper = ({ children }: { children: ReactNode }) => (
