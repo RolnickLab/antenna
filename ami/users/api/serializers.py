@@ -12,10 +12,15 @@ class UserSerializer(DefaultSerializer):
 
     class Meta:
         model = User
-        fields = ["name", "details", "identifications"]
+        fields = [
+            "id",
+            "name",
+            "details",
+            "identifications",
+        ]
 
         extra_kwargs = {
-            "details": {"view_name": "api:user-detail", "lookup_field": "pk"},
+            "details": {"view_name": "api:user-detail", "lookup_field": "pk", "lookup_url_kwarg": "id"},
         }
 
     def get_identifications(self, obj):
