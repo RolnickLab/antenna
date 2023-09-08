@@ -16,6 +16,7 @@ class UserSerializer(DefaultSerializer):
             "id",
             "name",
             "details",
+            "image",
             "identifications",
         ]
 
