@@ -2,7 +2,6 @@ import datetime
 import typing
 import urllib.parse
 
-from django.contrib.auth.models import Group, User
 from django.db.models import Count
 from rest_framework import serializers
 from rest_framework.reverse import reverse
@@ -48,19 +47,9 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
 
-        return add_object_level_permissions(self.context.get("request").user, data)
-
-
-class UserSerializer(DefaultSerializer):
-    class Meta:
-        model = User
-        fields = ["details", "username", "email", "groups"]
-
-
-class GroupSerializer(DefaultSerializer):
-    class Meta:
-        model = Group
-        fields = ["id", "details", "name"]
+        request = self.context.get("request")
+        user = request.user if request else None
+        return add_object_level_permissions(user, data)
 
 
 class SourceImageNestedSerializer(DefaultSerializer):
