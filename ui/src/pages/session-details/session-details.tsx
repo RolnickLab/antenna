@@ -6,7 +6,7 @@ import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
 import { Playback } from './playback/playback'
 import { useActiveCaptureId } from './playback/useActiveCapture'
 import { useActiveOccurrences } from './playback/useActiveOccurrences'
@@ -26,10 +26,9 @@ export const SessionDetails = () => {
   useEffect(() => {
     setDetailBreadcrumb({
       title: session?.label ?? '',
-      path: getRoute({
+      path: APP_ROUTES.SESSION_DETAILS({
         projectId: projectId as string,
-        collection: 'sessions',
-        itemId: id,
+        sessionId: id as string,
       }),
     })
 

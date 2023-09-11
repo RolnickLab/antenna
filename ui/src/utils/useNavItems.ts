@@ -2,7 +2,7 @@ import { useStatus } from 'data-services/hooks/useStatus'
 import { IconType } from 'design-system/components/icon/icon'
 import { useMemo } from 'react'
 import { matchPath, useLocation, useParams } from 'react-router-dom'
-import { getRoute } from './getRoute'
+import { APP_ROUTES } from './constants'
 import { STRING, translate } from './language'
 
 interface NavigationItem {
@@ -25,62 +25,62 @@ export const useNavItems = () => {
         id: 'overview',
         title: translate(STRING.NAV_ITEM_OVERVIEW),
         icon: IconType.Overview,
-        path: getRoute({
-          projectId: projectId as string,
-          collection: undefined,
-        }),
-        matchPath: '/projects/:projectId',
+        path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.PROJECT_DETAILS({ projectId: ':projectId' }),
       },
       {
         id: 'jobs',
         title: translate(STRING.NAV_ITEM_JOBS),
         icon: IconType.BatchId,
-        path: getRoute({ projectId: projectId as string, collection: 'jobs' }),
-        matchPath: '/projects/:projectId/jobs/*',
+        path: APP_ROUTES.JOBS({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.JOB_DETAILS({
+          projectId: ':projectId',
+          jobId: '*',
+        }),
       },
       {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
         count: status?.numDeployments,
-        path: getRoute({
-          projectId: projectId as string,
-          collection: 'deployments',
+        path: APP_ROUTES.DEPLOYMENTS({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.DEPLOYMENT_DETAILS({
+          projectId: ':projectId',
+          deploymentId: '*',
         }),
-        matchPath: '/projects/:projectId/deployments/*',
       },
       {
         id: 'sessions',
         title: translate(STRING.NAV_ITEM_SESSIONS),
         icon: IconType.Sessions,
         count: status?.numSessions,
-        path: getRoute({
-          projectId: projectId as string,
-          collection: 'sessions',
+        path: APP_ROUTES.SESSIONS({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.SESSION_DETAILS({
+          projectId: ':projectId',
+          sessionId: '*',
         }),
-        matchPath: '/projects/:projectId/sessions/*',
       },
       {
         id: 'occurrences',
         title: translate(STRING.NAV_ITEM_OCCURRENCES),
         icon: IconType.Occurrences,
         count: status?.numOccurrences,
-        path: getRoute({
-          projectId: projectId as string,
-          collection: 'occurrences',
+        path: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.OCCURRENCE_DETAILS({
+          projectId: ':projectId',
+          occurrenceId: '*',
         }),
-        matchPath: '/projects/:projectId/occurrences/*',
       },
       {
         id: 'species',
         title: translate(STRING.NAV_ITEM_SPECIES),
         icon: IconType.Species,
         count: status?.numSpecies,
-        path: getRoute({
-          projectId: projectId as string,
-          collection: 'species',
+        path: APP_ROUTES.SPECIES({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.SPECIES_DETAILS({
+          projectId: ':projectId',
+          speciesId: '*',
         }),
-        matchPath: '/projects/:projectId/species/*',
       },
     ],
     [status, projectId]

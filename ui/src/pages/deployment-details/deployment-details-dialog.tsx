@@ -4,7 +4,8 @@ import { DeploymentDetails } from 'data-services/models/deployment-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { DeploymentDetailsForm } from './deployment-details-form/deployment-details-form'
 import { DeploymentDetailsInfo } from './deployment-details-info'
@@ -19,9 +20,8 @@ export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
       open={!!id}
       onOpenChange={() =>
         navigate(
-          getRoute({
-            projectId: projectId as string,
-            collection: 'deployments',
+          getAppRoute({
+            to: APP_ROUTES.DEPLOYMENTS({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )
