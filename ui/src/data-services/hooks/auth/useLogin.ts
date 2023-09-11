@@ -5,7 +5,7 @@ import { useUser } from 'utils/user/userContext'
 
 export const useLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
   const { setToken } = useUser()
-  const { mutate, isLoading, error } = useMutation({
+  const { mutate, isLoading, isSuccess, error } = useMutation({
     mutationFn: (data: { email: string; password: string }) =>
       axios
         .post<{ auth_token: string }>(`${API_URL}/${API_ROUTES.LOGIN}/`, data)
@@ -16,5 +16,5 @@ export const useLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
     },
   })
 
-  return { login: mutate, isLoading, error }
+  return { login: mutate, isLoading, isSuccess, error }
 }
