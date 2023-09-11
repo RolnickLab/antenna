@@ -1,5 +1,5 @@
 export const parseServerError = (error: any) => {
-  let message: string = ''
+  let message = ''
   const fieldErrors: { key: string; message: string }[] = []
 
   if (error.response?.data && typeof error.response.data === 'object') {

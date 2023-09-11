@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-function */
-
 import { createContext, ReactNode, useState } from 'react'
 
 export interface Breadcrumb {

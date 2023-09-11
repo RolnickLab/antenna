@@ -1,3 +1,5 @@
+/* eslint-disable no-console */
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactNode } from 'react'
 import { UserContextProvider } from 'utils/user/userContext'

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-function */
-
 import classNames from 'classnames'
 import { ReactNode, RefObject } from 'react'
 import styles from './capture-list.module.scss'
