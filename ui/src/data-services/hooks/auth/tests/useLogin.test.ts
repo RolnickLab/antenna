@@ -1,7 +1,8 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { API_ROUTES, API_URL } from 'data-services/constants'
 import nock from 'nock'
-import { AppMock } from 'utils/test'
+import { AppMock, queryClient } from 'utils/test'
+import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
 import { useUser } from 'utils/user/userContext'
 import { useLogin } from '../useLogin'
 
@@ -17,6 +18,7 @@ describe('useLogin', () => {
     nock(API_URL)
       .post(`/${API_ROUTES.LOGIN}/`)
       .reply(200, { auth_token: 'example-token-from-api' })
+    const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
     // Run
     const { result } = renderHook(() => useTestLogin(), { wrapper: AppMock })
@@ -24,7 +26,9 @@ describe('useLogin', () => {
     await waitFor(() => expect(result.current.isSuccess).toEqual(true))
 
     // Check
-    expect(result.current.user.loggedIn).toEqual(true)
-    expect(result.current.user.token).toEqual('example-token-from-api')
+    expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toEqual(
+      'example-token-from-api'
+    )
+    expect(removeQueriesSpy).toBeCalledTimes(1)
   })
 })
