@@ -3,14 +3,7 @@ import { API_ROUTES, API_URL } from 'data-services/constants'
 import nock from 'nock'
 import { AppMock, queryClient } from 'utils/test'
 import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
-import { useUser } from 'utils/user/userContext'
 import { useLogin } from '../useLogin'
-
-const useTestLogin = () => {
-  const { user } = useUser()
-  const { login, isSuccess } = useLogin()
-  return { user, login, isSuccess }
-}
 
 describe('useLogin', () => {
   test('will login user on success', async () => {
@@ -21,7 +14,7 @@ describe('useLogin', () => {
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
     // Run
-    const { result } = renderHook(() => useTestLogin(), { wrapper: AppMock })
+    const { result } = renderHook(() => useLogin(), { wrapper: AppMock })
     result.current.login({ email: 'user@insectai.org', password: 'password ' })
     await waitFor(() => expect(result.current.isSuccess).toEqual(true))
 

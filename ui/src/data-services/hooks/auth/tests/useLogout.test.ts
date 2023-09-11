@@ -3,14 +3,7 @@ import { API_ROUTES, API_URL } from 'data-services/constants'
 import nock from 'nock'
 import { AppMock, queryClient } from 'utils/test'
 import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
-import { useUser } from 'utils/user/userContext'
 import { useLogout } from '../useLogout'
-
-const useTestLogout = () => {
-  const { user } = useUser()
-  const { logout, isSuccess, error } = useLogout()
-  return { user, logout, isSuccess, error }
-}
 
 describe('useLogout', () => {
   test('will logout user on success', async () => {
@@ -22,7 +15,7 @@ describe('useLogout', () => {
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
     // Run
-    const { result } = renderHook(() => useTestLogout(), { wrapper: AppMock })
+    const { result } = renderHook(() => useLogout(), { wrapper: AppMock })
     result.current.logout()
     await waitFor(() => expect(result.current.isSuccess).toEqual(true))
 
@@ -38,7 +31,7 @@ describe('useLogout', () => {
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
     // Run
-    const { result } = renderHook(() => useTestLogout(), { wrapper: AppMock })
+    const { result } = renderHook(() => useLogout(), { wrapper: AppMock })
     result.current.logout()
     await waitFor(() => expect(result.current.error).not.toBeNull())
 
@@ -54,7 +47,7 @@ describe('useLogout', () => {
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
     // Run
-    const { result } = renderHook(() => useTestLogout(), { wrapper: AppMock })
+    const { result } = renderHook(() => useLogout(), { wrapper: AppMock })
     result.current.logout()
     await waitFor(() => expect(result.current.error).not.toBeNull())
 
