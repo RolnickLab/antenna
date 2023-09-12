@@ -1,17 +1,16 @@
 import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { STRING, translate } from 'utils/language'
+import { UserInfo } from 'utils/user/types'
+import styles from './user-info-dialog.module.scss'
 import { UserInfoForm } from './user-info-form/user-info-form'
-import styles from './user-info.module.scss'
 
-export const UserInfo = () => {
+export const UserInfoDialog = () => {
   const { userInfo } = useUserInfo()
 
   if (!userInfo) {
     return null
   }
-
-  const name = userInfo.name ?? userInfo.email
 
   return (
     <>
@@ -28,7 +27,7 @@ export const UserInfo = () => {
               }
             }}
           >
-            {name.charAt(0)}
+            <UserInfoButtonContent userInfo={userInfo} />
           </div>
         </Dialog.Trigger>
         <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
@@ -40,4 +39,22 @@ export const UserInfo = () => {
       </Dialog.Root>
     </>
   )
+}
+
+const UserInfoButtonContent = ({ userInfo }: { userInfo: UserInfo }) => {
+  const name = (() => {
+    if (userInfo.name?.length) {
+      return userInfo.name
+    }
+    if (userInfo.email?.length) {
+      return userInfo.email
+    }
+    return '?'
+  })()
+
+  if (userInfo.image) {
+    return <img alt={`Profile image for ${name}`} src={userInfo.image} />
+  }
+
+  return <span>{name.charAt(0)}</span>
 }

@@ -2,35 +2,20 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
-import { parseServerError } from 'data-services/utils'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { InputValue } from 'design-system/components/input/input'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
+import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { UserInfo } from 'utils/user/types'
 import styles from './user-info-form.module.scss'
 
 interface UserInfoFormValues {
-  email: string
-  password?: string
   name?: string
 }
 
 const config: FormConfig = {
-  email: {
-    label: 'Email',
-    rules: {
-      required: true,
-    },
-  },
-  password: {
-    label: 'Password',
-    description:
-      'The password must contain at least 8 characters and cannot be entirely numeric.',
-    rules: {
-      minLength: 8,
-    },
-  },
   name: {
     label: 'Name',
   },
@@ -40,8 +25,6 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
   const [serverError, setServerError] = useState<string | undefined>()
   const { control, handleSubmit, setError } = useForm<UserInfoFormValues>({
     defaultValues: {
-      email: userInfo.email,
-      password: '',
       name: userInfo.name,
     },
   })
@@ -69,8 +52,6 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
         className={styles.form}
         onSubmit={handleSubmit((values) =>
           updateUserInfo({
-            email: values.email,
-            password: values.password,
             name: values.name,
           })
         )}
@@ -84,18 +65,8 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
         <div className={styles.section}>
           <div className={styles.sectionContent}>
             <div className={styles.sectionRow}>
-              <FormField
-                name="email"
-                type="text"
-                config={config}
-                control={control}
-              />
-              <FormField
-                name="password"
-                type="password"
-                config={config}
-                control={control}
-              />
+              <InputValue label="Email" value="To be added" />
+              <InputValue label="Password" value="Reset button to be added" />
             </div>
             <div className={styles.sectionRow}>
               <FormField

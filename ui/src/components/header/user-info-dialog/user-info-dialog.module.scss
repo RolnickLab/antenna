@@ -13,6 +13,7 @@
   font-weight: 600;
   color: $color-primary-1-600;
   text-transform: uppercase;
+  overflow: hidden;
 
   &:hover {
     cursor: pointer;
@@ -25,6 +26,12 @@
 
   &:focus-visible {
     box-shadow: 0 0 0 2px $color-generic-black;
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 }
 
