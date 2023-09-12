@@ -2,13 +2,13 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { parseServerError } from 'data-services/utils'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper as _FormStepper } from 'design-system/components/form-stepper/form-stepper'
 import { useCallback, useContext, useMemo } from 'react'
 import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
+import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from '../styles.module.scss'
 import { SectionGeneral } from './section-general/section-general'
 import { SectionLocation } from './section-location/section-location'

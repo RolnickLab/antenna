@@ -857,7 +857,9 @@ class SourceImage(BaseModel):
         ]
 
 
-def set_dimensions_for_collection(event: Event, replace_existing: bool = False):
+def set_dimensions_for_collection(
+    event: Event, replace_existing: bool = False, width: int | None = None, height: int | None = None
+):
     """
     Set the width & height of all of the images in the event based on one image.
 
@@ -870,21 +872,22 @@ def set_dimensions_for_collection(event: Event, replace_existing: bool = False):
     @TODO consider adding "assumed image dimensions" to the Deployment instance itself.
     """
 
-    # Try retrieving dimensions from deployment
-    height, width = getattr(event.deployment, "assumed_image_dimensions", (None, None))
+    if not width or not height:
+        # Try retrieving dimensions from deployment
+        width, height = getattr(event.deployment, "assumed_image_dimensions", (None, None))
 
-    if not height or not width:
+    if not width or not height:
         # Try retrieving dimensions from the first image that has them already
         image = event.captures.exclude(width__isnull=True, height__isnull=True).first()
         if image:
-            height, width = image.height, image.width
+            width, height = image.width, image.height
 
-    if not height or not width:
+    if not width or not height:
         image = event.captures.first()
         if image:
-            height, width = image.get_dimensions()
+            width, height = image.get_dimensions()
 
-    if height and width:
+    if width and height:
         logger.info(
             f"Setting dimensions for {event.captures.count()} images in event {event.pk} to " f"{width}x{height}"
         )

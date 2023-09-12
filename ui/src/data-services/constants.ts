@@ -1,4 +1,5 @@
-export const API_URL = '/api/v2'
+export const API_URL =
+  process.env.NODE_ENV === 'test' ? 'http://localhost:3000/api/v2' : '/api/v2'
 
 export const API_ROUTES = {
   CAPTURES: 'captures',
@@ -6,14 +7,14 @@ export const API_ROUTES = {
   JOBS: 'jobs',
   LOGIN: 'auth/token/login',
   LOGOUT: 'auth/token/logout',
-  ME: 'auth/users/me',
+  ME: 'users/me',
   OCCURRENCES: 'occurrences',
   PAGES: 'pages',
   PROJECTS: 'projects',
   SESSIONS: 'events',
   SPECIES: 'taxa',
   SUMMARY: 'status/summary',
-  USERS: 'auth/users',
+  USERS: 'users',
 }
 
 export const STATUS_CODES = {

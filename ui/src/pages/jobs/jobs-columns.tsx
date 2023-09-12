@@ -4,7 +4,8 @@ import { BasicTableCell } from 'design-system/components/table/basic-table-cell/
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Job>[] = (
@@ -15,10 +16,8 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     name: 'Job',
     renderCell: (item: Job) => (
       <Link
-        to={getRoute({
-          projectId,
-          collection: 'jobs',
-          itemId: item.id,
+        to={getAppRoute({
+          to: APP_ROUTES.JOB_DETAILS({ projectId, jobId: item.id }),
           keepSearchParams: true,
         })}
       >

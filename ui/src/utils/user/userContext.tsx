@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-function */
-
 import { useQueryClient } from '@tanstack/react-query'
 import { ReactNode, createContext, useContext, useState } from 'react'
 import { AUTH_TOKEN_STORAGE_KEY } from './constants'
