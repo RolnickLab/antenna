@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linter:
+  pylinter:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code Repository
@@ -51,3 +51,37 @@ jobs:
 
       - name: Tear down the Stack
         run: docker-compose -f local.yml down
+
+  jslinter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install Dependencies
+        run: yarn install
+
+      - name: Run ESLint
+        run: yarn lint
+
+  jstest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install Dependencies
+        run: yarn install
+
+      - name: Run tests
+        run: yarn test --watchAll=false
