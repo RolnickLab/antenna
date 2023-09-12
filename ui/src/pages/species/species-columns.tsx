@@ -8,7 +8,8 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Species>[] = (
@@ -38,10 +39,8 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: Species) => (
       <Link
-        to={getRoute({
-          projectId,
-          collection: 'species',
-          itemId: item.id,
+        to={getAppRoute({
+          to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
           keepSearchParams: true,
         })}
       >
@@ -67,9 +66,8 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     },
     renderCell: (item: Species) => (
       <Link
-        to={getRoute({
-          projectId,
-          collection: 'occurrences',
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
           filters: { determination: item.id },
         })}
       >

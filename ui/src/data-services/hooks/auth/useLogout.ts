@@ -6,7 +6,7 @@ import { useUser } from 'utils/user/userContext'
 
 export const useLogout = () => {
   const { clearToken, user } = useUser()
-  const { mutate, isLoading, error } = useMutation({
+  const { mutate, isLoading, isSuccess, error } = useMutation({
     mutationFn: () =>
       axios.post(`${API_URL}/${API_ROUTES.LOGOUT}/`, undefined, {
         headers: getAuthHeader(user),
@@ -21,5 +21,5 @@ export const useLogout = () => {
     },
   })
 
-  return { logout: mutate, isLoading, error }
+  return { logout: mutate, isLoading, isSuccess, error }
 }

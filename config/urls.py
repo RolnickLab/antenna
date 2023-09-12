@@ -12,8 +12,6 @@ urlpatterns = [
     path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
-    # User management
-    path("users/", include("ami.users.urls", namespace="users")),
     # Your stuff: custom urls includes go here
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 if settings.DEBUG:
@@ -24,9 +22,6 @@ if settings.DEBUG:
 urlpatterns += [
     # API base url
     path("api/v2/", include("config.api_router", namespace="api")),
-    # Authentication & account management
-    path("api/v2/auth/", include("djoser.urls")),
-    path("api/v2/auth/", include("djoser.urls.authtoken")),
     # OpenAPI Docs
     path("api/v2/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path(

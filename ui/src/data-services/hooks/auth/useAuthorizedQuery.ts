@@ -5,20 +5,20 @@ import { useUser } from 'utils/user/userContext'
 
 export const useAuthorizedQuery = <T>({
   onError,
-  queryKey,
+  queryKey = [],
   refetchInterval,
   retry,
   url,
 }: {
   onError?: (error: unknown) => void
-  queryKey: QueryKey
+  queryKey?: QueryKey
   refetchInterval?: number
   retry?: number
   url: string
 }) => {
   const { user } = useUser()
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, isSuccess, error } = useQuery({
     onError,
     queryKey,
     queryFn: () =>
@@ -31,5 +31,5 @@ export const useAuthorizedQuery = <T>({
     retry,
   })
 
-  return { data, isLoading, isFetching, error }
+  return { data, isLoading, isFetching, isSuccess, error }
 }

@@ -1,4 +1,12 @@
-def add_object_level_permissions(user, response_data) -> dict:
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from django.contrib.auth.models import User
+
+
+def add_object_level_permissions(user: User | None, response_data: dict) -> dict:
     """
     Add placeholder permissions to detail views and nested objects.
 
@@ -16,7 +24,7 @@ def add_object_level_permissions(user, response_data) -> dict:
     return response_data
 
 
-def add_collection_level_permissions(user, response_data) -> dict:
+def add_collection_level_permissions(user: User | None, response_data: dict) -> dict:
     """
     Add placeholder permissions to list view responses.
 

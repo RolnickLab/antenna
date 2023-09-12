@@ -1,0 +1,65 @@
+name: Frontend Tests
+
+# Enable Buildkit and let compose use it to speed up image building
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+on:
+  pull_request:
+    branches: ["master", "main"]
+    paths:
+      - "!./**"
+      - "ui/**"
+
+
+  push:
+    branches: ["master", "main"]
+    paths:
+      - "!./**"
+      - "ui/**"
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: 'ui/.nvmrc'
+
+      - name: Install Dependencies
+        run: yarn install
+
+      - name: Run ESLint
+        run: yarn lint
+
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: 'ui/.nvmrc'
+
+      - name: Install Dependencies
+        run: yarn install
+
+      - name: Run tests
+        run: yarn test --watchAll=false

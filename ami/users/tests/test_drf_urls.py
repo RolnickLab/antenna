@@ -4,7 +4,7 @@ from ami.users.models import User
 
 
 def test_user_detail(user: User):
-    assert reverse("api:user-detail", kwargs={"pk": user.pk}) == f"/api/v2/users/{user.pk}/"
+    assert reverse("api:user-detail", kwargs={"id": user.pk}) == f"/api/v2/users/{user.pk}/"
     assert resolve(f"/api/v2/users/{user.pk}/").view_name == "api:user-detail"
 
 

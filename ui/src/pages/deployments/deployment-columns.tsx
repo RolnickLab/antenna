@@ -6,115 +6,110 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   projectId: string
 ) => [
-    {
-      id: 'deployment',
-      name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
-      sortField: 'name',
-      renderCell: (item: Deployment) => (
-        <Link
-          to={getRoute({
+  {
+    id: 'deployment',
+    name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    sortField: 'name',
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.DEPLOYMENT_DETAILS({
             projectId,
-            collection: 'deployments',
-            itemId: item.id,
-            keepSearchParams: true,
-          })}
-        >
-          <BasicTableCell value={item.name} theme={CellTheme.Primary} />
-        </Link>
-      ),
+            deploymentId: item.id,
+          }),
+          keepSearchParams: true,
+        })}
+      >
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
+    ),
+  },
+  {
+    id: 'sessions',
+    name: translate(STRING.FIELD_LABEL_SESSIONS),
+    sortField: 'numEvents',
+    styles: {
+      textAlign: TextAlign.Right,
     },
-    {
-      id: 'sessions',
-      name: translate(STRING.FIELD_LABEL_SESSIONS),
-      sortField: 'numEvents',
-      styles: {
-        textAlign: TextAlign.Right,
-      },
-      renderCell: (item: Deployment) => (
-        <Link
-          to={getRoute({
-            projectId,
-            collection: 'sessions',
-            filters: { deployment: item.id },
-          })}
-        >
-          <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
-        </Link>
-      ),
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.SESSIONS({ projectId }),
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
+      </Link>
+    ),
+  },
+  {
+    id: 'captures',
+    name: translate(STRING.FIELD_LABEL_CAPTURES),
+    sortField: 'numImages',
+    styles: {
+      textAlign: TextAlign.Right,
     },
-    {
-      id: 'captures',
-      name: translate(STRING.FIELD_LABEL_CAPTURES),
-      sortField: 'numImages',
-      styles: {
-        textAlign: TextAlign.Right,
-      },
-      renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
+    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
+  },
+  {
+    id: 'occurrences',
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    sortField: 'numOccurrences',
+    styles: {
+      textAlign: TextAlign.Right,
     },
-    {
-      id: 'occurrences',
-      name: translate(STRING.FIELD_LABEL_OCCURRENCES),
-      sortField: 'numOccurrences',
-      styles: {
-        textAlign: TextAlign.Right,
-      },
-      renderCell: (item: Deployment) => (
-        <Link
-          to={getRoute({
-            projectId,
-            collection: 'occurrences',
-            filters: { deployment: item.id },
-          })}
-        >
-          <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
-        </Link>
-      ),
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+      </Link>
+    ),
+  },
+  {
+    id: 'species',
+    name: translate(STRING.FIELD_LABEL_SPECIES),
+    sortField: 'numSpecies',
+    styles: {
+      textAlign: TextAlign.Right,
     },
-    {
-      id: 'species',
-      name: translate(STRING.FIELD_LABEL_SPECIES),
-      sortField: 'numSpecies',
-      styles: {
-        textAlign: TextAlign.Right,
-      },
-      renderCell: (item: Deployment) => (
-        <Link
-          to={getRoute({
-            projectId,
-            collection: 'species',
-            filters: { occurrences__deployment: item.id },
-          })}
-        >
-          <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
-        </Link>
-      ),
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.SPECIES({ projectId }),
+          filters: { occurrences__deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+      </Link>
+    ),
+  },
+  {
+    id: 'firstDate',
+    name: translate(STRING.FIELD_LABEL_FIRST_DATE),
+    sortField: 'firstDate',
+    styles: {
+      textAlign: TextAlign.Right,
     },
-    {
-      id: 'firstDate',
-      name: translate(STRING.FIELD_LABEL_FIRST_DATE),
-      sortField: 'firstDate',
-      styles: {
-        textAlign: TextAlign.Right,
-      },
-      renderCell: (item: Deployment) => (
-        <BasicTableCell value={item.firstDate} />
-      ),
+    renderCell: (item: Deployment) => <BasicTableCell value={item.firstDate} />,
+  },
+  {
+    id: 'lastDate',
+    name: translate(STRING.FIELD_LABEL_LAST_DATE),
+    sortField: 'lastDate',
+    styles: {
+      textAlign: TextAlign.Right,
     },
-    {
-      id: 'lastDate',
-      name: translate(STRING.FIELD_LABEL_LAST_DATE),
-      sortField: 'lastDate',
-      styles: {
-        textAlign: TextAlign.Right,
-      },
-      renderCell: (item: Deployment) => (
-        <BasicTableCell value={item.lastDate} />
-      ),
-    },
-  ]
+    renderCell: (item: Deployment) => <BasicTableCell value={item.lastDate} />,
+  },
+]
