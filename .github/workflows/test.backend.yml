@@ -1,4 +1,4 @@
-name: CI
+name: Python & Django Tests
 
 # Enable Buildkit and let compose use it to speed up image building
 env:
