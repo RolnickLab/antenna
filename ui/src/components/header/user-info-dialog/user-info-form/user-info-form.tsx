@@ -3,31 +3,37 @@ import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { InputValue } from 'design-system/components/input/input'
+import { InputContent, InputValue } from 'design-system/components/input/input'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { UserInfo } from 'utils/user/types'
+import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
 import styles from './user-info-form.module.scss'
 
 interface UserInfoFormValues {
   name?: string
+  image?: File
 }
 
 const config: FormConfig = {
   name: {
     label: 'Name',
   },
+  image: {
+    label: 'Image',
+  },
 }
 
 export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
   const [serverError, setServerError] = useState<string | undefined>()
-  const { control, handleSubmit, setError } = useForm<UserInfoFormValues>({
-    defaultValues: {
-      name: userInfo.name,
-    },
-  })
+  const { control, handleSubmit, setValue, setError } =
+    useForm<UserInfoFormValues>({
+      defaultValues: {
+        name: userInfo.name,
+      },
+    })
   const { updateUserInfo, isLoading, error } = useUpdateUserInfo()
 
   useEffect(() => {
@@ -50,11 +56,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
     <>
       <form
         className={styles.form}
-        onSubmit={handleSubmit((values) =>
-          updateUserInfo({
-            name: values.name,
-          })
-        )}
+        onSubmit={handleSubmit((values) => updateUserInfo(values))}
       >
         {serverError ? (
           <div className={styles.formError}>
@@ -65,7 +67,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
         <div className={styles.section}>
           <div className={styles.sectionContent}>
             <div className={styles.sectionRow}>
-              <InputValue label="Email" value="To be added" />
+              <InputValue label="Email" value="Update button to be added" />
               <InputValue label="Password" value="Reset button to be added" />
             </div>
             <div className={styles.sectionRow}>
@@ -75,6 +77,14 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
                 config={config}
                 control={control}
               />
+            </div>
+            <div className={styles.sectionRow}>
+              <InputContent label={config.image.label}>
+                <UserInfoImageUpload
+                  userInfo={userInfo}
+                  onChange={(image) => setValue('image', image)}
+                />
+              </InputContent>
             </div>
           </div>
         </div>

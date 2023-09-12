@@ -9,10 +9,22 @@ export const useUpdateUserInfo = () => {
   const queryClient = useQueryClient()
 
   const { mutate, isLoading, error, isSuccess } = useMutation({
-    mutationFn: (fieldValues: any) =>
-      axios.patch(`${API_URL}/${API_ROUTES.ME}/`, fieldValues, {
-        headers: getAuthHeader(user),
-      }),
+    mutationFn: (fieldValues: any) => {
+      const data = new FormData()
+      if (fieldValues.name) {
+        data.append('name', fieldValues.name)
+      }
+      if (fieldValues.image) {
+        data.append('image', fieldValues.image, fieldValues.image.name)
+      }
+
+      return axios.patch(`${API_URL}/${API_ROUTES.ME}/`, fieldValues, {
+        headers: {
+          ...getAuthHeader(user),
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.ME])
     },
