@@ -1251,7 +1251,7 @@ class TaxaManager(models.Manager):
     def get_queryset(self):
         # Prefetch parent and parents
         # return super().get_queryset().select_related("parent").prefetch_related("parents")
-        return super().get_queryset()
+        return super().get_queryset().select_related("parent")
 
     def add_genus_parents(self):
         """Add direct genus parents to all species that don't have them, based on the scientific name.
@@ -1347,6 +1347,7 @@ class Taxon(BaseModel):
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
     # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
+    # taxonomy = models.JSONField(null=True, blank=True)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)

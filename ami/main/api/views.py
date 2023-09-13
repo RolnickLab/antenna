@@ -289,6 +289,18 @@ class TaxonViewSet(DefaultViewSet):
     ]
     search_fields = ["name", "parent__name"]
 
+    @action(detail=False, methods=["get"], name="suggest")
+    def suggest(self, request):
+        """
+        Return a list of taxa that match the query.
+        """
+        query = request.query_params.get("q", None)
+        if query:
+            taxa = Taxon.objects.filter(name__icontains=query)
+            return Response(TaxonListSerializer(taxa, many=True, context={"request": request}).data)
+        else:
+            return Response([])
+
     def get_serializer_class(self):
         """
         Return different serializers for list and detail views.

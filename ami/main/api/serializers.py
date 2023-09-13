@@ -61,6 +61,20 @@ class ProjectNestedSerializer(DefaultSerializer):
         fields = [
             "id",
             "name",
+            "image",
+            "details",
+        ]
+
+
+class UserNestedSerializer(DefaultSerializer):
+    details = serializers.HyperlinkedIdentityField(view_name="user-detail", lookup_field="pk", lookup_url_kwarg="id")
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "image",
             "details",
         ]
 
@@ -318,9 +332,21 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
+class TaxonNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+        ]
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
+    parent = TaxonNestedSerializer(read_only=True)
 
     class Meta:
         model = Taxon
@@ -373,6 +399,38 @@ class OccurrenceNestedSerializer(DefaultSerializer):
             "details",
             "determination",
             # "determination_score",
+        ]
+
+
+class IdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    occurrence = OccurrenceNestedSerializer(read_only=True)
+    occurrence_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Occurrence.objects.all(),
+        source="occurrence",
+    )
+    taxon = TaxonNestedSerializer(read_only=True)
+    taxon_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Taxon.objects.all(),
+        source="taxon",
+    )
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "user",
+            "occurrence",
+            "occurrence_id",
+            "taxon",
+            "taxon_id",
+            "priority",
+            "primary",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -455,6 +513,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+    parent = TaxonNestedSerializer(read_only=True)
+    parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
 
     class Meta:
         model = Taxon
@@ -463,23 +523,12 @@ class TaxonSerializer(DefaultSerializer):
             "name",
             "rank",
             "parent",
+            "parent_id",
             "details",
             "occurrences_count",
             "detections_count",
             "events_count",
             "occurrences",
-        ]
-
-
-class TaxonNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Taxon
-        fields = [
-            "id",
-            "name",
-            "rank",
-            "details",
-            "taxonomy",
         ]
 
 
@@ -666,12 +715,27 @@ class OccurrenceListSerializer(DefaultSerializer):
         ]
 
 
+class OccurrenceIdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "user",
+        ]
+
+
 class OccurrenceSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     determination_id = serializers.PrimaryKeyRelatedField(
         write_only=True, queryset=Taxon.objects.all(), source="determination"
     )
     detections = DetectionNestedSerializer(many=True, read_only=True)
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
@@ -681,6 +745,7 @@ class OccurrenceSerializer(DefaultSerializer):
         fields = OccurrenceListSerializer.Meta.fields + [
             "determination_id",
             "detections",
+            "identifications",
         ]
 
 
@@ -1061,48 +1126,3 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
     def get_predictions(self, obj):
         # @TODO implement if necessary, make optional by URL param
         return []
-
-
-class UserNestedSerializer(DefaultSerializer):
-    details = serializers.HyperlinkedIdentityField(view_name="user-detail", lookup_field="pk", lookup_url_kwarg="id")
-
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "name",
-            "image",
-            "details",
-        ]
-
-
-class IdentificationSerializer(DefaultSerializer):
-    user = UserNestedSerializer(read_only=True)
-    occurrence = OccurrenceNestedSerializer(read_only=True)
-    occurrence_id = serializers.PrimaryKeyRelatedField(
-        write_only=True,
-        queryset=Occurrence.objects.all(),
-        source="occurrence",
-    )
-    taxon = TaxonNestedSerializer(read_only=True)
-    taxon_id = serializers.PrimaryKeyRelatedField(
-        write_only=True,
-        queryset=Taxon.objects.all(),
-        source="taxon",
-    )
-
-    class Meta:
-        model = Identification
-        fields = [
-            "id",
-            "details",
-            "user",
-            "occurrence",
-            "occurrence_id",
-            "taxon",
-            "taxon_id",
-            "priority",
-            "primary",
-            "created_at",
-            "updated_at",
-        ]
