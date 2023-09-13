@@ -340,7 +340,7 @@ DJOSER = {
     "LOGIN_FIELD": "email",  # Technically not needed because we have a custom User model
     "SERIALIZERS": {
         "user": "ami.users.api.serializers.UserSerializer",
-        "current_user": "ami.users.api.serializers.UserSerializer",
+        "current_user": "ami.users.api.serializers.CurrentUserSerializer",
     },
 }
 
