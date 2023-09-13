@@ -177,12 +177,22 @@ const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
 }
 
 const FormError = ({ error }: { error: any }) => {
-  const message = parseServerError(error).message
+  const { message, fieldErrors } = parseServerError(error)
 
   return (
     <div className={styles.formError}>
-      <span>Could not save: </span>
-      <span>{message}</span>
+      <>
+        <span>Could not save: </span>
+        <span>{message}</span>
+      </>
+      {fieldErrors.length ? (
+        <>
+          <br />
+          <span>
+            {fieldErrors[0].key}: {fieldErrors[0].message}
+          </span>
+        </>
+      ) : null}
     </div>
   )
 }

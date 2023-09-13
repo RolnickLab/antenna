@@ -3,6 +3,7 @@ import { Deployment, ServerDeployment } from 'data-services/models/deployment'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
+import { UserPermission } from 'utils/user/types'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerDeployment) => new Deployment(record)
@@ -11,6 +12,7 @@ export const useDeployments = (
   params?: FetchParams
 ): {
   deployments?: Deployment[]
+  userPermissions?: UserPermission[]
   isLoading: boolean
   isFetching: boolean
   error?: unknown
@@ -22,6 +24,7 @@ export const useDeployments = (
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     results: ServerDeployment[]
+    user_permissions?: UserPermission[]
   }>({
     queryKey: [API_ROUTES.DEPLOYMENTS, params],
     url: fetchUrl,
@@ -34,6 +37,7 @@ export const useDeployments = (
 
   return {
     deployments,
+    userPermissions: data?.user_permissions,
     isLoading,
     isFetching,
     error,

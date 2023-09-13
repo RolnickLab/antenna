@@ -8,6 +8,7 @@ export interface DeploymentFieldValues {
   latitude: number
   longitude: number
   path: string
+  projectId?: string
 }
 
 export class DeploymentDetails extends Deployment {

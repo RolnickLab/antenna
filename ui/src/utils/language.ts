@@ -95,7 +95,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* DIALOG */
   [STRING.DIALOG_DEPLOYMENT_DETAILS]: 'Deployment details',
   [STRING.DIALOG_EDIT_DEPLOYMENT]: 'Edit deployment',
-  [STRING.DIALOG_NEW_DEPLOYMENT]: 'New deployment',
+  [STRING.DIALOG_NEW_DEPLOYMENT]: 'Register new deployment',
 
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',

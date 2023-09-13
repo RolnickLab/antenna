@@ -3,7 +3,6 @@ import axios from 'axios'
 import { API_ROUTES, API_URL } from 'data-services/constants'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { getAuthHeader } from 'data-services/utils'
-
 import { useUser } from 'utils/user/userContext'
 
 const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
@@ -14,7 +13,7 @@ const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
   latitude: fieldValues.latitude,
   longitude: fieldValues.longitude,
   occurrences: [],
-  project: null,
+  project_id: fieldValues.projectId,
 })
 
 export const useCreateDeployment = () => {
