@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser
+from django.db import models
 from django.db.models import CharField, EmailField
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -19,6 +20,7 @@ class User(AbstractUser):
     last_name = None  # type: ignore
     email = EmailField(_("email address"), unique=True)
     username = None  # type: ignore
+    image = models.ImageField(upload_to="users", blank=True, null=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -32,4 +34,5 @@ class User(AbstractUser):
             str: URL for user detail.
 
         """
-        return reverse("users:detail", kwargs={"pk": self.id})
+        # @TODO return frontend URL, not API URL
+        return reverse("api:user-detail", kwargs={"id": self.pk})

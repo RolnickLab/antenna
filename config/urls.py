@@ -6,16 +6,12 @@ from django.urls import include, path
 from django.views import defaults as default_views
 from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from rest_framework.authtoken.views import obtain_auth_token
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
     path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
-    # User management
-    path("users/", include("ami.users.urls", namespace="users")),
-    path("accounts/", include("allauth.urls")),
     # Your stuff: custom urls includes go here
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 if settings.DEBUG:
@@ -26,10 +22,7 @@ if settings.DEBUG:
 urlpatterns += [
     # API base url
     path("api/v2/", include("config.api_router", namespace="api")),
-    # DRF auth token
-    path("api/v2/auth-token/", obtain_auth_token),
-    # Login page the browsable API. From the Wemake template. @TODO: remove?
-    path("api/v2/auth/", include("rest_framework.urls", namespace="rest_framework")),
+    # OpenAPI Docs
     path("api/v2/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path(
         "api/v2/docs/",

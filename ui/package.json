@@ -39,7 +39,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test",
+    "test": "react-scripts test --testURL http://localhost:3000",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "storybook": "start-storybook -p 6006 -s public",
@@ -74,6 +74,11 @@
       "last 1 safari version"
     ]
   },
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!axios)"
+    ]
+  },
   "devDependencies": {
     "@storybook/addon-actions": "^6.5.16",
     "@storybook/addon-essentials": "^6.5.16",
@@ -86,10 +91,12 @@
     "@storybook/react": "^6.5.16",
     "@storybook/testing-library": "^0.0.13",
     "@tanstack/eslint-plugin-query": "^4.29.4",
+    "@testing-library/react-hooks": "^8.0.1",
     "@types/leaflet": "^1.9.3",
     "@types/react-plotly.js": "^2.6.0",
     "babel-plugin-named-exports-order": "^0.0.2",
     "http-proxy-middleware": "^2.0.6",
+    "nock": "^13.3.3",
     "prettier": "2.8.4",
     "prop-types": "^15.8.1",
     "sass": "^1.58.3",

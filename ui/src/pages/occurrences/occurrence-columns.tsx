@@ -7,7 +7,8 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
@@ -35,10 +36,11 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_ID),
     renderCell: (item: Occurrence) => (
       <Link
-        to={getRoute({
-          projectId,
-          collection: 'occurrences',
-          itemId: item.id,
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCE_DETAILS({
+            projectId,
+            occurrenceId: item.id,
+          }),
           keepSearchParams: true,
         })}
       >
@@ -55,10 +57,9 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     renderCell: (item: Occurrence) => (
       <Link
-        to={getRoute({
+        to={APP_ROUTES.DEPLOYMENT_DETAILS({
           projectId,
-          collection: 'deployments',
-          itemId: item.deploymentId,
+          deploymentId: item.deploymentId,
         })}
       >
         <BasicTableCell
@@ -72,13 +73,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Occurrence) => (
-      <Link
-        to={getRoute({
-          projectId,
-          collection: 'sessions',
-          itemId: item.sessionId,
-        })}
-      >
+      <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
         <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
       </Link>
     ),

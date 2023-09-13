@@ -1,3 +1,4 @@
+import { User } from 'utils/user/types'
 import { API_URL } from './constants'
 import { FetchParams } from './types'
 
@@ -39,7 +40,7 @@ export const getFetchUrl = ({
     return baseUrl
   }
 
-  return `${baseUrl}?${queryString}`
+  return `${baseUrl}/?${queryString}`
 }
 
 export const getFetchDetailsUrl = ({
@@ -58,5 +59,8 @@ export const getFetchDetailsUrl = ({
     return baseUrl
   }
 
-  return `${baseUrl}?${queryString}`
+  return `${baseUrl}/?${queryString}`
 }
+
+export const getAuthHeader = (user: User) =>
+  user.token ? { Authorization: `Token ${user.token}` } : undefined

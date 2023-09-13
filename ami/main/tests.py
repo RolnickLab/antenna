@@ -4,35 +4,81 @@ from django.db import connection
 from django.test import TestCase
 from rich import print
 
-from ami.main.models import Deployment, Event, Project, SourceImage, group_images_into_events
+from ami.main.models import (
+    Deployment,
+    Event,
+    Occurrence,
+    Project,
+    SourceImage,
+    TaxaList,
+    Taxon,
+    group_images_into_events,
+)
+
+
+def setup_test_project() -> tuple[Project, Deployment]:
+    project, _ = Project.objects.get_or_create(name="Test Project")
+    deployment, _ = Deployment.objects.get_or_create(project=project, name="Test Deployment")
+    return project, deployment
+
+
+def create_captures(
+    deployment: Deployment, num_nights: int = 3, images_per_night: int = 3, interval_minutes: int = 10
+):
+    # Create some images over a few monitoring nights
+    first_night = datetime.datetime.now()
+
+    created = []
+    for night in range(num_nights):
+        for i in range(images_per_night):
+            img = SourceImage.objects.create(
+                deployment=deployment,
+                timestamp=first_night + datetime.timedelta(days=night, minutes=i * interval_minutes),
+                path=f"test/{night}_{i}.jpg",
+            )
+            created.append(img)
+
+    return created
+
+
+def create_taxa(project: Project) -> TaxaList:
+    taxa_list = TaxaList.objects.create(project=project, name="Test Taxa List")
+    parent_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Lepidoptera", rank="order")
+    family_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Nymphalidae", parent=parent_taxon, rank="family")
+    genus_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Vanessa", parent=family_taxon, rank="genus")
+    for species in ["Vanessa itea", "Vanessa cardui", "Vanessa atalanta"]:
+        Taxon.objects.create(taxa_list=taxa_list, name=species, parent=genus_taxon, rank="species")
+    return taxa_list
+
+
+def create_occurrences(
+    deployment: Deployment,
+    num: int = 12,
+):
+    event = Event.objects.filter(deployment=deployment).first()
+    if not event:
+        raise ValueError("No events found for deployment")
+
+    for i in range(num):
+        Occurrence.objects.create(
+            project=deployment.project,
+            deployment=deployment,
+            determination=Taxon.objects.order_by("?").first(),
+            event=event,
+        )
 
 
 class TestImageGrouping(TestCase):
     def setUp(self) -> None:
         print(f"Currently active database: {connection.settings_dict}")
-        self.project, _ = Project.objects.get_or_create(name="Test Project")
-        self.deployment, _ = Deployment.objects.get_or_create(project=self.project, name="Test Deployment")
+        self.project, self.deployment = setup_test_project()
         return super().setUp()
-
-    def create_captures(
-        self, deployment: Deployment, num_nights: int = 3, images_per_night: int = 3, interval_minutes: int = 10
-    ):
-        # Create some images over a few monitoring nights
-        first_night = datetime.datetime.now()
-
-        for night in range(num_nights):
-            for i in range(images_per_night):
-                SourceImage.objects.create(
-                    deployment=deployment,
-                    timestamp=first_night + datetime.timedelta(days=night, minutes=i * interval_minutes),
-                    path=f"test/{night}_{i}.jpg",
-                )
 
     def test_grouping(self):
         num_nights = 3
         images_per_night = 3
 
-        self.create_captures(
+        create_captures(
             deployment=self.deployment,
             num_nights=num_nights,
             images_per_night=images_per_night,
@@ -51,7 +97,7 @@ class TestImageGrouping(TestCase):
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
 
-        self.create_captures(deployment=self.deployment)
+        create_captures(deployment=self.deployment)
         events = group_images_into_events(deployment=self.deployment)
 
         for event in events:
@@ -63,12 +109,12 @@ class TestImageGrouping(TestCase):
 
         assert remaining_events.count() == 0
 
-    def test_setting_image_dimesions(self):
-        from ami.main.models import set_dimensions_from_first_image
+    def test_setting_image_dimensions(self):
+        from ami.main.models import set_dimensions_for_collection
 
         image_width, image_height = 100, 100
 
-        self.create_captures(deployment=self.deployment)
+        create_captures(deployment=self.deployment)
         events = group_images_into_events(deployment=self.deployment)
 
         for event in events:
@@ -76,7 +122,7 @@ class TestImageGrouping(TestCase):
             assert first_image is not None
             first_image.width, first_image.height = image_width, image_height
             first_image.save()
-            set_dimensions_from_first_image(event=event)
+            set_dimensions_for_collection(event=event)
 
             for capture in event.captures.all():
                 # print(capture.path, capture.width, capture.height)
@@ -104,3 +150,45 @@ class TestImageGrouping(TestCase):
 #         )
 #         if deployment:
 #             sync_source_images(deployment.pk)
+
+
+class TestDuplicateFieldsOnChildren(TestCase):
+    def setUp(self) -> None:
+        from ami.main.models import Deployment, Project
+
+        self.project_one = Project.objects.create(name="Test Project One")
+        self.project_two = Project.objects.create(name="Test Project Two")
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
+
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_occurrences(deployment=self.deployment)
+
+        return super().setUp()
+
+    def test_initial_project(self):
+        assert self.deployment.project == self.project_one
+        assert self.deployment.captures.first().project == self.project_one
+        assert self.deployment.events.first().project == self.project_one
+        assert self.deployment.occurrences.first().project == self.project_one
+
+    def test_change_project(self):
+        self.deployment.project = self.project_two
+        self.deployment.save()
+
+        self.deployment.refresh_from_db()
+
+        assert self.deployment.project == self.project_two
+        assert self.deployment.captures.first().project == self.project_two
+        assert self.deployment.events.first().project == self.project_two
+        assert self.deployment.occurrences.first().project == self.project_two
+
+    def test_delete_project(self):
+        self.project_one.delete()
+
+        self.deployment.refresh_from_db()
+
+        assert self.deployment.project is None
+        assert self.deployment.captures.first().project is None
+        assert self.deployment.events.first().project is None
+        assert self.deployment.occurrences.first().project is None

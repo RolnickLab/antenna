@@ -1,10 +1,12 @@
+from django.core import exceptions
 from django.db import models
+from django.db.models.query import QuerySet
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -105,7 +107,12 @@ class DeploymentViewSet(DefaultViewSet):
     queryset = Deployment.objects.annotate(
         events_count=models.Count("events", distinct=True),
         occurrences_count=models.Count("occurrences", distinct=True),
-    )
+        taxa_count=models.Count("occurrences__determination", distinct=True),
+        # The first and last date should come from the captures,
+        # but it may be much slower to query.
+        first_date=models.Min("events__start__date"),
+        last_date=models.Max("events__end__date"),
+    ).select_related("project")
     filterset_fields = ["project"]
     ordering_fields = ["created_at", "updated_at", "occurrences_count", "events_count"]
 
@@ -127,17 +134,15 @@ class EventViewSet(DefaultViewSet):
     queryset = (
         Event.objects.select_related("deployment")
         .annotate(
-            captures_count=models.Count("captures", distinct=True),
-            detections_count=models.Count("captures__detections", distinct=True),
-            occurrences_count=models.Count("occurrences", distinct=True),
+            captures_count=models.Count("captures"),
+            detections_count=models.Count("captures__detections"),
+            occurrences_count=models.Count("occurrences"),
             taxa_count=models.Count("occurrences__determination", distinct=True),
         )
-        .distinct()
+        .select_related("deployment", "project")
     )  # .prefetch_related("captures").all()
     serializer_class = EventSerializer
-    filterset_fields = [
-        "deployment",
-    ]  # "project"]
+    filterset_fields = ["deployment", "project"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -269,6 +274,8 @@ class TaxonViewSet(DefaultViewSet):
         "parent",
         "occurrences__event",
         "occurrences__deployment",
+        "occurrences__project",
+        "projects",
     ]
     ordering_fields = [
         "created_at",
@@ -288,6 +295,44 @@ class TaxonViewSet(DefaultViewSet):
             return TaxonListSerializer
         else:
             return TaxonSerializer
+
+    def filter_by_occurrence(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter taxa by when/where it has occurred.
+
+        Supports querying by occurrence, project, deployment, or event.
+
+        @TODO Consider using a custom filter class for this (see get_filter_name)
+        """
+
+        occurrence_id = self.request.query_params.get("occurrence")
+        project_id = self.request.query_params.get("project")
+        deployment_id = self.request.query_params.get("deployment")
+        event_id = self.request.query_params.get("event")
+
+        if occurrence_id:
+            occurrence = Occurrence.objects.get(id=occurrence_id)
+            return queryset.filter(occurrences=occurrence).distinct()
+        elif project_id:
+            project = Project.objects.get(id=project_id)
+            return super().get_queryset().filter(occurrences__project=project).distinct()
+        elif deployment_id:
+            deployment = Deployment.objects.get(id=deployment_id)
+            return super().get_queryset().filter(occurrences__deployment=deployment).distinct()
+        elif event_id:
+            event = Event.objects.get(id=event_id)
+            return super().get_queryset().filter(occurrences__event=event).distinct()
+        else:
+            return queryset
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        try:
+            return self.filter_by_occurrence(qs)
+        except exceptions.ObjectDoesNotExist as e:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound(detail=str(e))
 
 
 class AlgorithmViewSet(DefaultViewSet):
@@ -338,7 +383,7 @@ class SummaryView(APIView):
                 "deployments_count": Deployment.objects.filter(project=project).count(),
                 "events_count": Event.objects.filter(deployment__project=project).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
-                "detections_count": Detection.objects.filter(source_image__deployment__project=project).count(),
+                "detections_count": Detection.objects.filter(occurrence__project=project).count(),
                 "occurrences_count": Occurrence.objects.filter(project=project).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
                 .filter(occurrences_count__gt=0)
@@ -469,7 +514,7 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
-class LabelStudioFlatPaginator(PageNumberPagination):
+class LabelStudioFlatPaginator(LimitOffsetPagination):
     """
     A custom paginator that does not nest the data under a "results" key.
 
@@ -478,10 +523,7 @@ class LabelStudioFlatPaginator(PageNumberPagination):
     @TODO eventually each task should be it's own JSON file and this will not be needed.
     """
 
-    page_size = 1000
-    page_size_query_param = "page_size"
-    page_query_param = "page"
-    max_page_size = 10000
+    limit = 100
 
     def get_paginated_response(self, data):
         return Response(data)
@@ -494,6 +536,48 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     serializer_class = LabelStudioSourceImageSerializer
     pagination_class = LabelStudioFlatPaginator
     filterset_fields = ["event", "deployment", "deployment__project"]
+
+    @action(detail=False, methods=["get"], name="interval")
+    def interval(self, request):
+        """
+        Return a sample of captures based on time intervals.
+
+        URL parameters:
+
+        - `deployment`: limit to a specific deployment<br>
+        - `project`: limit to all deployments in a specific project<br>
+        - `event_day_interval`: number of days between events<br>
+        - `capture_minute_interval`: number of minutes between captures<br>
+        - `limit`: maximum number of captures to return<br>
+
+        Example: `/api/labelstudio/captures/interval/?project=1&event_day_interval=3&capture_minute_interval=30&limit=100`  # noqa
+
+        Objects are returned in a format ready to import as a list of Label Studio tasks.
+        """
+        from ami.main.models import sample_captures, sample_events
+
+        deployment_id = request.query_params.get("deployment", None)
+        project_id = request.query_params.get("project", None)
+        day_interval = int(request.query_params.get("event_day_interval", 3))
+        minute_interval = int(request.query_params.get("capture_minute_interval", 30))
+        max_num = int(request.query_params.get("limit", 100))
+        captures = []
+        if deployment_id:
+            deployments = [Deployment.objects.get(id=deployment_id)]
+        elif project_id:
+            project = Project.objects.get(id=project_id)
+            deployments = Deployment.objects.filter(project=project)
+        else:
+            deployments = Deployment.objects.all()
+        for deployment in deployments:
+            events = sample_events(deployment=deployment, day_interval=day_interval)
+            for capture in sample_captures(
+                deployment=deployment, events=list(events), minute_interval=minute_interval
+            ):
+                captures.append(capture)
+                if len(captures) >= max_num:
+                    break
+        return Response(self.get_serializer(captures, many=True).data)
 
 
 class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):

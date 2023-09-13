@@ -37,7 +37,9 @@ export const DeploymentDetailsInfo = ({
     <>
       <Dialog.Header title={title}>
         <div className={styles.buttonWrapper}>
-          <Button label={translate(STRING.EDIT)} onClick={onEditClick} />
+          {deployment.canUpdate ? (
+            <Button label={translate(STRING.EDIT)} onClick={onEditClick} />
+          ) : null}
         </div>
       </Dialog.Header>
       <div className={styles.content}>

@@ -1,3 +1,5 @@
+import { UserPermission } from 'utils/user/types'
+
 export type ServerDeployment = any // TODO: Update this type
 
 export class Deployment {
@@ -5,6 +7,10 @@ export class Deployment {
 
   public constructor(deployment: ServerDeployment) {
     this._deployment = deployment
+  }
+
+  get canUpdate(): boolean {
+    return this._deployment.user_permissions.includes(UserPermission.Update)
   }
 
   get id(): string {
@@ -23,10 +29,6 @@ export class Deployment {
     return this._deployment.name
   }
 
-  get numDetections(): number {
-    return this._deployment.detections_count
-  }
-
   get numEvents(): number {
     return this._deployment.events_count
   }
@@ -41,5 +43,13 @@ export class Deployment {
 
   get numSpecies(): number {
     return this._deployment.taxa_count
+  }
+
+  get firstDate(): number {
+    return this._deployment.first_date
+  }
+
+  get lastDate(): number {
+    return this._deployment.last_date
   }
 }

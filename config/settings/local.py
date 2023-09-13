@@ -40,6 +40,20 @@ EMAIL_HOST = env("EMAIL_HOST", default="mailhog")
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-port
 EMAIL_PORT = 1025
 
+# EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
+EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
+DEFAULT_FROM_EMAIL = env(
+    "DJANGO_DEFAULT_FROM_EMAIL",
+    default="Automated Monitoring of Insects ML Platform <michael.bunsen@mila.quebec>",
+)
+# https://docs.djangoproject.com/en/dev/ref/settings/#server-email
+SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+# https://docs.djangoproject.com/en/dev/ref/settings/#email-subject-prefix
+EMAIL_SUBJECT_PREFIX = env(
+    "DJANGO_EMAIL_SUBJECT_PREFIX",
+    default="[Automated Monitoring of Insects ML Platform]",
+)
+
 # WhiteNoise
 # ------------------------------------------------------------------------------
 # http://whitenoise.evans.io/en/latest/django.html#using-whitenoise-in-development
@@ -51,14 +65,18 @@ INSTALLED_APPS = ["whitenoise.runserver_nostatic"] + INSTALLED_APPS  # noqa: F40
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#prerequisites
 INSTALLED_APPS += ["debug_toolbar"]  # noqa: F405
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#middleware
-MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]  # noqa: F405
+MIDDLEWARE += [  # noqa: F405
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
+    "ami.contrib.middleware.NonHtmlDebugToolbarMiddleware",
+]
+
 # https://django-debug-toolbar.readthedocs.io/en/latest/configuration.html#debug-toolbar-config
 DEBUG_TOOLBAR_CONFIG = {
     "DISABLE_PANELS": ["debug_toolbar.panels.redirects.RedirectsPanel"],
     "SHOW_TEMPLATE_CONTEXT": True,
 }
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#internal-ips
-INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
+INTERNAL_IPS = ["127.0.0.1", "10.0.2.2", "*"]
 if env("USE_DOCKER") == "yes":
     import socket
 

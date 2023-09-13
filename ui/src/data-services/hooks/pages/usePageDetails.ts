@@ -1,7 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
-import { API_URL } from 'data-services/constants'
-import { COLLECTION } from './constants'
+import { API_ROUTES, API_URL } from 'data-services/constants'
+import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 import { PageDetails } from './types'
 
 export const usePageDetails = (
@@ -12,13 +10,11 @@ export const usePageDetails = (
   isFetching: boolean
   error?: unknown
 } => {
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: [COLLECTION, slug],
-    queryFn: () =>
-      axios
-        .get<PageDetails>(`${API_URL}/${COLLECTION}/${slug}`)
-        .then((res) => res.data),
-  })
+  const { data, isLoading, isFetching, error } =
+    useAuthorizedQuery<PageDetails>({
+      queryKey: [API_ROUTES.PAGES, slug],
+      url: `${API_URL}/${API_ROUTES.PAGES}/${slug}/`,
+    })
 
   return {
     page: data,

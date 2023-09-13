@@ -3,6 +3,7 @@ import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { Fragment, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Breadcrumb, BreadcrumbContext } from 'utils/breadcrumbContext'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import styles from './breadcrumbs.module.scss'
 
@@ -33,7 +34,7 @@ export const Breadcrumbs = ({
   }, [navItems, activeNavItemId])
 
   const breadcrumbs = [
-    { title: translate(STRING.NAV_ITEM_PROJECTS), path: '/' },
+    { title: translate(STRING.NAV_ITEM_PROJECTS), path: APP_ROUTES.HOME },
     projectBreadcrumb,
     mainBreadcrumb,
     detailBreadcrumb,

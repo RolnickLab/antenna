@@ -1,6 +1,6 @@
 import collections
 import datetime
-import itertools
+import functools
 import logging
 import textwrap
 import typing
@@ -15,6 +15,7 @@ from django.db.models import Q
 
 import ami.tasks
 import ami.utils
+from ami.main import charts
 
 #: That's how constants should be defined.
 _POST_TITLE_MAX_LENGTH: Final = 80
@@ -41,21 +42,6 @@ _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 logger = logging.getLogger(__name__)
-
-
-def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
-    """Shift hours so that the x-axis is centered around 12PM."""
-
-    split_index = 0
-    for i, hour in enumerate(hours):
-        if hour > 12:
-            split_index = i
-            break
-
-    hours = hours[split_index:] + hours[:split_index]
-    values = values[split_index:] + values[:split_index]
-
-    return hours, values
 
 
 class BaseModel(models.Model):
@@ -86,150 +72,31 @@ class Project(BaseModel):
 
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
+    events: models.QuerySet["Event"]
+    occurrences: models.QuerySet["Occurrence"]
+    taxa: models.QuerySet["Taxon"]
+    taxa_lists: models.QuerySet["TaxaList"]
 
     def deployments_count(self) -> int:
         return self.deployments.count()
 
-    def taxa(self) -> models.QuerySet["Taxon"]:
-        return Taxon.objects.filter(Q(occurrences__project=self)).distinct()
-
     def taxa_count(self):
-        return self.taxa().count()
+        return self.taxa.all().count()
 
     def summary_data(self):
         """
         Data prepared for rendering charts with plotly.js on the overview page.
-
-        const EXAMPLE_DATA = {
-            y: [18, 45, 98, 120, 109, 113, 43],
-            x: ['8PM', '9PM', '10PM', '11PM', '12PM', '13PM', '14PM'],
-            tickvals: ['8PM', '', '', '', '', '', '14PM'],
-        }
-
-        const EXAMPLE_PLOTS = [
-        { title: '19 Jun', data: EXAMPLE_DATA, type: 'bar' },
-        { title: '20 Jun', data: EXAMPLE_DATA, type: 'scatter' },
-        {
-            title: '21 Jun',
-            data: EXAMPLE_DATA,
-            type: 'scatter',
-            showRangeSlider: true,
-        }
         """
 
         plots = []
 
-        # # Capture counts per day
-        # SourceImage = apps.get_model("main", "SourceImage")
-        # captures_per_date = (
-        #     SourceImage.objects.filter(deployment__project=self)
-        #     .values_list("timestamp__date")
-        #     .annotate(num_captures=models.Count("id"))
-        #     .order_by("timestamp__date").distinct()
-        # )
-
-        # if captures_per_date.count():
-        #     days, counts = list(zip(*captures_per_date))
-        #     days = [day for day in days if day]
-        #     # tickvals_per_month = [f"{d:%b}" for d in days]
-        #     tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-        #     labels = [f"{d:%b %d}" for d in days]
-        # else:
-        #     labels, counts = [], []
-        #     tickvals = []
-
-        # Captures per week
-        # SourceImage = apps.get_model("main", "SourceImage")
-        # captures_per_week = (
-        #     SourceImage.objects.filter(deployment__project=self)
-        #     .values_list("timestamp__week")
-        #     .annotate(num_captures=models.Count("id"))
-        #     .order_by("timestamp__week")
-        #     .distinct()
-        # )
-
-        # Events per week
-        Event = apps.get_model("main", "Event")
-        captures_per_week = (
-            Event.objects.filter(deployment__project=self)
-            .values_list("start__week")
-            .annotate(num_captures=models.Count("id"))
-            .order_by("start__week")
-        )
-
-        if captures_per_week.count():
-            weeks, counts = list(zip(*captures_per_week))
-            # tickvals_per_month = [f"{d:%b}" for d in days]
-            tickvals = [f"{weeks[0]}", f"{weeks[-1]}"]
-            labels = [f"{d}" for d in weeks]
+        plots.append(charts.captures_per_hour(project_pk=self.pk))
+        if self.occurrences.exists():
+            plots.append(charts.detections_per_hour(project_pk=self.pk))
+            plots.append(charts.occurrences_accumulated(project_pk=self.pk))
         else:
-            labels, counts = [], []
-            tickvals = []
-
-        plots.append(
-            {
-                "title": "Sessions per week",
-                "data": {"x": labels, "y": counts, "tickvals": tickvals},
-                "type": "bar",
-            },
-        )
-
-        # Detections per hour
-        Detection = apps.get_model("main", "Detection")
-        detections_per_hour = (
-            Detection.objects.filter(source_image__deployment__project=self)
-            .values("source_image__timestamp__hour")
-            .annotate(num_detections=models.Count("id"))
-            .order_by("source_image__timestamp__hour")
-        )
-
-        # hours, counts = list(zip(*detections_per_hour))
-        if detections_per_hour.count():
-            hours, counts = list(
-                zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-            )
-            hours, counts = shift_to_nighttime(list(hours), list(counts))
-            # @TODO show a tick for every hour even if there are no detections
-            hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
-            ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
-        else:
-            hours, counts = [], []
-            ticktext = []
-
-        plots.append(
-            {
-                "title": "Detections per hour",
-                "data": {"x": hours, "y": counts, "ticktext": ticktext},
-                "type": "bar",
-            },
-        )
-
-        # Line chart of the accumulated number of occurrnces over time throughout the season
-        occurrences_per_day = (
-            Occurrence.objects.filter(project=self)
-            .values_list("event__start")
-            .annotate(num_occurrences=models.Count("id"))
-            .order_by("event__start")
-        )
-
-        if occurrences_per_day.count():
-            days, counts = list(zip(*occurrences_per_day))
-            # Accumulate the counts
-            counts = list(itertools.accumulate(counts))
-            # tickvals = [f"{d:%b %d}" for d in days]
-            tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-            days = [f"{d:%b %d}" for d in days]
-        else:
-            days, counts = [], []
-            tickvals = []
-
-        plots.append(
-            {
-                "title": "Accumulation of occurrences",
-                "data": {"x": days, "y": counts, "tickvals": tickvals},
-                "type": "line",
-            },
-        )
+            plots.append(charts.events_per_month(project_pk=self.pk))
+            # plots.append(charts.captures_per_month(project_pk=self.pk))
 
         return plots
 
@@ -336,14 +203,17 @@ def _insert_or_update_batch_for_sync(
     except IntegrityError as e:
         logger.error(f"Error bulk inserting batch of SourceImages: {e}")
 
-    deployment.data_source_total_files = total_files
-    deployment.data_source_total_size = total_size
+    if total_files > (deployment.data_source_total_files or 0):
+        deployment.data_source_total_files = total_files
+    if total_size > (deployment.data_source_total_size or 0):
+        deployment.data_source_total_size = total_size
     deployment.data_source_last_checked = datetime.datetime.now()
-    deployment.save()
 
     events = group_images_into_events(deployment)
     for event in events:
-        set_dimensions_from_first_image(event)
+        set_dimensions_for_collection(event)
+
+    deployment.save(update_calculated_fields=False)
 
 
 def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
@@ -376,6 +246,8 @@ class Deployment(BaseModel):
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
     data_source_regex = models.CharField(max_length=255, blank=True, null=True)
     data_source_last_checked = models.DateTimeField(blank=True, null=True)
+    # data_source_start_date = models.DateTimeField(blank=True, null=True)
+    # data_source_end_date = models.DateTimeField(blank=True, null=True)
     # data_source_last_check_duration = models.DurationField(blank=True, null=True)
     # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
@@ -401,19 +273,22 @@ class Deployment(BaseModel):
 
     objects = DeploymentManager()
 
+    class Meta:
+        ordering = ["name"]
+
     def events_count(self) -> int | None:
         # return self.events.count()
+        # Uses the annotated value from the custom manager
         return None
 
-    def captures_count(self) -> int | None:
-        return self.captures.count()
-        # return None
+    def captures_count(self) -> int:
+        return self.data_source_total_files or 0
 
-    def detections_count(self) -> int | None:
+    def detections_count(self) -> int:
         return Detection.objects.filter(Q(source_image__deployment=self)).count()
         # return None
 
-    def occurrences_count(self) -> int | None:
+    def occurrences_count(self) -> int:
         return self.occurrences.count()
         # return None
 
@@ -429,6 +304,32 @@ class Deployment(BaseModel):
 
     def capture_images(self, num=5) -> list[str]:
         return [c.url() for c in self.example_captures(num)]
+
+    def first_capture(self) -> typing.Optional["SourceImage"]:
+        return SourceImage.objects.filter(deployment=self).order_by("timestamp").first()
+
+    def last_capture(self) -> typing.Optional["SourceImage"]:
+        return SourceImage.objects.filter(deployment=self).order_by("-timestamp").first()
+
+    @functools.cached_property
+    def first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
+        # Retrieve the timestamps of the first and last capture in a single query
+        first, last = (
+            SourceImage.objects.filter(deployment=self)
+            .aggregate(first=models.Min("timestamp"), last=models.Max("timestamp"))
+            .values()
+        )
+        return (first, last)
+
+    def first_date(self) -> datetime.date | None:
+        date, _ = self.first_and_last_timestamps
+        if date:
+            return date.date()
+
+    def last_date(self) -> datetime.date | None:
+        _, date = self.first_and_last_timestamps
+        if date:
+            return date.date()
 
     def data_source_uri(self) -> str | None:
         if self.data_source:
@@ -476,16 +377,49 @@ class Deployment(BaseModel):
         _compare_totals_for_sync(deployment, total_files)
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
+        self.save()
         return total_files
 
-    def save(self, *args, **kwargs):
-        # Since Occurrences have their own relationship to Project, we need to update
-        # the project on all occurrences when the deployment's project changes.
-        # @TODO consider if Occurrences need their own relationship to Project.
-        if self.pk is not None:
-            old = Deployment.objects.get(pk=self.pk)
-            if old.project != self.project:
-                self.occurrences.update(project=self.project)
+    def update_children(self):
+        """
+        Update all attribute on all child objects that should be equal to their deployment values.
+
+        e.g. Events, Occurrences, SourceImages must belong to same project as their deployment. But
+        they have their own copy of that attribute to reduce the number of joins required to query them.
+        """
+
+        # All the child models that have a foreign key to project
+        child_models = [
+            "Event",
+            "Occurrence",
+            "SourceImage",
+        ]
+        for model_name in child_models:
+            model = apps.get_model("main", model_name)
+            project_values = model.objects.filter(deployment=self).values_list("project", flat=True).distinct()
+            if len(project_values) > 1:
+                logger.warning(
+                    f"Deployment {self} has alternate projects set on {model_name} "
+                    f"objects: {project_values}. Updating them!"
+                )
+            model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
+
+    def update_calculated_fields(self, save=False):
+        """Update calculated fields on the deployment."""
+
+        self.data_source_total_files = self.captures.count()
+        self.data_source_total_size = self.captures.aggregate(total_size=models.Sum("size")).get("total_size")
+
+        if save:
+            self.save()
+
+    def save(self, *args, update_calculated_fields=True, **kwargs):
+        if self.pk and update_calculated_fields:
+            self.update_calculated_fields()
+            if self.project:
+                self.update_children()
+                # @TODO this isn't working as a background task
+                # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
         super().save(*args, **kwargs)
 
 
@@ -508,6 +442,7 @@ class Event(BaseModel):
     start = models.DateTimeField(db_index=True, help_text="The timestamp of the first image in the event.")
     end = models.DateTimeField(null=True, blank=True, help_text="The timestamp of the last image in the event.")
 
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="events")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="events")
 
     captures: models.QuerySet["SourceImage"]
@@ -605,68 +540,18 @@ class Event(BaseModel):
         """
         plots = []
 
-        # Detections per hour
-        Detection = apps.get_model("main", "Detection")
-        detections_per_hour = (
-            Detection.objects.filter(source_image__event=self)
-            .values("source_image__timestamp__hour")
-            .annotate(num_detections=models.Count("id"))
-            .order_by("source_image__timestamp__hour")
-        )
-
-        # hours, counts = list(zip(*detections_per_hour))
-        if detections_per_hour:
-            hours, counts = list(
-                zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
-            )
-            hours, counts = shift_to_nighttime(list(hours), list(counts))
-            # @TODO show a tick for every hour even if there are no detections
-            hours = [datetime.datetime.strptime(str(h), "%H").strftime("%-I:00 %p") for h in hours]
-            ticktext = [f"{hours[0]}:00", f"{hours[-1]}:00"]
-        else:
-            hours, counts = [], []
-            ticktext = []
-
-        plots.append(
-            {
-                "title": "Detections per hour",
-                "data": {"x": hours, "y": counts, "ticktext": ticktext},
-                "type": "bar",
-            },
-        )
-
-        # Horiziontal bar chart of top taxa
-        Taxon = apps.get_model("main", "Taxon")
-        top_taxa = (
-            Taxon.objects.filter(occurrences__event=self)
-            .values("name")
-            # .annotate(num_detections=models.Count("occurrences__detections"))
-            .annotate(num_detections=models.Count("occurrences"))
-            .order_by("-num_detections")
-        )
-
-        if top_taxa:
-            taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
-            taxa = [t or "Unknown" for t in taxa]
-            counts = [c or 0 for c in counts]
-        else:
-            taxa, counts = [], []
-
-        plots.append(
-            {
-                "title": "Top species",
-                "data": {"x": counts, "y": taxa},
-                "type": "bar",
-                "orientation": "h",
-            },
-        )
+        plots.append(charts.event_detections_per_hour(event_pk=self.pk))
+        plots.append(charts.event_top_taxa(event_pk=self.pk))
 
         return plots
 
-    def save(self, *args, **kwargs):
+    def update_calculated_fields(self):
         if not self.group_by and self.start:
             # If no group_by is set, use the start "day"
             self.group_by = self.start.date()
+
+        if not self.project and self.deployment:
+            self.project = self.deployment.project
 
         if self.pk is not None:
             # Can only update start and end times if this is an update to an existing event
@@ -676,6 +561,9 @@ class Event(BaseModel):
                 self.start = first["timestamp"]
             if last:
                 self.end = last["timestamp"]
+
+    def save(self, *args, **kwargs):
+        self.update_calculated_fields()
         super().save(*args, **kwargs)
 
 
@@ -688,6 +576,7 @@ def group_images_into_events(
         .values("timestamp")
         .annotate(count=models.Count("id"))
         .filter(count__gt=1)
+        .exclude(timestamp=None)
     )
     if dupes.count():
         values = "\n".join(
@@ -734,6 +623,7 @@ def group_images_into_events(
         )
         events.append(event)
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+        event.save()  # Update start and end times and other cached fields
         logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
 
     if delete_empty:
@@ -763,6 +653,23 @@ def delete_empty_events(dry_run=False):
     else:
         print(f"Deleting {events.count()} empty events")
         events.delete()
+
+
+def sample_events(deployment: Deployment, day_interval: int = 3) -> typing.Generator[Event, None, None]:
+    """
+    Return a sample of events from the deployment, evenly spaced apart by day_interval.
+    """
+
+    last_event = None
+    for event in Event.objects.filter(deployment=deployment).order_by("start"):
+        if not last_event:
+            yield event
+            last_event = event
+        else:
+            delta = event.start - last_event.start
+            if delta.days >= day_interval:
+                yield event
+                last_event = event
 
 
 @final
@@ -855,9 +762,9 @@ class SourceImage(BaseModel):
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
 
-    # project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="source_images")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
+    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
 
     detections: models.QuerySet["Detection"]
 
@@ -912,18 +819,23 @@ class SourceImage(BaseModel):
         """Calculate the width and height of the original image."""
         if self.path and self.deployment and self.deployment.data_source:
             config = self.deployment.data_source.config
-            img = ami.utils.s3.read_image(config=config, key=self.path)
-            self.width, self.height = img.size
-            self.save()
-            return self.width, self.height
-        else:
-            return None, None
+            try:
+                img = ami.utils.s3.read_image(config=config, key=self.path)
+            except Exception as e:
+                logger.error(f"Could not determine image dimensions for {self.path}: {e}")
+            else:
+                self.width, self.height = img.size
+                self.save()
+                return self.width, self.height
+        return None, None
 
     def update_calculated_fields(self):
         if self.path and not self.timestamp:
             self.timestamp = self.extract_timestamp()
         if self.path and not self.public_base_url:
             self.public_base_url = self.get_base_url()
+        if not self.project and self.deployment:
+            self.project = self.deployment.project
 
     def save(self, *args, **kwargs):
         self.update_calculated_fields()
@@ -945,25 +857,75 @@ class SourceImage(BaseModel):
         ]
 
 
-def set_dimensions_from_first_image(event: Event, replace_existing: bool = False):
+def set_dimensions_for_collection(
+    event: Event, replace_existing: bool = False, width: int | None = None, height: int | None = None
+):
     """
-    Calculate the width and height of the first image in an event and
-    update all of the images in the event with the same dimensions.
+    Set the width & height of all of the images in the event based on one image.
+
+    This will look for the first image in the event that already has dimensions.
+    If no images have dimensions, the first image be retrieved from the data source.
+
+    This is much more practical than fetching each image. However if a deployment
+    does ever have images with mixed dimensions, another method will be needed.
+
+    @TODO consider adding "assumed image dimensions" to the Deployment instance itself.
     """
 
-    first_image = event.captures.first()
-    if first_image:
-        if not first_image.width or not first_image.height:
-            first_image.get_dimensions()
+    if not width or not height:
+        # Try retrieving dimensions from deployment
+        width, height = getattr(event.deployment, "assumed_image_dimensions", (None, None))
+
+    if not width or not height:
+        # Try retrieving dimensions from the first image that has them already
+        image = event.captures.exclude(width__isnull=True, height__isnull=True).first()
+        if image:
+            width, height = image.width, image.height
+
+    if not width or not height:
+        image = event.captures.first()
+        if image:
+            width, height = image.get_dimensions()
+
+    if width and height:
         logger.info(
-            f"Setting dimensions for {event.captures.count()} images in event {event.pk} to "
-            f"{first_image.width}x{first_image.height}"
+            f"Setting dimensions for {event.captures.count()} images in event {event.pk} to " f"{width}x{height}"
         )
         if replace_existing:
             captures = event.captures.all()
         else:
             captures = event.captures.filter(width__isnull=True, height__isnull=True)
-        captures.update(width=first_image.width, height=first_image.height)
+        captures.update(width=width, height=height)
+
+    else:
+        logger.warning(
+            f"Could not determine image dimensions for event {event.pk}. "
+            f"Width & height will not be set on any source images."
+        )
+
+
+def sample_captures(
+    deployment: Deployment, minute_interval: int = 10, events: list[Event] = []
+) -> typing.Generator[SourceImage, None, None]:
+    """
+    Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
+    """
+
+    last_capture = None
+    if events:
+        qs = SourceImage.objects.filter(event__in=events).exclude(timestamp=None).order_by("timestamp")
+    else:
+        qs = SourceImage.objects.filter(deployment=deployment).exclude(timestamp=None).order_by("timestamp")
+    for capture in qs.all():
+        if not last_capture:
+            yield capture
+            last_capture = capture
+        else:
+            assert capture.timestamp and last_capture.timestamp
+            delta: datetime.timedelta = capture.timestamp - last_capture.timestamp
+            if delta.total_seconds() >= minute_interval * 60:
+                yield capture
+                last_capture = capture
 
 
 @final
@@ -1202,7 +1164,7 @@ class Occurrence(BaseModel):
 @final
 class TaxaManager(models.Manager):
     def get_queryset(self):
-        return super().get_queryset()
+        return super().get_queryset().distinct()
 
     def add_species_parents(self):
         """Add parents to all species that don't have them.
@@ -1299,6 +1261,7 @@ class Taxon(BaseModel):
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
+    projects = models.ManyToManyField("Project", related_name="taxa")
 
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
@@ -1381,6 +1344,7 @@ class TaxaList(BaseModel):
     description = models.TextField(blank=True)
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
+    projects = models.ManyToManyField("Project", related_name="taxa_lists")
 
     class Meta:
         ordering = ["-created_at"]

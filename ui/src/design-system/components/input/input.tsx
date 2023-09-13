@@ -1,5 +1,9 @@
+import classNames from 'classnames'
 import _ from 'lodash'
-import { ChangeEvent, FocusEvent, forwardRef, ReactNode } from 'react'
+import { ChangeEvent, FocusEvent, forwardRef, ReactNode, useState } from 'react'
+import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
+import { IconType } from '../icon/icon'
+import { Tooltip } from '../tooltip/tooltip'
 import styles from './input.module.scss'
 
 interface InputProps {
@@ -9,7 +13,7 @@ interface InputProps {
   name: string
   placeholder?: string
   value?: string | number
-  type?: 'text' | 'number'
+  type?: 'text' | 'number' | 'password'
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   onFocus?: (e: FocusEvent<HTMLInputElement>) => void
@@ -17,7 +21,15 @@ interface InputProps {
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ ...props }, forwardedRef) => {
-    const { description, error, label, name, type, ...rest } = props
+    const {
+      description,
+      error,
+      label,
+      name,
+      type: initialType,
+      ...rest
+    } = props
+    const [type, setType] = useState(initialType)
 
     const hasDescription = !!description?.length
     const descriptionId = hasDescription ? `description-${name}` : undefined
@@ -33,18 +45,38 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           </label>
           {hasError ? <span className={styles.error}>{error}</span> : undefined}
         </div>
-        <input
-          aria-describedby={descriptionId}
-          aria-errormessage={errorId}
-          aria-invalid={hasError}
-          className={styles.input}
-          id={name}
-          name={name}
-          ref={forwardedRef}
-          step={type === 'number' ? 'any' : undefined}
-          type={type}
-          {...rest}
-        />
+        <div className={styles.inputContainer}>
+          <input
+            aria-describedby={descriptionId}
+            aria-errormessage={errorId}
+            aria-invalid={hasError}
+            autoComplete="on"
+            className={classNames(styles.input, {
+              [styles.password]: initialType === 'password',
+            })}
+            id={name}
+            name={name}
+            ref={forwardedRef}
+            step={type === 'number' ? 'any' : undefined}
+            type={type}
+            {...rest}
+          />
+          {initialType === 'password' ? (
+            <div className={styles.passwordButtonContainer}>
+              <Tooltip
+                content={`${type === 'password' ? 'Show' : 'Hide'} password`}
+              >
+                <IconButton
+                  icon={IconType.BatchId}
+                  theme={IconButtonTheme.Plain}
+                  onClick={() =>
+                    setType(type === 'password' ? 'text' : 'password')
+                  }
+                />
+              </Tooltip>
+            </div>
+          ) : null}
+        </div>
         {hasDescription ? (
           <span className={styles.description} id={descriptionId}>
             {description}

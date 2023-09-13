@@ -2,7 +2,8 @@ import { Gallery } from 'components/gallery/gallery'
 import { Occurrence } from 'data-services/models/occurrence'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 
 export const OccurrenceGallery = ({
   occurrences = [],
@@ -20,10 +21,11 @@ export const OccurrenceGallery = ({
         image: o.images[0],
         subTitle: `(${o.determinationScore})`,
         title: o.determinationLabel,
-        to: getRoute({
-          projectId: projectId as string,
-          collection: 'occurrences',
-          itemId: o.id,
+        to: getAppRoute({
+          to: APP_ROUTES.OCCURRENCE_DETAILS({
+            projectId: projectId as string,
+            occurrenceId: o.id,
+          }),
           keepSearchParams: true,
         }),
       })),

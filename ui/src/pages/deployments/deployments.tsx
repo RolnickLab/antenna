@@ -6,19 +6,22 @@ import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dia
 import { Error } from 'pages/error/error'
 import { useParams } from 'react-router-dom'
 import { useClientSideSort } from 'utils/useClientSideSort'
+import { UserPermission } from 'utils/user/types'
 import { columns } from './deployment-columns'
 import styles from './deployments.module.scss'
 
 export const Deployments = () => {
   const { projectId, id } = useParams()
-  const { deployments, isLoading, isFetching, error } = useDeployments({
-    projectId,
-    pagination: { page: 0, perPage: 200 },
-  })
+  const { deployments, userPermissions, isLoading, isFetching, error } =
+    useDeployments({
+      projectId,
+      pagination: { page: 0, perPage: 200 },
+    })
   const { sortedItems, sort, setSort } = useClientSideSort({
     items: deployments,
     defaultSort: { field: 'name', order: 'desc' },
   })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
     return <Error />
@@ -41,9 +44,9 @@ export const Deployments = () => {
       />
       {!isLoading && id ? (
         <DeploymentDetailsDialog id={id} />
-      ) : (
+      ) : canCreate ? (
         <NewDeploymentDialog />
-      )}
+      ) : null}
     </>
   )
 }

@@ -24,7 +24,11 @@
   @include paragraph-x-small();
   color: $color-destructive-600;
   text-align: right;
-  white-space: nowrap;
+  margin-left: 32px;
+
+  &::first-letter {
+    text-transform: capitalize;
+  }
 }
 
 .value {
@@ -42,6 +46,10 @@
   word-break: break-word;
 }
 
+.inputContainer {
+  position: relative;
+}
+
 .input {
   display: flex;
   align-items: center;
@@ -50,9 +58,14 @@
   border-radius: 4px;
   padding: 8px 12px;
   @include paragraph-small();
+  background-color: $color-generic-white;
   color: $color-neutral-800;
   border: 1px solid $color-neutral-300;
   box-sizing: border-box;
+
+  &.password {
+    padding-right: 36px; /* To leave room for show/hide password button */
+  }
 
   &:not(:last-child) {
     margin-bottom: 8px;
@@ -79,6 +92,13 @@
       box-shadow: 0 0 0 4px $color-destructive-100;
     }
   }
+}
+
+.passwordButtonContainer {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
 }
 
 .content {

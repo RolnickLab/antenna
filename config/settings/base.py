@@ -15,7 +15,7 @@ BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 APPS_DIR = BASE_DIR / "ami"
 env = environ.Env()
 
-READ_DOT_ENV_FILE = env.bool("DJANGO_READ_DOT_ENV_FILE", default=False)
+READ_DOT_ENV_FILE = env.bool("DJANGO_READ_DOT_ENV_FILE", default=False)  # type: ignore[no-untyped-call]
 if READ_DOT_ENV_FILE:
     # OS environment variables take precedence over variables from .env
     env.read_env(str(BASE_DIR / ".env"))
@@ -23,7 +23,7 @@ if READ_DOT_ENV_FILE:
 # GENERAL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
-DEBUG = env.bool("DJANGO_DEBUG", False)
+DEBUG = env.bool("DJANGO_DEBUG", False)  # type: ignore[no-untyped-call]
 # Local time zone. Choices are
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
 # though not all of them may be available with every OS.
@@ -77,15 +77,14 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "crispy_forms",
     "crispy_bootstrap5",
-    "allauth",
-    "allauth.account",
-    "allauth.socialaccount",
     "django_celery_beat",
     "rest_framework",
     "rest_framework.authtoken",
+    "djoser",
     "corsheaders",
     "drf_spectacular",
     "django_filters",
+    "anymail",
 ]
 
 LOCAL_APPS = [
@@ -106,14 +105,13 @@ MIGRATION_MODULES = {"sites": "ami.contrib.sites.migrations"}
 # https://docs.djangoproject.com/en/dev/ref/settings/#authentication-backends
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
-    "allauth.account.auth_backends.AuthenticationBackend",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
 AUTH_USER_MODEL = "users.User"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-redirect-url
 LOGIN_REDIRECT_URL = "users:redirect"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-url
-LOGIN_URL = "account_login"
+LOGIN_URL = "login"
 
 # PASSWORDS
 # ------------------------------------------------------------------------------
@@ -192,7 +190,6 @@ TEMPLATES = [
                 "django.template.context_processors.static",
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
-                "ami.users.context_processors.allauth_settings",
             ],
         },
     }
@@ -224,10 +221,17 @@ X_FRAME_OPTIONS = "DENY"
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
 EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",
-    default="django.core.mail.backends.smtp.EmailBackend",
+    default="django.core.mail.backends.smtp.EmailBackend",  # type: ignore[no-untyped-call]
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
 EMAIL_TIMEOUT = 5
+
+# Sendgrid
+ANYMAIL = {
+    "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default=None),  # type: ignore[no-untyped-call]
+}
+SENDGRID_SANDBOX_MODE_IN_DEBUG = False
+SENDGRID_ECHO_TO_STDOUT = True
 
 # ADMIN
 # ------------------------------------------------------------------------------
@@ -295,27 +299,7 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
-# django-allauth
-# ------------------------------------------------------------------------------
-ACCOUNT_ALLOW_REGISTRATION = env.bool("DJANGO_ACCOUNT_ALLOW_REGISTRATION", True)
-# https://django-allauth.readthedocs.io/en/latest/configuration.html
-ACCOUNT_AUTHENTICATION_METHOD = "email"
-# https://django-allauth.readthedocs.io/en/latest/configuration.html
-ACCOUNT_EMAIL_REQUIRED = True
-# https://django-allauth.readthedocs.io/en/latest/configuration.html
-ACCOUNT_USERNAME_REQUIRED = False
-# https://django-allauth.readthedocs.io/en/latest/configuration.html
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-# https://django-allauth.readthedocs.io/en/latest/configuration.html
-ACCOUNT_EMAIL_VERIFICATION = "mandatory"
-# https://django-allauth.readthedocs.io/en/latest/configuration.html
-ACCOUNT_ADAPTER = "ami.users.adapters.AccountAdapter"
-# https://django-allauth.readthedocs.io/en/latest/forms.html
-ACCOUNT_FORMS = {"signup": "ami.users.forms.UserSignupForm"}
-# https://django-allauth.readthedocs.io/en/latest/configuration.html
-SOCIALACCOUNT_ADAPTER = "ami.users.adapters.SocialAccountAdapter"
-# https://django-allauth.readthedocs.io/en/latest/forms.html
-SOCIALACCOUNT_FORMS = {"signup": "ami.users.forms.UserSocialSignupForm"}
+
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
@@ -325,10 +309,10 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
-    # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticatedOrReadOnly",),
+    # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
+    "DEFAULT_PAGINATION_CLASS": "ami.main.api.pagination.LimitOffsetPaginationWithPermissions",
     "PAGE_SIZE": 10,
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
@@ -338,8 +322,27 @@ REST_FRAMEWORK = {
 CORS_URLS_REGEX = r"^/api/.*$"
 
 CSRF_TRUSTED_ORIGINS = env.list(
-    "DJANGO_CSRF_TRUSTED_ORIGINS", default=["https://api.dev.insectai.org", "http://api.dev.insectai.org"]
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    default=[
+        "https://api.dev.insectai.org",
+        "http://api.dev.insectai.org",
+    ],  # type: ignore[no-untyped-call]
 )
+
+# User authentication and registration via REST API endpoints
+# https://djoser.readthedocs.io/en/latest/settings.html
+DJOSER = {
+    # "PASSWORD_RESET_CONFIRM_URL": "#/password/reset/confirm/{uid}/{token}",
+    # "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
+    # "ACTIVATION_URL": "#/activate/{uid}/{token}",
+    "SEND_CONFIRMATION_EMAIL": True,
+    # "SEND_ACTIVATION_EMAIL": True,
+    "LOGIN_FIELD": "email",  # Technically not needed because we have a custom User model
+    "SERIALIZERS": {
+        "user": "ami.users.api.serializers.UserSerializer",
+        "current_user": "ami.users.api.serializers.CurrentUserSerializer",
+    },
+}
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
 # See more configuration options at https://drf-spectacular.readthedocs.io/en/latest/settings.html#settings
@@ -347,8 +350,8 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Automated Monitoring of Insects ML Platform API",
     "DESCRIPTION": "Documentation of API endpoints of Automated Monitoring of Insects ML Platform",
     "VERSION": "1.0.0",
-    # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
+    # "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 # Your stuff...
 # ------------------------------------------------------------------------------

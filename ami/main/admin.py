@@ -1,7 +1,7 @@
 from typing import Any
 
 from django.contrib import admin
-from django.db.models import Count
+from django.db import models
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
@@ -45,7 +45,25 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "data_source_uri",
         "captures_count",
         "captures_size",
+        "events_count",
+        "start_date",
+        "end_date",
     )
+
+    def start_date(self, obj) -> str | None:
+        result = SourceImage.objects.filter(event__deployment=obj).aggregate(
+            models.Min("timestamp"),
+        )
+        return result["timestamp__min"].date() if result["timestamp__min"] else None
+
+    def end_date(self, obj) -> str | None:
+        result = SourceImage.objects.filter(deployment=obj).aggregate(
+            models.Max("timestamp"),
+        )
+        return result["timestamp__max"].date() if result["timestamp__max"] else None
+
+    def events_count(self, obj) -> str | None:
+        return number_format(obj.events.count(), force_grouping=True, use_l10n=True)
 
     def captures_size(self, obj) -> str | None:
         return filesizeformat(obj.data_source_total_size)
@@ -78,15 +96,22 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
 class EventAdmin(admin.ModelAdmin[Event]):
     """Admin panel example for ``Event`` model."""
 
-    list_display = ("name", "deployment", "start", "duration_display", "captures_count")
+    list_display = (
+        "name",
+        "deployment",
+        "start",
+        "duration_display",
+        "captures_count",
+        "project",
+    )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
-        from django.db.models import Count, ExpressionWrapper, F
+        from django.db.models import ExpressionWrapper, F
         from django.db.models.fields import DurationField
 
-        return qs.select_related("deployment", "deployment__project").annotate(
-            captures_count=Count("captures"),
+        return qs.select_related("deployment", "project").annotate(
+            captures_count=models.Count("captures"),
             time_duration=ExpressionWrapper(F("end") - F("start"), output_field=DurationField()),
         )
 
@@ -97,7 +122,15 @@ class EventAdmin(admin.ModelAdmin[Event]):
     def duration_display(self, obj) -> str:
         return ami.utils.dates.format_timedelta(obj.time_duration)
 
-    list_filter = ("deployment", "deployment__project", "start")
+    # Save all events in queryset
+    @admin.action(description="Re-save events to update cached values")
+    def save_events(self, request: HttpRequest, queryset: QuerySet[Event]) -> None:
+        for event in queryset:
+            event.save()
+        self.message_user(request, f"Updated {queryset.count()} events.")
+
+    list_filter = ("deployment", "project", "start")
+    actions = [save_events]
 
 
 @admin.register(SourceImage)
@@ -173,7 +206,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
 
-        return qs.annotate(occurrence_count=Count("occurrences")).order_by("-occurrence_count")
+        return qs.annotate(occurrence_count=models.Count("occurrences")).order_by("-occurrence_count")
 
     @admin.display(
         description="Occurrences",

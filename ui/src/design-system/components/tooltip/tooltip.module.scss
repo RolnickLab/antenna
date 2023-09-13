@@ -2,7 +2,7 @@
 @import 'design-system/variables/typography.scss';
 
 .tooltipContent {
-  padding: 2px 8px;
+  padding: 4px 12px;
   border-radius: 4px;
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
@@ -10,8 +10,8 @@
   @include paragraph-x-small();
   user-select: none;
   z-index: 2;
-}
 
-.tooltipArrow {
-  fill: $color-generic-white;
+  .tooltipArrow {
+    fill: $color-generic-white;
+  }
 }

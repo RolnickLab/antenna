@@ -7,7 +7,8 @@ import { Table } from 'design-system/components/table/table/table'
 import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './jobs-columns'
@@ -61,9 +62,8 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
       open={!!id}
       onOpenChange={() =>
         navigate(
-          getRoute({
-            projectId: projectId as string,
-            collection: 'jobs',
+          getAppRoute({
+            to: APP_ROUTES.JOBS({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )

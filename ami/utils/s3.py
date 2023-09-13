@@ -10,11 +10,12 @@ import boto3
 import boto3.resources.base
 import botocore
 import botocore.config
+import PIL
+import PIL.Image
 from mypy_boto3_s3.client import S3Client
 from mypy_boto3_s3.paginator import ListObjectsV2Paginator
 from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResource
 from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef
-from PIL import Image
 from rich import print
 
 logger = logging.getLogger(__name__)
@@ -209,14 +210,18 @@ def read_file(config: S3Config, key: str) -> bytes:
     return obj.get()["Body"].read()
 
 
-def read_image(config: S3Config, key: str) -> Image.Image:
+def read_image(config: S3Config, key: str) -> PIL.Image.Image:
     """
     Download an image from S3 and return as a PIL Image.
     """
     bucket = get_bucket(config)
     obj = bucket.Object(key)
     logger.info(f"Fetching image {key} from S3")
-    img = Image.open(obj.get()["Body"])
+    try:
+        img = PIL.Image.open(obj.get()["Body"])
+    except PIL.UnidentifiedImageError:
+        logger.error(f"Could not read image {key}")
+        raise
     return img
 
 
@@ -257,7 +262,7 @@ def resize_image(config: S3Config, key: str, width: int, height: int) -> str:
 
 def resize_image_body(client: S3Client, bucket: str, key: str, width: int, height: int) -> bytes:
     body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
-    image = Image.open(io.BytesIO(body))
+    image = PIL.Image.open(io.BytesIO(body))
     image.thumbnail((width, height))
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG")

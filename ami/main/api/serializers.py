@@ -2,7 +2,6 @@ import datetime
 import typing
 import urllib.parse
 
-from django.contrib.auth.models import Group, User
 from django.db.models import Count
 from rest_framework import serializers
 from rest_framework.reverse import reverse
@@ -20,6 +19,7 @@ from ..models import (
     SourceImage,
     Taxon,
 )
+from .permissions import add_object_level_permissions
 
 
 def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
@@ -44,17 +44,22 @@ def add_format_to_url(url: str, format: typing.Literal["json", "html", "csv"]) -
 class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     url_field_name = "details"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
 
-class UserSerializer(DefaultSerializer):
+        request = self.context.get("request")
+        user = request.user if request else None
+        return add_object_level_permissions(user, data)
+
+
+class ProjectNestedSerializer(DefaultSerializer):
     class Meta:
-        model = User
-        fields = ["details", "username", "email", "groups"]
-
-
-class GroupSerializer(DefaultSerializer):
-    class Meta:
-        model = Group
-        fields = ["id", "details", "name"]
+        model = Project
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
 
 
 class SourceImageNestedSerializer(DefaultSerializer):
@@ -67,14 +72,15 @@ class SourceImageNestedSerializer(DefaultSerializer):
             "width",
             "height",
             "timestamp",
-            "detections_count",
-            "detections",
+            # "detections_count",
+            # "detections",
         ]
 
 
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
+    project = ProjectNestedSerializer(read_only=True)
 
     class Meta:
         model = Deployment
@@ -91,7 +97,6 @@ class DeploymentListSerializer(DefaultSerializer):
             "occurrences",
             "events_count",
             "captures_count",
-            "detections_count",
             "occurrences_count",
             "taxa_count",
             "project",
@@ -99,6 +104,8 @@ class DeploymentListSerializer(DefaultSerializer):
             "updated_at",
             "latitude",
             "longitude",
+            "first_date",
+            "last_date",
         ]
 
     def get_events(self, obj):
@@ -192,16 +199,6 @@ class ProjectSerializer(DefaultSerializer):
         ]
 
 
-class ProjectNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Project
-        fields = [
-            "id",
-            "name",
-            "details",
-        ]
-
-
 class SourceImageQuickListSerializer(DefaultSerializer):
     class Meta:
         model = SourceImage
@@ -283,15 +280,20 @@ class DeploymentCaptureNestedSerializer(DefaultSerializer):
         ]
 
 
-class DeploymentSerializer(DefaultSerializer):
+class DeploymentSerializer(DeploymentListSerializer):
     events = DeploymentEventNestedSerializer(many=True, read_only=True)
     occurrences = serializers.SerializerMethodField()
     example_captures = DeploymentCaptureNestedSerializer(many=True, read_only=True)
     data_source = serializers.SerializerMethodField(read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Project.objects.all(),
+        source="project",
+    )
 
-    class Meta:
-        model = Deployment
+    class Meta(DeploymentListSerializer.Meta):
         fields = DeploymentListSerializer.Meta.fields + [
+            "project_id",
             "description",
             "data_source",
             "example_captures",
@@ -894,7 +896,7 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html#Example-JSON-format
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 
@@ -910,6 +912,8 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
             "image": obj.public_url(),
             "ami_id": obj.pk,
             "timestamp": obj.timestamp,
+            "event": obj.event.date_label() if obj.event else None,
+            "event_id": obj.event.pk if obj.event else None,
             "deployment": (obj.deployment.name if obj.deployment else None),
             "deployment_id": (obj.deployment.pk if obj.deployment else None),
             "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
@@ -934,7 +938,7 @@ class LabelStudioDetectionSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 
@@ -999,7 +1003,7 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 

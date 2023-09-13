@@ -114,3 +114,18 @@ def group_datetimes_by_gap(
     groups.append(current_group)
 
     return groups
+
+
+def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
+    """Shift hours so that the x-axis is centered around 12PM."""
+
+    split_index = 0
+    for i, hour in enumerate(hours):
+        if hour > 12:
+            split_index = i
+            break
+
+    hours = hours[split_index:] + hours[:split_index]
+    values = values[split_index:] + values[:split_index]
+
+    return hours, values

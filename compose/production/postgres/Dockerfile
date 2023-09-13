@@ -1,4 +1,5 @@
 FROM postgres:14
+# FROM esgn/pgtuned:latest
 
 COPY ./compose/production/postgres/maintenance /usr/local/bin/maintenance
 RUN chmod +x /usr/local/bin/maintenance/*

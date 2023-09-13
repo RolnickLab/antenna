@@ -1,7 +1,7 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FilterSettings } from 'components/filter-settings/filter-settings'
-import { useOccurrenceDetails } from 'data-services/hooks/useOccurrenceDetails'
-import { useOccurrences } from 'data-services/hooks/useOccurrences'
+import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
+import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
@@ -13,7 +13,8 @@ import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getRoute } from 'utils/getRoute'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
@@ -120,9 +121,8 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
       open={!!id}
       onOpenChange={() =>
         navigate(
-          getRoute({
-            projectId: projectId as string,
-            collection: 'occurrences',
+          getAppRoute({
+            to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )

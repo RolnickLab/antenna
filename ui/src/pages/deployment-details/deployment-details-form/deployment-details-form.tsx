@@ -8,6 +8,7 @@ import { FormStepper as _FormStepper } from 'design-system/components/form-stepp
 import { useCallback, useContext, useMemo } from 'react'
 import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
+import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from '../styles.module.scss'
 import { SectionGeneral } from './section-general/section-general'
 import { SectionLocation } from './section-location/section-location'
@@ -176,20 +177,22 @@ const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
 }
 
 const FormError = ({ error }: { error: any }) => {
-  let message = 'Unknown error'
-  if (error.response?.data) {
-    const [field, details] = Object.entries(error.response.data)[0]
-    if (field) {
-      message = `Please check field "${field}". ${details}`
-    }
-  } else if (error.message) {
-    message = error.message
-  }
+  const { message, fieldErrors } = parseServerError(error)
 
   return (
     <div className={styles.formError}>
-      <span>Could not save: </span>
-      <span>{message}</span>
+      <>
+        <span>Could not save: </span>
+        <span>{message}</span>
+      </>
+      {fieldErrors.length ? (
+        <>
+          <br />
+          <span>
+            {fieldErrors[0].key}: {fieldErrors[0].message}
+          </span>
+        </>
+      ) : null}
     </div>
   )
 }
