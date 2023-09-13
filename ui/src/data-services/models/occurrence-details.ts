@@ -4,6 +4,18 @@ import { Occurrence, ServerOccurrence } from './occurrence'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
+type ServerIdentification = {
+  id: number
+  taxon: {
+    id: number
+    name: string
+  }
+  user: {
+    name: string
+    image?: string
+  }
+}
+
 export class OccurrenceDetails extends Occurrence {
   private readonly _detections: string[] = []
 
@@ -14,6 +26,10 @@ export class OccurrenceDetails extends Occurrence {
 
   get detections(): string[] {
     return this._detections
+  }
+
+  get identifications(): ServerIdentification[] {
+    return this._occurrence.identifications
   }
 
   getDetectionInfo(id: string) {

@@ -3,6 +3,7 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
+import { IdentificationSummary } from 'design-system/components/identification/identification-summary/identification-summary'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { useMemo } from 'react'
@@ -18,6 +19,7 @@ export const OccurrenceDetails = ({
   occurrence: Occurrence
 }) => {
   const { projectId } = useParams()
+  console.log('occurrence: ', occurrence)
 
   const blueprintItems = useMemo(
     () =>
@@ -110,9 +112,56 @@ export const OccurrenceDetails = ({
                   <InfoBlock fields={fields} />
                 </Tabs.Content>
                 <Tabs.Content value="identification">
-                  <span className={styles.placeholder}>
-                    This feature is coming soon.
-                  </span>
+                  <div className={styles.identifications}>
+                    {occurrence.identifications.map((i) => (
+                      <IdentificationSummary
+                        identification={{
+                          id: `${i.id}`,
+                          overridden: false,
+                          title: i.taxon.name,
+                        }}
+                        ranks={[
+                          {
+                            id: 'rank-1',
+                            title: 'Rank 1',
+                          },
+                          {
+                            id: 'rank-2',
+                            title: 'Rank 2',
+                          },
+                          {
+                            id: 'rank-3',
+                            title: 'Rank 3',
+                          },
+                        ]}
+                        user={{
+                          username: i.user.name,
+                          profileImage: i.user.image,
+                        }}
+                      />
+                    ))}
+                    <IdentificationSummary
+                      identification={{
+                        id: occurrence.determinationId,
+                        overridden: occurrence.identifications.length > 0,
+                        title: occurrence.determinationLabel,
+                      }}
+                      ranks={[
+                        {
+                          id: 'rank-1',
+                          title: 'Rank 1',
+                        },
+                        {
+                          id: 'rank-2',
+                          title: 'Rank 2',
+                        },
+                        {
+                          id: 'rank-3',
+                          title: 'Rank 3',
+                        },
+                      ]}
+                    />
+                  </div>
                 </Tabs.Content>
               </Tabs.Root>
             </div>

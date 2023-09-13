@@ -51,10 +51,11 @@
   }
 }
 
-.placeholder {
-  display: block;
-  @include paragraph-medium();
-  color: $color-neutral-600;
+.identifications {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+  padding: 4px 0;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
