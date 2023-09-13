@@ -6,12 +6,15 @@ from django.db.models import Count
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
+from ami.users.models import User
+
 from ..models import (
     Algorithm,
     Classification,
     Deployment,
     Detection,
     Event,
+    Identification,
     Job,
     Occurrence,
     Page,
@@ -465,6 +468,18 @@ class TaxonSerializer(DefaultSerializer):
             "detections_count",
             "events_count",
             "occurrences",
+        ]
+
+
+class TaxonNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+            "taxonomy",
         ]
 
 
@@ -1046,3 +1061,48 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
     def get_predictions(self, obj):
         # @TODO implement if necessary, make optional by URL param
         return []
+
+
+class UserNestedSerializer(DefaultSerializer):
+    details = serializers.HyperlinkedIdentityField(view_name="user-detail", lookup_field="pk", lookup_url_kwarg="id")
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "image",
+            "details",
+        ]
+
+
+class IdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    occurrence = OccurrenceNestedSerializer(read_only=True)
+    occurrence_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Occurrence.objects.all(),
+        source="occurrence",
+    )
+    taxon = TaxonNestedSerializer(read_only=True)
+    taxon_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Taxon.objects.all(),
+        source="taxon",
+    )
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "user",
+            "occurrence",
+            "occurrence_id",
+            "taxon",
+            "taxon_id",
+            "priority",
+            "primary",
+            "created_at",
+            "updated_at",
+        ]

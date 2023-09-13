@@ -16,6 +16,7 @@ from ..models import (
     Deployment,
     Detection,
     Event,
+    Identification,
     Job,
     Occurrence,
     Page,
@@ -32,6 +33,7 @@ from .serializers import (
     DetectionSerializer,
     EventListSerializer,
     EventSerializer,
+    IdentificationSerializer,
     JobListSerializer,
     JobSerializer,
     LabelStudioDetectionSerializer,
@@ -618,3 +620,25 @@ class LabelStudioHooksViewSet(viewsets.ViewSet):
         project = request.data["project"]
         # update_project_after_save(project=project, request=request)
         return Response({"action": "update_project", "data": project})
+
+
+class IdentificationViewSet(DefaultViewSet):
+    """
+    API endpoint that allows identifications to be viewed or edited.
+    """
+
+    queryset = Identification.objects.all()
+    serializer_class = IdentificationSerializer
+    filterset_fields = ["occurrence", "user", "taxon", "primary"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "user",
+        "priority",
+    ]
+
+    def perform_create(self, serializer):
+        """
+        Set the user to the current user.
+        """
+        serializer.save(user=self.request.user)

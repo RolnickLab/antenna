@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
+from django.conf import settings
 from django.db import IntegrityError, models
 from django.db.models import Q
 
@@ -929,6 +930,73 @@ def sample_captures(
 
 
 @final
+class IdentificationHistory(BaseModel):
+    """A history of identifications for an occurrence."""
+
+    # @TODO
+    pass
+
+
+@final
+class Identification(BaseModel):
+    """A classification of an occurrence by a human."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="identifications",
+    )
+    taxon = models.ForeignKey(
+        "Taxon",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="identifications",
+    )
+    occurrence = models.ForeignKey(
+        "Occurrence",
+        on_delete=models.CASCADE,
+        related_name="identifications",
+    )
+
+    primary = models.BooleanField(default=False)
+    priority = models.IntegerField(default=1)
+
+    class Meta:
+        ordering = ["-priority", "-created_at"]
+        constraints = [
+            # Only one primary identification is allowed per occurrence
+            models.UniqueConstraint(fields=["occurrence", "primary"], name="unique_primary_identification"),
+        ]
+
+    def save(self, *args, **kwargs):
+        """
+        - Set the primary to True if there are no other identifications for this occurrence
+        - Set the determination of the occurrence to the taxon of this identification if it is primary
+        """
+        if not self.pk:
+            # Set the primary to True if there are no other identifications for this occurrence
+            if not Identification.objects.filter(occurrence=self.occurrence).exists():
+                self.primary = True
+
+        if self.primary:
+            # Change all other identifications to not primary
+            Identification.objects.filter(
+                occurrence=self.occurrence,
+                primary=True,
+            ).exclude(
+                pk=self.pk
+            ).update(primary=False)
+
+            # Set the determination of the occurrence to the taxon of this identification
+            if not self.occurrence.determination or self.occurrence.determination != self.taxon:
+                self.occurrence.determination = self.taxon
+                self.occurrence.save()
+
+        super().save(*args, **kwargs)
+
+
+@final
 class ClassificationResult(BaseModel):
     """A classification result from a model"""
 
@@ -1095,6 +1163,13 @@ class Detection(BaseModel):
 
 
 @final
+class OccurrenceManager(models.Manager):
+    def get_queryset(self):
+        # prefetch determination, deployment, project
+        return super().get_queryset().select_related("determination", "deployment", "project")
+
+
+@final
 class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
 
@@ -1106,6 +1181,16 @@ class Occurrence(BaseModel):
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
     detections: models.QuerySet[Detection]
+
+    objects = OccurrenceManager()
+
+    def __str__(self) -> str:
+        name = f"Occurrence #{self.pk}"
+        if self.deployment:
+            name += f" ({self.deployment.name})"
+        if self.determination:
+            name += f" ({self.determination.name})"
+        return name
 
     def detections_count(self) -> int | None:
         # Annotaions don't seem to work with nested serializers
@@ -1164,7 +1249,9 @@ class Occurrence(BaseModel):
 @final
 class TaxaManager(models.Manager):
     def get_queryset(self):
-        return super().get_queryset().distinct()
+        # Prefetch parent and parents
+        # return super().get_queryset().select_related("parent").prefetch_related("parents")
+        return super().get_queryset()
 
     def add_genus_parents(self):
         """Add direct genus parents to all species that don't have them, based on the scientific name.
@@ -1262,9 +1349,9 @@ class Taxon(BaseModel):
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
-    projects = models.ManyToManyField("Project", related_name="taxa", blank=True)
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
 
+    projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
