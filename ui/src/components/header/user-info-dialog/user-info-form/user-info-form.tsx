@@ -67,8 +67,11 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
         <div className={styles.section}>
           <div className={styles.sectionContent}>
             <div className={styles.sectionRow}>
-              <InputValue label="Email" value="Update button to be added" />
-              <InputValue label="Password" value="Reset button to be added" />
+              <InputValue label="Email" value={userInfo.email} />
+              <InputValue
+                label="Password"
+                value="Contact an administrator to change your email or password."
+              />
             </div>
             <div className={styles.sectionRow}>
               <FormField
