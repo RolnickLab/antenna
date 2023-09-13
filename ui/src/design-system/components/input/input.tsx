@@ -116,7 +116,9 @@ export const InputContent = ({
   children?: ReactNode
 }) => (
   <div className={styles.container}>
-    <span className={styles.label}>{label}</span>
-    <div className={styles.content}>{children}</div>
+    <div className={styles.labelRow}>
+      <span className={styles.label}>{label}</span>
+    </div>
+    <div>{children}</div>
   </div>
 )
