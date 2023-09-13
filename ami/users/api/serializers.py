@@ -29,6 +29,21 @@ class UserSerializer(DefaultSerializer):
         return []
 
 
+class CurrentUserSerializer(UserSerializer):
+    """
+    Make additional private fields available for the current user.
+
+    This is used for the `/users/me/` endpoint.
+    `email` is read-only because it needs be changed via the `/users/set_email/` endpoint.
+    `password` must be changed via the `/users/reset_password/` endpoint.
+    """
+
+    email = serializers.EmailField(read_only=True)
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + ["email"]
+
+
 class GroupSerializer(DefaultSerializer):
     class Meta:
         model = Group
