@@ -32,12 +32,20 @@
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
   .gallery {
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr !important;
+
+    &.large {
+      grid-template-columns: 1fr 1fr !important;
+    }
   }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .gallery {
     grid-template-columns: 1fr 1fr !important;
+
+    &.large {
+      grid-template-columns: 1fr !important;
+    }
   }
 }

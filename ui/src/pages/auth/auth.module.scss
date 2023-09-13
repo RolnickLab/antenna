@@ -60,9 +60,28 @@
 
 .form {
   width: 320px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
   gap: 24px;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .wrapper {
+    grid-template-columns: 1fr;
+  }
+
+  .imageWrapper {
+    display: none;
+  }
+
+  .content {
+    padding: 0;
+  }
+
+  .form {
+    width: 256px;
+  }
 }
