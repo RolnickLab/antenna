@@ -22,7 +22,7 @@ export const FormController = <
   const { rules = {} } = config
 
   const controllerRules = useMemo(() => {
-    const { required, minLength, maxLength, min, max } = rules
+    const { required, minLength, maxLength, min, max, validate } = rules
 
     return {
       required: required ? translate(STRING.MESSAGE_VALUE_MISSING) : undefined,
@@ -54,6 +54,7 @@ export const FormController = <
               message: translate(STRING.MESSAGE_VALUE_INVALID),
             }
           : undefined,
+      validate,
     }
   }, [rules])
 

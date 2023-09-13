@@ -1,18 +1,27 @@
 import classNames from 'classnames'
 import { FileInput } from 'design-system/components/file-input/file-input'
-import { useState } from 'react'
+import { FileInputAccept } from 'design-system/components/file-input/types'
 import { UserInfo } from 'utils/user/types'
 import styles from './user-info-image-upload.module.scss'
 
 export const UserInfoImageUpload = ({
+  file,
   userInfo,
   onChange,
 }: {
+  file?: File | null
   userInfo: UserInfo
-  onChange: (image: File) => void
+  onChange: (file: File | null) => void
 }) => {
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string>()
-  const imageUrl = uploadedImageUrl ?? userInfo.image
+  const imageUrl = (() => {
+    if (file) {
+      return URL.createObjectURL(file)
+    }
+    if (file === null) {
+      return undefined
+    }
+    return userInfo.image
+  })()
 
   return (
     <div className={styles.container}>
@@ -24,15 +33,10 @@ export const UserInfoImageUpload = ({
           })}
         >
           <FileInput
+            accept={FileInputAccept.Images}
+            label="Choose image"
             name="user-image"
-            onChange={(e) => {
-              const file = e.currentTarget.files?.[0]
-              if (!file) {
-                return
-              }
-              setUploadedImageUrl(URL.createObjectURL(file))
-              onChange(file)
-            }}
+            onChange={onChange}
           />
         </div>
       </div>

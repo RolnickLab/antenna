@@ -100,3 +100,9 @@
   right: 4px;
   transform: translateY(-50%);
 }
+
+.content {
+  &:not(:last-child) {
+    margin-bottom: 8px;
+  }
+}

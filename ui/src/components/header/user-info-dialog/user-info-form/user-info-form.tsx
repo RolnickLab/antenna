@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { FormController } from 'components/form/form-controller'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
@@ -12,9 +13,11 @@ import { UserInfo } from 'utils/user/types'
 import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
 import styles from './user-info-form.module.scss'
 
+const IMAGE_MAX_SIZE = 1024 * 1024 // 1MB
+
 interface UserInfoFormValues {
   name?: string
-  image?: File
+  image?: File | null
 }
 
 const config: FormConfig = {
@@ -23,17 +26,28 @@ const config: FormConfig = {
   },
   image: {
     label: 'Image',
+    description:
+      'The image must smaller than 1MB. Valid formats are PNG, GIF and JPEG.',
+    rules: {
+      validate: (file: File) => {
+        if (file) {
+          if (file?.size > IMAGE_MAX_SIZE) {
+            return translate(STRING.MESSAGE_IMAGE_TOO_BIG)
+          }
+        }
+      },
+    },
   },
 }
 
 export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
   const [serverError, setServerError] = useState<string | undefined>()
-  const { control, handleSubmit, setValue, setError } =
-    useForm<UserInfoFormValues>({
-      defaultValues: {
-        name: userInfo.name,
-      },
-    })
+  const { control, handleSubmit, setError } = useForm<UserInfoFormValues>({
+    defaultValues: {
+      name: userInfo.name,
+    },
+    mode: 'onChange',
+  })
   const { updateUserInfo, isLoading, error } = useUpdateUserInfo()
 
   useEffect(() => {
@@ -82,12 +96,24 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
               />
             </div>
             <div className={styles.sectionRow}>
-              <InputContent label={config.image.label}>
-                <UserInfoImageUpload
-                  userInfo={userInfo}
-                  onChange={(image) => setValue('image', image)}
-                />
-              </InputContent>
+              <FormController
+                name="image"
+                control={control}
+                config={config.image}
+                render={({ field, fieldState }) => (
+                  <InputContent
+                    description={config[field.name].description}
+                    label={config[field.name].label}
+                    error={fieldState.error?.message}
+                  >
+                    <UserInfoImageUpload
+                      userInfo={userInfo}
+                      file={field.value}
+                      onChange={field.onChange}
+                    />
+                  </InputContent>
+                )}
+              />
             </div>
           </div>
         </div>

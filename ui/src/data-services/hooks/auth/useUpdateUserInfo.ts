@@ -16,9 +16,11 @@ export const useUpdateUserInfo = () => {
       }
       if (fieldValues.image) {
         data.append('image', fieldValues.image, fieldValues.image.name)
+      } else if (fieldValues.image === null) {
+        data.append('image', '')
       }
 
-      return axios.patch(`${API_URL}/${API_ROUTES.ME}/`, fieldValues, {
+      return axios.patch(`${API_URL}/${API_ROUTES.ME}/`, data, {
         headers: {
           ...getAuthHeader(user),
           'Content-Type': 'multipart/form-data',
