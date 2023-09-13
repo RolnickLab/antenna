@@ -52,6 +52,16 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
         return add_object_level_permissions(user, data)
 
 
+class ProjectNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Project
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
 class SourceImageNestedSerializer(DefaultSerializer):
     class Meta:
         model = SourceImage
@@ -70,6 +80,7 @@ class SourceImageNestedSerializer(DefaultSerializer):
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
+    project = ProjectNestedSerializer(read_only=True)
 
     class Meta:
         model = Deployment
@@ -188,16 +199,6 @@ class ProjectSerializer(DefaultSerializer):
         ]
 
 
-class ProjectNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Project
-        fields = [
-            "id",
-            "name",
-            "details",
-        ]
-
-
 class SourceImageQuickListSerializer(DefaultSerializer):
     class Meta:
         model = SourceImage
@@ -279,15 +280,20 @@ class DeploymentCaptureNestedSerializer(DefaultSerializer):
         ]
 
 
-class DeploymentSerializer(DefaultSerializer):
+class DeploymentSerializer(DeploymentListSerializer):
     events = DeploymentEventNestedSerializer(many=True, read_only=True)
     occurrences = serializers.SerializerMethodField()
     example_captures = DeploymentCaptureNestedSerializer(many=True, read_only=True)
     data_source = serializers.SerializerMethodField(read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Project.objects.all(),
+        source="project",
+    )
 
-    class Meta:
-        model = Deployment
+    class Meta(DeploymentListSerializer.Meta):
         fields = DeploymentListSerializer.Meta.fields + [
+            "project_id",
             "description",
             "data_source",
             "example_captures",
