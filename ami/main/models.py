@@ -929,12 +929,12 @@ def sample_captures(
                 last_capture = capture
 
 
-@final
-class IdentificationHistory(BaseModel):
-    """A history of identifications for an occurrence."""
-
-    # @TODO
-    pass
+# @final
+# class IdentificationHistory(BaseModel):
+#     """A history of identifications for an occurrence."""
+#
+#     # @TODO
+#     pass
 
 
 @final
