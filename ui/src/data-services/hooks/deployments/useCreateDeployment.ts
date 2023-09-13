@@ -13,7 +13,7 @@ const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
   latitude: fieldValues.latitude,
   longitude: fieldValues.longitude,
   occurrences: [],
-  project: `http://api.dev.insectai.org/api/v2/projects/${fieldValues.projectId}/`, // TODO: Can we pass just id here?
+  project_id: fieldValues.projectId,
 })
 
 export const useCreateDeployment = () => {
