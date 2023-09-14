@@ -366,7 +366,7 @@ class TaxonNestedSerializer(TaxonParentNestedSerializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    parent = TaxonNestedSerializer(read_only=True)
+    parent = TaxonParentNestedSerializer(read_only=True)
 
     class Meta:
         model = Taxon
