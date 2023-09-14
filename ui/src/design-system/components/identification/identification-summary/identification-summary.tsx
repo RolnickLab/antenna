@@ -12,7 +12,7 @@ interface IdentificationSummaryProps {
   ranks: {
     id: string
     name: string
-    rank?: string
+    rank: string
     to?: string
   }[]
   user?: {

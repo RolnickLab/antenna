@@ -1,6 +1,5 @@
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Fragment } from 'react'
-import { Link } from 'react-router-dom'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './identification-breadcrumbs.module.scss'
 
@@ -8,7 +7,7 @@ interface IdentificationBreadcrumbsProps {
   items: {
     id: string
     name: string
-    rank?: string
+    rank: string
     to?: string
   }[]
 }
@@ -19,10 +18,8 @@ export const IdentificationBreadcrumbs = ({
   <div className={styles.breadcrumbs}>
     {items.map((item, index) => (
       <Fragment key={item.id}>
-        <Tooltip content={item.rank ?? '?'}>
-          <span className={styles.breadcrumb}>
-            {item.to ? <Link to={item.to}>{item.name}</Link> : item.name}
-          </span>
+        <Tooltip content={item.rank} to={item.to}>
+          <span className={styles.breadcrumb}>{item.name}</span>
         </Tooltip>
         {index < items.length - 1 ? (
           <Icon

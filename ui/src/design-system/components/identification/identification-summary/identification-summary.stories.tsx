@@ -3,6 +3,12 @@ import { IdentificationSummary } from './identification-summary'
 
 type Meta = ComponentMeta<typeof IdentificationSummary>
 
+const EXAMPLE_RANKS = [
+  { id: 'erebidae', name: 'Erebidae', rank: 'Family' },
+  { id: 'arctiinae', name: 'Arctiinae', rank: 'Genus' },
+  { id: 'lithosiini', name: 'Lithosiini', rank: 'Species' },
+]
+
 export default {
   title: 'Components/Identification/IdentificationSummary',
   component: IdentificationSummary,
@@ -14,11 +20,7 @@ export const Default: Meta = {
       id: 'lycomorphodes-sordida',
       name: 'Lycomorphodes sordida',
     },
-    ranks: [
-      { id: 'erebidae', name: 'Erebidae' },
-      { id: 'arctiinae', name: 'Arctiinae' },
-      { id: 'lithosiini', name: 'Lithosiini' },
-    ],
+    ranks: EXAMPLE_RANKS,
     user: {
       name: 'Andre Poremski',
       image: 'https://placekitten.com/600/400',
@@ -32,11 +34,7 @@ export const WithoutProfileImage: Meta = {
       id: 'lycomorphodes-sordida',
       name: 'Lycomorphodes sordida',
     },
-    ranks: [
-      { id: 'erebidae', name: 'Erebidae' },
-      { id: 'arctiinae', name: 'Arctiinae' },
-      { id: 'lithosiini', name: 'Lithosiini' },
-    ],
+    ranks: EXAMPLE_RANKS,
     user: {
       name: 'Andre Poremski',
     },
@@ -50,11 +48,7 @@ export const Overridden: Meta = {
       name: 'Lycomorphodes sordida',
       overridden: true,
     },
-    ranks: [
-      { id: 'erebidae', name: 'Erebidae' },
-      { id: 'arctiinae', name: 'Arctiinae' },
-      { id: 'lithosiini', name: 'Lithosiini' },
-    ],
+    ranks: EXAMPLE_RANKS,
     user: {
       name: 'Andre Poremski',
       image: 'https://placekitten.com/600/400',
@@ -68,10 +62,6 @@ export const ByMachine: Meta = {
       id: 'lycomorphodes-sordida',
       name: 'Lycomorphodes sordida',
     },
-    ranks: [
-      { id: 'erebidae', name: 'Erebidae' },
-      { id: 'arctiinae', name: 'Arctiinae' },
-      { id: 'lithosiini', name: 'Lithosiini' },
-    ],
+    ranks: EXAMPLE_RANKS,
   },
 }

@@ -58,6 +58,13 @@
   padding: 4px 0;
 }
 
+.identification {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 @media only screen and (max-width: $small-screen-breakpoint) {
   .wrapper {
     width: 100%;

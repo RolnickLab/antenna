@@ -3,6 +3,7 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
+import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { IdentificationSummary } from 'design-system/components/identification/identification-summary/identification-summary'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -112,22 +113,44 @@ export const OccurrenceDetails = ({
                 </Tabs.Content>
                 <Tabs.Content value="identification">
                   <div className={styles.identifications}>
-                    {occurrence.identifications.map((i) => (
-                      <IdentificationSummary
-                        identification={{
-                          id: i.id,
-                          overridden: i.overridden,
-                          name: i.name,
-                        }}
-                        ranks={i.ranks.map((rank) => ({
-                          ...rank,
-                          to: APP_ROUTES.SPECIES_DETAILS({
-                            projectId: projectId as string,
-                            speciesId: rank.id,
-                          }),
-                        }))}
-                        user={i.user}
-                      />
+                    {occurrence.humanIdentifications.map((i) => (
+                      <div className={styles.identification}>
+                        <IdentificationSummary
+                          identification={{
+                            id: i.id,
+                            overridden: i.overridden,
+                            name: i.name,
+                          }}
+                          ranks={i.ranks.map((rank) => ({
+                            ...rank,
+                            to: APP_ROUTES.SPECIES_DETAILS({
+                              projectId: projectId as string,
+                              speciesId: rank.id,
+                            }),
+                          }))}
+                          user={i.user}
+                        />
+                      </div>
+                    ))}
+
+                    {occurrence.machinePredictions.map((p) => (
+                      <div className={styles.identification}>
+                        <IdentificationSummary
+                          identification={{
+                            id: p.id,
+                            overridden: p.overridden,
+                            name: p.name,
+                          }}
+                          ranks={p.ranks.map((rank) => ({
+                            ...rank,
+                            to: APP_ROUTES.SPECIES_DETAILS({
+                              projectId: projectId as string,
+                              speciesId: rank.id,
+                            }),
+                          }))}
+                        />
+                        <IdentificationStatus score={p.score} />
+                      </div>
                     ))}
                   </div>
                 </Tabs.Content>

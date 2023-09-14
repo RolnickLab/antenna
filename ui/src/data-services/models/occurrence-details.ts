@@ -4,7 +4,7 @@ import { Occurrence, ServerOccurrence } from './occurrence'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
-type Identification = {
+interface Identification {
   id: string
   overridden: boolean
   name: string
@@ -13,48 +13,75 @@ type Identification = {
     name: string
     rank: string
   }[]
-  user?: {
+}
+
+interface HumanIdentification extends Identification {
+  user: {
     name: string
     image?: string
   }
 }
 
+interface MachinePrediction extends Identification {
+  score: number
+}
+
 export class OccurrenceDetails extends Occurrence {
   private readonly _detections: string[] = []
-  private readonly _identifications: Identification[]
+  private readonly _humanIdentifications: HumanIdentification[]
+  private readonly _machinePredictions: MachinePrediction[]
 
   public constructor(occurrence: ServerOccurrenceDetails) {
     super(occurrence)
 
     this._detections = this._occurrence.detections.map((d: any) => `${d.id}`)
 
-    this._identifications = [
-      ...this._occurrence.identifications,
-      ...this._occurrence.predictions,
-    ].map((i: any) => {
-      const taxonId = `${i.taxon.id}`
+    const sortByDate = (i1: any, i2: any) => {
+      const date1 = new Date(i1.created_at)
+      const date2 = new Date(i2.created_at)
 
-      return {
-        id: `${i.id}`,
-        overridden: taxonId !== this.determinationId,
-        name: i.taxon.name,
-        ranks: this._getRanks(i.taxon),
-        user: i.user
-          ? {
-              name: i.user.name,
-              image: i.user.image,
-            }
-          : undefined,
-      }
-    })
+      return date1.getTime() - date2.getTime()
+    }
+
+    this._humanIdentifications = this._occurrence.identifications
+      .sort(sortByDate)
+      .map((i: any) => {
+        const identification: HumanIdentification = {
+          id: `${i.id}`,
+          overridden: `${i.taxon.id}` !== this.determinationId,
+          name: i.taxon.name,
+          ranks: this._getRanks(i.taxon),
+          user: { name: i.user.name, image: i.user.image },
+        }
+
+        return identification
+      })
+
+    this._machinePredictions = this._occurrence.predictions
+      .sort(sortByDate)
+      .map((i: any) => {
+        const identification: MachinePrediction = {
+          id: `${i.id}`,
+          overridden: `${i.taxon.id}` !== this.determinationId,
+          name: i.taxon.name,
+          ranks: this._getRanks(i.taxon),
+          score: i.score,
+        }
+
+        return identification
+      })
   }
 
   get detections(): string[] {
     return this._detections
   }
 
-  get identifications(): Identification[] {
-    return this._identifications
+  get humanIdentifications(): HumanIdentification[] {
+    return this._humanIdentifications
+  }
+
+  get machinePredictions(): MachinePrediction[] {
+    return this._machinePredictions
   }
 
   getDetectionInfo(id: string) {
