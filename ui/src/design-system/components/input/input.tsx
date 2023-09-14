@@ -43,7 +43,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <label className={styles.label} htmlFor={name}>
             {label}
           </label>
-          {hasError ? <span className={styles.error}>{error}</span> : undefined}
+          {hasError ? (
+            <span id={errorId} className={styles.error}>
+              {error}
+            </span>
+          ) : undefined}
         </div>
         <div className={styles.inputContainer}>
           <input
@@ -78,7 +82,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ) : null}
         </div>
         {hasDescription ? (
-          <span className={styles.description} id={descriptionId}>
+          <span id={descriptionId} className={styles.description}>
             {description}
           </span>
         ) : undefined}
@@ -109,14 +113,29 @@ export const InputValue = ({
 }
 
 export const InputContent = ({
+  description,
+  error,
   label,
   children,
 }: {
+  description?: string
+  error?: string
   label: string
   children?: ReactNode
-}) => (
-  <div className={styles.container}>
-    <span className={styles.label}>{label}</span>
-    <div className={styles.content}>{children}</div>
-  </div>
-)
+}) => {
+  const hasError = !!error?.length
+  const hasDescription = !!description?.length
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.labelRow}>
+        <span className={styles.label}>{label}</span>
+        {hasError ? <span className={styles.error}>{error}</span> : undefined}
+      </div>
+      <div className={styles.content}>{children}</div>
+      {hasDescription ? (
+        <span className={styles.description}>{description}</span>
+      ) : undefined}
+    </div>
+  )
+}

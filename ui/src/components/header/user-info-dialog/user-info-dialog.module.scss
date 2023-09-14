@@ -13,5 +13,30 @@
   font-weight: 600;
   color: $color-primary-1-600;
   text-transform: uppercase;
-  cursor: default;
+  overflow: hidden;
+
+  &:hover {
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.content {
+  width: 720px;
+  max-width: 100%;
+  box-sizing: border-box;
 }

@@ -3,6 +3,13 @@ export type User = {
   token?: string
 }
 
+export type UserInfo = {
+  email?: string
+  id: string
+  image?: string
+  name?: string
+}
+
 export enum UserPermission {
   Update = 'update',
   Create = 'create',
