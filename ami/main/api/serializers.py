@@ -332,12 +332,26 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
-class TaxonNestedSerializer(DefaultSerializer):
+class TaxonParentNestedSerializer(DefaultSerializer):
     class Meta:
         model = Taxon
         fields = [
             "id",
             "name",
+            "rank",
+            "details",
+        ]
+
+
+class TaxonNestedSerializer(DefaultSerializer):
+    parent = TaxonParentNestedSerializer(read_only=True)
+
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "parent",
             "rank",
             "details",
         ]
