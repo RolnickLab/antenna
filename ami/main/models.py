@@ -1014,8 +1014,14 @@ class Classification(BaseModel):
         related_name="classifications",
     )
 
-    # @TODO maybe use taxon instead of determination. Determination is for the final ID of the occurrence
-    determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
+    # occurrence = models.ForeignKey(
+    #     "Occurrence",
+    #     on_delete=models.SET_NULL,
+    #     null=True,
+    #     related_name="predictions",
+    # )
+
+    taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
     timestamp = models.DateTimeField()
 
@@ -1029,19 +1035,8 @@ class Classification(BaseModel):
     )
     # job = models.CharField(max_length=255, null=True)
 
-    # @TODO maybe ML classification and human classificaions should be separate models?
-    type = models.CharField(max_length=255, choices=as_choices(_CLASSIFICATION_TYPES))
-
     class Meta:
-        constraints = [
-            # Ensure that the type is one of the allowed values at the database level
-            models.CheckConstraint(
-                name="%(app_label)s_%(class)s_type_valid",
-                check=models.Q(
-                    type__in=_CLASSIFICATION_TYPES,
-                ),
-            ),
-        ]
+        ordering = ["-score"]
 
 
 @final
@@ -1244,6 +1239,18 @@ class Occurrence(BaseModel):
 
     def url(self):
         return f"https://app.preview.insectai.org/occurrences/{self.pk}"
+
+    def predictions(self):
+        # Retrieve the classification with the max score for each algorithm
+        classifications = Classification.objects.filter(detection__occurrence=self).filter(
+            score__in=models.Subquery(
+                Classification.objects.filter(detection__occurrence=self)
+                .values("algorithm")
+                .annotate(max_score=models.Max("score"))
+                .values("max_score")
+            )
+        )
+        return classifications
 
 
 @final

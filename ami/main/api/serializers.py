@@ -548,17 +548,16 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
 
 
 class ClassificationSerializer(DefaultSerializer):
-    determination = CaptureTaxonSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
 
     class Meta:
         model = Classification
         fields = [
             "id",
-            "determination",
+            "taxon",
             "score",
             "algorithm",
-            "type",
         ]
 
 
@@ -736,6 +735,7 @@ class OccurrenceSerializer(DefaultSerializer):
     )
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    predictions = ClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
@@ -746,6 +746,7 @@ class OccurrenceSerializer(DefaultSerializer):
             "determination_id",
             "detections",
             "identifications",
+            "predictions",
         ]
 
 
