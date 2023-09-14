@@ -5,7 +5,7 @@ from django.http import HttpResponse
 from django.template.loader import render_to_string
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
 
 from ami.labelstudio.models import LabelStudioConfig
@@ -15,12 +15,12 @@ from ami.labelstudio.serializers import (
     LabelStudioSourceImageSerializer,
 )
 from ami.main.api.views import DefaultReadOnlyViewSet
-from ami.main.models import Detection, Occurrence, SourceImage, TaxaList, Taxon
+from ami.main.models import Deployment, Detection, Occurrence, Project, SourceImage, TaxaList, Taxon
 
 logger = logging.getLogger(__name__)
 
 
-class LabelStudioFlatPaginator(PageNumberPagination):
+class LabelStudioFlatPaginator(LimitOffsetPagination):
     """
     A custom paginator that does not nest the data under a "results" key.
 
@@ -29,10 +29,7 @@ class LabelStudioFlatPaginator(PageNumberPagination):
     @TODO eventually each task should be it's own JSON file and this will not be needed.
     """
 
-    page_size = 1000
-    page_size_query_param = "page_size"
-    page_query_param = "page"
-    max_page_size = 10000
+    limit = 100
 
     def get_paginated_response(self, data):
         return Response(data)
@@ -45,6 +42,44 @@ class LabelStudioSourceImageViewSet(DefaultReadOnlyViewSet):
     serializer_class = LabelStudioSourceImageSerializer
     pagination_class = LabelStudioFlatPaginator
     filterset_fields = ["event", "deployment", "deployment__project"]
+
+    @action(detail=False, methods=["get"], name="interval")
+    def interval(self, request):
+        """
+        Return a sample of captures based on time intervals.
+        URL parameters:
+        - `deployment`: limit to a specific deployment<br>
+        - `project`: limit to all deployments in a specific project<br>
+        - `event_day_interval`: number of days between events<br>
+        - `capture_minute_interval`: number of minutes between captures<br>
+        - `limit`: maximum number of captures to return<br>
+        Example: `/api/labelstudio/captures/interval/?project=1&event_day_interval=3&capture_minute_interval=30&limit=100`  # noqa
+        Objects are returned in a format ready to import as a list of Label Studio tasks.
+        """
+        from ami.main.models import sample_captures, sample_events
+
+        deployment_id = request.query_params.get("deployment", None)
+        project_id = request.query_params.get("project", None)
+        day_interval = int(request.query_params.get("event_day_interval", 3))
+        minute_interval = int(request.query_params.get("capture_minute_interval", 30))
+        max_num = int(request.query_params.get("limit", 100))
+        captures = []
+        if deployment_id:
+            deployments = [Deployment.objects.get(id=deployment_id)]
+        elif project_id:
+            project = Project.objects.get(id=project_id)
+            deployments = Deployment.objects.filter(project=project)
+        else:
+            deployments = Deployment.objects.all()
+        for deployment in deployments:
+            events = sample_events(deployment=deployment, day_interval=day_interval)
+            for capture in sample_captures(
+                deployment=deployment, events=list(events), minute_interval=minute_interval
+            ):
+                captures.append(capture)
+                if len(captures) >= max_num:
+                    break
+        return Response(self.get_serializer(captures, many=True).data)
 
 
 class LabelStudioDetectionViewSet(DefaultReadOnlyViewSet):
@@ -134,7 +169,7 @@ class LabelStudioConfigViewSet(viewsets.ViewSet):
         taxa_list_id = request.query_params.get("taxa_list", None)
         if taxa_list_id:
             taxa_list = TaxaList.objects.get(id=taxa_list_id)
-            taxa_tree = taxa_list.taxa.tree()
+            taxa_tree = taxa_list.taxa.tree()  # type: ignore
         else:
             taxa_tree = Taxon.objects.tree()
 
@@ -170,10 +205,8 @@ class LabelStudioConfigViewSet(viewsets.ViewSet):
         return HttpResponse(content, content_type="text/xml")
 
 
-def get_labelstudio_config() -> LabelStudioConfig:
-    config = LabelStudioConfig.objects.first()
-    if not config:
-        raise Exception("No LabelStudioConfig found")
+def get_labelstudio_config() -> LabelStudioConfig | None:
+    return LabelStudioConfig.objects.first()
 
 
 def populate_object_detection_tasks(debug=False):
@@ -182,6 +215,8 @@ def populate_object_detection_tasks(debug=False):
     """
 
     config = get_labelstudio_config()
+    if not config:
+        raise Exception("No LabelStudioConfig found")
     project_id = config.object_detection_project_id
     import_endpoint = f"{config.base_url}/api/projects/{project_id}/import"
 

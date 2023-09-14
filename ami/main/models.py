@@ -1326,7 +1326,7 @@ class Taxon(BaseModel):
     def list_names(self) -> str:
         return ", ".join(self.lists.values_list("name", flat=True))
 
-    objects = TaxaManager()
+    objects: TaxaManager = TaxaManager()
 
     class Meta:
         ordering = [
