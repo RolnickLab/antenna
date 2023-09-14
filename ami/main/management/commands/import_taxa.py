@@ -15,12 +15,15 @@ class Command(BaseCommand):
         {
             "species": "Epimartyria auricrinella",
             "genus": "Epimartyria",
-            "family": "Micropterigidae"
+            "family": "Micropterigidae",
+            "gbif_taxon_key": 12345,
+            "synonym_of": "Genus species"
         },
         {
             "species": "Dyseriocrania griseocapitella",
             "genus": "Dyseriocrania",
-            "family": "Eriocraniidae"
+            "family": "Eriocraniidae",
+            "gbif_taxon_key": 12346
         }
     ]
     """
