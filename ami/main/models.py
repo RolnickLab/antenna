@@ -963,7 +963,7 @@ class Identification(BaseModel):
     priority = models.IntegerField(default=1)
 
     class Meta:
-        ordering = ["-priority", "-created_at"]
+        ordering = ["-created_at", "-priority"]
         constraints = [
             # Only one primary identification is allowed per occurrence
             models.UniqueConstraint(fields=["occurrence", "primary"], name="unique_primary_identification"),
@@ -1036,7 +1036,7 @@ class Classification(BaseModel):
     # job = models.CharField(max_length=255, null=True)
 
     class Meta:
-        ordering = ["-score"]
+        ordering = ["-created_at", "-score"]
 
 
 @final
