@@ -373,7 +373,7 @@ class ClassificationViewSet(DefaultViewSet):
 
     queryset = Classification.objects.all()
     serializer_class = ClassificationSerializer
-    filterset_fields = ["detection", "detection__occurrence", "determination", "algorithm", "type"]
+    filterset_fields = ["detection", "detection__occurrence", "taxon", "algorithm"]
     ordering_fields = [
         "created_at",
         "updated_at",
