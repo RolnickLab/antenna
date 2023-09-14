@@ -7,6 +7,7 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { bytesToMB } from 'utils/bytesToMB'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { UserInfo } from 'utils/user/types'
@@ -26,8 +27,9 @@ const config: FormConfig = {
   },
   image: {
     label: 'Image',
-    description:
-      'The image must smaller than 1MB. Valid formats are PNG, GIF and JPEG.',
+    description: `The image must smaller than ${bytesToMB(
+      IMAGE_MAX_SIZE
+    )} MB. Valid formats are PNG, GIF and JPEG.`,
     rules: {
       validate: (file: File) => {
         if (file) {
