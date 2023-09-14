@@ -19,7 +19,6 @@ export const OccurrenceDetails = ({
   occurrence: Occurrence
 }) => {
   const { projectId } = useParams()
-  console.log('occurrence: ', occurrence)
 
   const blueprintItems = useMemo(
     () =>
@@ -116,51 +115,20 @@ export const OccurrenceDetails = ({
                     {occurrence.identifications.map((i) => (
                       <IdentificationSummary
                         identification={{
-                          id: `${i.id}`,
-                          overridden: false,
-                          title: i.taxon.name,
+                          id: i.id,
+                          overridden: i.overridden,
+                          name: i.name,
                         }}
-                        ranks={[
-                          {
-                            id: 'rank-1',
-                            title: 'Rank 1',
-                          },
-                          {
-                            id: 'rank-2',
-                            title: 'Rank 2',
-                          },
-                          {
-                            id: 'rank-3',
-                            title: 'Rank 3',
-                          },
-                        ]}
-                        user={{
-                          username: i.user.name,
-                          profileImage: i.user.image,
-                        }}
+                        ranks={i.ranks.map((rank) => ({
+                          ...rank,
+                          to: APP_ROUTES.SPECIES_DETAILS({
+                            projectId: projectId as string,
+                            speciesId: rank.id,
+                          }),
+                        }))}
+                        user={i.user}
                       />
                     ))}
-                    <IdentificationSummary
-                      identification={{
-                        id: occurrence.determinationId,
-                        overridden: occurrence.identifications.length > 0,
-                        title: occurrence.determinationLabel,
-                      }}
-                      ranks={[
-                        {
-                          id: 'rank-1',
-                          title: 'Rank 1',
-                        },
-                        {
-                          id: 'rank-2',
-                          title: 'Rank 2',
-                        },
-                        {
-                          id: 'rank-3',
-                          title: 'Rank 3',
-                        },
-                      ]}
-                    />
                   </div>
                 </Tabs.Content>
               </Tabs.Root>

@@ -12,16 +12,16 @@ export const Default: Meta = {
   args: {
     identification: {
       id: 'lycomorphodes-sordida',
-      title: 'Lycomorphodes sordida',
+      name: 'Lycomorphodes sordida',
     },
     ranks: [
-      { id: 'erebidae', title: 'Erebidae' },
-      { id: 'arctiinae', title: 'Arctiinae' },
-      { id: 'lithosiini', title: 'Lithosiini' },
+      { id: 'erebidae', name: 'Erebidae' },
+      { id: 'arctiinae', name: 'Arctiinae' },
+      { id: 'lithosiini', name: 'Lithosiini' },
     ],
     user: {
-      username: 'Andre Poremski',
-      profileImage: 'https://placekitten.com/600/400',
+      name: 'Andre Poremski',
+      image: 'https://placekitten.com/600/400',
     },
   },
 }
@@ -30,15 +30,15 @@ export const WithoutProfileImage: Meta = {
   args: {
     identification: {
       id: 'lycomorphodes-sordida',
-      title: 'Lycomorphodes sordida',
+      name: 'Lycomorphodes sordida',
     },
     ranks: [
-      { id: 'erebidae', title: 'Erebidae' },
-      { id: 'arctiinae', title: 'Arctiinae' },
-      { id: 'lithosiini', title: 'Lithosiini' },
+      { id: 'erebidae', name: 'Erebidae' },
+      { id: 'arctiinae', name: 'Arctiinae' },
+      { id: 'lithosiini', name: 'Lithosiini' },
     ],
     user: {
-      username: 'Andre Poremski',
+      name: 'Andre Poremski',
     },
   },
 }
@@ -47,17 +47,17 @@ export const Overridden: Meta = {
   args: {
     identification: {
       id: 'lycomorphodes-sordida',
-      title: 'Lycomorphodes sordida',
+      name: 'Lycomorphodes sordida',
       overridden: true,
     },
     ranks: [
-      { id: 'erebidae', title: 'Erebidae' },
-      { id: 'arctiinae', title: 'Arctiinae' },
-      { id: 'lithosiini', title: 'Lithosiini' },
+      { id: 'erebidae', name: 'Erebidae' },
+      { id: 'arctiinae', name: 'Arctiinae' },
+      { id: 'lithosiini', name: 'Lithosiini' },
     ],
     user: {
-      username: 'Andre Poremski',
-      profileImage: 'https://placekitten.com/600/400',
+      name: 'Andre Poremski',
+      image: 'https://placekitten.com/600/400',
     },
   },
 }
@@ -66,12 +66,12 @@ export const ByMachine: Meta = {
   args: {
     identification: {
       id: 'lycomorphodes-sordida',
-      title: 'Lycomorphodes sordida',
+      name: 'Lycomorphodes sordida',
     },
     ranks: [
-      { id: 'erebidae', title: 'Erebidae' },
-      { id: 'arctiinae', title: 'Arctiinae' },
-      { id: 'lithosiini', title: 'Lithosiini' },
+      { id: 'erebidae', name: 'Erebidae' },
+      { id: 'arctiinae', name: 'Arctiinae' },
+      { id: 'lithosiini', name: 'Lithosiini' },
     ],
   },
 }

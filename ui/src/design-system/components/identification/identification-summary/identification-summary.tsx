@@ -7,15 +7,17 @@ interface IdentificationSummaryProps {
   identification: {
     id: string
     overridden?: boolean
-    title: string
+    name: string
   }
   ranks: {
     id: string
-    title: string
+    name: string
+    rank?: string
+    to?: string
   }[]
   user?: {
-    username: string
-    profileImage?: string
+    name: string
+    image?: string
   }
 }
 
@@ -28,8 +30,8 @@ export const IdentificationSummary = ({
     <div className={styles.user}>
       {user ? (
         <div className={styles.profileImage}>
-          {user.profileImage ? (
-            <img src={user.profileImage} alt="User profile image" />
+          {user.image ? (
+            <img src={user.image} alt="User profile image" />
           ) : (
             <Icon
               type={IconType.Photograph}
@@ -42,7 +44,7 @@ export const IdentificationSummary = ({
         <Icon type={IconType.BatchId} theme={IconTheme.Primary} size={16} />
       )}
       <span className={styles.username}>
-        {user?.username ?? 'Machine suggestion'}
+        {user?.name ?? 'Machine suggestion'}
       </span>
     </div>
     <span
@@ -50,7 +52,7 @@ export const IdentificationSummary = ({
         [styles.overridden]: identification.overridden,
       })}
     >
-      {identification.title}
+      {identification.name}
     </span>
     <IdentificationBreadcrumbs items={ranks} />
   </div>

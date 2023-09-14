@@ -11,9 +11,9 @@ export default {
 export const Default: Meta = {
   args: {
     items: [
-      { id: 'erebidae', title: 'Erebidae' },
-      { id: 'arctiinae', title: 'Arctiinae' },
-      { id: 'lithosiini', title: 'Lithosiini' },
+      { id: 'erebidae', name: 'Erebidae' },
+      { id: 'arctiinae', name: 'Arctiinae' },
+      { id: 'lithosiini', name: 'Lithosiini' },
     ],
   },
 }
