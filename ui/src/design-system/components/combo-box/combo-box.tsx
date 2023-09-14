@@ -1,4 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import classNames from 'classnames'
 import { Command } from 'cmdk'
 import { useState } from 'react'
 import { Button } from '../button/button'
@@ -60,7 +61,9 @@ export const ComboBox = ({
                 </Command.Item>
               ))
             ) : (
-              <div className={styles.item}>{emptyLabel}</div>
+              <div className={classNames(styles.item, styles.empty)}>
+                {emptyLabel}
+              </div>
             )}
           </Command.List>
         </Command>

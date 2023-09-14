@@ -49,17 +49,19 @@
   justify-content: space-between;
   @include paragraph-small();
   color: $color-neutral-800;
-  cursor: pointer;
 
-  &:hover {
-    opacity: 0.7;
-  }
+  &:not(.empty) {
+    &:hover {
+      cursor: pointer;
+      opacity: 0.7;
+    }
 
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
-  }
+    &:focus-visible {
+      box-shadow: 0 0 0 2px $color-generic-black;
+    }
 
-  &[aria-selected='true'] {
-    background-color: $color-primary-2-50;
+    &[aria-selected='true'] {
+      background-color: $color-primary-2-50;
+    }
   }
 }

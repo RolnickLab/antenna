@@ -13,6 +13,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
+import { TaxonSearch } from './taxon-search/taxon-search'
 
 export const OccurrenceDetails = ({
   occurrence,
@@ -92,6 +93,7 @@ export const OccurrenceDetails = ({
         >
           <span className={styles.title}>{occurrence.determinationLabel}</span>
         </Link>
+        <TaxonSearch />
       </div>
       <div className={styles.content}>
         <div className={styles.column}>

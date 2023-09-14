@@ -3,6 +3,7 @@
 
 .breadcrumbs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
@@ -11,4 +12,5 @@
   display: block;
   @include paragraph-x-small();
   color: $color-neutral-600;
+  white-space: nowrap;
 }
