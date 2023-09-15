@@ -182,7 +182,7 @@ class TaxonParentFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         # return Taxon.objects.exclude(rank="SPECIES").values_list("id", "name")
-        choices = [(taxon.id, str(taxon)) for taxon in Taxon.objects.exclude(rank="SPECIES")]
+        choices = [(taxon.pk, str(taxon)) for taxon in Taxon.objects.exclude(rank__in=["SPECIES", "GENUS"])]
         return choices
 
     def queryset(self, request, queryset):
@@ -195,7 +195,7 @@ class TaxonParentFilter(admin.SimpleListFilter):
 class TaxonAdmin(admin.ModelAdmin[Taxon]):
     """Admin panel example for ``Taxon`` model."""
 
-    list_display = ("name", "occurrence_count", "rank", "parent", "list_names")
+    list_display = ("name", "occurrence_count", "rank", "parent", "parent_names", "list_names")
     list_filter = ("rank", TaxonParentFilter)
     search_fields = ("name",)
 
@@ -214,6 +214,22 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
     )
     def occurrence_count(self, obj) -> int:
         return obj.occurrence_count
+
+    # Action to update species parents
+    @admin.action(description="Update species parents")
+    def update_species_parents(self, request: HttpRequest, queryset: QuerySet[Taxon]) -> None:
+        for taxon in queryset:
+            taxon.update_parents()
+        self.message_user(request, f"Updated {queryset.count()} taxa.")
+
+    @admin.display(
+        description="Parents",
+        ordering="parents",
+    )
+    def parent_names(self, obj) -> str:
+        return ", ".join([str(taxon) for taxon in obj.parents.values_list("name", flat=True)])
+
+    actions = [update_species_parents]
 
 
 @admin.register(TaxaList)
