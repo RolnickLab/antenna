@@ -102,5 +102,7 @@
 }
 
 .content {
-  margin: 8px 0;
+  &:not(:last-child) {
+    margin-bottom: 8px;
+  }
 }

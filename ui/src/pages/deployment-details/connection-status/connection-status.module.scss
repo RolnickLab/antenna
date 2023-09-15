@@ -3,6 +3,7 @@
 
 .titleRow {
   display: flex;
+  margin-bottom: 4px;
 }
 
 .titleRowContent {
@@ -26,8 +27,7 @@
 .infoRow {
   display: flex;
   align-items: center;
-  height: 20px;
-  margin: 8px 0;
+  height: 38px;
 }
 
 .infoRowContent {

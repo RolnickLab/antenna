@@ -7,6 +7,7 @@ export interface FieldConfig {
     maxLength?: number
     min?: number
     max?: number
+    validate?: (value: any) => string | undefined
   }
 }
 

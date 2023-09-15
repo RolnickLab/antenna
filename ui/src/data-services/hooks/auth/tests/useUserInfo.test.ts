@@ -3,9 +3,9 @@ import { API_ROUTES, API_URL } from 'data-services/constants'
 import nock from 'nock'
 import { AppMock, queryClient } from 'utils/test'
 import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
-import { useMe } from '../useMe'
+import { useUserInfo } from '../useUserInfo'
 
-describe('useMe', () => {
+describe('useUserInfo', () => {
   test('will return user info on success', async () => {
     // Prep
     nock(API_URL)
@@ -13,11 +13,11 @@ describe('useMe', () => {
       .reply(200, { email: 'user@insectai.org' })
 
     // Run
-    const { result } = renderHook(() => useMe(), { wrapper: AppMock })
-    await waitFor(() => expect(result.current.user).toBeDefined())
+    const { result } = renderHook(() => useUserInfo(), { wrapper: AppMock })
+    await waitFor(() => expect(result.current.userInfo).toBeDefined())
 
     // Check
-    expect(result.current.user).toEqual({
+    expect(result.current.userInfo).toEqual({
       email: 'user@insectai.org',
     })
   })
@@ -29,7 +29,7 @@ describe('useMe', () => {
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
     // Run
-    const { result } = renderHook(() => useMe(), { wrapper: AppMock })
+    const { result } = renderHook(() => useUserInfo(), { wrapper: AppMock })
     await waitFor(() => expect(result.current.error).not.toBeNull())
 
     // Check
@@ -44,7 +44,7 @@ describe('useMe', () => {
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
     // Run
-    const { result } = renderHook(() => useMe(), { wrapper: AppMock })
+    const { result } = renderHook(() => useUserInfo(), { wrapper: AppMock })
     await waitFor(() => expect(result.current.error).not.toBeNull())
 
     // Check

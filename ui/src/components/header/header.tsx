@@ -7,7 +7,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { useUser } from 'utils/user/userContext'
 import ami from './ami.png'
 import styles from './header.module.scss'
-import { UserInfo } from './user-info/user-info'
+import { UserInfoDialog } from './user-info-dialog/user-info-dialog'
 
 export const Header = () => {
   const navigate = useNavigate()
@@ -43,7 +43,7 @@ export const Header = () => {
               loading={isLogoutLoading}
               onClick={logout}
             />
-            <UserInfo />
+            <UserInfoDialog />
           </>
         ) : (
           <Button

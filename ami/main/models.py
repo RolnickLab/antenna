@@ -31,7 +31,7 @@ class TaxonRank(Enum):
     @classmethod
     def choices(cls):
         """For use in Django text fields with choices."""
-        return tuple((i.value, i.name) for i in cls)
+        return tuple((i.name, i.value) for i in cls)
 
 
 # @TODO move to settings & make configurable
@@ -1166,8 +1166,8 @@ class TaxaManager(models.Manager):
     def get_queryset(self):
         return super().get_queryset().distinct()
 
-    def add_species_parents(self):
-        """Add parents to all species that don't have them.
+    def add_genus_parents(self):
+        """Add direct genus parents to all species that don't have them, based on the scientific name.
 
         Create a genus if it doesn't exist based on the scientific name of the species.
         This will replace any parents of a species that are not of the GENUS rank.
@@ -1258,10 +1258,12 @@ class Taxon(BaseModel):
     name = models.CharField(max_length=255, unique=True)
     rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
-    parents = models.ManyToManyField("self", related_name="children", symmetrical=False)
+    # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
+    parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
-    projects = models.ManyToManyField("Project", related_name="taxa")
+    projects = models.ManyToManyField("Project", related_name="taxa", blank=True)
+    gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
 
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
@@ -1325,6 +1327,23 @@ class Taxon(BaseModel):
 
     def list_names(self) -> str:
         return ", ".join(self.lists.values_list("name", flat=True))
+
+    def update_parents(self, save=True):
+        """
+        Populate the cached "parents" list by recursively following the "parent" field.
+
+        @TODO this requires the parents' parents already being up-to-date, which may not always be the case.
+        @TODO parents could instead be a JSON field that is updated by a trigger on the database.
+        """
+
+        taxon = self
+        parents = [taxon.parent]
+        while parents[-1] is not None:
+            parents.append(parents[-1].parent)
+        parents = parents[:-1]
+        taxon.parents.set(parents)
+        if save:
+            taxon.save()
 
     objects = TaxaManager()
 
@@ -1568,3 +1587,6 @@ class Page(BaseModel):
             return markdown(self.content, extensions=[])
         else:
             return ""
+
+
+# test change for pre-commit

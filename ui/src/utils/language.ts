@@ -46,6 +46,7 @@ export enum STRING {
   FIELD_LABEL_LAST_DATE,
 
   /* MESSAGE */
+  MESSAGE_IMAGE_TOO_BIG,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
   MESSAGE_NO_RESULTS,
@@ -128,6 +129,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
 
   /* MESSAGE */
+  [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
   [STRING.MESSAGE_NO_RESULTS]: 'No results to show',

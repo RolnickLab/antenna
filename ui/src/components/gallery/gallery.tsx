@@ -27,7 +27,10 @@ export const Gallery = ({
   style?: CSSProperties
 }) => (
   <div
-    className={classNames(styles.gallery, { [styles.loading]: isLoading })}
+    className={classNames(styles.gallery, {
+      [styles.loading]: isLoading,
+      [styles.large]: cardSize === CardSize.Large,
+    })}
     style={style}
   >
     {items?.map((item) => (
