@@ -1261,7 +1261,8 @@ class Taxon(BaseModel):
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
-    projects = models.ManyToManyField("Project", related_name="taxa")
+    projects = models.ManyToManyField("Project", related_name="taxa", blank=True, null=True)
+    gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
 
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
