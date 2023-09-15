@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0032_alter_deployment_options"),
+        ("main", "0036_alter_classification_options_and_more"),
     ]
 
     operations = [
