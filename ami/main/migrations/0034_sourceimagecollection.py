@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0032_alter_deployment_options"),
+        ("main", "0033_taxon_gbif_taxon_key_alter_taxon_parents_and_more"),
     ]
 
     operations = [

@@ -7,9 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
     initial = True
 
-    dependencies = [
-        ("main", "0034_alter_sourceimagecollection_kwargs"),
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
@@ -26,15 +24,6 @@ class Migration(migrations.Migration):
                 ("s3_key_secret", models.CharField(blank=True, max_length=255, null=True)),
                 ("s3_endpoint", models.CharField(blank=True, max_length=1024, null=True)),
                 ("s3_uri", models.CharField(blank=True, max_length=255, null=True)),
-                (
-                    "task_collection",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.SET_NULL,
-                        to="main.sourceimagecollection",
-                    ),
-                ),
             ],
         ),
     ]
