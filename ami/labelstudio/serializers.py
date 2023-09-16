@@ -44,13 +44,16 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
         # public_url = obj.deployment.data_source.public_url(obj.path)
         return {
             "image": obj.public_url(),
-            "ami_id": obj.pk,
             "timestamp": obj.timestamp,
-            "deployment": (obj.deployment.name if obj.deployment else None),
-            "deployment_id": (obj.deployment.pk if obj.deployment else None),
-            "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
-            "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
-            "location": f"{project_name} / {deployment_name}",
+            "deployment": deployment_name,
+            "meta": {
+                "ami_id": obj.pk,
+                "deployment_id": (obj.deployment.pk if obj.deployment else None),
+                "project": project_name,
+                "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
+                "size": obj.size,
+                "checksum": obj.checksum,
+            },
         }
 
     def get_annotations(self, obj):

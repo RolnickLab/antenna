@@ -217,7 +217,8 @@ def populate_object_detection_tasks(debug=False):
     config = get_labelstudio_config()
     if not config:
         raise Exception("No LabelStudioConfig found")
-    project_id = config.object_detection_project_id
+    project_id = config.project_id
+    # Label Studio API endpoint for importing tasks
     import_endpoint = f"{config.base_url}/api/projects/{project_id}/import"
 
     data = {
@@ -243,11 +244,3 @@ def populate_object_detection_tasks(debug=False):
             headers={"Authorization": f"Token {config.access_token}"},
             json=data,
         )
-
-
-def populate_binary_classification_tasks():
-    pass
-
-
-def populate_species_classification_tasks():
-    pass

@@ -1,19 +1,9 @@
 from django.contrib import admin
+from django.db.models.query import QuerySet
+from django.http.request import HttpRequest
 
+from ami import tasks
 from ami.labelstudio.models import LabelStudioConfig
-from ami.labelstudio.views import (
-    populate_binary_classification_tasks,
-    populate_object_detection_tasks,
-    populate_species_classification_tasks,
-)
-
-
-@admin.action(description="Populate Label Studio Tasks")
-def populate_label_studio_tasks(modeladmin, request, queryset):
-    """Sync Label Studio tasks."""
-    populate_object_detection_tasks()
-    populate_binary_classification_tasks()
-    populate_species_classification_tasks()
 
 
 @admin.register(LabelStudioConfig)
@@ -22,11 +12,27 @@ class LabelStudioConfigAdmin(admin.ModelAdmin):
 
     list_display = (
         "pk",
-        "sync_active",
-        "object_detection_project_id",
-        "binary_classification_project_id",
-        "species_classification_project_id",
+        "base_url",
+        "task_collection",
+        "active",
+        "created_at",
         "updated_at",
     )
 
-    actions = [populate_label_studio_tasks]
+    @admin.action()
+    def publish_tasks(self, request: HttpRequest, queryset: QuerySet[LabelStudioConfig]) -> None:
+        # measure the time elapsed for the action
+        for config in queryset:
+            config.write_tasks()
+        self.message_user(request, f"Tasks published for {queryset.count()} config(s).")
+
+    @admin.action()
+    def publish_tasks_async(self, request: HttpRequest, queryset: QuerySet[LabelStudioConfig]) -> None:
+        # measure the time elapsed for the action
+        queued_tasks = [tasks.write_tasks.apply_async([config.pk]) for config in queryset]
+        self.message_user(
+            request,
+            f"Publishing tasks for {len(queued_tasks)} config(s) background tasks: {queued_tasks}.",
+        )
+
+    actions = [publish_tasks, publish_tasks_async]

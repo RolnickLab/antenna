@@ -45,3 +45,18 @@ def model_task(model_name: str, model_id: int, method_name: str) -> None:
     method = getattr(instance, method_name)
     logger.info(f"Running '{method_name}' on {model_name} instance: '{instance}'")
     method()
+
+
+# Task to write tasks to Label Studio
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def write_tasks(label_studio_config_id: int) -> int:
+    from ami.labelstudio.models import LabelStudioConfig
+
+    config = LabelStudioConfig.objects.get(id=label_studio_config_id)
+    if config:
+        logger.info(f"Writing tasks for {config}")
+        uploaded = config.write_tasks()
+        return uploaded
+    else:
+        logger.error(f"LabelStudioConfig with id {label_studio_config_id} not found")
+        return 0
