@@ -904,18 +904,19 @@ def set_dimensions_for_collection(
         )
 
 
-def sample_captures(
-    deployment: Deployment, minute_interval: int = 10, events: list[Event] = []
+def sample_captures_by_interval(
+    minute_interval: int = 10, qs: models.QuerySet[SourceImage] | None = None
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
     """
 
     last_capture = None
-    if events:
-        qs = SourceImage.objects.filter(event__in=events).exclude(timestamp=None).order_by("timestamp")
-    else:
-        qs = SourceImage.objects.filter(deployment=deployment).exclude(timestamp=None).order_by("timestamp")
+
+    if not qs:
+        qs = SourceImage.objects.all()
+    qs = qs.exclude(timestamp=None).order_by("timestamp")
+
     for capture in qs.all():
         if not last_capture:
             yield capture
@@ -1570,4 +1571,68 @@ class Page(BaseModel):
             return ""
 
 
-# test change for pre-commit
+_SOURCE_IMAGE_SAMPLING_METHODS = [
+    "random",
+    "stratified_random",
+    "interval",
+    "manual",
+]
+
+
+@final
+class SourceImageCollection(BaseModel):
+    """
+    A subset of source images for review, processing, etc.
+
+    Examples:
+        - Random subset
+        - Stratified random sample from all deployments
+        - Images sampled based on a time interval (every 30 minutes)
+
+
+    Collections are saved so that they can be reviewed or re-used later.
+    """
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    images = models.ManyToManyField("SourceImage", related_name="collections", blank=True)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
+    method = models.CharField(max_length=255, choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS))
+    kwargs = models.JSONField(
+        "Arguments", null=True, blank=True, help_text="Arguments passed to the sampling function", default=dict
+    )
+
+    def populate_sample(self):
+        """Create a sample of source images based on the method and kwargs"""
+        kwargs = self.kwargs or {}
+
+        if self.method == "random":
+            self.images.set(self.create_random_sample(**kwargs))
+        elif self.method == "interval":
+            self.images.set(self.create_interval_sample(**kwargs))
+        elif self.method == "manual":
+            self.images.set(self.create_manual_sample(**kwargs))
+        else:
+            raise ValueError(f"Invalid sampling method: {self.method}. Choices are: {_SOURCE_IMAGE_SAMPLING_METHODS}")
+        self.save()
+
+    def create_random_sample(self, size: int = 100):
+        """Create a random sample of source images"""
+
+        qs = SourceImage.objects.filter(project=self.project).order_by("?")
+        return qs[:size]
+
+    def create_manual_sample(self, image_ids: list[int]):
+        """Create a sample of source images based on a list of source image IDs"""
+
+        qs = SourceImage.objects.filter(project=self.project)
+        return qs.filter(id__in=image_ids)
+
+    def create_interval_sample(self, minute_interval: int = 10, exclude_events: list[int] = []):
+        """Create a sample of source images based on a time interval"""
+
+        qs = SourceImage.objects.filter(project=self.project)
+        if exclude_events:
+            qs = qs.exclude(event__in=exclude_events)
+        qs.exclude(event__in=exclude_events)
+        return sample_captures_by_interval(minute_interval, qs)
