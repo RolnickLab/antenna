@@ -60,3 +60,16 @@ def write_tasks(label_studio_config_id: int) -> int:
     else:
         logger.error(f"LabelStudioConfig with id {label_studio_config_id} not found")
         return 0
+
+
+# Task to populate SourceImageCollection with images
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def populate_collection(collection_id: int) -> None:
+    from ami.main.models import SourceImageCollection
+
+    collection = SourceImageCollection.objects.get(id=collection_id)
+    if collection:
+        logger.info(f"Populating collection {collection}")
+        collection.populate_sample()
+    else:
+        logger.error(f"SourceImageCollection with id {collection_id} not found")

@@ -303,7 +303,15 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             collection.populate_sample()
         self.message_user(request, f"Populated {queryset.count()} collection(s).")
 
-    actions = [populate_collection]
+    @admin.action()
+    def populate_collection_async(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        queued_tasks = [tasks.populate_collection.apply_async([collection.pk]) for collection in queryset]
+        self.message_user(
+            request,
+            f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
+        )
+
+    actions = [populate_collection, populate_collection_async]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
