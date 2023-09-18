@@ -1,6 +1,5 @@
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
-import { useState } from 'react'
 import { UserInfo } from 'utils/user/types'
 import styles from './user-info-image-upload.module.scss'
 
@@ -13,7 +12,6 @@ export const UserInfoImageUpload = ({
   userInfo: UserInfo
   onChange: (file: File | null) => void
 }) => {
-  const [_size, setSize] = useState<{ width: number; height: number }>()
   const imageUrl = (() => {
     if (file) {
       return URL.createObjectURL(file)
@@ -30,14 +28,7 @@ export const UserInfoImageUpload = ({
         <div className={styles.content}>
           {imageUrl ? (
             <>
-              <img
-                src={imageUrl}
-                onLoad={(e) => {
-                  const width = e.currentTarget.naturalWidth
-                  const height = e.currentTarget.naturalHeight
-                  setSize({ width, height })
-                }}
-              />
+              <img src={imageUrl} />
               <ImageOverlay />
             </>
           ) : (
@@ -47,7 +38,7 @@ export const UserInfoImageUpload = ({
       </div>
       <FileInput
         accept={FileInputAccept.Images}
-        label="Choose image"
+        label={imageUrl ? 'Change image' : 'Choose image'}
         name="user-image"
         onChange={onChange}
       />
