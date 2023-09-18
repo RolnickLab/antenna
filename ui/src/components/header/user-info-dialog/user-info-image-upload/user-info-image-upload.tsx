@@ -56,10 +56,19 @@ const ImageOverlay = () => (
     </defs>
     <rect
       fill="black"
-      fillOpacity={0.7}
+      fillOpacity={0.4}
       width="100%"
       height="100%"
       mask="url(#hole)"
+    />
+    <circle
+      cx="50%"
+      cy="50%"
+      r="50%"
+      fill="transparent"
+      stroke="white"
+      strokeWidth="1px"
+      strokeOpacity={0.7}
     />
   </svg>
 )
