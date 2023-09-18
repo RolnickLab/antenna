@@ -68,7 +68,6 @@ const ImageOverlay = () => (
       fill="transparent"
       stroke="white"
       strokeWidth="1px"
-      strokeOpacity={0.7}
     />
   </svg>
 )
