@@ -38,7 +38,7 @@ export class OccurrenceDetails extends Occurrence {
         width: detection.width,
         height: detection.height,
       },
-      label: `${classification.determination.name} (${_.round(
+      label: `${classification.taxon.name} (${_.round(
         classification.score,
         4
       )})`,
