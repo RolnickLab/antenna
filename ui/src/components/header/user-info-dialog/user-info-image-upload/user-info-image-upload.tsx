@@ -1,4 +1,3 @@
-import classNames from 'classnames'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
 import { UserInfo } from 'utils/user/types'
@@ -24,22 +23,51 @@ export const UserInfoImageUpload = ({
   })()
 
   return (
-    <div className={styles.container}>
-      <div className={styles.content}>
-        {imageUrl ? <img src={imageUrl} /> : null}
-        <div
-          className={classNames(styles.overlay, {
-            [styles.hasImage]: !!imageUrl,
-          })}
-        >
-          <FileInput
-            accept={FileInputAccept.Images}
-            label="Choose image"
-            name="user-image"
-            onChange={onChange}
-          />
+    <>
+      <div className={styles.container}>
+        <div className={styles.content}>
+          {imageUrl ? (
+            <>
+              <img src={imageUrl} />
+              <ImageOverlay />
+            </>
+          ) : (
+            <span>No image</span>
+          )}
         </div>
       </div>
-    </div>
+      <FileInput
+        accept={FileInputAccept.Images}
+        label={imageUrl ? 'Change image' : 'Choose image'}
+        name="user-image"
+        onChange={onChange}
+      />
+    </>
   )
 }
+
+const ImageOverlay = () => (
+  <svg className={styles.overlay}>
+    <defs>
+      <mask id="hole">
+        <rect width="100%" height="100%" fill="white" />
+        <circle cx="50%" cy="50%" r="50%" fill="black" />
+      </mask>
+    </defs>
+    <rect
+      fill="black"
+      fillOpacity={0.4}
+      width="100%"
+      height="100%"
+      mask="url(#hole)"
+    />
+    <circle
+      cx="50%"
+      cy="50%"
+      r="50%"
+      fill="transparent"
+      stroke="white"
+      strokeWidth="1px"
+    />
+  </svg>
+)
