@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0035_alter_sourceimagecollection_kwargs"),
+        ("main", "0039_alter_sourceimagecollection_kwargs"),
         ("labelstudio", "0001_initial"),
     ]
 
