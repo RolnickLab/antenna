@@ -206,8 +206,20 @@ def list_files_paginated(
 
 def read_file(config: S3Config, key: str) -> bytes:
     bucket = get_bucket(config)
+    if config.prefix:
+        # Use path join to ensure there are no extra or missing slashes
+        key = pathlib.Path(config.prefix, key).as_posix()
     obj = bucket.Object(key)
     return obj.get()["Body"].read()
+
+
+def write_file(config: S3Config, key: str, body: bytes):
+    bucket = get_bucket(config)
+    if config.prefix:
+        # Use path join to ensure there are no extra or missing slashes
+        key = pathlib.Path(config.prefix, key).as_posix()
+    obj = bucket.Object(key)
+    return obj.put(Body=body)
 
 
 def read_image(config: S3Config, key: str) -> PIL.Image.Image:
