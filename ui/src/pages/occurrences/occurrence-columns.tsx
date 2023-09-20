@@ -119,7 +119,7 @@ const TaxonCell = ({
           {item.determinationScore !== undefined ? (
             <IdentificationStatus score={item.determinationScore} />
           ) : null}
-          <SuggestId />
+          <SuggestId occurrenceId={item.id} />
         </div>
       </BasicTableCell>
     </div>

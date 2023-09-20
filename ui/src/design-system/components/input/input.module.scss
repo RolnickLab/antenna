@@ -76,7 +76,7 @@
     opacity: 1; /* For Firefox */
   }
 
-  &:hover:not(:focus) {
+  &:hover:not(:focus):not(:disabled) {
     opacity: 0.7;
   }
 
@@ -91,6 +91,10 @@
     &:focus {
       box-shadow: 0 0 0 4px $color-destructive-100;
     }
+  }
+
+  &:disabled {
+    opacity: 0.5;
   }
 }
 

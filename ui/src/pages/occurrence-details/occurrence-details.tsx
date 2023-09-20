@@ -95,7 +95,7 @@ export const OccurrenceDetails = ({
         >
           <span className={styles.title}>{occurrence.determinationLabel}</span>
         </Link>
-        <SuggestId containerId={DIALOG_ID} />
+        <SuggestId containerId={DIALOG_ID} occurrenceId={occurrence.id} />
       </div>
       <div className={styles.content}>
         <div className={styles.column}>

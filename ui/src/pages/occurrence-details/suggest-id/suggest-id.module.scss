@@ -26,3 +26,10 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+
+.formError {
+  @include paragraph-x-small();
+  padding: 16px 32px;
+  color: $color-destructive-600;
+  border-bottom: 2px solid $color-neutral-100;
+}
