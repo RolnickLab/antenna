@@ -6,6 +6,7 @@ from django.db.models.query import QuerySet
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
+from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -16,6 +17,7 @@ from ..models import (
     Deployment,
     Detection,
     Event,
+    Identification,
     Job,
     Occurrence,
     Page,
@@ -32,6 +34,7 @@ from .serializers import (
     DetectionSerializer,
     EventListSerializer,
     EventSerializer,
+    IdentificationSerializer,
     JobListSerializer,
     JobSerializer,
     OccurrenceListSerializer,
@@ -286,6 +289,18 @@ class TaxonViewSet(DefaultViewSet):
     ]
     search_fields = ["name", "parent__name"]
 
+    @action(detail=False, methods=["get"], name="suggest")
+    def suggest(self, request):
+        """
+        Return a list of taxa that match the query.
+        """
+        query = request.query_params.get("q", None)
+        if query:
+            taxa = Taxon.objects.filter(name__icontains=query)
+            return Response(TaxonListSerializer(taxa, many=True, context={"request": request}).data)
+        else:
+            return Response([])
+
     def get_serializer_class(self):
         """
         Return different serializers for list and detail views.
@@ -358,7 +373,7 @@ class ClassificationViewSet(DefaultViewSet):
 
     queryset = Classification.objects.all()
     serializer_class = ClassificationSerializer
-    filterset_fields = ["detection", "detection__occurrence", "determination", "algorithm", "type"]
+    filterset_fields = ["detection", "detection__occurrence", "taxon", "algorithm"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -511,3 +526,25 @@ class PageViewSet(DefaultViewSet):
             return PageListSerializer
         else:
             return PageSerializer
+
+
+class IdentificationViewSet(DefaultViewSet):
+    """
+    API endpoint that allows identifications to be viewed or edited.
+    """
+
+    queryset = Identification.objects.all()
+    serializer_class = IdentificationSerializer
+    filterset_fields = ["occurrence", "user", "taxon", "primary"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "user",
+        "priority",
+    ]
+
+    def perform_create(self, serializer):
+        """
+        Set the user to the current user.
+        """
+        serializer.save(user=self.request.user)

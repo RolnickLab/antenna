@@ -6,12 +6,15 @@ from django.db.models import Count
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
+from ami.users.models import User
+
 from ..models import (
     Algorithm,
     Classification,
     Deployment,
     Detection,
     Event,
+    Identification,
     Job,
     Occurrence,
     Page,
@@ -58,6 +61,20 @@ class ProjectNestedSerializer(DefaultSerializer):
         fields = [
             "id",
             "name",
+            "image",
+            "details",
+        ]
+
+
+class UserNestedSerializer(DefaultSerializer):
+    details = serializers.HyperlinkedIdentityField(view_name="user-detail", lookup_field="pk", lookup_url_kwarg="id")
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "image",
             "details",
         ]
 
@@ -315,9 +332,41 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
+class TaxonNoParentNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+        ]
+
+
+class TaxonParentNestedSerializer(TaxonNoParentNestedSerializer):
+    parent = TaxonNoParentNestedSerializer(read_only=True)
+
+    class Meta(TaxonNoParentNestedSerializer.Meta):
+        fields = TaxonNoParentNestedSerializer.Meta.fields + [
+            "parent",
+        ]
+
+
+class TaxonNestedSerializer(TaxonParentNestedSerializer):
+    """
+    Simple Taxon serializer with 2 levels of nesting.
+    """
+
+    parent = TaxonParentNestedSerializer(read_only=True)
+
+    class Meta(TaxonParentNestedSerializer.Meta):
+        pass
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
+    parent = TaxonParentNestedSerializer(read_only=True)
 
     class Meta:
         model = Taxon
@@ -347,11 +396,14 @@ class TaxonListSerializer(DefaultSerializer):
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
+    parent = TaxonParentNestedSerializer(read_only=True)
+
     class Meta:
         model = Taxon
         fields = [
             "id",
             "name",
+            "parent",
             "rank",
             "details",
         ]
@@ -370,6 +422,38 @@ class OccurrenceNestedSerializer(DefaultSerializer):
             "details",
             "determination",
             # "determination_score",
+        ]
+
+
+class IdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    occurrence = OccurrenceNestedSerializer(read_only=True)
+    occurrence_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Occurrence.objects.all(),
+        source="occurrence",
+    )
+    taxon = TaxonNestedSerializer(read_only=True)
+    taxon_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Taxon.objects.all(),
+        source="taxon",
+    )
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "user",
+            "occurrence",
+            "occurrence_id",
+            "taxon",
+            "taxon_id",
+            "priority",
+            "primary",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -452,6 +536,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+    parent = TaxonNestedSerializer(read_only=True)
+    parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
 
     class Meta:
         model = Taxon
@@ -460,6 +546,7 @@ class TaxonSerializer(DefaultSerializer):
             "name",
             "rank",
             "parent",
+            "parent_id",
             "details",
             "occurrences_count",
             "detections_count",
@@ -484,17 +571,18 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
 
 
 class ClassificationSerializer(DefaultSerializer):
-    determination = CaptureTaxonSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
 
     class Meta:
         model = Classification
         fields = [
             "id",
-            "determination",
+            "details",
+            "taxon",
             "score",
             "algorithm",
-            "type",
+            "created_at",
         ]
 
 
@@ -651,12 +739,29 @@ class OccurrenceListSerializer(DefaultSerializer):
         ]
 
 
+class OccurrenceIdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "user",
+            "created_at",
+        ]
+
+
 class OccurrenceSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     determination_id = serializers.PrimaryKeyRelatedField(
         write_only=True, queryset=Taxon.objects.all(), source="determination"
     )
     detections = DetectionNestedSerializer(many=True, read_only=True)
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    predictions = ClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
@@ -666,6 +771,8 @@ class OccurrenceSerializer(DefaultSerializer):
         fields = OccurrenceListSerializer.Meta.fields + [
             "determination_id",
             "detections",
+            "identifications",
+            "predictions",
         ]
 
 
