@@ -32,6 +32,15 @@
   transform: rotate(90deg);
 }
 
+.taxonCell {
+  .taxonActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+}
+
 @media only screen and (max-width: $small-screen-breakpoint) {
   .tableContent,
   .galleryContent {

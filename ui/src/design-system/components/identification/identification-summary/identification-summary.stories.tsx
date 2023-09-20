@@ -1,13 +1,18 @@
 import { ComponentMeta } from '@storybook/react'
+import { Taxon } from 'data-services/models/taxa'
 import { IdentificationSummary } from './identification-summary'
 
 type Meta = ComponentMeta<typeof IdentificationSummary>
 
-const EXAMPLE_RANKS = [
-  { id: 'erebidae', name: 'Erebidae', rank: 'Family' },
-  { id: 'arctiinae', name: 'Arctiinae', rank: 'Genus' },
-  { id: 'lithosiini', name: 'Lithosiini', rank: 'Species' },
-]
+const EXAMPLE_TAXON = {
+  id: 'lycomorphodes-sordida',
+  name: 'Lycomorphodes sordida',
+  ranks: [
+    { id: 'erebidae', name: 'Erebidae', rank: 'Family' },
+    { id: 'arctiinae', name: 'Arctiinae', rank: 'Genus' },
+    { id: 'lithosiini', name: 'Lithosiini', rank: 'Species' },
+  ],
+} as Taxon
 
 export default {
   title: 'Components/Identification/IdentificationSummary',
@@ -17,10 +22,8 @@ export default {
 export const Default: Meta = {
   args: {
     identification: {
-      id: 'lycomorphodes-sordida',
-      name: 'Lycomorphodes sordida',
+      taxon: EXAMPLE_TAXON,
     },
-    ranks: EXAMPLE_RANKS,
     user: {
       name: 'Andre Poremski',
       image: 'https://placekitten.com/600/400',
@@ -31,10 +34,8 @@ export const Default: Meta = {
 export const WithoutProfileImage: Meta = {
   args: {
     identification: {
-      id: 'lycomorphodes-sordida',
-      name: 'Lycomorphodes sordida',
+      taxon: EXAMPLE_TAXON,
     },
-    ranks: EXAMPLE_RANKS,
     user: {
       name: 'Andre Poremski',
     },
@@ -44,11 +45,9 @@ export const WithoutProfileImage: Meta = {
 export const Overridden: Meta = {
   args: {
     identification: {
-      id: 'lycomorphodes-sordida',
-      name: 'Lycomorphodes sordida',
+      taxon: EXAMPLE_TAXON,
       overridden: true,
     },
-    ranks: EXAMPLE_RANKS,
     user: {
       name: 'Andre Poremski',
       image: 'https://placekitten.com/600/400',
@@ -59,9 +58,7 @@ export const Overridden: Meta = {
 export const ByMachine: Meta = {
   args: {
     identification: {
-      id: 'lycomorphodes-sordida',
-      name: 'Lycomorphodes sordida',
+      taxon: EXAMPLE_TAXON,
     },
-    ranks: EXAMPLE_RANKS,
   },
 }

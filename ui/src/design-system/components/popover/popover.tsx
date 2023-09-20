@@ -26,19 +26,21 @@ const Trigger = ({
 }) => <Popover.Trigger asChild={asChild}>{children}</Popover.Trigger>
 
 const Content = ({
-  ariaCloselabel,
   align,
-  side,
+  ariaCloselabel,
   children,
+  container,
   hideClose,
+  side,
 }: {
-  ariaCloselabel: string
   align?: 'start' | 'center' | 'end'
-  side?: 'top' | 'right' | 'bottom' | 'left'
+  ariaCloselabel: string
   children: ReactNode
+  container?: HTMLElement
   hideClose?: boolean
+  side?: 'top' | 'right' | 'bottom' | 'left'
 }) => (
-  <Popover.Portal>
+  <Popover.Portal container={container}>
     <Popover.Content
       className={styles.popoverContent}
       align={align}

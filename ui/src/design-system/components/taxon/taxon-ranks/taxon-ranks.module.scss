@@ -1,14 +1,14 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
-.breadcrumbs {
+.ranks {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 
-.breadcrumb {
+.rank {
   display: block;
   @include paragraph-x-small();
   color: $color-neutral-600;

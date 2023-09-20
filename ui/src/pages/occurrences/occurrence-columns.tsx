@@ -1,4 +1,5 @@
 import { Occurrence } from 'data-services/models/occurrence'
+import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
@@ -6,10 +7,13 @@ import {
   ImageCellTheme,
   TableColumn,
 } from 'design-system/components/table/types'
+import { TaxonInfo } from 'design-system/components/taxon/taxon-info/taxon-info'
+import { SuggestId } from 'pages/occurrence-details/suggest-id/suggest-id'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import styles from './occurrences.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   projectId: string
@@ -35,21 +39,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
     renderCell: (item: Occurrence) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.OCCURRENCE_DETAILS({
-            projectId,
-            occurrenceId: item.id,
-          }),
-          keepSearchParams: true,
-        })}
-      >
-        <BasicTableCell
-          value={item.determinationLabel}
-          details={[`(${item.determinationScore})`]}
-          theme={CellTheme.Primary}
-        />
-      </Link>
+      <TaxonCell item={item} projectId={projectId} />
     ),
   },
   {
@@ -103,3 +93,35 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     ),
   },
 ]
+
+const TaxonCell = ({
+  item,
+  projectId,
+}: {
+  item: Occurrence
+  projectId: string
+}) => {
+  return (
+    <div className={styles.taxonCell}>
+      <BasicTableCell>
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.OCCURRENCE_DETAILS({
+              projectId,
+              occurrenceId: item.id,
+            }),
+            keepSearchParams: true,
+          })}
+        >
+          <TaxonInfo taxon={item.determinationTaxon} />
+        </Link>
+        <div className={styles.taxonActions}>
+          {item.determinationScore !== undefined ? (
+            <IdentificationStatus score={item.determinationScore} />
+          ) : null}
+          <SuggestId />
+        </div>
+      </BasicTableCell>
+    </div>
+  )
+}

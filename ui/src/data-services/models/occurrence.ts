@@ -1,15 +1,19 @@
 import _ from 'lodash'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { Taxon } from './taxa'
 
 export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
   protected readonly _occurrence: ServerOccurrence
+  private readonly _determinationTaxon: Taxon
   private readonly _images: { src: string }[] = []
 
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
+
+    this._determinationTaxon = new Taxon(occurrence.determination)
 
     this._images = occurrence.detection_images
       .filter((src: string) => !!src.length)
@@ -43,6 +47,10 @@ export class Occurrence {
     }
 
     return _.round(this._occurrence.determination_score, 4)
+  }
+
+  get determinationTaxon(): Taxon {
+    return this._determinationTaxon
   }
 
   get durationLabel(): string {

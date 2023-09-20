@@ -1,18 +1,14 @@
 import _ from 'lodash'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { Occurrence, ServerOccurrence } from './occurrence'
+import { Taxon } from './taxa'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
 interface Identification {
   id: string
-  overridden: boolean
-  name: string
-  ranks: {
-    id: string
-    name: string
-    rank: string
-  }[]
+  overridden?: boolean
+  taxon: Taxon
 }
 
 interface HumanIdentification extends Identification {
@@ -49,8 +45,7 @@ export class OccurrenceDetails extends Occurrence {
         const identification: HumanIdentification = {
           id: `${i.id}`,
           overridden: `${i.taxon.id}` !== this.determinationId,
-          name: i.taxon.name,
-          ranks: this._getRanks(i.taxon),
+          taxon: new Taxon(i.taxon),
           user: { name: i.user.name, image: i.user.image },
         }
 
@@ -63,8 +58,7 @@ export class OccurrenceDetails extends Occurrence {
         const identification: MachinePrediction = {
           id: `${i.id}`,
           overridden: `${i.taxon.id}` !== this.determinationId,
-          name: i.taxon.name,
-          ranks: this._getRanks(i.taxon),
+          taxon: new Taxon(i.taxon),
           score: i.score,
         }
 
@@ -114,27 +108,5 @@ export class OccurrenceDetails extends Occurrence {
         date: new Date(detection.timestamp),
       }),
     }
-  }
-
-  private _getRanks = (
-    taxon: any
-  ): {
-    id: string
-    name: string
-    rank: string
-  }[] => {
-    const result = []
-
-    let current = taxon
-    while (current) {
-      result.push({
-        id: `${current.id}`,
-        name: current.name,
-        rank: current.rank,
-      })
-      current = current.parent
-    }
-
-    return result.reverse()
   }
 }

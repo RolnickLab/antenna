@@ -33,25 +33,3 @@
     color: $color-primary-1-600;
   }
 }
-
-.title {
-  display: block;
-  @include paragraph-medium();
-  color: $color-primary-1-600;
-
-  &.overridden {
-    text-decoration: line-through;
-  }
-}
-
-.breadcrumbs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.breadcrumb {
-  display: block;
-  @include paragraph-x-small();
-  color: $color-neutral-600;
-}

@@ -6,6 +6,7 @@ import { Button } from '../button/button'
 import styles from './combo-box.module.scss'
 
 export const ComboBox = ({
+  defaultOpen,
   emptyLabel,
   items = [],
   label,
@@ -14,10 +15,12 @@ export const ComboBox = ({
   onItemSelect,
   setSearchString,
 }: {
+  defaultOpen?: boolean
   emptyLabel: string
   items?: {
     id: string | number
     label: string
+    details?: string
   }[]
   label: string
   searchString: string
@@ -25,7 +28,7 @@ export const ComboBox = ({
   onItemSelect: (id: string | number) => void
   setSearchString: (value: string) => void
 }) => {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -57,7 +60,10 @@ export const ComboBox = ({
                   }}
                   className={styles.item}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {item.details ? (
+                    <span className={styles.details}>{item.details}</span>
+                  ) : null}
                 </Command.Item>
               ))
             ) : (

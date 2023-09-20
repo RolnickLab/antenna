@@ -64,4 +64,10 @@
       background-color: $color-primary-2-50;
     }
   }
+
+  .details {
+    @include paragraph-x-small();
+    color: $color-neutral-500;
+    padding-left: 16px;
+  }
 }

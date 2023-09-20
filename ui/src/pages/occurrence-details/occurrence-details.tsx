@@ -13,7 +13,9 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
-import { TaxonSearch } from './taxon-search/taxon-search'
+import { SuggestId } from './suggest-id/suggest-id'
+
+const DIALOG_ID = 'occurrence-details-dialog'
 
 export const OccurrenceDetails = ({
   occurrence,
@@ -83,7 +85,7 @@ export const OccurrenceDetails = ({
   ]
 
   return (
-    <div className={styles.wrapper}>
+    <div id={DIALOG_ID} className={styles.wrapper}>
       <div className={styles.header}>
         <Link
           to={APP_ROUTES.SPECIES_DETAILS({
@@ -93,7 +95,7 @@ export const OccurrenceDetails = ({
         >
           <span className={styles.title}>{occurrence.determinationLabel}</span>
         </Link>
-        <TaxonSearch />
+        <SuggestId containerId={DIALOG_ID} />
       </div>
       <div className={styles.content}>
         <div className={styles.column}>
@@ -116,40 +118,24 @@ export const OccurrenceDetails = ({
                 <Tabs.Content value="identification">
                   <div className={styles.identifications}>
                     {occurrence.humanIdentifications.map((i) => (
-                      <div className={styles.identification}>
+                      <div key={i.id} className={styles.identification}>
                         <IdentificationSummary
                           identification={{
-                            id: i.id,
                             overridden: i.overridden,
-                            name: i.name,
+                            taxon: i.taxon,
                           }}
-                          ranks={i.ranks.map((rank) => ({
-                            ...rank,
-                            to: APP_ROUTES.SPECIES_DETAILS({
-                              projectId: projectId as string,
-                              speciesId: rank.id,
-                            }),
-                          }))}
                           user={i.user}
                         />
                       </div>
                     ))}
 
                     {occurrence.machinePredictions.map((p) => (
-                      <div className={styles.identification}>
+                      <div key={p.id} className={styles.identification}>
                         <IdentificationSummary
                           identification={{
-                            id: p.id,
                             overridden: p.overridden,
-                            name: p.name,
+                            taxon: p.taxon,
                           }}
-                          ranks={p.ranks.map((rank) => ({
-                            ...rank,
-                            to: APP_ROUTES.SPECIES_DETAILS({
-                              projectId: projectId as string,
-                              speciesId: rank.id,
-                            }),
-                          }))}
                         />
                         <IdentificationStatus score={p.score} />
                       </div>

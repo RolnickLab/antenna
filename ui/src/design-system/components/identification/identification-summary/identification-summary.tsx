@@ -1,20 +1,13 @@
-import classNames from 'classnames'
+import { Taxon as TaxonModel } from 'data-services/models/taxa'
+import { TaxonInfo } from 'design-system/components/taxon/taxon-info/taxon-info'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
-import { IdentificationBreadcrumbs } from '../identification-breadcrumbs/identification-breadcrumbs'
 import styles from './identification-summary.module.scss'
 
 interface IdentificationSummaryProps {
   identification: {
-    id: string
     overridden?: boolean
-    name: string
+    taxon: TaxonModel
   }
-  ranks: {
-    id: string
-    name: string
-    rank: string
-    to?: string
-  }[]
   user?: {
     name: string
     image?: string
@@ -23,7 +16,6 @@ interface IdentificationSummaryProps {
 
 export const IdentificationSummary = ({
   identification,
-  ranks,
   user,
 }: IdentificationSummaryProps) => (
   <div>
@@ -47,13 +39,9 @@ export const IdentificationSummary = ({
         {user?.name ?? 'Machine suggestion'}
       </span>
     </div>
-    <span
-      className={classNames(styles.title, {
-        [styles.overridden]: identification.overridden,
-      })}
-    >
-      {identification.name}
-    </span>
-    <IdentificationBreadcrumbs items={ranks} />
+    <TaxonInfo
+      overridden={identification.overridden}
+      taxon={identification.taxon}
+    />
   </div>
 )
