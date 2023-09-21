@@ -1,3 +1,4 @@
+import html
 import logging
 
 import requests
@@ -18,6 +19,33 @@ from ami.main.api.views import DefaultReadOnlyViewSet
 from ami.main.models import Deployment, Detection, Occurrence, Project, SourceImage, TaxaList, Taxon
 
 logger = logging.getLogger(__name__)
+
+
+def taxa_tree_to_xml(taxa_tree):
+    """
+    # Recursively build the XML from taxa_tree
+    # Which looks like:
+    # {"taxon": <Taxon: 1>, "children": [{"taxon": <Taxon: 2>, "children": []}]}}
+
+    # Example of a nested Choice XML
+    <Choice value="Parent">
+    <Choice value="Child">
+        <Choice value="Grandchild" />
+    </Choice>
+    </Choice>
+    """
+
+    def _node_to_xml(node, level=0):
+        indent = "  " * level
+        value = html.escape(str(node["taxon"]))
+        xml = f'\n{indent}<Choice value="{value}">'
+        for child in node["children"]:
+            xml += _node_to_xml(child, level + 1)
+        xml += f"{indent}</Choice>\n"
+        return xml
+
+    taxonomy_choices_xml = _node_to_xml(taxa_tree)
+    return taxonomy_choices_xml
 
 
 class LabelStudioFlatPaginator(LimitOffsetPagination):
@@ -173,34 +201,33 @@ class LabelStudioConfigViewSet(viewsets.ViewSet):
         else:
             taxa_tree = Taxon.objects.tree()
 
-        """
-        # Recursively build the XML from taxa_tree
-        # Which looks like:
-        # {"taxon": <Taxon: 1>, "children": [{"taxon": <Taxon: 2>, "children": []}]}}
-
-        # Example of a nested Choice XML
-        <Choice value="Parent">
-        <Choice value="Child">
-            <Choice value="Grandchild" />
-        </Choice>
-        </Choice>
-        """
-
-        def _node_to_xml(node):
-            xml = f'<Choice value="{str(node["taxon"])}">\n'
-            for child in node["children"]:
-                xml += _node_to_xml(child)
-            xml += "</Choice>\n"
-            return xml
-
-        taxonomy_choices_xml = _node_to_xml(taxa_tree)
         data = {
             "label_config": {
-                "taxonomy_choices_xml": taxonomy_choices_xml,
+                "taxonomy_choices_xml": taxa_tree_to_xml(taxa_tree),
             }
         }
 
         content = render_to_string("labelstudio/species_classification.xml", data)
+
+        return HttpResponse(content, content_type="text/xml")
+
+    @action(detail=False, methods=["get"], name="all_in_one")
+    def all_in_one(self, request):
+        """ """
+        taxa_list_id = request.query_params.get("taxa_list", None)
+        if taxa_list_id:
+            taxa_list = TaxaList.objects.get(id=taxa_list_id)
+            taxa_tree = taxa_list.taxa.tree()  # type: ignore
+        else:
+            taxa_tree = Taxon.objects.tree()
+
+        data = {
+            "label_config": {
+                "taxonomy_choices_xml": taxa_tree_to_xml(taxa_tree),
+            }
+        }
+
+        content = render_to_string("labelstudio/all_in_one.xml", data)
 
         return HttpResponse(content, content_type="text/xml")
 
