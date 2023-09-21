@@ -20,6 +20,7 @@ from .models import (
     S3StorageSource,
     Site,
     SourceImage,
+    SourceImageCollection,
     TaxaList,
     Taxon,
 )
@@ -155,6 +156,7 @@ class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
         "deployment",
         "timestamp",
         "deployment__data_source",
+        "collections",
     )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
@@ -277,3 +279,39 @@ class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
         self.message_user(request, f"File count calculated for {queryset.count()} source(s).")
 
     actions = [calculate_size_async, count_files]
+
+
+@admin.register(SourceImageCollection)
+class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
+    """Admin panel example for ``SourceImageCollection`` model."""
+
+    list_display = ("name", "image_count", "method", "kwargs", "created_at", "updated_at")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).annotate(image_count=models.Count("images"))
+
+    @admin.display(
+        description="Images",
+        ordering="image_count",
+    )
+    def image_count(self, obj) -> int:
+        return obj.image_count
+
+    @admin.action()
+    def populate_collection(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        for collection in queryset:
+            collection.populate_sample()
+        self.message_user(request, f"Populated {queryset.count()} collection(s).")
+
+    @admin.action()
+    def populate_collection_async(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        queued_tasks = [tasks.populate_collection.apply_async([collection.pk]) for collection in queryset]
+        self.message_user(
+            request,
+            f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
+        )
+
+    actions = [populate_collection, populate_collection_async]
+
+    # Hide images many-to-many field from form. This would list all source images in the database.
+    exclude = ("images",)
