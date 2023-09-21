@@ -87,14 +87,20 @@ class LabelStudioConfig(models.Model):
             original_path = str(pathlib.Path(task.path).with_suffix(""))
             original_path = original_path.replace("/", "-")
             key = slugify(original_path) + ".json"
-            logger.info(f"Publishing task to S3: {key}")
 
-            # The subdir is specified as the prefix in the S3 URI
-            result = ami.utils.s3.write_file(
-                config=bucket_config,
-                key=key,
-                body=task_json,
-            )
-            if result:
-                count += 1
+            if ami.utils.s3.file_exists(bucket_config, key):
+                logger.info(f"Skipping existing task: {key}")
+            else:
+                logger.info(f"Publishing new task to S3: {key}")
+
+                # The subdir is specified as the prefix in the S3 URI
+                result = ami.utils.s3.write_file(
+                    config=bucket_config,
+                    key=key,
+                    body=task_json,
+                )
+                if result:
+                    count += 1
+
+        logger.info(f"Published {count} new tasks to S3")
         return count

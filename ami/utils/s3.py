@@ -10,6 +10,7 @@ import boto3
 import boto3.resources.base
 import botocore
 import botocore.config
+import botocore.exceptions
 import PIL
 import PIL.Image
 from mypy_boto3_s3.client import S3Client
@@ -220,6 +221,23 @@ def write_file(config: S3Config, key: str, body: bytes):
         key = pathlib.Path(config.prefix, key).as_posix()
     obj = bucket.Object(key)
     return obj.put(Body=body)
+
+
+def file_exists(config: S3Config, key: str) -> bool:
+    bucket = get_bucket(config)
+    if config.prefix:
+        # Use path join to ensure there are no extra or missing slashes
+        key = pathlib.Path(config.prefix, key).as_posix()
+    obj = bucket.Object(key)
+    try:
+        obj.load()
+    except botocore.exceptions.ClientError as e:
+        if e.response["Error"]["Code"] == "404":
+            return False
+        else:
+            raise
+    else:
+        return True
 
 
 def read_image(config: S3Config, key: str) -> PIL.Image.Image:
