@@ -1274,17 +1274,17 @@ def update_occurrence_determination(occurrence, current_determination: typing.Op
     """
     current_determination = (
         current_determination
-        or Occurrence.objects.values("determination")
-        .select_related("determination")
+        or Occurrence.objects.select_related("determination")
+        .values("determination")
         .get(pk=occurrence.pk)["determination"]
     )
     new_determination = None
 
-    top_identification = occurrence.best_identification()
+    top_identification = occurrence.best_identification
     if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
         new_determination = top_identification.taxon
     elif not top_identification:
-        top_prediction = occurrence.best_prediciton()
+        top_prediction = occurrence.best_prediciton
         if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
             new_determination = top_prediction.taxon
 
