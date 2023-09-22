@@ -3,6 +3,7 @@ import logging
 from django.core import exceptions
 from django.db import models
 from django.db.models.query import QuerySet
+from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
@@ -297,10 +298,15 @@ class TaxonViewSet(DefaultViewSet):
         """
         Return a list of taxa that match the query.
         """
-        query = request.query_params.get("q", None)
-        limit = request.query_params.get("limit", 10)
-        with_parents = request.query_params.get("with_parents", True)
-        if query:
+        min_query_length = 2
+        default_results_limit = 10
+        query = CharField(required=False, min_length=0).clean(request.query_params.get("q", None))
+        limit = IntegerField(required=False, min_value=0).clean(
+            request.query_params.get("limit", default_results_limit)
+        )
+        with_parents = BooleanField(required=False).clean(request.query_params.get("with_parents", True))
+
+        if query and len(query) >= min_query_length:
             if with_parents:
                 taxa = Taxon.objects.select_related("parent", "parent__parent").filter(name__icontains=query)[:limit]
                 return Response(TaxonNestedSerializer(taxa, many=True, context={"request": request}).data)
