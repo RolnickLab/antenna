@@ -1,7 +1,7 @@
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
-import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './taxon-ranks.module.scss'
 
 interface TaxonRanksProps {
@@ -9,18 +9,18 @@ interface TaxonRanksProps {
     id: string
     name: string
     rank: string
-    to?: string
   }[]
+  getLink?: (taxonId: string) => string
 }
 
-export const TaxonRanks = ({ ranks }: TaxonRanksProps) => (
+export const TaxonRanks = ({ ranks, getLink }: TaxonRanksProps) => (
   <div className={styles.ranks}>
     {ranks.map((r, index) => (
       <Fragment key={r.id}>
-        {r.to ? (
+        {getLink ? (
           <Tooltip content={r.rank}>
             <span className={styles.rank}>
-              <Link to={r.to}>{r.name}</Link>
+              <Link to={getLink(r.id)}>{r.name}</Link>
             </span>
           </Tooltip>
         ) : (

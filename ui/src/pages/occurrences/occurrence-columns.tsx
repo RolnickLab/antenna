@@ -1,3 +1,4 @@
+import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
 import { Button } from 'design-system/components/button/button'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
@@ -8,7 +9,6 @@ import {
   ImageCellTheme,
   TableColumn,
 } from 'design-system/components/table/types'
-import { TaxonInfo } from 'design-system/components/taxon/taxon-info/taxon-info'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

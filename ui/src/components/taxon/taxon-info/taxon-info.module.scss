@@ -2,7 +2,6 @@
 @import 'design-system/variables/typography.scss';
 
 .name {
-  display: block;
   @include paragraph-medium();
   color: $color-primary-1-600;
 

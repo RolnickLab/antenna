@@ -2,16 +2,16 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import {
+  TaxonInfo,
+  TaxonInfoSize,
+} from 'components/taxon/taxon-info/taxon-info'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { IdentificationSummary } from 'design-system/components/identification/identification-summary/identification-summary'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import {
-  TaxonInfo,
-  TaxonInfoSize,
-} from 'design-system/components/taxon/taxon-info/taxon-info'
 import { useMemo, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -99,12 +99,21 @@ export const OccurrenceDetails = ({
     },
   ]
 
+  const getTaxonLink = (id: string) =>
+    getAppRoute({
+      to: APP_ROUTES.SPECIES_DETAILS({
+        projectId: projectId as string,
+        speciesId: id,
+      }),
+    })
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
         <TaxonInfo
           taxon={occurrence.determinationTaxon}
           size={TaxonInfoSize.Large}
+          getLink={getTaxonLink}
         />
         <div className={styles.taxonActions}>
           <IdentificationStatus
@@ -150,24 +159,25 @@ export const OccurrenceDetails = ({
 
                     {occurrence.humanIdentifications.map((i) => (
                       <div key={i.id} className={styles.identification}>
-                        <IdentificationSummary
-                          identification={{
-                            overridden: i.overridden,
-                            taxon: i.taxon,
-                          }}
-                          user={i.user}
-                        />
+                        <IdentificationSummary user={i.user}>
+                          <TaxonInfo
+                            overridden={i.overridden}
+                            taxon={i.taxon}
+                            getLink={getTaxonLink}
+                          />
+                        </IdentificationSummary>
                       </div>
                     ))}
 
                     {occurrence.machinePredictions.map((p) => (
                       <div key={p.id} className={styles.identification}>
-                        <IdentificationSummary
-                          identification={{
-                            overridden: p.overridden,
-                            taxon: p.taxon,
-                          }}
-                        />
+                        <IdentificationSummary>
+                          <TaxonInfo
+                            overridden={p.overridden}
+                            taxon={p.taxon}
+                            getLink={getTaxonLink}
+                          />
+                        </IdentificationSummary>
                         <IdentificationStatus score={p.score} />
                       </div>
                     ))}

@@ -1,13 +1,9 @@
-import { Taxon as TaxonModel } from 'data-services/models/taxa'
-import { TaxonInfo } from 'design-system/components/taxon/taxon-info/taxon-info'
+import { ReactNode } from 'react'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './identification-summary.module.scss'
 
 interface IdentificationSummaryProps {
-  identification: {
-    overridden?: boolean
-    taxon: TaxonModel
-  }
+  children: ReactNode
   user?: {
     name: string
     image?: string
@@ -15,7 +11,7 @@ interface IdentificationSummaryProps {
 }
 
 export const IdentificationSummary = ({
-  identification,
+  children,
   user,
 }: IdentificationSummaryProps) => (
   <div>
@@ -39,9 +35,6 @@ export const IdentificationSummary = ({
         {user?.name ?? 'Machine suggestion'}
       </span>
     </div>
-    <TaxonInfo
-      overridden={identification.overridden}
-      taxon={identification.taxon}
-    />
+    {children}
   </div>
 )

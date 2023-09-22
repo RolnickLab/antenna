@@ -1,9 +1,12 @@
+import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
 import { Taxon } from 'data-services/models/taxa'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Input, InputContent } from 'design-system/components/input/input'
-import { TaxonInfo } from 'design-system/components/taxon/taxon-info/taxon-info'
 import { useState } from 'react'
+import { useParams } from 'react-router'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { TaxonSearch } from '../taxon-search/taxon-search'
 import styles from './suggest-id.module.scss'
@@ -38,6 +41,7 @@ const SuggestIdForm = ({
   occurrenceId: string
   onCancel: () => void
 }) => {
+  const { projectId } = useParams()
   const [taxon, setTaxon] = useState<Taxon>()
   const { createIdentification, isLoading, error } = useCreateIdentification(
     () => onCancel()
@@ -56,7 +60,17 @@ const SuggestIdForm = ({
         <InputContent label="Taxon">
           {taxon && (
             <div className={styles.taxon}>
-              <TaxonInfo taxon={taxon} />
+              <TaxonInfo
+                taxon={taxon}
+                getLink={(id: string) =>
+                  getAppRoute({
+                    to: APP_ROUTES.SPECIES_DETAILS({
+                      projectId: projectId as string,
+                      speciesId: id,
+                    }),
+                  })
+                }
+              />
             </div>
           )}
           <div className={styles.taxonActions}>
