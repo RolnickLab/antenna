@@ -1273,7 +1273,7 @@ def update_occurrence_determination(occurrence, current_determination: typing.Op
     """
     current_determination = (
         current_determination
-        or Occurrence.objects.values("determinaton")
+        or Occurrence.objects.values("determination")
         .select_related("determination")
         .get(pk=occurrence.pk)["determination"]
     )
