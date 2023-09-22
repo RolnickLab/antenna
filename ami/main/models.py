@@ -1215,8 +1215,8 @@ class Occurrence(BaseModel):
         return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
 
     @functools.cached_property
-    def best_prediciton(self):
-        return Classification.objects.filter(occurrence=self).order_by(["-score", "-created_at"]).first()
+    def best_prediction(self):
+        return self.predictions().first()
 
     @functools.cached_property
     def best_identification(self):

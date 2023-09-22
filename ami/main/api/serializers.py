@@ -764,6 +764,8 @@ class OccurrenceSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    best_prediction = ClassificationSerializer(read_only=True)
+    best_identification = OccurrenceIdentificationSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
