@@ -3,10 +3,10 @@ import classNames from 'classnames'
 import { Command } from 'cmdk'
 import { useState } from 'react'
 import { Button } from '../button/button'
+import { IconType } from '../icon/icon'
 import styles from './combo-box.module.scss'
 
 export const ComboBox = ({
-  defaultOpen,
   emptyLabel,
   items = [],
   label,
@@ -15,7 +15,6 @@ export const ComboBox = ({
   onItemSelect,
   setSearchString,
 }: {
-  defaultOpen?: boolean
   emptyLabel: string
   items?: {
     id: string | number
@@ -28,12 +27,12 @@ export const ComboBox = ({
   onItemSelect: (id: string | number) => void
   setSearchString: (value: string) => void
 }) => {
-  const [open, setOpen] = useState(defaultOpen)
+  const [open, setOpen] = useState(false)
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
-        <Button label={label} />
+        <Button label={label} icon={IconType.RadixSearch} />
       </DropdownMenu.Trigger>
       <DropdownMenu.Content
         align="start"

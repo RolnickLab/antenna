@@ -27,7 +27,6 @@ export const TaxonSearch = ({
 
   return (
     <ComboBox
-      defaultOpen
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       items={items}
       label="Search"

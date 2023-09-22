@@ -31,6 +31,6 @@ export class Taxon {
       current = current.parent
     }
 
-    return ranks
+    return ranks.reverse()
   }
 }

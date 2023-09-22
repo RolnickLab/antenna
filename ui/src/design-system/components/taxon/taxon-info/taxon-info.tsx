@@ -4,7 +4,7 @@ import { TaxonRanks } from '../taxon-ranks/taxon-ranks'
 import styles from './taxon-info.module.scss'
 
 interface TaxonInfoProps {
-  taxon?: Taxon
+  taxon: Taxon
   overridden?: boolean
 }
 
@@ -15,7 +15,7 @@ export const TaxonInfo = ({ overridden, taxon }: TaxonInfoProps) => (
         [styles.overridden]: overridden,
       })}
     >
-      {taxon?.name ?? 'Unknown Taxon'}
+      {taxon.name}
     </span>
     <TaxonRanks ranks={taxon?.ranks ?? []} />
   </div>

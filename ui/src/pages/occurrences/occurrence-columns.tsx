@@ -8,7 +8,6 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import { TaxonInfo } from 'design-system/components/taxon/taxon-info/taxon-info'
-import { SuggestId } from 'pages/occurrence-details/suggest-id/suggest-id'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -119,7 +118,6 @@ const TaxonCell = ({
           {item.determinationScore !== undefined ? (
             <IdentificationStatus score={item.determinationScore} />
           ) : null}
-          <SuggestId occurrenceId={item.id} />
         </div>
       </BasicTableCell>
     </div>

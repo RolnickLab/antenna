@@ -16,8 +16,8 @@ interface IdentificationStatusProps {
 
 export const IdentificationStatus = ({
   isVerified,
-  scoreThreshold = 0.6,
   score,
+  scoreThreshold = 0.6,
 }: IdentificationStatusProps) => {
   const normalizedRadius = RADIUS - STROKE_WIDTH * 2
   const circumference = normalizedRadius * 2 * Math.PI

@@ -15,8 +15,6 @@ import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
 import { SuggestId } from './suggest-id/suggest-id'
 
-const DIALOG_ID = 'occurrence-details-dialog'
-
 export const OccurrenceDetails = ({
   occurrence,
 }: {
@@ -85,7 +83,7 @@ export const OccurrenceDetails = ({
   ]
 
   return (
-    <div id={DIALOG_ID} className={styles.wrapper}>
+    <div className={styles.wrapper}>
       <div className={styles.header}>
         <Link
           to={APP_ROUTES.SPECIES_DETAILS({
@@ -95,11 +93,10 @@ export const OccurrenceDetails = ({
         >
           <span className={styles.title}>{occurrence.determinationLabel}</span>
         </Link>
-        <SuggestId containerId={DIALOG_ID} occurrenceId={occurrence.id} />
       </div>
       <div className={styles.content}>
-        <div className={styles.column}>
-          <div className={styles.info}>
+        <div className={styles.infoWrapper}>
+          <div className={styles.infoContainer}>
             <div className={styles.fields}>
               <Tabs.Root defaultValue="fields">
                 <Tabs.List>
@@ -117,6 +114,8 @@ export const OccurrenceDetails = ({
                 </Tabs.Content>
                 <Tabs.Content value="identification">
                   <div className={styles.identifications}>
+                    <SuggestId occurrenceId={occurrence.id} />
+
                     {occurrence.humanIdentifications.map((i) => (
                       <div key={i.id} className={styles.identification}>
                         <IdentificationSummary
