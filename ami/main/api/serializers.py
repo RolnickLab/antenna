@@ -778,7 +778,7 @@ class OccurrenceListSerializer(DefaultSerializer):
         )
 
 
-class OccurrenceSerializer(DefaultSerializer):
+class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     determination_id = serializers.PrimaryKeyRelatedField(
         write_only=True, queryset=Taxon.objects.all(), source="determination"

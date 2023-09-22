@@ -1226,7 +1226,7 @@ class Occurrence(BaseModel):
         if not self.determination:
             return 0
         elif self.best_identification:
-            return 1
+            return 1.0
         else:
             return (
                 Classification.objects.filter(detection__occurrence=self)
