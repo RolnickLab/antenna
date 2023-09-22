@@ -363,13 +363,14 @@ class TaxonNestedSerializer(TaxonParentNestedSerializer):
         pass
 
 
-class TaxonSearchResultSerializer(DefaultSerializer):
+class TaxonSearchResultSerializer(TaxonNestedSerializer):
     class Meta:
         model = Taxon
         fields = [
             "id",
             "name",
             "rank",
+            "parent",
         ]
 
 

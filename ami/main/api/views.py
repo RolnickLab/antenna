@@ -47,6 +47,7 @@ from .serializers import (
     SourceImageSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
+    TaxonNestedSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
 )
@@ -261,7 +262,8 @@ class TaxonViewSet(DefaultViewSet):
     """
 
     queryset = (
-        Taxon.objects.annotate(
+        Taxon.objects.select_related("parent", "parent__parent")
+        .annotate(
             occurrences_count=models.Count("occurrences", distinct=True),
             detections_count=models.Count("classifications__detection", distinct=True),
             events_count=models.Count("occurrences__event", distinct=True),
@@ -297,9 +299,15 @@ class TaxonViewSet(DefaultViewSet):
         """
         query = request.query_params.get("q", None)
         limit = request.query_params.get("limit", 10)
+        with_parents = request.query_params.get("with_parents", True)
         if query:
-            taxa = Taxon.objects.filter(name__icontains=query).values("id", "name", "rank")[:limit]
-            return Response(TaxonSearchResultSerializer(taxa, many=True, context={"request": request}).data)
+            if with_parents:
+                taxa = Taxon.objects.select_related("parent", "parent__parent").filter(name__icontains=query)[:limit]
+                return Response(TaxonNestedSerializer(taxa, many=True, context={"request": request}).data)
+            else:
+                taxa = Taxon.objects.filter(name__icontains=query).values("id", "name", "rank")[:limit]
+                return Response(TaxonSearchResultSerializer(taxa, many=True, context={"request": request}).data)
+
         else:
             return Response([])
 
