@@ -198,7 +198,7 @@ def _insert_or_update_batch_for_sync(
             source_images,
             batch_size=sql_batch_size,
             update_conflicts=True,
-            unique_fields=["deployment", "path"],
+            unique_fields=["deployment", "path"],  # type: ignore
             update_fields=["last_modified", "size", "checksum", "checksum_algorithm"],
         )
     except IntegrityError as e:
@@ -721,7 +721,7 @@ class S3StorageSource(BaseModel):
     def calculate_size(self):
         """Calculate the total size and count of all files in the bucket/prefix."""
 
-        sizes = [obj["Size"] for obj in self.list_files()]
+        sizes = [obj["Size"] for obj in self.list_files()]  # type: ignore
         size = sum(sizes)
         count = len(sizes)
         self.total_size = size
@@ -974,7 +974,7 @@ class Identification(BaseModel):
         """
 
         if not self.pk and not self.withdrawn and self.user:
-            # This is a new identifiation and it has not been explicitly withdrawn
+            # This is a new identification and it has not been explicitly withdrawn
             # so set all other identifications of this user to withdrawn.
             Identification.objects.filter(
                 occurrence=self.occurrence,

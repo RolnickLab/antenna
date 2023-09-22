@@ -545,12 +545,15 @@ class IdentificationViewSet(DefaultViewSet):
 
     queryset = Identification.objects.all()
     serializer_class = IdentificationSerializer
-    filterset_fields = ["occurrence", "user", "taxon", "primary"]
+    filterset_fields = [
+        "occurrence",
+        "user",
+        "taxon",
+    ]
     ordering_fields = [
         "created_at",
         "updated_at",
         "user",
-        "priority",
     ]
 
     def perform_create(self, serializer):

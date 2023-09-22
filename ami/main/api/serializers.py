@@ -734,6 +734,7 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
             "details",
             "taxon",
             "user",
+            "withdrawn",
             "created_at",
         ]
 
@@ -913,7 +914,7 @@ class EventSerializer(DefaultSerializer):
         elif detection_id:
             capture_with_subject = Detection.objects.get(pk=detection_id).source_image
         elif occurrence_id:
-            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance()
+            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance
 
         if capture_with_subject and capture_with_subject.event:
             # Assert that the capture is part of the event
