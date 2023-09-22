@@ -363,6 +363,16 @@ class TaxonNestedSerializer(TaxonParentNestedSerializer):
         pass
 
 
+class TaxonSearchResultSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+        ]
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()

@@ -47,6 +47,7 @@ from .serializers import (
     SourceImageSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
+    TaxonSearchResultSerializer,
     TaxonSerializer,
 )
 
@@ -295,9 +296,10 @@ class TaxonViewSet(DefaultViewSet):
         Return a list of taxa that match the query.
         """
         query = request.query_params.get("q", None)
+        limit = request.query_params.get("limit", 10)
         if query:
-            taxa = Taxon.objects.filter(name__icontains=query)
-            return Response(TaxonListSerializer(taxa, many=True, context={"request": request}).data)
+            taxa = Taxon.objects.filter(name__icontains=query).values("id", "name", "rank")[:limit]
+            return Response(TaxonSearchResultSerializer(taxa, many=True, context={"request": request}).data)
         else:
             return Response([])
 
