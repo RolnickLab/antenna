@@ -3,20 +3,32 @@ import { Taxon } from 'data-services/models/taxa'
 import { TaxonRanks } from '../taxon-ranks/taxon-ranks'
 import styles from './taxon-info.module.scss'
 
-interface TaxonInfoProps {
-  taxon: Taxon
-  overridden?: boolean
+export enum TaxonInfoSize {
+  Medium = 'medium',
+  Large = 'large',
 }
 
-export const TaxonInfo = ({ overridden, taxon }: TaxonInfoProps) => (
+interface TaxonInfoProps {
+  overridden?: boolean
+  size?: TaxonInfoSize
+  taxon: Taxon
+  to?: string
+}
+
+export const TaxonInfo = ({
+  overridden,
+  size = TaxonInfoSize.Medium,
+  taxon,
+}: TaxonInfoProps) => (
   <div>
     <span
       className={classNames(styles.name, {
         [styles.overridden]: overridden,
+        [styles.large]: size === TaxonInfoSize.Large,
       })}
     >
       {taxon.name}
     </span>
-    <TaxonRanks ranks={taxon?.ranks ?? []} />
+    {taxon.ranks ? <TaxonRanks ranks={taxon.ranks} /> : null}
   </div>
 )

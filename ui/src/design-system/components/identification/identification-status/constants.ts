@@ -1,4 +1,4 @@
-export const RADIUS = 24
+export const RADIUS = 16
 
 export const STROKE_WIDTH = 4
 

@@ -4,13 +4,23 @@ import { Icon, IconType } from '../icon/icon'
 import styles from './tabs.module.scss'
 
 const Root = ({
-  defaultValue,
   children,
+  defaultValue,
+  value,
+  onValueChange,
 }: {
-  defaultValue?: string
   children: ReactNode
+  defaultValue?: string
+
+  value?: string
+  onValueChange?: (value: string) => void
 }) => (
-  <Tabs.Root defaultValue={defaultValue} className={styles.tabsRoot}>
+  <Tabs.Root
+    className={styles.tabsRoot}
+    defaultValue={defaultValue}
+    value={value}
+    onValueChange={onValueChange}
+  >
     {children}
   </Tabs.Root>
 )
@@ -54,4 +64,4 @@ const Content = ({
   </Tabs.Content>
 )
 
-export { Root, List, Trigger, Content }
+export { Content, List, Root, Trigger }

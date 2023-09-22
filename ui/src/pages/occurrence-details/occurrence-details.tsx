@@ -3,24 +3,41 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { IdentificationSummary } from 'design-system/components/identification/identification-summary/identification-summary'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { useMemo } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import {
+  TaxonInfo,
+  TaxonInfoSize,
+} from 'design-system/components/taxon/taxon-info/taxon-info'
+import { useMemo, useState } from 'react'
+import { useLocation, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './occurrence-details.module.scss'
 import { SuggestId } from './suggest-id/suggest-id'
 
+export const TABS = {
+  FIELDS: 'fields',
+  IDENTIFICATION: 'identification',
+}
+
 export const OccurrenceDetails = ({
   occurrence,
 }: {
   occurrence: Occurrence
 }) => {
+  const { state } = useLocation()
   const { projectId } = useParams()
+  const [selectedTab, setSelectedTab] = useState<string | undefined>(
+    state?.defaultTab ?? TABS.FIELDS
+  )
+  const [suggestIdOpen, setSuggestIdOpen] = useState<boolean>(
+    state?.suggestIdOpen ?? false
+  )
 
   const blueprintItems = useMemo(
     () =>
@@ -85,36 +102,51 @@ export const OccurrenceDetails = ({
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
-        <Link
-          to={APP_ROUTES.SPECIES_DETAILS({
-            projectId: projectId as string,
-            speciesId: occurrence.determinationId,
-          })}
-        >
-          <span className={styles.title}>{occurrence.determinationLabel}</span>
-        </Link>
+        <TaxonInfo
+          taxon={occurrence.determinationTaxon}
+          size={TaxonInfoSize.Large}
+        />
+        <div className={styles.taxonActions}>
+          <IdentificationStatus
+            isVerified={occurrence.determinationVerified}
+            score={occurrence.determinationScore}
+          />
+          <Button
+            label="Suggest ID"
+            theme={ButtonTheme.Default}
+            disabled={selectedTab === TABS.IDENTIFICATION && suggestIdOpen}
+            onClick={() => {
+              setSelectedTab(TABS.IDENTIFICATION)
+              setSuggestIdOpen(true)
+            }}
+          />
+        </div>
       </div>
       <div className={styles.content}>
         <div className={styles.infoWrapper}>
           <div className={styles.infoContainer}>
             <div className={styles.fields}>
-              <Tabs.Root defaultValue="fields">
+              <Tabs.Root value={selectedTab} onValueChange={setSelectedTab}>
                 <Tabs.List>
                   <Tabs.Trigger
-                    value="fields"
+                    value={TABS.FIELDS}
                     label={translate(STRING.TAB_ITEM_FIELDS)}
                   />
                   <Tabs.Trigger
-                    value="identification"
+                    value={TABS.IDENTIFICATION}
                     label={translate(STRING.TAB_ITEM_IDENTIFICATION)}
                   />
                 </Tabs.List>
-                <Tabs.Content value="fields">
+                <Tabs.Content value={TABS.FIELDS}>
                   <InfoBlock fields={fields} />
                 </Tabs.Content>
-                <Tabs.Content value="identification">
+                <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>
-                    <SuggestId occurrenceId={occurrence.id} />
+                    <SuggestId
+                      occurrenceId={occurrence.id}
+                      open={suggestIdOpen}
+                      onOpenChange={setSuggestIdOpen}
+                    />
 
                     {occurrence.humanIdentifications.map((i) => (
                       <div key={i.id} className={styles.identification}>

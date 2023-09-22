@@ -19,11 +19,13 @@ export const IdentificationStatus = ({
   score,
   scoreThreshold = 0.6,
 }: IdentificationStatusProps) => {
-  const normalizedRadius = RADIUS - STROKE_WIDTH * 2
+  const normalizedRadius = RADIUS - STROKE_WIDTH / 2
   const circumference = normalizedRadius * 2 * Math.PI
   const strokeDashoffset = circumference - score * circumference
   const theme = score >= scoreThreshold ? THEMES.success : THEMES.alert
-  const tooltipContent = `Score ${_.round(score, 4)}`
+  const tooltipContent = isVerified
+    ? 'Verified'
+    : `Machine prediction\nscore ${_.round(score, 4)}`
 
   return (
     <Tooltip content={tooltipContent}>

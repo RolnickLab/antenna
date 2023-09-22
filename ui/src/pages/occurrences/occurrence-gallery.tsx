@@ -20,7 +20,7 @@ export const OccurrenceGallery = ({
         id: o.id,
         image: o.images[0],
         subTitle: `(${o.determinationScore})`,
-        title: o.determinationLabel,
+        title: o.determinationTaxon.name,
         to: getAppRoute({
           to: APP_ROUTES.OCCURRENCE_DETAILS({
             projectId: projectId as string,

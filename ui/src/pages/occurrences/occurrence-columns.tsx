@@ -1,4 +1,5 @@
 import { Occurrence } from 'data-services/models/occurrence'
+import { Button } from 'design-system/components/button/button'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -8,7 +9,8 @@ import {
   TableColumn,
 } from 'design-system/components/table/types'
 import { TaxonInfo } from 'design-system/components/taxon/taxon-info/taxon-info'
-import { Link } from 'react-router-dom'
+import { TABS } from 'pages/occurrence-details/occurrence-details'
+import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -100,24 +102,39 @@ const TaxonCell = ({
   item: Occurrence
   projectId: string
 }) => {
+  const navigate = useNavigate()
+  const detailsRoute = getAppRoute({
+    to: APP_ROUTES.OCCURRENCE_DETAILS({
+      projectId,
+      occurrenceId: item.id,
+    }),
+    keepSearchParams: true,
+  })
+
   return (
     <div className={styles.taxonCell}>
       <BasicTableCell>
-        <Link
-          to={getAppRoute({
-            to: APP_ROUTES.OCCURRENCE_DETAILS({
-              projectId,
-              occurrenceId: item.id,
-            }),
-            keepSearchParams: true,
-          })}
-        >
-          <TaxonInfo taxon={item.determinationTaxon} />
-        </Link>
+        <div className={styles.taxon}>
+          <Link to={detailsRoute}>
+            <TaxonInfo taxon={item.determinationTaxon} />
+          </Link>
+        </div>
         <div className={styles.taxonActions}>
-          {item.determinationScore !== undefined ? (
-            <IdentificationStatus score={item.determinationScore} />
-          ) : null}
+          <IdentificationStatus
+            isVerified={item.determinationVerified}
+            score={item.determinationScore}
+          />
+          <Button
+            label="Suggest ID"
+            onClick={() =>
+              navigate(detailsRoute, {
+                state: {
+                  defaultTab: TABS.IDENTIFICATION,
+                  suggestIdOpen: true,
+                },
+              })
+            }
+          />
         </div>
       </BasicTableCell>
     </div>

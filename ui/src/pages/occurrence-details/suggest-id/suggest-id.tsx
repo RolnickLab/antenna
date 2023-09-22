@@ -8,17 +8,25 @@ import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { TaxonSearch } from '../taxon-search/taxon-search'
 import styles from './suggest-id.module.scss'
 
-export const SuggestId = ({ occurrenceId }: { occurrenceId: string }) => {
-  const [open, setOpen] = useState(false)
+interface SuggestIdProps {
+  occurrenceId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
 
+export const SuggestId = ({
+  occurrenceId,
+  open,
+  onOpenChange,
+}: SuggestIdProps) => {
   if (!open) {
-    return <Button label="Suggest ID" onClick={() => setOpen(true)} />
+    return null
   }
 
   return (
     <SuggestIdForm
       occurrenceId={occurrenceId}
-      onCancel={() => setOpen(false)}
+      onCancel={() => onOpenChange(false)}
     />
   )
 }

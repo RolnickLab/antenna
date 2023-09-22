@@ -13,7 +13,7 @@ export class Occurrence {
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
 
-    this._determinationTaxon = new Taxon(occurrence.determination)
+    this._determinationTaxon = new Taxon(occurrence.determination_details.taxon)
 
     this._images = occurrence.detection_images
       .filter((src: string) => !!src.length)
@@ -33,17 +33,15 @@ export class Occurrence {
     return `${this._occurrence.deployment.id}`
   }
 
-  get determinationLabel(): string {
-    return this._occurrence.determination.name
-  }
-
   get determinationId(): string {
     return `${this._occurrence.determination.id}`
   }
 
-  get determinationScore(): number | undefined {
-    if (this._occurrence.determination_score === undefined) {
-      return undefined
+  get determinationScore(): number {
+    const score = this._occurrence.determination_details.score
+
+    if (score === undefined) {
+      return 0
     }
 
     return _.round(this._occurrence.determination_score, 4)
@@ -51,6 +49,10 @@ export class Occurrence {
 
   get determinationTaxon(): Taxon {
     return this._determinationTaxon
+  }
+
+  get determinationVerified(): boolean {
+    return !!this._occurrence.determination_details.identification?.user
   }
 
   get durationLabel(): string {

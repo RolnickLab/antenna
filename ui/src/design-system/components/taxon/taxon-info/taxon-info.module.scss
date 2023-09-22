@@ -9,4 +9,8 @@
   &.overridden {
     text-decoration: line-through;
   }
+
+  &.large {
+    @include heading-4-italic();
+  }
 }
