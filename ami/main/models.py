@@ -1132,13 +1132,14 @@ class Detection(BaseModel):
         ]
 
     def best_classification(self):
+        # @TODO where is this used?
         classification = (
             self.classifications.order_by("-score")
             .select_related("determination", "determination__name", "score")
             .first()
         )
-        if classification and classification.determination:
-            return (classification.determination.name, classification.score)
+        if classification and classification.taxon:
+            return (str(classification.taxon), classification.score)
         else:
             return (None, None)
 
