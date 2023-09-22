@@ -6,12 +6,15 @@ from django.db.models import Count
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
+from ami.users.models import User
+
 from ..models import (
     Algorithm,
     Classification,
     Deployment,
     Detection,
     Event,
+    Identification,
     Job,
     Occurrence,
     Page,
@@ -58,6 +61,20 @@ class ProjectNestedSerializer(DefaultSerializer):
         fields = [
             "id",
             "name",
+            "image",
+            "details",
+        ]
+
+
+class UserNestedSerializer(DefaultSerializer):
+    details = serializers.HyperlinkedIdentityField(view_name="user-detail", lookup_field="pk", lookup_url_kwarg="id")
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "image",
             "details",
         ]
 
@@ -315,9 +332,52 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
+class TaxonNoParentNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+        ]
+
+
+class TaxonParentNestedSerializer(TaxonNoParentNestedSerializer):
+    parent = TaxonNoParentNestedSerializer(read_only=True)
+
+    class Meta(TaxonNoParentNestedSerializer.Meta):
+        fields = TaxonNoParentNestedSerializer.Meta.fields + [
+            "parent",
+        ]
+
+
+class TaxonNestedSerializer(TaxonParentNestedSerializer):
+    """
+    Simple Taxon serializer with 2 levels of nesting.
+    """
+
+    parent = TaxonParentNestedSerializer(read_only=True)
+
+    class Meta(TaxonParentNestedSerializer.Meta):
+        pass
+
+
+class TaxonSearchResultSerializer(TaxonNestedSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "parent",
+        ]
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
+    parent = TaxonParentNestedSerializer(read_only=True)
 
     class Meta:
         model = Taxon
@@ -347,11 +407,14 @@ class TaxonListSerializer(DefaultSerializer):
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
+    parent = TaxonParentNestedSerializer(read_only=True)
+
     class Meta:
         model = Taxon
         fields = [
             "id",
             "name",
+            "parent",
             "rank",
             "details",
         ]
@@ -370,6 +433,37 @@ class OccurrenceNestedSerializer(DefaultSerializer):
             "details",
             "determination",
             # "determination_score",
+        ]
+
+
+class IdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    occurrence = OccurrenceNestedSerializer(read_only=True)
+    occurrence_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Occurrence.objects.all(),
+        source="occurrence",
+    )
+    taxon = TaxonNestedSerializer(read_only=True)
+    taxon_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Taxon.objects.all(),
+        source="taxon",
+    )
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "user",
+            "occurrence",
+            "occurrence_id",
+            "taxon",
+            "taxon_id",
+            "withdrawn",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -452,6 +546,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+    parent = TaxonNestedSerializer(read_only=True)
+    parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
 
     class Meta:
         model = Taxon
@@ -460,6 +556,7 @@ class TaxonSerializer(DefaultSerializer):
             "name",
             "rank",
             "parent",
+            "parent_id",
             "details",
             "occurrences_count",
             "detections_count",
@@ -484,17 +581,18 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
 
 
 class ClassificationSerializer(DefaultSerializer):
-    determination = CaptureTaxonSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
 
     class Meta:
         model = Classification
         fields = [
             "id",
-            "determination",
+            "details",
+            "taxon",
             "score",
             "algorithm",
-            "type",
+            "created_at",
         ]
 
 
@@ -625,11 +723,27 @@ class SourceImageSerializer(DefaultSerializer):
         fields = SourceImageListSerializer.Meta.fields + []
 
 
+class OccurrenceIdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "user",
+            "created_at",
+        ]
+
+
 class OccurrenceListSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    determination_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -648,15 +762,41 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detections_count",
             "detection_images",
             "determination_score",
+            "determination_details",
         ]
 
+    def get_determination_details(self, obj):
+        # @TODO add an equivalent method to the Occurrence model
 
-class OccurrenceSerializer(DefaultSerializer):
+        context = self.context
+
+        taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
+        identification = (
+            OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+            if obj.best_identification
+            else None
+        )
+        if identification or not obj.best_prediction:
+            prediction = None
+        else:
+            prediction = ClassificationSerializer(obj.best_prediction, context=context).data
+
+        return dict(
+            taxon=taxon,
+            identification=identification,
+            prediction=prediction,
+            score=obj.determination_score(),
+        )
+
+
+class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     determination_id = serializers.PrimaryKeyRelatedField(
         write_only=True, queryset=Taxon.objects.all(), source="determination"
     )
     detections = DetectionNestedSerializer(many=True, read_only=True)
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    predictions = ClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
@@ -666,6 +806,8 @@ class OccurrenceSerializer(DefaultSerializer):
         fields = OccurrenceListSerializer.Meta.fields + [
             "determination_id",
             "detections",
+            "identifications",
+            "predictions",
         ]
 
 
@@ -868,181 +1010,3 @@ class PageListSerializer(PageSerializer):
             "published",
             "updated_at",
         ]
-
-
-class LabelStudioBatchSerializer(serializers.ModelSerializer):
-    url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = SourceImage
-        fields = ["url"]
-
-    def get_url(self, obj):
-        # return f"https://example.com/label-studio/captures/{obj.pk}/"
-        url = reverse_with_params(
-            "api:labelstudio-captures-detail",
-            request=self.context.get("request"),
-            args=[obj.pk],
-        )
-        url = add_format_to_url(url, "json")
-        return url
-
-
-class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
-    """
-    Serialize source images for manual annotation of detected objects in Label Studio.
-
-    Manually specifies the json output to match the Label Studio task format.
-    https://labelstud.io/guide/tasks.html#Example-JSON-format
-    """
-
-    data = serializers.SerializerMethodField()  # type: ignore
-    annotations = serializers.SerializerMethodField()
-    predictions = serializers.SerializerMethodField()
-
-    class Meta:
-        model = SourceImage
-        fields = ["data", "annotations", "predictions"]
-
-    def get_data(self, obj):
-        deployment_name = obj.deployment.name if obj.deployment else ""
-        project_name = obj.deployment.project.name if obj.deployment and obj.deployment.project else ""
-        # public_url = obj.deployment.data_source.public_url(obj.path)
-        return {
-            "image": obj.public_url(),
-            "ami_id": obj.pk,
-            "timestamp": obj.timestamp,
-            "event": obj.event.date_label() if obj.event else None,
-            "event_id": obj.event.pk if obj.event else None,
-            "deployment": (obj.deployment.name if obj.deployment else None),
-            "deployment_id": (obj.deployment.pk if obj.deployment else None),
-            "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
-            "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
-            "location": f"{project_name} / {deployment_name}",
-        }
-
-    def get_annotations(self, obj):
-        # @TODO implement if necessary, make optional by URL param
-        return []
-
-    def get_predictions(self, obj):
-        # @TODO implement if necessary, make optional by URL param
-        return []
-
-
-class LabelStudioDetectionSerializer(serializers.ModelSerializer):
-    """
-    Serialize detections for manual annotation of objects of interest in Label Studio.
-
-    Manually specifies the json output to match the Label Studio task format.
-    https://labelstud.io/guide/tasks.html
-    """
-
-    data = serializers.SerializerMethodField()  # type: ignore
-    annotations = serializers.SerializerMethodField()
-    predictions = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Detection
-        fields = ["data", "annotations", "predictions"]
-
-    def get_data(self, obj):
-        # public_url = obj.deployment.data_source.public_url(obj.path)
-
-        return {
-            "image": obj.public_url(),
-            "ami_id": obj.pk,
-            "timestamp": obj.timestamp,
-            "deployment": (obj.source_image.deployment.name if obj.source_image.deployment else None),
-            "deployment_id": (obj.source_image.deployment.pk if obj.source_image.deployment else None),
-            "occurrence_id": (obj.occurrence.pk if obj.occurrence else None),
-            "project": (
-                obj.source_image.deployment.project.name
-                if obj.source_image.deployment and obj.source_image.deployment.project
-                else None
-            ),
-            "project_id": (
-                obj.source_image.deployment.project.pk
-                if obj.source_image.deployment and obj.source_image.deployment.project
-                else None
-            ),
-            "source_image": obj.source_image.url(),
-            "source_image_id": obj.source_image.pk,
-        }
-
-    def get_annotations(self, obj):
-        return [
-            # {
-            #     "result": [
-            #         {
-            #             "type": "choices",
-            #             "value": {
-            #                 "choices": [
-            #                     "Moth",  # these become the selected choice!
-            #                     "Non-Moth",
-            #                 ]
-            #             },
-            #             "choice": "single",
-            #             "to_name": "image",
-            #             "from_name": "choice",
-            #         }
-            #     ],
-            # }
-        ]
-
-    def get_predictions(self, obj):
-        # @TODO implement if necessary, make optional by URL param
-        return []
-
-
-class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
-    """
-    Serialize occurrences for manual annotation of objects of interest in Label Studio.
-
-    Manually specifies the json output to match the Label Studio task format.
-    https://labelstud.io/guide/tasks.html
-    """
-
-    data = serializers.SerializerMethodField()  # type: ignore
-    annotations = serializers.SerializerMethodField()
-    predictions = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Occurrence
-        fields = ["data", "annotations", "predictions"]
-
-    def get_data(self, obj):
-        best_detection: Detection = obj.best_detection()
-        first_appearance: SourceImage = obj.first_appearance()
-        deployment_name = obj.deployment.name if obj.deployment else ""
-        project_name = obj.deployment.project.name if obj.deployment and obj.deployment.project else ""
-        return {
-            "image": best_detection.url(),
-            "ami_id": obj.pk,
-            "url": obj.url(),
-            "context_url": obj.context_url(),
-            "deployment": (obj.deployment.name if obj.deployment else None),
-            "deployment_id": (obj.deployment.pk if obj.deployment else None),
-            "project": (obj.deployment.project.name if obj.deployment and obj.deployment.project else None),
-            "project_id": (obj.deployment.project.pk if obj.deployment and obj.deployment.project else None),
-            "event": (obj.event.day() if obj.event else None),
-            "source_image": best_detection.url(),
-            "source_image_id": best_detection.pk,
-            "details_link": f"<a href='{obj.url()}' target='_blank'>View Details</a>",
-            "context_link": f"<a href='{obj.context_url()}' target='_blank'>View Context</a>",
-            "details_url": obj.url(),
-            "table": {
-                "Location": f"{project_name} / {deployment_name}",
-                "Date": (obj.event.day().strftime("%B %m, %Y") if obj.event else None),
-                "First Appearance": first_appearance.timestamp.strftime("%I:%M %p")
-                if first_appearance.timestamp
-                else None,
-            },
-        }
-
-    def get_annotations(self, obj):
-        return []
-
-    def get_predictions(self, obj):
-        # @TODO implement if necessary, make optional by URL param
-        return []

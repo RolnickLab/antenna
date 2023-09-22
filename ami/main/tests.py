@@ -192,3 +192,113 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.captures.first().project is None
         assert self.deployment.events.first().project is None
         assert self.deployment.occurrences.first().project is None
+
+
+class TestSourceImageCollectins(TestCase):
+    def setUp(self) -> None:
+        from ami.main.models import Deployment, Project
+
+        self.project_one = Project.objects.create(name="Test Project One")
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
+
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
+        group_images_into_events(deployment=self.deployment)
+
+        return super().setUp()
+
+    def test_random_sample(self):
+        from ami.main.models import SourceImageCollection
+
+        sample_size = 10
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Random Source Image Collection",
+            project=self.project_one,
+            method="random",
+            kwargs={"size": sample_size},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        assert collection.images.count() == sample_size
+
+    def test_manual_sample(self):
+        from ami.main.models import SourceImageCollection
+
+        images = self.deployment.captures.all()
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Manual Source Image Collection",
+            project=self.project_one,
+            method="manual",
+            kwargs={"image_ids": [image.pk for image in images]},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        assert collection.images.count() == len(images)
+        for image in images:
+            assert image in collection.images.all()
+
+    def test_interval_sample(self):
+        # Ensure that the images are 5 at least minutes apart and less than 6 minutes apart within each event
+        # This depends on the test setUp creating images with a 1 minute interval
+
+        from ami.main.models import SourceImageCollection
+
+        minute_interval = 10
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Interval Source Image Collection",
+            project=self.project_one,
+            method="interval",
+            kwargs={"minute_interval": minute_interval},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        events = collection.images.values_list("event", flat=True).distinct()
+        for event in events:
+            last_image = None
+            for image in collection.images.filter(event=event):
+                if last_image:
+                    interval = image.timestamp - last_image.timestamp
+                    assert interval >= datetime.timedelta(minutes=minute_interval)
+                    assert interval < datetime.timedelta(minutes=minute_interval + 1)
+                last_image = image
+
+    def test_interval_with_excluded_events(self):
+        from ami.main.models import SourceImageCollection
+
+        minute_interval = 5
+        events = self.deployment.events.all()
+        excluded_event = events.first()
+        assert excluded_event is not None
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Interval With Excluded Events",
+            project=self.project_one,
+            method="interval",
+            kwargs={"minute_interval": minute_interval, "exclude_events": [excluded_event.pk]},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        # Ensure that no images from the excluded event are in the collection
+        for image in collection.images.all():
+            assert image.event != excluded_event
+
+    def test_extra_arguments(self):
+        # Assert that a value error is raised when trying to call a sampling method with extra arguments
+        from ami.main.models import SourceImageCollection
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Extra Arguments Collection",
+            project=self.project_one,
+            method="interval",
+            kwargs={"birthday": True, "cake": "chocolate"},
+        )
+        collection.save()
+
+        with self.assertRaises(TypeError):
+            collection.populate_sample()

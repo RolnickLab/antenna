@@ -1,0 +1,41 @@
+<View>
+
+    <Style> .taxonomy[style*="display: none"] {
+      display: block !important;
+      visibility: hidden;
+    }
+    .htx-taxonomy {
+      border: 3px solid green;
+      background: #00800026;
+      color: black;
+    }
+    .htx-taxonomy div * {
+      color: black;
+    }
+    .metadata {
+      padding-left: 0;
+    }
+
+    </Style>
+    <Rectangle name="detected_object" toName="image" showInline="false"/>
+
+    <Labels name="binary_label" toName="image">
+        <Label value="Moth" background="green"/>
+        <Label value="Non-Moth" background="blue"/>
+        <Label value="Unidentifiable" background="#696969"/>
+    </Labels>
+
+    <View whenlabelvalue="Moth">
+
+        <Taxonomy name="species" placeholder="Select species..." toName="image" showFullPath="true" pathSeparator=" &gt; " perRegion="true" required="false" smart="false">
+            {{ label_config.taxonomy_choices_xml|safe }}
+        </Taxonomy>
+    </View>
+
+
+    <Image name="image" value="$image"/>
+    <Text name="deployment" value="$deployment"/>
+    <Text name="timestamp" value="$timestamp"/>
+
+
+</View>

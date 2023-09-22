@@ -7,22 +7,23 @@ from ami.main.api.serializers import DefaultSerializer
 User = get_user_model()
 
 
-class UserSerializer(DefaultSerializer):
-    identifications = serializers.SerializerMethodField()
-
+class UserListSerializer(DefaultSerializer):
     class Meta:
         model = User
-        fields = [
-            "id",
-            "name",
-            "details",
-            "image",
-            "identifications",
-        ]
+        fields = ["id", "name", "details", "image"]
 
         extra_kwargs = {
             "details": {"view_name": "api:user-detail", "lookup_field": "pk", "lookup_url_kwarg": "id"},
         }
+
+
+class UserSerializer(UserListSerializer):
+    identifications = serializers.SerializerMethodField()
+
+    class Meta(UserListSerializer.Meta):
+        fields = UserListSerializer.Meta.fields + [
+            "identifications",
+        ]
 
     def get_identifications(self, obj):
         # return obj.identifications.all()

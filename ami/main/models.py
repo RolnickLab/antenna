@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
+from django.conf import settings
 from django.db import IntegrityError, models
 from django.db.models import Q
 
@@ -904,18 +905,19 @@ def set_dimensions_for_collection(
         )
 
 
-def sample_captures(
-    deployment: Deployment, minute_interval: int = 10, events: list[Event] = []
+def sample_captures_by_interval(
+    minute_interval: int = 10, qs: models.QuerySet[SourceImage] | None = None
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
     """
 
     last_capture = None
-    if events:
-        qs = SourceImage.objects.filter(event__in=events).exclude(timestamp=None).order_by("timestamp")
-    else:
-        qs = SourceImage.objects.filter(deployment=deployment).exclude(timestamp=None).order_by("timestamp")
+
+    if not qs:
+        qs = SourceImage.objects.all()
+    qs = qs.exclude(timestamp=None).order_by("timestamp")
+
     for capture in qs.all():
         if not last_capture:
             yield capture
@@ -926,6 +928,64 @@ def sample_captures(
             if delta.total_seconds() >= minute_interval * 60:
                 yield capture
                 last_capture = capture
+
+
+# @final
+# class IdentificationHistory(BaseModel):
+#     """A history of identifications for an occurrence."""
+#
+#     # @TODO
+#     pass
+
+
+@final
+class Identification(BaseModel):
+    """A classification of an occurrence by a human."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="identifications",
+    )
+    taxon = models.ForeignKey(
+        "Taxon",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="identifications",
+    )
+    occurrence = models.ForeignKey(
+        "Occurrence",
+        on_delete=models.CASCADE,
+        related_name="identifications",
+    )
+    withdrawn = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = [
+            "-created_at",
+        ]
+
+    def save(self, *args, **kwargs):
+        """
+        If this is a new identification:
+        - Set previous identifications by this user to withdrawn
+        - Set the determination of the occurrence to the taxon of this identification if it is primary
+        """
+
+        if not self.pk and not self.withdrawn and self.user:
+            # This is a new identifiation and it has not been explicitly withdrawn
+            # so set all other identifications of this user to withdrawn.
+            Identification.objects.filter(
+                occurrence=self.occurrence,
+                user=self.user,
+            ).exclude(
+                pk=self.pk
+            ).update(withdrawn=True)
+
+        super().save(*args, **kwargs)
+
+        update_occurrence_determination(self.occurrence)
 
 
 @final
@@ -946,8 +1006,14 @@ class Classification(BaseModel):
         related_name="classifications",
     )
 
-    # @TODO maybe use taxon instead of determination. Determination is for the final ID of the occurrence
-    determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
+    # occurrence = models.ForeignKey(
+    #     "Occurrence",
+    #     on_delete=models.SET_NULL,
+    #     null=True,
+    #     related_name="predictions",
+    # )
+
+    taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
     timestamp = models.DateTimeField()
 
@@ -961,19 +1027,8 @@ class Classification(BaseModel):
     )
     # job = models.CharField(max_length=255, null=True)
 
-    # @TODO maybe ML classification and human classificaions should be separate models?
-    type = models.CharField(max_length=255, choices=as_choices(_CLASSIFICATION_TYPES))
-
     class Meta:
-        constraints = [
-            # Ensure that the type is one of the allowed values at the database level
-            models.CheckConstraint(
-                name="%(app_label)s_%(class)s_type_valid",
-                check=models.Q(
-                    type__in=_CLASSIFICATION_TYPES,
-                ),
-            ),
-        ]
+        ordering = ["-created_at", "-score"]
 
 
 @final
@@ -1077,13 +1132,14 @@ class Detection(BaseModel):
         ]
 
     def best_classification(self):
+        # @TODO where is this used?
         classification = (
             self.classifications.order_by("-score")
             .select_related("determination", "determination__name", "score")
             .first()
         )
-        if classification and classification.determination:
-            return (classification.determination.name, classification.score)
+        if classification and classification.taxon:
+            return (str(classification.taxon), classification.score)
         else:
             return (None, None)
 
@@ -1095,36 +1151,54 @@ class Detection(BaseModel):
 
 
 @final
+class OccurrenceManager(models.Manager):
+    def get_queryset(self):
+        # prefetch determination, deployment, project
+        return super().get_queryset().select_related("determination", "deployment", "project")
+
+
+@final
 class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
 
     determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
-    # determination_score = models.FloatField(null=True, blank=True)
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
     detections: models.QuerySet[Detection]
+    identifications: models.QuerySet[Identification]
+
+    objects = OccurrenceManager()
+
+    def __str__(self) -> str:
+        name = f"Occurrence #{self.pk}"
+        if self.deployment:
+            name += f" ({self.deployment.name})"
+        if self.determination:
+            name += f" ({self.determination.name})"
+        return name
 
     def detections_count(self) -> int | None:
         # Annotaions don't seem to work with nested serializers
         return self.detections.count()
 
-    # @TODO cache first_apperance timestamp
+    @functools.cached_property
     def first_appearance(self) -> SourceImage | None:
         first = self.detections.order_by("timestamp").select_related("source_image").first()
         if first:
             return first.source_image
 
+    @functools.cached_property
     def last_appearance(self) -> SourceImage | None:
         last = self.detections.order_by("-timestamp").select_related("source_image").first()
         if last:
             return last.source_image
 
     def duration(self) -> datetime.timedelta | None:
-        first = self.first_appearance()
-        last = self.last_appearance()
+        first = self.first_appearance
+        last = self.last_appearance
         if first and last and first.timestamp and last.timestamp:
             return last.timestamp - first.timestamp
         else:
@@ -1137,34 +1211,95 @@ class Occurrence(BaseModel):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
+    @functools.cached_property
     def best_detection(self):
         return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
 
-    def determination_score(self) -> float | None:
-        return (
-            Classification.objects.filter(detection__occurrence=self)
-            .order_by("-created_at")
-            .aggregate(models.Max("score"))["score__max"]
-        )
+    @functools.cached_property
+    def best_prediction(self):
+        return self.predictions().first()
 
-    def determination_algorithm(self) -> Algorithm | None:
-        return Algorithm.objects.filter(classification__detection__occurrence=self).first()
+    @functools.cached_property
+    def best_identification(self):
+        return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
+
+    def determination_score(self) -> float:
+        if not self.determination:
+            return 0
+        elif self.best_identification:
+            return 1.0
+        else:
+            return (
+                Classification.objects.filter(detection__occurrence=self)
+                .order_by("-created_at")
+                .aggregate(models.Max("score"))["score__max"]
+            )
+
+    def predictions(self):
+        # Retrieve the classification with the max score for each algorithm
+        classifications = Classification.objects.filter(detection__occurrence=self).filter(
+            score__in=models.Subquery(
+                Classification.objects.filter(detection__occurrence=self)
+                .values("algorithm")
+                .annotate(max_score=models.Max("score"))
+                .values("max_score")
+            )
+        )
+        return classifications
 
     def context_url(self):
-        detection = self.best_detection()
+        detection = self.best_detection
         if detection and detection.source_image and detection.source_image.event:
+            # @TODO this was a temporary hack. Use settings and reverse().
             return f"https://app.preview.insectai.org/sessions/{detection.source_image.event.pk}?capture={detection.source_image.pk}&occurrence={self.pk}"  # noqa E501
         else:
             return None
 
     def url(self):
+        # @TODO this was a temporary hack. Use settings and reverse().
         return f"https://app.preview.insectai.org/occurrences/{self.pk}"
+
+
+def update_occurrence_determination(occurrence, current_determination: typing.Optional["Taxon"] = None):
+    """
+    Update the determination of the occurrence based on the identifications & predictions.
+
+    If there are identifications, set the determination to the latest identification.
+    If there are no identifications, set the determination to the top prediction.
+
+    The `current_determination` is the determination curently saved in the database.
+    The `occurrence` object may already have a different un-saved determination set
+    so it is neccessary to retrieve the current determination from the database, but
+    this can also be passed in as an argument to avoid an extra database query.
+    """
+    current_determination = (
+        current_determination
+        or Occurrence.objects.select_related("determination")
+        .values("determination")
+        .get(pk=occurrence.pk)["determination"]
+    )
+    new_determination = None
+
+    top_identification = occurrence.best_identification
+    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
+        new_determination = top_identification.taxon
+    elif not top_identification:
+        top_prediction = occurrence.best_prediciton
+        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
+            new_determination = top_prediction.taxon
+
+    if new_determination and new_determination != current_determination:
+        logger.info(f"Changing determination of {occurrence} from {current_determination} to {new_determination}")
+        occurrence.determination = new_determination
+        occurrence.save()
 
 
 @final
 class TaxaManager(models.Manager):
     def get_queryset(self):
-        return super().get_queryset().distinct()
+        # Prefetch parent and parents
+        # return super().get_queryset().select_related("parent").prefetch_related("parents")
+        return super().get_queryset().select_related("parent")
 
     def add_genus_parents(self):
         """Add direct genus parents to all species that don't have them, based on the scientific name.
@@ -1260,11 +1395,12 @@ class Taxon(BaseModel):
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
     # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
+    # taxonomy = models.JSONField(null=True, blank=True)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
-    projects = models.ManyToManyField("Project", related_name="taxa", blank=True)
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
 
+    projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
     children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
@@ -1589,4 +1725,68 @@ class Page(BaseModel):
             return ""
 
 
-# test change for pre-commit
+_SOURCE_IMAGE_SAMPLING_METHODS = [
+    "random",
+    "stratified_random",
+    "interval",
+    "manual",
+]
+
+
+@final
+class SourceImageCollection(BaseModel):
+    """
+    A subset of source images for review, processing, etc.
+
+    Examples:
+        - Random subset
+        - Stratified random sample from all deployments
+        - Images sampled based on a time interval (every 30 minutes)
+
+
+    Collections are saved so that they can be reviewed or re-used later.
+    """
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    images = models.ManyToManyField("SourceImage", related_name="collections", blank=True)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
+    method = models.CharField(max_length=255, choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS))
+    kwargs = models.JSONField(
+        "Arguments", null=True, blank=True, help_text="Arguments passed to the sampling function", default=dict
+    )
+
+    def populate_sample(self):
+        """Create a sample of source images based on the method and kwargs"""
+        kwargs = self.kwargs or {}
+
+        if self.method == "random":
+            self.images.set(self.create_random_sample(**kwargs))
+        elif self.method == "interval":
+            self.images.set(self.create_interval_sample(**kwargs))
+        elif self.method == "manual":
+            self.images.set(self.create_manual_sample(**kwargs))
+        else:
+            raise ValueError(f"Invalid sampling method: {self.method}. Choices are: {_SOURCE_IMAGE_SAMPLING_METHODS}")
+        self.save()
+
+    def create_random_sample(self, size: int = 100):
+        """Create a random sample of source images"""
+
+        qs = SourceImage.objects.filter(project=self.project).order_by("?")
+        return qs[:size]
+
+    def create_manual_sample(self, image_ids: list[int]):
+        """Create a sample of source images based on a list of source image IDs"""
+
+        qs = SourceImage.objects.filter(project=self.project)
+        return qs.filter(id__in=image_ids)
+
+    def create_interval_sample(self, minute_interval: int = 10, exclude_events: list[int] = []):
+        """Create a sample of source images based on a time interval"""
+
+        qs = SourceImage.objects.filter(project=self.project)
+        if exclude_events:
+            qs = qs.exclude(event__in=exclude_events)
+        qs.exclude(event__in=exclude_events)
+        return sample_captures_by_interval(minute_interval, qs)
