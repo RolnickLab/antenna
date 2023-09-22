@@ -1,7 +1,9 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import classNames from 'classnames'
 import { Command } from 'cmdk'
 import { useState } from 'react'
 import { Button } from '../button/button'
+import { IconType } from '../icon/icon'
 import styles from './combo-box.module.scss'
 
 export const ComboBox = ({
@@ -17,6 +19,7 @@ export const ComboBox = ({
   items?: {
     id: string | number
     label: string
+    details?: string
   }[]
   label: string
   searchString: string
@@ -29,7 +32,7 @@ export const ComboBox = ({
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
-        <Button label={label} />
+        <Button label={label} icon={IconType.RadixSearch} />
       </DropdownMenu.Trigger>
       <DropdownMenu.Content
         align="start"
@@ -56,11 +59,16 @@ export const ComboBox = ({
                   }}
                   className={styles.item}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {item.details ? (
+                    <span className={styles.details}>{item.details}</span>
+                  ) : null}
                 </Command.Item>
               ))
             ) : (
-              <div className={styles.item}>{emptyLabel}</div>
+              <div className={classNames(styles.item, styles.empty)}>
+                {emptyLabel}
+              </div>
             )}
           </Command.List>
         </Command>

@@ -1,0 +1,16 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.ranks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.rank {
+  display: block;
+  @include paragraph-x-small();
+  color: $color-neutral-600;
+  white-space: nowrap;
+}

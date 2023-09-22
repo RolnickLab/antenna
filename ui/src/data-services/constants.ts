@@ -4,6 +4,7 @@ export const API_URL =
 export const API_ROUTES = {
   CAPTURES: 'captures',
   DEPLOYMENTS: 'deployments',
+  IDENTIFICATIONS: 'identifications',
   JOBS: 'jobs',
   LOGIN: 'auth/token/login',
   LOGOUT: 'auth/token/logout',

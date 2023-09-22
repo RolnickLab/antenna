@@ -1,0 +1,15 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.name {
+  @include paragraph-medium();
+  color: $color-primary-1-600;
+
+  &.overridden {
+    text-decoration: line-through;
+  }
+
+  &.large {
+    @include heading-4-italic();
+  }
+}

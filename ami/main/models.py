@@ -198,7 +198,7 @@ def _insert_or_update_batch_for_sync(
             source_images,
             batch_size=sql_batch_size,
             update_conflicts=True,
-            unique_fields=["deployment", "path"],
+            unique_fields=["deployment", "path"],  # type: ignore
             update_fields=["last_modified", "size", "checksum", "checksum_algorithm"],
         )
     except IntegrityError as e:
@@ -721,7 +721,7 @@ class S3StorageSource(BaseModel):
     def calculate_size(self):
         """Calculate the total size and count of all files in the bucket/prefix."""
 
-        sizes = [obj["Size"] for obj in self.list_files()]
+        sizes = [obj["Size"] for obj in self.list_files()]  # type: ignore
         size = sum(sizes)
         count = len(sizes)
         self.total_size = size
@@ -959,42 +959,33 @@ class Identification(BaseModel):
         on_delete=models.CASCADE,
         related_name="identifications",
     )
-
-    primary = models.BooleanField(default=False)
-    priority = models.IntegerField(default=1)
+    withdrawn = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ["-created_at", "-priority"]
-        constraints = [
-            # Only one primary identification is allowed per occurrence
-            models.UniqueConstraint(fields=["occurrence", "primary"], name="unique_primary_identification"),
+        ordering = [
+            "-created_at",
         ]
 
     def save(self, *args, **kwargs):
         """
-        - Set the primary to True if there are no other identifications for this occurrence
+        If this is a new identification:
+        - Set previous identifications by this user to withdrawn
         - Set the determination of the occurrence to the taxon of this identification if it is primary
         """
-        if not self.pk:
-            # Set the primary to True if there are no other identifications for this occurrence
-            if not Identification.objects.filter(occurrence=self.occurrence).exists():
-                self.primary = True
 
-        if self.primary:
-            # Change all other identifications to not primary
+        if not self.pk and not self.withdrawn and self.user:
+            # This is a new identification and it has not been explicitly withdrawn
+            # so set all other identifications of this user to withdrawn.
             Identification.objects.filter(
                 occurrence=self.occurrence,
-                primary=True,
+                user=self.user,
             ).exclude(
                 pk=self.pk
-            ).update(primary=False)
-
-            # Set the determination of the occurrence to the taxon of this identification
-            if not self.occurrence.determination or self.occurrence.determination != self.taxon:
-                self.occurrence.determination = self.taxon
-                self.occurrence.save()
+            ).update(withdrawn=True)
 
         super().save(*args, **kwargs)
+
+        update_occurrence_determination(self.occurrence)
 
 
 @final
@@ -1141,13 +1132,14 @@ class Detection(BaseModel):
         ]
 
     def best_classification(self):
+        # @TODO where is this used?
         classification = (
             self.classifications.order_by("-score")
             .select_related("determination", "determination__name", "score")
             .first()
         )
-        if classification and classification.determination:
-            return (classification.determination.name, classification.score)
+        if classification and classification.taxon:
+            return (str(classification.taxon), classification.score)
         else:
             return (None, None)
 
@@ -1170,13 +1162,13 @@ class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
 
     determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
-    # determination_score = models.FloatField(null=True, blank=True)
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
     detections: models.QuerySet[Detection]
+    identifications: models.QuerySet[Identification]
 
     objects = OccurrenceManager()
 
@@ -1192,20 +1184,21 @@ class Occurrence(BaseModel):
         # Annotaions don't seem to work with nested serializers
         return self.detections.count()
 
-    # @TODO cache first_apperance timestamp
+    @functools.cached_property
     def first_appearance(self) -> SourceImage | None:
         first = self.detections.order_by("timestamp").select_related("source_image").first()
         if first:
             return first.source_image
 
+    @functools.cached_property
     def last_appearance(self) -> SourceImage | None:
         last = self.detections.order_by("-timestamp").select_related("source_image").first()
         if last:
             return last.source_image
 
     def duration(self) -> datetime.timedelta | None:
-        first = self.first_appearance()
-        last = self.last_appearance()
+        first = self.first_appearance
+        last = self.last_appearance
         if first and last and first.timestamp and last.timestamp:
             return last.timestamp - first.timestamp
         else:
@@ -1218,28 +1211,29 @@ class Occurrence(BaseModel):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
+    @functools.cached_property
     def best_detection(self):
         return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
 
-    def determination_score(self) -> float | None:
-        return (
-            Classification.objects.filter(detection__occurrence=self)
-            .order_by("-created_at")
-            .aggregate(models.Max("score"))["score__max"]
-        )
+    @functools.cached_property
+    def best_prediction(self):
+        return self.predictions().first()
 
-    def determination_algorithm(self) -> Algorithm | None:
-        return Algorithm.objects.filter(classification__detection__occurrence=self).first()
+    @functools.cached_property
+    def best_identification(self):
+        return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
-    def context_url(self):
-        detection = self.best_detection()
-        if detection and detection.source_image and detection.source_image.event:
-            return f"https://app.preview.insectai.org/sessions/{detection.source_image.event.pk}?capture={detection.source_image.pk}&occurrence={self.pk}"  # noqa E501
+    def determination_score(self) -> float:
+        if not self.determination:
+            return 0
+        elif self.best_identification:
+            return 1.0
         else:
-            return None
-
-    def url(self):
-        return f"https://app.preview.insectai.org/occurrences/{self.pk}"
+            return (
+                Classification.objects.filter(detection__occurrence=self)
+                .order_by("-created_at")
+                .aggregate(models.Max("score"))["score__max"]
+            )
 
     def predictions(self):
         # Retrieve the classification with the max score for each algorithm
@@ -1252,6 +1246,52 @@ class Occurrence(BaseModel):
             )
         )
         return classifications
+
+    def context_url(self):
+        detection = self.best_detection
+        if detection and detection.source_image and detection.source_image.event:
+            # @TODO this was a temporary hack. Use settings and reverse().
+            return f"https://app.preview.insectai.org/sessions/{detection.source_image.event.pk}?capture={detection.source_image.pk}&occurrence={self.pk}"  # noqa E501
+        else:
+            return None
+
+    def url(self):
+        # @TODO this was a temporary hack. Use settings and reverse().
+        return f"https://app.preview.insectai.org/occurrences/{self.pk}"
+
+
+def update_occurrence_determination(occurrence, current_determination: typing.Optional["Taxon"] = None):
+    """
+    Update the determination of the occurrence based on the identifications & predictions.
+
+    If there are identifications, set the determination to the latest identification.
+    If there are no identifications, set the determination to the top prediction.
+
+    The `current_determination` is the determination curently saved in the database.
+    The `occurrence` object may already have a different un-saved determination set
+    so it is neccessary to retrieve the current determination from the database, but
+    this can also be passed in as an argument to avoid an extra database query.
+    """
+    current_determination = (
+        current_determination
+        or Occurrence.objects.select_related("determination")
+        .values("determination")
+        .get(pk=occurrence.pk)["determination"]
+    )
+    new_determination = None
+
+    top_identification = occurrence.best_identification
+    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
+        new_determination = top_identification.taxon
+    elif not top_identification:
+        top_prediction = occurrence.best_prediciton
+        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
+            new_determination = top_prediction.taxon
+
+    if new_determination and new_determination != current_determination:
+        logger.info(f"Changing determination of {occurrence} from {current_determination} to {new_determination}")
+        occurrence.determination = new_determination
+        occurrence.save()
 
 
 @final

@@ -1,4 +1,7 @@
+import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
+import { Button } from 'design-system/components/button/button'
+import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
@@ -6,10 +9,12 @@ import {
   ImageCellTheme,
   TableColumn,
 } from 'design-system/components/table/types'
-import { Link } from 'react-router-dom'
+import { TABS } from 'pages/occurrence-details/occurrence-details'
+import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import styles from './occurrences.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   projectId: string
@@ -35,21 +40,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
     renderCell: (item: Occurrence) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.OCCURRENCE_DETAILS({
-            projectId,
-            occurrenceId: item.id,
-          }),
-          keepSearchParams: true,
-        })}
-      >
-        <BasicTableCell
-          value={item.determinationLabel}
-          details={[`(${item.determinationScore})`]}
-          theme={CellTheme.Primary}
-        />
-      </Link>
+      <TaxonCell item={item} projectId={projectId} />
     ),
   },
   {
@@ -103,3 +94,49 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     ),
   },
 ]
+
+const TaxonCell = ({
+  item,
+  projectId,
+}: {
+  item: Occurrence
+  projectId: string
+}) => {
+  const navigate = useNavigate()
+  const detailsRoute = getAppRoute({
+    to: APP_ROUTES.OCCURRENCE_DETAILS({
+      projectId,
+      occurrenceId: item.id,
+    }),
+    keepSearchParams: true,
+  })
+
+  return (
+    <div className={styles.taxonCell}>
+      <BasicTableCell>
+        <div className={styles.taxon}>
+          <Link to={detailsRoute}>
+            <TaxonInfo taxon={item.determinationTaxon} />
+          </Link>
+        </div>
+        <div className={styles.taxonActions}>
+          <IdentificationStatus
+            isVerified={item.determinationVerified}
+            score={item.determinationScore}
+          />
+          <Button
+            label="Suggest ID"
+            onClick={() =>
+              navigate(detailsRoute, {
+                state: {
+                  defaultTab: TABS.IDENTIFICATION,
+                  suggestIdOpen: true,
+                },
+              })
+            }
+          />
+        </div>
+      </BasicTableCell>
+    </div>
+  )
+}

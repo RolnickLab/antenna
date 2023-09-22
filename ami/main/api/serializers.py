@@ -363,6 +363,17 @@ class TaxonNestedSerializer(TaxonParentNestedSerializer):
         pass
 
 
+class TaxonSearchResultSerializer(TaxonNestedSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "parent",
+        ]
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
@@ -450,8 +461,7 @@ class IdentificationSerializer(DefaultSerializer):
             "occurrence_id",
             "taxon",
             "taxon_id",
-            "priority",
-            "primary",
+            "withdrawn",
             "created_at",
             "updated_at",
         ]
@@ -713,11 +723,28 @@ class SourceImageSerializer(DefaultSerializer):
         fields = SourceImageListSerializer.Meta.fields + []
 
 
+class OccurrenceIdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "user",
+            "withdrawn",
+            "created_at",
+        ]
+
+
 class OccurrenceListSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    determination_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -736,25 +763,34 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detections_count",
             "detection_images",
             "determination_score",
+            "determination_details",
         ]
 
+    def get_determination_details(self, obj):
+        # @TODO add an equivalent method to the Occurrence model
 
-class OccurrenceIdentificationSerializer(DefaultSerializer):
-    user = UserNestedSerializer(read_only=True)
-    taxon = TaxonNestedSerializer(read_only=True)
+        context = self.context
 
-    class Meta:
-        model = Identification
-        fields = [
-            "id",
-            "details",
-            "taxon",
-            "user",
-            "created_at",
-        ]
+        taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
+        identification = (
+            OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+            if obj.best_identification
+            else None
+        )
+        if identification or not obj.best_prediction:
+            prediction = None
+        else:
+            prediction = ClassificationSerializer(obj.best_prediction, context=context).data
+
+        return dict(
+            taxon=taxon,
+            identification=identification,
+            prediction=prediction,
+            score=obj.determination_score(),
+        )
 
 
-class OccurrenceSerializer(DefaultSerializer):
+class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     determination_id = serializers.PrimaryKeyRelatedField(
         write_only=True, queryset=Taxon.objects.all(), source="determination"
@@ -878,7 +914,7 @@ class EventSerializer(DefaultSerializer):
         elif detection_id:
             capture_with_subject = Detection.objects.get(pk=detection_id).source_image
         elif occurrence_id:
-            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance()
+            capture_with_subject = Occurrence.objects.get(pk=occurrence_id).first_appearance
 
         if capture_with_subject and capture_with_subject.event:
             # Assert that the capture is part of the event

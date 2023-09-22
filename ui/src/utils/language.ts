@@ -61,9 +61,9 @@ export enum STRING {
   NAV_ITEM_SPECIES,
 
   /* TAB_ITEM */
-  TAB_ITEM_CLASSIFICATION,
   TAB_ITEM_FIELDS,
   TAB_ITEM_GALLERY,
+  TAB_ITEM_IDENTIFICATION,
   TAB_ITEM_TABLE,
 
   /* OTHER */
@@ -144,9 +144,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_SPECIES]: 'Species',
 
   /* TAB_ITEM */
-  [STRING.TAB_ITEM_CLASSIFICATION]: 'Classification',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery',
+  [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
   [STRING.TAB_ITEM_TABLE]: 'Table',
 
   /* OTHER */

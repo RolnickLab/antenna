@@ -1,0 +1,35 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.user {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+
+  .profileImage {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background-color: $color-primary-2-50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  .username {
+    display: block;
+    @include paragraph-x-small();
+    font-weight: 600;
+    text-transform: uppercase;
+    color: $color-primary-1-600;
+  }
+}

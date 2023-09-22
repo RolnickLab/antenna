@@ -8,6 +8,7 @@ import styles from './input.module.scss'
 
 interface InputProps {
   description?: string
+  disabled?: boolean
   error?: string
   label: string
   name: string
@@ -23,6 +24,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ ...props }, forwardedRef) => {
     const {
       description,
+      disabled,
       error,
       label,
       name,
@@ -51,6 +53,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         </div>
         <div className={styles.inputContainer}>
           <input
+            aria-disabled={disabled}
             aria-describedby={descriptionId}
             aria-errormessage={errorId}
             aria-invalid={hasError}
@@ -58,6 +61,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             className={classNames(styles.input, {
               [styles.password]: initialType === 'password',
             })}
+            disabled={disabled}
             id={name}
             name={name}
             ref={forwardedRef}
