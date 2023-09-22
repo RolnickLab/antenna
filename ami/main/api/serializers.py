@@ -450,8 +450,7 @@ class IdentificationSerializer(DefaultSerializer):
             "occurrence_id",
             "taxon",
             "taxon_id",
-            "priority",
-            "primary",
+            "withdrawn",
             "created_at",
             "updated_at",
         ]
@@ -773,6 +772,8 @@ class OccurrenceSerializer(DefaultSerializer):
             "detections",
             "identifications",
             "predictions",
+            "best_prediction",
+            "best_identification",
         ]
 
 
