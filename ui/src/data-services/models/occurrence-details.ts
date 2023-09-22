@@ -36,7 +36,7 @@ export class OccurrenceDetails extends Occurrence {
       const date1 = new Date(i1.created_at)
       const date2 = new Date(i2.created_at)
 
-      return date1.getTime() - date2.getTime()
+      return date2.getTime() - date1.getTime()
     }
 
     this._humanIdentifications = this._occurrence.identifications
@@ -44,7 +44,7 @@ export class OccurrenceDetails extends Occurrence {
       .map((i: any) => {
         const identification: HumanIdentification = {
           id: `${i.id}`,
-          overridden: `${i.taxon.id}` !== this.determinationId,
+          overridden: this._isIdentificationOverridden(i),
           taxon: new Taxon(i.taxon),
           user: { name: i.user.name, image: i.user.image },
         }
@@ -55,14 +55,15 @@ export class OccurrenceDetails extends Occurrence {
     this._machinePredictions = this._occurrence.predictions
       .sort(sortByDate)
       .map((i: any) => {
-        const identification: MachinePrediction = {
+        const taxon = new Taxon(i.taxon)
+        const prediction: MachinePrediction = {
           id: `${i.id}`,
-          overridden: `${i.taxon.id}` !== this.determinationId,
-          taxon: new Taxon(i.taxon),
+          overridden: taxon.id !== this.determinationId,
+          taxon,
           score: i.score,
         }
 
-        return identification
+        return prediction
       })
   }
 
@@ -108,5 +109,20 @@ export class OccurrenceDetails extends Occurrence {
         date: new Date(detection.timestamp),
       }),
     }
+  }
+
+  private _isIdentificationOverridden(identification: any) {
+    if (identification.withdrawn) {
+      return true
+    }
+
+    return this._occurrence.identifications
+      .filter((i: any) => i.user.id === identification.user.id)
+      .some((i: any) => {
+        const date1 = new Date(i.created_at)
+        const date2 = new Date(identification.created_at)
+
+        return date2.getTime() - date1.getTime() < 0
+      })
   }
 }

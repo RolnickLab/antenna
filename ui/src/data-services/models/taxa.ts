@@ -15,10 +15,10 @@ export class Taxon {
     this.id = `${taxon.id}`
     this.name = taxon.name
     this.rank = taxon.rank
-    this.ranks = this.getRanks(taxon)
+    this.ranks = this._getRanks(taxon)
   }
 
-  private getRanks(taxon: ServerTaxon) {
+  private _getRanks(taxon: ServerTaxon) {
     const ranks = []
 
     let current: ServerTaxon | undefined = taxon.parent
