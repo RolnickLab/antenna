@@ -712,11 +712,27 @@ class SourceImageSerializer(DefaultSerializer):
         fields = SourceImageListSerializer.Meta.fields + []
 
 
+class OccurrenceIdentificationSerializer(DefaultSerializer):
+    user = UserNestedSerializer(read_only=True)
+    taxon = TaxonNestedSerializer(read_only=True)
+
+    class Meta:
+        model = Identification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "user",
+            "created_at",
+        ]
+
+
 class OccurrenceListSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    determination_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -735,22 +751,31 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detections_count",
             "detection_images",
             "determination_score",
+            "determination_details",
         ]
 
+    def get_determination_details(self, obj):
+        # @TODO add an equivalent method to the Occurrence model
 
-class OccurrenceIdentificationSerializer(DefaultSerializer):
-    user = UserNestedSerializer(read_only=True)
-    taxon = TaxonNestedSerializer(read_only=True)
+        context = self.context
 
-    class Meta:
-        model = Identification
-        fields = [
-            "id",
-            "details",
-            "taxon",
-            "user",
-            "created_at",
-        ]
+        taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
+        identification = (
+            OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+            if obj.best_identification
+            else None
+        )
+        if identification or not obj.best_prediction:
+            prediction = None
+        else:
+            prediction = ClassificationSerializer(obj.best_prediction, context=context).data
+
+        return dict(
+            taxon=taxon,
+            identification=identification,
+            prediction=prediction,
+            score=obj.determination_score(),
+        )
 
 
 class OccurrenceSerializer(DefaultSerializer):
@@ -764,8 +789,6 @@ class OccurrenceSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
-    best_prediction = ClassificationSerializer(read_only=True)
-    best_identification = OccurrenceIdentificationSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -774,8 +797,6 @@ class OccurrenceSerializer(DefaultSerializer):
             "detections",
             "identifications",
             "predictions",
-            "best_prediction",
-            "best_identification",
         ]
 
 

@@ -1222,7 +1222,7 @@ class Occurrence(BaseModel):
     def best_identification(self):
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
-    def determination_score(self) -> float | None:
+    def determination_score(self) -> float:
         if not self.determination:
             return 0
         elif self.best_identification:
