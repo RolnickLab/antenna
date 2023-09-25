@@ -6,8 +6,9 @@ import {
   TaxonInfo,
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
+import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Button } from 'design-system/components/button/button'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { IdentificationSummary } from 'design-system/components/identification/identification-summary/identification-summary'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
@@ -17,7 +18,9 @@ import { useLocation, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { Agree } from './agree/agree'
 import styles from './occurrence-details.module.scss'
+import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
 
 export const TABS = {
@@ -32,6 +35,7 @@ export const OccurrenceDetails = ({
 }) => {
   const { state } = useLocation()
   const { projectId } = useParams()
+  const { userInfo } = useUserInfo()
   const [selectedTab, setSelectedTab] = useState<string | undefined>(
     state?.defaultTab ?? TABS.FIELDS
   )
@@ -122,8 +126,6 @@ export const OccurrenceDetails = ({
           />
           <Button
             label="Suggest ID"
-            theme={ButtonTheme.Default}
-            disabled={selectedTab === TABS.IDENTIFICATION && suggestIdOpen}
             onClick={() => {
               setSelectedTab(TABS.IDENTIFICATION)
               setSuggestIdOpen(true)
@@ -157,28 +159,43 @@ export const OccurrenceDetails = ({
                       onOpenChange={setSuggestIdOpen}
                     />
 
-                    {occurrence.humanIdentifications.map((i) => (
-                      <div key={i.id} className={styles.identification}>
-                        <IdentificationSummary user={i.user}>
-                          <TaxonInfo
-                            overridden={i.overridden}
-                            taxon={i.taxon}
-                            getLink={getTaxonLink}
-                          />
-                        </IdentificationSummary>
-                      </div>
-                    ))}
+                    {occurrence.humanIdentifications.map((i) => {
+                      const byCurrentUser = i.user.id === userInfo?.id
+
+                      return (
+                        <div key={i.id} className={styles.identification}>
+                          <IdentificationSummary user={i.user}>
+                            {i.applied && <StatusLabel label="ID applied" />}
+                            <TaxonInfo
+                              overridden={i.overridden}
+                              taxon={i.taxon}
+                              getLink={getTaxonLink}
+                            />
+                          </IdentificationSummary>
+                          {!byCurrentUser && (
+                            <Agree
+                              occurrence={occurrence}
+                              taxonId={i.taxon.id}
+                            />
+                          )}
+                        </div>
+                      )
+                    })}
 
                     {occurrence.machinePredictions.map((p) => (
                       <div key={p.id} className={styles.identification}>
                         <IdentificationSummary>
+                          {p.applied && <StatusLabel label="ID applied" />}
                           <TaxonInfo
                             overridden={p.overridden}
                             taxon={p.taxon}
                             getLink={getTaxonLink}
                           />
                         </IdentificationSummary>
-                        <IdentificationStatus score={p.score} />
+                        <div className={styles.taxonActions}>
+                          <IdentificationStatus score={p.score} />
+                          <Agree occurrence={occurrence} taxonId={p.taxon.id} />
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -8,12 +8,14 @@ export const useAuthorizedQuery = <T>({
   queryKey = [],
   refetchInterval,
   retry,
+  staleTime,
   url,
 }: {
   onError?: (error: unknown) => void
   queryKey?: QueryKey
   refetchInterval?: number
   retry?: number
+  staleTime?: number
   url: string
 }) => {
   const { user } = useUser()
@@ -29,6 +31,7 @@ export const useAuthorizedQuery = <T>({
         .then((res) => res.data),
     refetchInterval,
     retry,
+    staleTime,
   })
 
   return { data, isLoading, isFetching, isSuccess, error }

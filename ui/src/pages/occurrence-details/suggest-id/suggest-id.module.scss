@@ -15,18 +15,6 @@
   position: relative;
 }
 
-.new {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 2px 8px;
-  background-color: $color-success-100;
-  color: $color-success-600;
-  @include paragraph-xx-small();
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
 .taxon {
   margin-bottom: 8px;
 }

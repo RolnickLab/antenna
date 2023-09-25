@@ -13,7 +13,7 @@ export const useCreateIdentification = (onSuccess?: () => void) => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
-  const { mutateAsync, isLoading, error } = useMutation({
+  const { mutateAsync, isLoading, isSuccess, error } = useMutation({
     mutationFn: (fieldValues: any) =>
       axios.post(
         `${API_URL}/${API_ROUTES.IDENTIFICATIONS}/`,
@@ -29,5 +29,5 @@ export const useCreateIdentification = (onSuccess?: () => void) => {
     },
   })
 
-  return { createIdentification: mutateAsync, isLoading, error }
+  return { createIdentification: mutateAsync, isLoading, isSuccess, error }
 }

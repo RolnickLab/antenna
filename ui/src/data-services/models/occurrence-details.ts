@@ -6,6 +6,7 @@ import { Taxon } from './taxa'
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
 interface Identification {
+  applied?: boolean
   id: string
   overridden?: boolean
   taxon: Taxon
@@ -13,6 +14,7 @@ interface Identification {
 
 interface HumanIdentification extends Identification {
   user: {
+    id: string
     name: string
     image?: string
   }
@@ -42,11 +44,16 @@ export class OccurrenceDetails extends Occurrence {
     this._humanIdentifications = this._occurrence.identifications
       .sort(sortByDate)
       .map((i: any) => {
+        const taxon = new Taxon(i.taxon)
+        const overridden = this._isIdentificationOverridden(i)
+        const applied = !overridden && taxon.id === this.determinationTaxon.id
+
         const identification: HumanIdentification = {
           id: `${i.id}`,
-          overridden: this._isIdentificationOverridden(i),
-          taxon: new Taxon(i.taxon),
-          user: { name: i.user.name, image: i.user.image },
+          applied,
+          overridden,
+          taxon,
+          user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
         }
 
         return identification
@@ -56,9 +63,13 @@ export class OccurrenceDetails extends Occurrence {
       .sort(sortByDate)
       .map((i: any) => {
         const taxon = new Taxon(i.taxon)
+        const overridden = taxon.id !== this.determinationId
+        const applied = !overridden
+
         const prediction: MachinePrediction = {
           id: `${i.id}`,
-          overridden: taxon.id !== this.determinationId,
+          applied,
+          overridden,
           taxon,
           score: i.score,
         }
