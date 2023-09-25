@@ -20,6 +20,7 @@ import { ReactComponent as PlayButton } from './assets/play-button.svg'
 import { ReactComponent as RadixCheck } from './assets/radix/check.svg'
 import { ReactComponent as RadixQuestionMark } from './assets/radix/question-mark.svg'
 import { ReactComponent as RadixSearch } from './assets/radix/search.svg'
+import { ReactComponent as RadixTrash } from './assets/radix/trash.svg'
 import { ReactComponent as RadixUpdate } from './assets/radix/update.svg'
 import { ReactComponent as Sessions } from './assets/sessions.svg'
 import { ReactComponent as Settings } from './assets/settings.svg'
@@ -51,6 +52,7 @@ export enum IconType {
   RadixCheck = 'radix-check',
   RadixQuestionMark = 'radix-question-mark',
   RadixSearch = 'radix-search',
+  RadixTrash = 'radix-trash',
   RadixUpdate = 'radix-update',
   Sessions = 'sessions',
   Settings = 'settings',
@@ -90,6 +92,7 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.RadixCheck]: RadixCheck,
   [IconType.RadixQuestionMark]: RadixQuestionMark,
   [IconType.RadixSearch]: RadixSearch,
+  [IconType.RadixTrash]: RadixTrash,
   [IconType.RadixUpdate]: RadixUpdate,
   [IconType.Sessions]: Sessions,
   [IconType.Settings]: Settings,

@@ -23,14 +23,14 @@ export const Agree = ({ buttonTheme, occurrence, taxonId }: AgreeProps) => {
     .filter((i) => i.user.id === userInfo.id)
     .some((i) => !i.overridden && i.taxon.id === taxonId)
 
+  if (agreed) {
+    return null
+  }
+
   if (isSuccess) {
     return (
       <Button icon={IconType.RadixCheck} label="Agreed" theme={buttonTheme} />
     )
-  }
-
-  if (agreed) {
-    return null
   }
 
   return (

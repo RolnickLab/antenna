@@ -5,7 +5,7 @@ import { Taxon } from './taxa'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
-interface Identification {
+export interface Identification {
   applied?: boolean
   id: string
   overridden?: boolean
@@ -46,7 +46,7 @@ export class OccurrenceDetails extends Occurrence {
       .map((i: any) => {
         const taxon = new Taxon(i.taxon)
         const overridden = this._isIdentificationOverridden(i)
-        const applied = !overridden && taxon.id === this.determinationTaxon.id
+        const applied = taxon.id === this.determinationTaxon.id
 
         const identification: HumanIdentification = {
           id: `${i.id}`,

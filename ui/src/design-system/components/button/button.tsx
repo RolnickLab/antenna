@@ -8,6 +8,7 @@ export enum ButtonTheme {
   Success = 'success',
   Plain = 'plain',
   Neutral = 'neutral',
+  Destructive = 'neutral',
 }
 
 interface ButtonProps {
@@ -45,6 +46,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           [styles.success]: theme === ButtonTheme.Success,
           [styles.plain]: theme === ButtonTheme.Plain,
           [styles.neutral]: theme === ButtonTheme.Neutral,
+          [styles.destructive]: theme === ButtonTheme.Destructive,
           [styles.disabled]: disabled ?? loading,
         })}
         disabled={disabled ?? loading}
