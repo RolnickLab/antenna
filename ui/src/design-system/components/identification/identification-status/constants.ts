@@ -7,8 +7,12 @@ export const THEMES = {
     bg: '#dededf', // color-neutral-200
     fg: '#09af8a', // color-success-500
   },
+  warning: {
+    bg: '#dededf', // color-neutral-200
+    fg: '#f59e0b', // color-warning-500
+  },
   alert: {
     bg: '#dededf', // color-neutral-200
-    fg: '#f36399', // color-alert-500
+    fg: '#ef4444', // color-destructive-500
   },
 }

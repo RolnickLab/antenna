@@ -14,9 +14,10 @@ export default {
 
 export const Default: Meta = {
   args: {
+    alertThreshold: 0.6,
     isVerified: false,
     score: 0.7,
-    scoreThreshold: 0.6,
+    warningThreshold: 0.9,
   },
 }
 
@@ -24,14 +25,15 @@ export const Verified: Meta = {
   args: {
     isVerified: true,
     score: 0.7,
-    scoreThreshold: 0.6,
+    warningThreshold: 0.6,
   },
 }
 
 export const BelowThreshold: Meta = {
   args: {
+    alertThreshold: 0.6,
     isVerified: false,
     score: 0.5,
-    scoreThreshold: 0.6,
+    warningThreshold: 0.9,
   },
 }
