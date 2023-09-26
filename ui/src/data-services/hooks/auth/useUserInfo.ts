@@ -1,6 +1,5 @@
 import { API_ROUTES, API_URL, STATUS_CODES } from 'data-services/constants'
 import { useMemo } from 'react'
-import { UserInfo } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useAuthorizedQuery } from './useAuthorizedQuery'
 
@@ -14,7 +13,6 @@ export const useUserInfo = () => {
     queryKey: [API_ROUTES.ME],
     url: `${API_URL}/${API_ROUTES.ME}/`,
     refetchInterval: REFETCH_INTERVAL,
-    staleTime: Infinity,
     retry: 0,
     onError: (error: any) => {
       if (error.response?.status === STATUS_CODES.FORBIDDEN) {
@@ -25,16 +23,14 @@ export const useUserInfo = () => {
     },
   })
 
-  const userInfo: UserInfo | undefined = useMemo(() => {
+  const userInfo = useMemo(() => {
     if (!data) {
-      return undefined
+      return
     }
 
     return {
-      email: data.email,
-      id: `${data.id}`,
-      image: data.image,
-      name: data.name,
+      ...data,
+      id: `${data?.id}`,
     }
   }, [data])
 
