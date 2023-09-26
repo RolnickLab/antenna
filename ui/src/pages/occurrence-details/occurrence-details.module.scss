@@ -34,6 +34,13 @@
       opacity: 0.7;
     }
   }
+
+  .taxonActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
 }
 
 .infoWrapper {
@@ -71,13 +78,6 @@
   padding: 4px 0;
 }
 
-.taxonActions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-}
-
 @media only screen and (max-width: $small-screen-breakpoint) {
   .wrapper {
     width: 100%;
@@ -86,13 +86,16 @@
   }
 
   .content {
-    flex-direction: column;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
   }
 
-  .blueprintWrapper {
+  .blueprintWrapper,
+  .infoWrapper {
     width: auto;
 
-    .blueprintContainer {
+    .blueprintContainer,
+    .infoContainer {
       height: auto;
       position: relative;
       overflow: auto;
