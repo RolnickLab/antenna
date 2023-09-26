@@ -231,6 +231,36 @@ class LabelStudioConfigViewSet(viewsets.ViewSet):
 
         return HttpResponse(content, content_type="text/xml")
 
+    @action(detail=False, methods=["get"], name="taxonomy")
+    def taxonomy(self, request):
+        """
+        Provide the species choices via an API endpoint.
+
+        https://labelstud.io/tags/taxonomy.html
+
+        Label studio may pass an array of path[] params to specify which children to return.
+        For example:
+        /taxonomy?path[]=root&path[]=child1 to return only nested children of child1
+
+        Because names are unique, we will only consider the last path[] param and return
+        all children of that node.
+
+        It is required to return the display name
+        """
+        path_parts = request.query_params.getlist("path[]")
+        if path_parts:
+            closest_parent = path_parts[-1]
+            parent = Taxon.objects.filter(display_name=closest_parent).first()
+            if parent:
+                taxa_tree = Taxon.objects.tree(root=parent)
+            else:
+                # If a matching node is not found, return an empty response
+                return HttpResponse("", content_type="text/xml")
+        else:
+            taxa_tree = Taxon.objects.tree()
+        content = taxa_tree_to_xml(taxa_tree)
+        return HttpResponse(content, content_type="text/xml")
+
 
 def get_labelstudio_config() -> LabelStudioConfig | None:
     return LabelStudioConfig.objects.first()

@@ -1,6 +1,7 @@
 import logging
 
 from django.apps import apps
+from django.db import models
 
 from config import celery_app
 
@@ -39,12 +40,18 @@ def update_public_urls(deployment_id: int, base_url: str) -> None:
 
 
 @celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
-def model_task(model_name: str, model_id: int, method_name: str) -> None:
+def model_task(model_name: str, instance_id: int, method_name: str) -> None:
     Model = apps.get_model("main", model_name)
-    instance = Model.objects.get(id=model_id)
+    instance = Model.objects.get(id=instance_id)
     method = getattr(instance, method_name)
     logger.info(f"Running '{method_name}' on {model_name} instance: '{instance}'")
     method()
+
+
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def model_bulk_update(Model: models.Model, instances: list, fields: list) -> None:
+    logger.info(f"Bulk saving {len(instances)} {Model} instances (fields: {fields}))")
+    Model.objects.bulk_update(instances, fields)
 
 
 # Task to write tasks to Label Studio
