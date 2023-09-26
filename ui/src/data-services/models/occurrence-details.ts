@@ -1,5 +1,6 @@
 import _ from 'lodash'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { UserPermission } from 'utils/user/types'
 import { Occurrence, ServerOccurrence } from './occurrence'
 import { Taxon } from './taxa'
 
@@ -10,6 +11,7 @@ export interface Identification {
   id: string
   overridden?: boolean
   taxon: Taxon
+  userPermissions: UserPermission[]
 }
 
 export interface HumanIdentification extends Identification {
@@ -54,6 +56,7 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
+          userPermissions: i.user_permissions,
         }
 
         return identification
@@ -72,6 +75,7 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           score: p.score,
+          userPermissions: p.user_permissions,
         }
 
         return prediction

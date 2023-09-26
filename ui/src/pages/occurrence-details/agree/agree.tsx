@@ -20,7 +20,7 @@ export const Agree = ({
 
   if (isSuccess || agreed) {
     return (
-      <Button icon={IconType.RadixCheck} label="Agreed" theme={buttonTheme} />
+      <Button label="Agreed" icon={IconType.RadixCheck} theme={buttonTheme} />
     )
   }
 

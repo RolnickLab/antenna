@@ -2,7 +2,7 @@ import { InfoDialog } from 'components/info-dialog/info-dialog'
 import { useLogout } from 'data-services/hooks/auth/useLogout'
 import { usePages } from 'data-services/hooks/pages/usePages'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { useUser } from 'utils/user/userContext'
 import ami from './ami.png'
@@ -10,6 +10,7 @@ import styles from './header.module.scss'
 import { UserInfoDialog } from './user-info-dialog/user-info-dialog'
 
 export const Header = () => {
+  const location = useLocation()
   const navigate = useNavigate()
   const { pages = [] } = usePages()
   const { user } = useUser()
@@ -49,7 +50,9 @@ export const Header = () => {
           <Button
             label="Login"
             theme={ButtonTheme.Plain}
-            onClick={() => navigate(APP_ROUTES.LOGIN)}
+            onClick={() =>
+              navigate(APP_ROUTES.LOGIN, { state: { to: location.pathname } })
+            }
           />
         )}
       </div>

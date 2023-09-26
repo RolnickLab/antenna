@@ -13,7 +13,7 @@ import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
-import { UserInfo } from 'utils/user/types'
+import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 import { userAgreed } from '../agree/userAgreed'
 import { StatusLabel } from '../status-label/status-label'
@@ -34,10 +34,16 @@ export const IdentificationCard = ({
   }
   currentUser?: UserInfo
 }) => {
-  const [deleteIdOpen, setDeleteIdOpen] = useState(false)
   const { projectId } = useParams()
+  const [deleteIdOpen, setDeleteIdOpen] = useState(false)
+  const byCurrentUser = currentUser && user?.id === currentUser.id
 
-  const byCurrentUser = user?.id === currentUser?.id
+  const canAgree = occurrence.userPermissions.includes(UserPermission.Update)
+  const canDelete = identification.userPermissions.includes(
+    UserPermission.Update
+  )
+  const showAgree = !byCurrentUser && canAgree && !identification.overridden
+  const showDelete = byCurrentUser && canDelete
 
   if (deleteIdOpen) {
     return (
@@ -67,23 +73,22 @@ export const IdentificationCard = ({
           />
         </IdentificationSummary>
         <div className={styles.actions}>
-          {byCurrentUser ? (
+          {showAgree && (
+            <Agree
+              agreed={userAgreed({
+                identifications: occurrence.humanIdentifications,
+                taxonId: identification.taxon.id,
+                userId: currentUser?.id,
+              })}
+              occurrenceId={occurrence.id}
+              taxonId={identification.taxon.id}
+            />
+          )}
+          {showDelete && (
             <IconButton
               icon={IconType.RadixTrash}
               onClick={() => setDeleteIdOpen(true)}
             />
-          ) : (
-            !identification.overridden && (
-              <Agree
-                agreed={userAgreed({
-                  identifications: occurrence.humanIdentifications,
-                  taxonId: identification.taxon.id,
-                  userId: currentUser?.id,
-                })}
-                occurrenceId={occurrence.id}
-                taxonId={identification.taxon.id}
-              />
-            )
           )}
         </div>
       </div>

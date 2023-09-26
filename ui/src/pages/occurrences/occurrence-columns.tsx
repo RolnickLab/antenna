@@ -18,6 +18,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 import styles from './occurrences.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
@@ -114,6 +115,8 @@ const TaxonCell = ({
     }),
     keepSearchParams: true,
   })
+  const canUpdate = item.userPermissions.includes(UserPermission.Update)
+  const showQuickActions = !item.determinationVerified && canUpdate
 
   return (
     <div className={styles.taxonCell}>
@@ -126,7 +129,7 @@ const TaxonCell = ({
             />
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
-          {!item.determinationVerified && (
+          {showQuickActions && (
             <div className={styles.taxonActions}>
               <Agree
                 buttonTheme={ButtonTheme.Success}
