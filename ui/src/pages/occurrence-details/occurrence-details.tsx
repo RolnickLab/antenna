@@ -6,6 +6,7 @@ import {
   TaxonInfo,
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
+import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { Button } from 'design-system/components/button/button'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
@@ -16,6 +17,8 @@ import { useLocation, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { Agree } from './agree/agree'
+import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
 import { SuggestId } from './suggest-id/suggest-id'
@@ -30,6 +33,7 @@ export const OccurrenceDetails = ({
 }: {
   occurrence: Occurrence
 }) => {
+  const { userInfo } = useUserInfo()
   const { state } = useLocation()
   const { projectId } = useParams()
   const [selectedTab, setSelectedTab] = useState<string | undefined>(
@@ -119,6 +123,15 @@ export const OccurrenceDetails = ({
             isVerified={occurrence.determinationVerified}
             score={occurrence.determinationScore}
           />
+          <Agree
+            agreed={userAgreed({
+              identifications: occurrence.humanIdentifications,
+              taxonId: occurrence.determinationTaxon.id,
+              userId: userInfo?.id,
+            })}
+            occurrenceId={occurrence.id}
+            taxonId={occurrence.determinationTaxon.id}
+          />
           <Button
             label="Suggest ID"
             onClick={() => {
@@ -160,6 +173,7 @@ export const OccurrenceDetails = ({
                         identification={i}
                         occurrence={occurrence}
                         user={i.user}
+                        currentUser={userInfo}
                       />
                     ))}
 
@@ -168,6 +182,7 @@ export const OccurrenceDetails = ({
                         key={p.id}
                         identification={p}
                         occurrence={occurrence}
+                        currentUser={userInfo}
                       />
                     ))}
                   </div>

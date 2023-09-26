@@ -1,6 +1,10 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { Button } from 'design-system/components/button/button'
+import {
+  IconButton,
+  IconButtonTheme,
+} from 'design-system/components/icon-button/icon-button'
+import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -9,6 +13,7 @@ import {
   ImageCellTheme,
   TableColumn,
 } from 'design-system/components/table/types'
+import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -114,27 +119,34 @@ const TaxonCell = ({
   return (
     <div className={styles.taxonCell}>
       <BasicTableCell>
-        <div className={styles.taxon}>
-          <Link to={detailsRoute}>
+        <div className={styles.taxonCellContent}>
+          <Link to={detailsRoute} className={styles.taxon}>
+            <IdentificationStatus
+              isVerified={item.determinationVerified}
+              score={item.determinationScore}
+            />
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
-        </div>
-        <div className={styles.taxonActions}>
-          <IdentificationStatus
-            isVerified={item.determinationVerified}
-            score={item.determinationScore}
-          />
-          <Button
-            label="Suggest ID"
-            onClick={() =>
-              navigate(detailsRoute, {
-                state: {
-                  defaultTab: TABS.IDENTIFICATION,
-                  suggestIdOpen: true,
-                },
-              })
-            }
-          />
+          {!item.determinationVerified && (
+            <div className={styles.taxonActions}>
+              <Agree
+                occurrenceId={item.id}
+                taxonId={item.determinationTaxon.id}
+              />
+              <IconButton
+                icon={IconType.Identifiers}
+                theme={IconButtonTheme.Neutral}
+                onClick={() =>
+                  navigate(detailsRoute, {
+                    state: {
+                      defaultTab: TABS.IDENTIFICATION,
+                      suggestIdOpen: true,
+                    },
+                  })
+                }
+              />
+            </div>
+          )}
         </div>
       </BasicTableCell>
     </div>

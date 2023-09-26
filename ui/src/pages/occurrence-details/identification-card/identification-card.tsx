@@ -1,5 +1,4 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
-import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { useDeleteIdentification } from 'data-services/hooks/identifications/useDeleteIdentification'
 import {
   Identification,
@@ -14,7 +13,9 @@ import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
+import { UserInfo } from 'utils/user/types'
 import { Agree } from '../agree/agree'
+import { userAgreed } from '../agree/userAgreed'
 import { StatusLabel } from '../status-label/status-label'
 import styles from './identification-card.module.scss'
 
@@ -22,6 +23,7 @@ export const IdentificationCard = ({
   occurrence,
   identification,
   user,
+  currentUser,
 }: {
   occurrence: Occurrence
   identification: Identification
@@ -30,11 +32,12 @@ export const IdentificationCard = ({
     name: string
     image?: string
   }
+  currentUser?: UserInfo
 }) => {
   const [deleteIdOpen, setDeleteIdOpen] = useState(false)
-  const { userInfo } = useUserInfo()
   const { projectId } = useParams()
-  const byCurrentUser = user?.id === userInfo?.id
+
+  const byCurrentUser = user?.id === currentUser?.id
 
   if (deleteIdOpen) {
     return (
@@ -70,7 +73,17 @@ export const IdentificationCard = ({
               onClick={() => setDeleteIdOpen(true)}
             />
           ) : (
-            <Agree occurrence={occurrence} taxonId={identification.taxon.id} />
+            !identification.overridden && (
+              <Agree
+                agreed={userAgreed({
+                  identifications: occurrence.humanIdentifications,
+                  taxonId: identification.taxon.id,
+                  userId: currentUser?.id,
+                })}
+                occurrenceId={occurrence.id}
+                taxonId={identification.taxon.id}
+              />
+            )
           )}
         </div>
       </div>

@@ -12,7 +12,7 @@ export interface Identification {
   taxon: Taxon
 }
 
-interface HumanIdentification extends Identification {
+export interface HumanIdentification extends Identification {
   user: {
     id: string
     name: string
@@ -20,7 +20,7 @@ interface HumanIdentification extends Identification {
   }
 }
 
-interface MachinePrediction extends Identification {
+export interface MachinePrediction extends Identification {
   score: number
 }
 
