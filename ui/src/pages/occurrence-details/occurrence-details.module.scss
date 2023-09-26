@@ -94,6 +94,10 @@
   .infoWrapper {
     width: auto;
 
+    .blueprintContainer {
+      display: flex;
+    }
+
     .blueprintContainer,
     .infoContainer {
       height: auto;
