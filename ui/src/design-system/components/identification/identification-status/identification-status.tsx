@@ -24,7 +24,7 @@ export const IdentificationStatus = ({
   const strokeDashoffset = circumference - score * circumference
   const theme = score >= scoreThreshold ? THEMES.success : THEMES.alert
   const tooltipContent = isVerified
-    ? 'Verified'
+    ? 'Verified by human'
     : `Machine prediction\nscore ${_.round(score, 4)}`
 
   return (

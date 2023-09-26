@@ -1,9 +1,7 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import {
-  IconButton,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
+import { ButtonTheme } from 'design-system/components/button/button'
+import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -13,6 +11,7 @@ import {
   ImageCellTheme,
   TableColumn,
 } from 'design-system/components/table/types'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { Link, useNavigate } from 'react-router-dom'
@@ -130,21 +129,23 @@ const TaxonCell = ({
           {!item.determinationVerified && (
             <div className={styles.taxonActions}>
               <Agree
+                buttonTheme={ButtonTheme.Success}
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <IconButton
-                icon={IconType.Identifiers}
-                theme={IconButtonTheme.Neutral}
-                onClick={() =>
-                  navigate(detailsRoute, {
-                    state: {
-                      defaultTab: TABS.IDENTIFICATION,
-                      suggestIdOpen: true,
-                    },
-                  })
-                }
-              />
+              <Tooltip content="Suggest ID">
+                <IconButton
+                  icon={IconType.Identifiers}
+                  onClick={() =>
+                    navigate(detailsRoute, {
+                      state: {
+                        defaultTab: TABS.IDENTIFICATION,
+                        suggestIdOpen: true,
+                      },
+                    })
+                  }
+                />
+              </Tooltip>
             </div>
           )}
         </div>

@@ -8,7 +8,7 @@ import {
 } from 'components/taxon/taxon-info/taxon-info'
 import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Button } from 'design-system/components/button/button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -129,6 +129,7 @@ export const OccurrenceDetails = ({
               taxonId: occurrence.determinationTaxon.id,
               userId: userInfo?.id,
             })}
+            buttonTheme={ButtonTheme.Success}
             occurrenceId={occurrence.id}
             taxonId={occurrence.determinationTaxon.id}
           />

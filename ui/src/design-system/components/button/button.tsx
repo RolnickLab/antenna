@@ -47,11 +47,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           [styles.plain]: theme === ButtonTheme.Plain,
           [styles.neutral]: theme === ButtonTheme.Neutral,
           [styles.destructive]: theme === ButtonTheme.Destructive,
-          [styles.disabled]: disabled ?? loading,
+          [styles.disabled]: disabled,
         })}
-        disabled={disabled ?? loading}
+        disabled={disabled}
         type={type}
-        onClick={onClick}
+        onClick={() => {
+          if (loading) {
+            return
+          }
+          onClick?.()
+        }}
         {...rest}
       >
         {icon && <Icon type={icon} theme={iconTheme} size={16} />}
