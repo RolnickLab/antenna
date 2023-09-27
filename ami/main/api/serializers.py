@@ -47,12 +47,15 @@ def add_format_to_url(url: str, format: typing.Literal["json", "html", "csv"]) -
 class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     url_field_name = "details"
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-
+    def get_permissions(self, instance_data):
         request = self.context.get("request")
         user = request.user if request else None
-        return add_object_level_permissions(user, data)
+        return add_object_level_permissions(user, instance_data)
+
+    def to_representation(self, instance):
+        instance_data = super().to_representation(instance)
+        instance_data = self.get_permissions(instance_data)
+        return instance_data
 
 
 class ProjectNestedSerializer(DefaultSerializer):
