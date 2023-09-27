@@ -960,8 +960,20 @@ class Identification(BaseModel):
         related_name="identifications",
     )
     withdrawn = models.BooleanField(default=False)
-    agreed_with_identification = models.ForeignKey("Identification", on_delete=models.SET_NULL, null=True, blank=True)
-    agreed_with_prediction = models.ForeignKey("Classification", on_delete=models.SET_NULL, null=True, blank=True)
+    agreed_with_identification = models.ForeignKey(
+        "Identification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agreed_identifications",
+    )
+    agreed_with_prediction = models.ForeignKey(
+        "Classification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agreed_identifications",
+    )
 
     class Meta:
         ordering = [
