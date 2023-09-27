@@ -457,11 +457,13 @@ class IdentificationSerializer(DefaultSerializer):
         queryset=Identification.objects.all(),
         source="agreed_with_identification",
         allow_null=True,
+        required=False,
     )
     agreed_with_prediction_id = serializers.PrimaryKeyRelatedField(
         queryset=Classification.objects.all(),
         source="agreed_with_prediction",
         allow_null=True,
+        required=False,
     )
 
     class Meta:
