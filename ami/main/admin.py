@@ -200,6 +200,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
     list_display = ("name", "occurrence_count", "rank", "parent", "parent_names", "list_names")
     list_filter = ("rank", TaxonParentFilter)
     search_fields = ("name",)
+    exclude = ("parents",)
 
     # annotate queryset with occurrence counts and allow sorting
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.list_display
@@ -224,6 +225,12 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
             taxon.update_parents()
         self.message_user(request, f"Updated {queryset.count()} taxa.")
 
+    @admin.action(description="Update cached display names")
+    def update_display_names(self, request: HttpRequest, queryset: QuerySet[Taxon]) -> None:
+        Taxon.objects.update_display_names(queryset)
+
+        self.message_user(request, f"Updated {queryset.count()} taxa.")
+
     @admin.display(
         description="Parents",
         ordering="parents",
@@ -231,7 +238,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
     def parent_names(self, obj) -> str:
         return ", ".join([str(taxon) for taxon in obj.parents.values_list("name", flat=True)])
 
-    actions = [update_species_parents]
+    actions = [update_species_parents, update_display_names]
 
 
 @admin.register(TaxaList)

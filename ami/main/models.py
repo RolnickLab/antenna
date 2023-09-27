@@ -59,6 +59,10 @@ class BaseModel(models.Model):
         else:
             return f"{self.__class__.__name__} #{self.pk}"
 
+    def save_async(self, *args, **kwargs):
+        """Save the model in a background task."""
+        ami.tasks.model_task.delay(self.__class__.__name__, self.pk, "save", *args, **kwargs)
+
     class Meta:
         abstract = True
 
@@ -1376,6 +1380,17 @@ class TaxaManager(models.Manager):
             updated.append(taxon)
         return updated
 
+    def update_display_names(self, queryset: models.QuerySet | None = None):
+        """Update the display names of all taxa."""
+
+        taxa = []
+
+        for taxon in queryset or self.get_queryset():
+            taxon.display_name = taxon.get_display_name()
+            taxa.append(taxon)
+
+        self.bulk_update(taxa, ["display_name"])
+
     # Method that returns taxa nested in a tree structure
     def tree(self, root: typing.Optional["Taxon"] = None) -> dict:
         """Build a recursive tree of taxa."""
@@ -1444,6 +1459,7 @@ class Taxon(BaseModel):
     """A taxonomic classification"""
 
     name = models.CharField(max_length=255, unique=True)
+    display_name = models.CharField("Cached display name", max_length=255, null=True, blank=True, unique=True)
     rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
     # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
@@ -1463,8 +1479,12 @@ class Taxon(BaseModel):
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
 
+    objects: TaxaManager = TaxaManager()
+
     def __str__(self) -> str:
-        # @TODO cache this version of the name in the database?
+        return self.get_display_name()
+
+    def get_display_name(self):
         if self.rank == "SPECIES":
             return self.name
         elif self.rank == "GENUS":
@@ -1534,14 +1554,17 @@ class Taxon(BaseModel):
         if save:
             taxon.save()
 
-    objects = TaxaManager()
-
     class Meta:
         ordering = [
             "ordering",
             "name",
         ]
         verbose_name_plural = "Taxa"
+
+    def save(self, *args, **kwargs):
+        """Update the display name before saving."""
+        self.display_name = self.get_display_name()
+        super().save(*args, **kwargs)
 
 
 @final

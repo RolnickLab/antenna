@@ -1,5 +1,6 @@
 import logging
 
+from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
 from django.db.models.query import QuerySet
@@ -308,10 +309,19 @@ class TaxonViewSet(DefaultViewSet):
 
         if query and len(query) >= min_query_length:
             if with_parents:
-                taxa = Taxon.objects.select_related("parent", "parent__parent").filter(name__icontains=query)[:limit]
+                taxa = (
+                    Taxon.objects.select_related("parent", "parent__parent")
+                    .annotate(similarity=TrigramSimilarity("name", query))
+                    .order_by("-similarity")[:default_results_limit]
+                )
                 return Response(TaxonNestedSerializer(taxa, many=True, context={"request": request}).data)
             else:
-                taxa = Taxon.objects.filter(name__icontains=query).values("id", "name", "rank")[:limit]
+                taxa = (
+                    Taxon.objects.filter(name__icontains=query)
+                    .annotate(similarity=TrigramSimilarity("name", query))
+                    .order_by("-similarity")[:default_results_limit]
+                    .values("id", "name", "rank")[:limit]
+                )
                 return Response(TaxonSearchResultSerializer(taxa, many=True, context={"request": request}).data)
 
         else:
