@@ -46,9 +46,9 @@ export const IdentificationStatus = ({
       <div className={styles.wrapper}>
         <div className={styles.iconWrapper}>
           <Icon
-            type={isVerified ? IconType.Identifiers : IconType.BatchId}
+            type={isVerified ? IconType.ShieldCheck : IconType.BatchId}
             theme={IconTheme.Primary}
-            size={16}
+            size={14}
           />
         </div>
         <svg height={RADIUS * 2} width={RADIUS * 2} transform="rotate(-90)">

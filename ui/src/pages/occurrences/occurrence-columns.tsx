@@ -138,7 +138,7 @@ const TaxonCell = ({
               />
               <Tooltip content="Suggest ID">
                 <IconButton
-                  icon={IconType.Identifiers}
+                  icon={IconType.ShieldAlert}
                   onClick={() =>
                     navigate(detailsRoute, {
                       state: {

@@ -146,7 +146,7 @@ export const OccurrenceDetails = ({
               />
               <Button
                 label="Suggest ID"
-                icon={IconType.Identifiers}
+                icon={IconType.ShieldAlert}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
