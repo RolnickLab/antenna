@@ -453,6 +453,16 @@ class IdentificationSerializer(DefaultSerializer):
         queryset=Taxon.objects.all(),
         source="taxon",
     )
+    agreed_with_identification_id = serializers.PrimaryKeyRelatedField(
+        queryset=Identification.objects.all(),
+        source="agreed_with_identification",
+        allow_null=True,
+    )
+    agreed_with_prediction_id = serializers.PrimaryKeyRelatedField(
+        queryset=Classification.objects.all(),
+        source="agreed_with_prediction",
+        allow_null=True,
+    )
 
     class Meta:
         model = Identification
@@ -465,6 +475,8 @@ class IdentificationSerializer(DefaultSerializer):
             "taxon",
             "taxon_id",
             "withdrawn",
+            "agreed_with_identification_id",
+            "agreed_with_prediction_id",
             "created_at",
             "updated_at",
         ]
