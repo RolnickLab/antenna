@@ -41,16 +41,6 @@
     min-width: 240px;
   }
 
-  .taxon {
-    display: contents;
-
-    &:hover {
-      > * {
-        opacity: 0.7;
-      }
-    }
-  }
-
   .taxonActions {
     grid-column: 2;
     display: flex;

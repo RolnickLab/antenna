@@ -52,6 +52,10 @@ export class Occurrence {
     return this._determinationTaxon
   }
 
+  get determinationVerifiedBy(): string | undefined {
+    return this._occurrence.determination_details.identification?.user?.name
+  }
+
   get determinationVerified(): boolean {
     return !!this._occurrence.determination_details.identification?.user
   }

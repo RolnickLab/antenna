@@ -13,6 +13,7 @@ import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -128,10 +129,18 @@ export const OccurrenceDetails = ({
           }
         />
         <div className={styles.taxonActions}>
-          <IdentificationStatus
-            isVerified={occurrence.determinationVerified}
-            score={occurrence.determinationScore}
-          />
+          <Tooltip
+            content={
+              occurrence.determinationVerified
+                ? `Verified by\n${occurrence.determinationVerifiedBy}`
+                : `Machine prediction\nscore ${occurrence.determinationScore}`
+            }
+          >
+            <IdentificationStatus
+              isVerified={occurrence.determinationVerified}
+              score={occurrence.determinationScore}
+            />
+          </Tooltip>
           {canUpdate && (
             <>
               <Agree

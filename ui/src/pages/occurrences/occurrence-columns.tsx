@@ -122,11 +122,26 @@ const TaxonCell = ({
     <div className={styles.taxonCell}>
       <BasicTableCell>
         <div className={styles.taxonCellContent}>
-          <Link to={detailsRoute} className={styles.taxon}>
+          <Tooltip
+            content={
+              item.determinationVerified
+                ? `Verified by\n${item.determinationVerifiedBy}`
+                : `Machine prediction\nscore ${item.determinationScore}`
+            }
+          >
             <IdentificationStatus
               isVerified={item.determinationVerified}
               score={item.determinationScore}
+              onStatusClick={() =>
+                navigate(detailsRoute, {
+                  state: {
+                    defaultTab: TABS.IDENTIFICATION,
+                  },
+                })
+              }
             />
+          </Tooltip>
+          <Link to={detailsRoute}>
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
           {showQuickActions && (
