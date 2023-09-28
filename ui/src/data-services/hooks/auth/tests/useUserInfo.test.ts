@@ -10,7 +10,7 @@ describe('useUserInfo', () => {
     // Prep
     nock(API_URL)
       .get(`/${API_ROUTES.ME}/`)
-      .reply(200, { email: 'user@insectai.org' })
+      .reply(200, { id: 1, email: 'user@insectai.org' })
 
     // Run
     const { result } = renderHook(() => useUserInfo(), { wrapper: AppMock })
@@ -18,6 +18,7 @@ describe('useUserInfo', () => {
 
     // Check
     expect(result.current.userInfo).toEqual({
+      id: '1',
       email: 'user@insectai.org',
     })
   })

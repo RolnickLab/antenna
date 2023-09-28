@@ -1,6 +1,7 @@
 import _ from 'lodash'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
 export type ServerOccurrence = any // TODO: Update this type
@@ -51,6 +52,10 @@ export class Occurrence {
     return this._determinationTaxon
   }
 
+  get determinationVerifiedBy(): string | undefined {
+    return this._occurrence.determination_details.identification?.user?.name
+  }
+
   get determinationVerified(): boolean {
     return !!this._occurrence.determination_details.identification?.user
   }
@@ -82,5 +87,9 @@ export class Occurrence {
   get timeLabel(): string {
     const date = new Date(this._occurrence.first_appearance.timestamp)
     return getFormatedTimeString({ date })
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._occurrence.user_permissions
   }
 }

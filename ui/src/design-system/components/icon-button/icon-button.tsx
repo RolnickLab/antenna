@@ -73,7 +73,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         type="button"
         {...rest}
       >
-        <Icon type={icon} theme={iconTheme} size={10} />
+        <Icon type={icon} theme={iconTheme} size={14} />
       </button>
     )
   }

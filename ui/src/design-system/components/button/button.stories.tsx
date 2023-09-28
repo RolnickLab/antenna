@@ -19,7 +19,7 @@ export const Default: Meta = {
 export const WithIcon: Meta = {
   args: {
     ...Default.args,
-    icon: IconType.Identifiers,
+    icon: IconType.ShieldCheck,
   },
 }
 

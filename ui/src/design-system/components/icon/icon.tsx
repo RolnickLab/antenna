@@ -8,26 +8,28 @@ import { ReactComponent as Detections } from './assets/detections.svg'
 import { ReactComponent as Download } from './assets/download.svg'
 import { ReactComponent as Filters } from './assets/filters.svg'
 import { ReactComponent as GalleryView } from './assets/gallery-view.svg'
-import { ReactComponent as Identifiers } from './assets/identifiers.svg'
 import { ReactComponent as Images } from './assets/images.svg'
 import { ReactComponent as Info } from './assets/info.svg'
 import { ReactComponent as Members } from './assets/members.svg'
 import { ReactComponent as Occurrences } from './assets/occurrences.svg'
-import { ReactComponent as Options } from './assets/options.svg'
 import { ReactComponent as Overview } from './assets/overview.svg'
 import { ReactComponent as Photograph } from './assets/photograph.svg'
 import { ReactComponent as PlayButton } from './assets/play-button.svg'
 import { ReactComponent as RadixCheck } from './assets/radix/check.svg'
+import { ReactComponent as Options } from './assets/radix/options.svg'
 import { ReactComponent as RadixQuestionMark } from './assets/radix/question-mark.svg'
 import { ReactComponent as RadixSearch } from './assets/radix/search.svg'
+import { ReactComponent as ToggleLeft } from './assets/radix/toggle-left.svg'
+import { ReactComponent as ToggleRight } from './assets/radix/toggle-right.svg'
+import { ReactComponent as RadixTrash } from './assets/radix/trash.svg'
 import { ReactComponent as RadixUpdate } from './assets/radix/update.svg'
 import { ReactComponent as Sessions } from './assets/sessions.svg'
 import { ReactComponent as Settings } from './assets/settings.svg'
+import { ReactComponent as ShieldAlert } from './assets/shield-alert.svg'
+import { ReactComponent as ShieldCheck } from './assets/shield-check.svg'
 import { ReactComponent as Sort } from './assets/sort.svg'
 import { ReactComponent as Species } from './assets/species.svg'
 import { ReactComponent as TableView } from './assets/table-view.svg'
-import { ReactComponent as ToggleLeft } from './assets/toggle-left.svg'
-import { ReactComponent as ToggleRight } from './assets/toggle-right.svg'
 import styles from './icon.module.scss'
 
 export enum IconType {
@@ -39,7 +41,6 @@ export enum IconType {
   Download = 'download',
   Filters = 'filters',
   GalleryView = 'gallery-view',
-  Identifiers = 'identifiers',
   Images = 'images',
   Info = 'info',
   Members = 'members',
@@ -51,9 +52,12 @@ export enum IconType {
   RadixCheck = 'radix-check',
   RadixQuestionMark = 'radix-question-mark',
   RadixSearch = 'radix-search',
+  RadixTrash = 'radix-trash',
   RadixUpdate = 'radix-update',
   Sessions = 'sessions',
   Settings = 'settings',
+  ShieldAlert = 'shield-alert',
+  ShieldCheck = 'shield-check',
   Sort = 'sort',
   Species = 'species',
   TableView = 'table-view',
@@ -78,7 +82,6 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.Download]: Download,
   [IconType.Filters]: Filters,
   [IconType.GalleryView]: GalleryView,
-  [IconType.Identifiers]: Identifiers,
   [IconType.Images]: Images,
   [IconType.Info]: Info,
   [IconType.Members]: Members,
@@ -90,9 +93,12 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.RadixCheck]: RadixCheck,
   [IconType.RadixQuestionMark]: RadixQuestionMark,
   [IconType.RadixSearch]: RadixSearch,
+  [IconType.RadixTrash]: RadixTrash,
   [IconType.RadixUpdate]: RadixUpdate,
   [IconType.Sessions]: Sessions,
   [IconType.Settings]: Settings,
+  [IconType.ShieldAlert]: ShieldAlert,
+  [IconType.ShieldCheck]: ShieldCheck,
   [IconType.Sort]: Sort,
   [IconType.Species]: Species,
   [IconType.TableView]: TableView,

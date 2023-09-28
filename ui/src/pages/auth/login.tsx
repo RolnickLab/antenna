@@ -33,7 +33,7 @@ export const Login = () => {
   const { state } = useLocation()
   const navigate = useNavigate()
   const { login, isLoading, error } = useLogin({
-    onSuccess: () => navigate(APP_ROUTES.HOME),
+    onSuccess: () => navigate(state?.to ?? APP_ROUTES.HOME),
   })
   const { control, handleSubmit } = useForm<LoginFormValues>({
     defaultValues: { email: state?.email ?? '', password: '' },

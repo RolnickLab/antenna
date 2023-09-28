@@ -4,6 +4,7 @@ import urllib.parse
 
 from django.db.models import Count
 from rest_framework import serializers
+from rest_framework.request import Request
 from rest_framework.reverse import reverse
 
 from ami.users.models import User
@@ -21,6 +22,7 @@ from ..models import (
     Project,
     SourceImage,
     Taxon,
+    user_agrees_with_identification,
 )
 from .permissions import add_object_level_permissions
 
@@ -44,15 +46,25 @@ def add_format_to_url(url: str, format: typing.Literal["json", "html", "csv"]) -
     return urllib.parse.urlunsplit(url_parts)
 
 
+def get_current_user(request: Request | None):
+    if request:
+        return request.user
+    else:
+        return None
+
+
 class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     url_field_name = "details"
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-
+    def get_permissions(self, instance_data):
         request = self.context.get("request")
         user = request.user if request else None
-        return add_object_level_permissions(user, data)
+        return add_object_level_permissions(user, instance_data)
+
+    def to_representation(self, instance):
+        instance_data = super().to_representation(instance)
+        instance_data = self.get_permissions(instance_data)
+        return instance_data
 
 
 class ProjectNestedSerializer(DefaultSerializer):
@@ -450,6 +462,18 @@ class IdentificationSerializer(DefaultSerializer):
         queryset=Taxon.objects.all(),
         source="taxon",
     )
+    agreed_with_identification_id = serializers.PrimaryKeyRelatedField(
+        queryset=Identification.objects.all(),
+        source="agreed_with_identification",
+        allow_null=True,
+        required=False,
+    )
+    agreed_with_prediction_id = serializers.PrimaryKeyRelatedField(
+        queryset=Classification.objects.all(),
+        source="agreed_with_prediction",
+        allow_null=True,
+        required=False,
+    )
 
     class Meta:
         model = Identification
@@ -462,6 +486,8 @@ class IdentificationSerializer(DefaultSerializer):
             "taxon",
             "taxon_id",
             "withdrawn",
+            "agreed_with_identification_id",
+            "agreed_with_prediction_id",
             "created_at",
             "updated_at",
         ]
@@ -596,6 +622,26 @@ class ClassificationSerializer(DefaultSerializer):
         ]
 
 
+class OccurrenceClassificationSerializer(ClassificationSerializer):
+    current_user_agrees = serializers.SerializerMethodField()
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = ClassificationSerializer.Meta.fields + [
+            "current_user_agrees",
+        ]
+
+    def get_current_user_agrees(self, obj: Classification) -> bool | None:
+        current_user = get_current_user(self.context.get("request"))
+
+        # Avoid extra queries since occurrence is already in the current request
+        parent = self.parent.instance if self.parent else None
+        occurrence: Occurrence | None = self.context.get("occurrence") or parent
+        if current_user and occurrence:
+            return user_agrees_with_identification(current_user, occurrence, obj.taxon)
+        else:
+            return None
+
+
 class CaptureDetectionsSerializer(DefaultSerializer):
     occurrence = CaptureOccurrenceSerializer(read_only=True)
     classifications = serializers.SerializerMethodField()
@@ -726,6 +772,7 @@ class SourceImageSerializer(DefaultSerializer):
 class OccurrenceIdentificationSerializer(DefaultSerializer):
     user = UserNestedSerializer(read_only=True)
     taxon = TaxonNestedSerializer(read_only=True)
+    current_user_agrees = serializers.SerializerMethodField()
 
     class Meta:
         model = Identification
@@ -735,8 +782,20 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
             "taxon",
             "user",
             "withdrawn",
+            "current_user_agrees",
             "created_at",
         ]
+
+    def get_current_user_agrees(self, obj: Identification) -> bool | None:
+        current_user = get_current_user(self.context.get("request"))
+
+        if current_user:
+            # Avoid extra queries since occurrence is already in the current request
+            parent = self.parent.instance if self.parent else None
+            occurrence: Occurrence | None = self.context.get("occurrence") or parent or obj.occurrence
+            return user_agrees_with_identification(current_user, occurrence, obj.taxon)
+        else:
+            return None
 
 
 class OccurrenceListSerializer(DefaultSerializer):
@@ -766,27 +825,38 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_details",
         ]
 
-    def get_determination_details(self, obj):
+    def get_determination_details(self, obj: Occurrence):
         # @TODO add an equivalent method to the Occurrence model
 
         context = self.context
+        current_user = get_current_user(context.get("request"))
+
+        # Add this occurrence to the context so that the nested serializers can access it
+        # the `parent` attribute is not available since we are manually instantiating the serializers
+        context["occurrence"] = obj
 
         taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
-        identification = (
-            OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
-            if obj.best_identification
-            else None
-        )
+        if obj.best_identification:
+            identification = OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+        else:
+            identification = None
+
         if identification or not obj.best_prediction:
             prediction = None
         else:
-            prediction = ClassificationSerializer(obj.best_prediction, context=context).data
+            prediction = OccurrenceClassificationSerializer(obj.best_prediction, context=context).data
+
+        if current_user:
+            current_user_agrees = user_agrees_with_identification(current_user, obj, obj.determination)
+        else:
+            current_user_agrees = None
 
         return dict(
             taxon=taxon,
             identification=identification,
             prediction=prediction,
             score=obj.determination_score(),
+            current_user_agrees=current_user_agrees,
         )
 
 
@@ -797,7 +867,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     )
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
-    predictions = ClassificationSerializer(many=True, read_only=True)
+    predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
