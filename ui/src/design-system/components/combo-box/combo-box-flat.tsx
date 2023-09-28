@@ -1,11 +1,12 @@
 import classNames from 'classnames'
 import { Command } from 'cmdk'
-import { useRef, useState } from 'react'
+import { RefObject, useState } from 'react'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './combo-box.module.scss'
 
 export const ComboBoxFlat = ({
   emptyLabel,
+  inputRef,
   items = [],
   loading,
   searchString,
@@ -14,6 +15,7 @@ export const ComboBoxFlat = ({
   setSearchString,
 }: {
   emptyLabel: string
+  inputRef: RefObject<HTMLInputElement>
   items?: {
     id: string | number
     label: string
@@ -25,7 +27,6 @@ export const ComboBoxFlat = ({
   onItemSelect: (id: string | number) => void
   setSearchString: (value: string) => void
 }) => {
-  const inputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const selectedLabel = items?.find((i) => i.id === selectedItemId)?.label ?? ''
   const showLodingSpinner = loading && open

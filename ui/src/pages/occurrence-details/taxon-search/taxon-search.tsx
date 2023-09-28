@@ -1,14 +1,16 @@
 import { Taxon } from 'data-services/models/taxa'
 import { ComboBoxFlat } from 'design-system/components/combo-box/combo-box-flat'
-import { useMemo, useState } from 'react'
+import { RefObject, useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useDebounce } from 'utils/useDebounce'
 import { useTaxonSearch } from './useTaxonSearch'
 
 export const TaxonSearch = ({
+  inputRef,
   taxon,
   onTaxonChange,
 }: {
+  inputRef: RefObject<HTMLInputElement>
   taxon?: Taxon
   onTaxonChange: (taxon: Taxon) => void
 }) => {
@@ -30,6 +32,7 @@ export const TaxonSearch = ({
   return (
     <ComboBoxFlat
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
+      inputRef={inputRef}
       items={items}
       loading={isLoading}
       searchString={searchString}

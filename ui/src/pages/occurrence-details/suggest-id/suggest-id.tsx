@@ -3,7 +3,7 @@ import { useCreateIdentification } from 'data-services/hooks/identifications/use
 import { Taxon } from 'data-services/models/taxa'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Input, InputContent } from 'design-system/components/input/input'
-import { useState } from 'react'
+import { RefObject, useState } from 'react'
 import { useParams } from 'react-router'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -13,12 +13,14 @@ import { TaxonSearch } from '../taxon-search/taxon-search'
 import styles from './suggest-id.module.scss'
 
 interface SuggestIdProps {
+  inputRef: RefObject<HTMLInputElement>
   occurrenceId: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 export const SuggestId = ({
+  inputRef,
   occurrenceId,
   open,
   onOpenChange,
@@ -29,6 +31,7 @@ export const SuggestId = ({
 
   return (
     <SuggestIdForm
+      inputRef={inputRef}
       occurrenceId={occurrenceId}
       onCancel={() => onOpenChange(false)}
     />
@@ -36,9 +39,11 @@ export const SuggestId = ({
 }
 
 const SuggestIdForm = ({
+  inputRef,
   occurrenceId,
   onCancel,
 }: {
+  inputRef: RefObject<HTMLInputElement>
   occurrenceId: string
   onCancel: () => void
 }) => {
@@ -60,7 +65,11 @@ const SuggestIdForm = ({
         <StatusLabel label="New ID" />
         <InputContent label="Taxon">
           <div className={styles.taxonActions}>
-            <TaxonSearch taxon={taxon} onTaxonChange={setTaxon} />
+            <TaxonSearch
+              inputRef={inputRef}
+              taxon={taxon}
+              onTaxonChange={setTaxon}
+            />
           </div>
           {taxon && (
             <TaxonRanks
