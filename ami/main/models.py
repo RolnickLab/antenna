@@ -952,11 +952,11 @@ def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxo
 
     @TODO if we want to reduce this to one query per request, we can accept just User & Occurrence
     then return the list of Taxon IDs that the user has added to that occurrence.
-    then the view functions can check if the given taxon is in that list.
+    then the view functions can check if the given taxon is in that list. Or check the list of identifications
+    already retrieved by the view.
     """
 
-    print(f"Checking if {user} agrees with {taxon} for {occurrence}")
-
+    # Anonymous users don't have a primary key and will throw an error when used in a query.
     if not user or not user.pk or not taxon or not occurrence:
         return None
 

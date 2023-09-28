@@ -22,7 +22,6 @@ from ..models import (
     Project,
     SourceImage,
     Taxon,
-    user_agrees_with_identification,
 )
 from .permissions import add_object_level_permissions
 
@@ -623,23 +622,7 @@ class ClassificationSerializer(DefaultSerializer):
 
 
 class OccurrenceClassificationSerializer(ClassificationSerializer):
-    current_user_agrees = serializers.SerializerMethodField()
-
-    class Meta(ClassificationSerializer.Meta):
-        fields = ClassificationSerializer.Meta.fields + [
-            "current_user_agrees",
-        ]
-
-    def get_current_user_agrees(self, obj: Classification) -> bool | None:
-        current_user = get_current_user(self.context.get("request"))
-
-        # Avoid extra queries since occurrence is already in the current request
-        parent = self.parent.instance if self.parent else None
-        occurrence: Occurrence | None = self.context.get("occurrence") or parent
-        if current_user and occurrence:
-            return user_agrees_with_identification(current_user, occurrence, obj.taxon)
-        else:
-            return None
+    pass
 
 
 class CaptureDetectionsSerializer(DefaultSerializer):
@@ -772,7 +755,6 @@ class SourceImageSerializer(DefaultSerializer):
 class OccurrenceIdentificationSerializer(DefaultSerializer):
     user = UserNestedSerializer(read_only=True)
     taxon = TaxonNestedSerializer(read_only=True)
-    current_user_agrees = serializers.SerializerMethodField()
 
     class Meta:
         model = Identification
@@ -782,20 +764,8 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
             "taxon",
             "user",
             "withdrawn",
-            "current_user_agrees",
             "created_at",
         ]
-
-    def get_current_user_agrees(self, obj: Identification) -> bool | None:
-        current_user = get_current_user(self.context.get("request"))
-
-        if current_user:
-            # Avoid extra queries since occurrence is already in the current request
-            parent = self.parent.instance if self.parent else None
-            occurrence: Occurrence | None = self.context.get("occurrence") or parent or obj.occurrence
-            return user_agrees_with_identification(current_user, occurrence, obj.taxon)
-        else:
-            return None
 
 
 class OccurrenceListSerializer(DefaultSerializer):
@@ -829,7 +799,6 @@ class OccurrenceListSerializer(DefaultSerializer):
         # @TODO add an equivalent method to the Occurrence model
 
         context = self.context
-        current_user = get_current_user(context.get("request"))
 
         # Add this occurrence to the context so that the nested serializers can access it
         # the `parent` attribute is not available since we are manually instantiating the serializers
@@ -846,17 +815,11 @@ class OccurrenceListSerializer(DefaultSerializer):
         else:
             prediction = OccurrenceClassificationSerializer(obj.best_prediction, context=context).data
 
-        if current_user:
-            current_user_agrees = user_agrees_with_identification(current_user, obj, obj.determination)
-        else:
-            current_user_agrees = None
-
         return dict(
             taxon=taxon,
             identification=identification,
             prediction=prediction,
             score=obj.determination_score(),
-            current_user_agrees=current_user_agrees,
         )
 
 
