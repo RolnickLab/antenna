@@ -8,6 +8,7 @@ import { useParams } from 'react-router'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
+import { StatusLabel } from '../status-label/status-label'
 import { TaxonSearch } from '../taxon-search/taxon-search'
 import styles from './suggest-id.module.scss'
 
@@ -56,7 +57,7 @@ const SuggestIdForm = ({
         </div>
       ) : null}
       <div className={styles.content}>
-        <span className={styles.new}>New ID</span>
+        <StatusLabel label="New ID" />
         <InputContent label="Taxon">
           <div className={styles.taxonActions}>
             <TaxonSearch taxon={taxon} onTaxonChange={setTaxon} />

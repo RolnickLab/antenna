@@ -1,6 +1,8 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { Button } from 'design-system/components/button/button'
+import { ButtonTheme } from 'design-system/components/button/button'
+import { IconButton } from 'design-system/components/icon-button/icon-button'
+import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -9,11 +11,14 @@ import {
   ImageCellTheme,
   TableColumn,
 } from 'design-system/components/table/types'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 import styles from './occurrences.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
@@ -110,31 +115,57 @@ const TaxonCell = ({
     }),
     keepSearchParams: true,
   })
+  const canUpdate = item.userPermissions.includes(UserPermission.Update)
+  const showQuickActions = !item.determinationVerified && canUpdate
 
   return (
     <div className={styles.taxonCell}>
       <BasicTableCell>
-        <div className={styles.taxon}>
+        <div className={styles.taxonCellContent}>
+          <Tooltip
+            content={
+              item.determinationVerified
+                ? `Verified by\n${item.determinationVerifiedBy}`
+                : `Machine prediction\nscore ${item.determinationScore}`
+            }
+          >
+            <IdentificationStatus
+              isVerified={item.determinationVerified}
+              score={item.determinationScore}
+              onStatusClick={() =>
+                navigate(detailsRoute, {
+                  state: {
+                    defaultTab: TABS.IDENTIFICATION,
+                  },
+                })
+              }
+            />
+          </Tooltip>
           <Link to={detailsRoute}>
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
-        </div>
-        <div className={styles.taxonActions}>
-          <IdentificationStatus
-            isVerified={item.determinationVerified}
-            score={item.determinationScore}
-          />
-          <Button
-            label="Suggest ID"
-            onClick={() =>
-              navigate(detailsRoute, {
-                state: {
-                  defaultTab: TABS.IDENTIFICATION,
-                  suggestIdOpen: true,
-                },
-              })
-            }
-          />
+          {showQuickActions && (
+            <div className={styles.taxonActions}>
+              <Agree
+                buttonTheme={ButtonTheme.Success}
+                occurrenceId={item.id}
+                taxonId={item.determinationTaxon.id}
+              />
+              <Tooltip content="Suggest ID">
+                <IconButton
+                  icon={IconType.ShieldAlert}
+                  onClick={() =>
+                    navigate(detailsRoute, {
+                      state: {
+                        defaultTab: TABS.IDENTIFICATION,
+                        suggestIdOpen: true,
+                      },
+                    })
+                  }
+                />
+              </Tooltip>
+            </div>
+          )}
         </div>
       </BasicTableCell>
     </div>

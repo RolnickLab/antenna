@@ -6,17 +6,24 @@ import {
   TaxonInfo,
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
+import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
-import { IdentificationSummary } from 'design-system/components/identification/identification-summary/identification-summary'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useMemo, useState } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
+import { useUser } from 'utils/user/userContext'
+import { Agree } from './agree/agree'
+import { userAgreed } from './agree/userAgreed'
+import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
 import { SuggestId } from './suggest-id/suggest-id'
 
@@ -30,14 +37,21 @@ export const OccurrenceDetails = ({
 }: {
   occurrence: Occurrence
 }) => {
+  const {
+    user: { loggedIn },
+  } = useUser()
+  const { userInfo } = useUserInfo()
   const { state } = useLocation()
   const { projectId } = useParams()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [selectedTab, setSelectedTab] = useState<string | undefined>(
     state?.defaultTab ?? TABS.FIELDS
   )
   const [suggestIdOpen, setSuggestIdOpen] = useState<boolean>(
     state?.suggestIdOpen ?? false
   )
+  const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
 
   const blueprintItems = useMemo(
     () =>
@@ -99,36 +113,66 @@ export const OccurrenceDetails = ({
     },
   ]
 
-  const getTaxonLink = (id: string) =>
-    getAppRoute({
-      to: APP_ROUTES.SPECIES_DETAILS({
-        projectId: projectId as string,
-        speciesId: id,
-      }),
-    })
-
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
         <TaxonInfo
           taxon={occurrence.determinationTaxon}
           size={TaxonInfoSize.Large}
-          getLink={getTaxonLink}
+          getLink={(id: string) =>
+            getAppRoute({
+              to: APP_ROUTES.SPECIES_DETAILS({
+                projectId: projectId as string,
+                speciesId: id,
+              }),
+            })
+          }
         />
         <div className={styles.taxonActions}>
-          <IdentificationStatus
-            isVerified={occurrence.determinationVerified}
-            score={occurrence.determinationScore}
-          />
-          <Button
-            label="Suggest ID"
-            theme={ButtonTheme.Default}
-            disabled={selectedTab === TABS.IDENTIFICATION && suggestIdOpen}
-            onClick={() => {
-              setSelectedTab(TABS.IDENTIFICATION)
-              setSuggestIdOpen(true)
-            }}
-          />
+          <Tooltip
+            content={
+              occurrence.determinationVerified
+                ? `Verified by\n${occurrence.determinationVerifiedBy}`
+                : `Machine prediction\nscore ${occurrence.determinationScore}`
+            }
+          >
+            <IdentificationStatus
+              isVerified={occurrence.determinationVerified}
+              score={occurrence.determinationScore}
+            />
+          </Tooltip>
+          {canUpdate && (
+            <>
+              <Agree
+                agreed={userAgreed({
+                  identifications: occurrence.humanIdentifications,
+                  taxonId: occurrence.determinationTaxon.id,
+                  userId: userInfo?.id,
+                })}
+                buttonTheme={ButtonTheme.Success}
+                occurrenceId={occurrence.id}
+                taxonId={occurrence.determinationTaxon.id}
+              />
+              <Button
+                label="Suggest ID"
+                icon={IconType.ShieldAlert}
+                onClick={() => {
+                  setSelectedTab(TABS.IDENTIFICATION)
+                  setSuggestIdOpen(true)
+                }}
+              />
+            </>
+          )}
+          {!canUpdate && !loggedIn && (
+            <Button
+              label="Login to suggest ID"
+              onClick={() =>
+                navigate(APP_ROUTES.LOGIN, {
+                  state: { to: location.pathname },
+                })
+              }
+            />
+          )}
         </div>
       </div>
       <div className={styles.content}>
@@ -158,28 +202,22 @@ export const OccurrenceDetails = ({
                     />
 
                     {occurrence.humanIdentifications.map((i) => (
-                      <div key={i.id} className={styles.identification}>
-                        <IdentificationSummary user={i.user}>
-                          <TaxonInfo
-                            overridden={i.overridden}
-                            taxon={i.taxon}
-                            getLink={getTaxonLink}
-                          />
-                        </IdentificationSummary>
-                      </div>
+                      <IdentificationCard
+                        key={i.id}
+                        identification={i}
+                        occurrence={occurrence}
+                        user={i.user}
+                        currentUser={userInfo}
+                      />
                     ))}
 
                     {occurrence.machinePredictions.map((p) => (
-                      <div key={p.id} className={styles.identification}>
-                        <IdentificationSummary>
-                          <TaxonInfo
-                            overridden={p.overridden}
-                            taxon={p.taxon}
-                            getLink={getTaxonLink}
-                          />
-                        </IdentificationSummary>
-                        <IdentificationStatus score={p.score} />
-                      </div>
+                      <IdentificationCard
+                        key={p.id}
+                        identification={p}
+                        occurrence={occurrence}
+                        currentUser={userInfo}
+                      />
                     ))}
                   </div>
                 </Tabs.Content>

@@ -17,8 +17,9 @@ from django.db.models import Q
 import ami.tasks
 import ami.utils
 from ami.main import charts
+from ami.users.models import User
 
-#: That's how constants should be defined.
+# Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
@@ -942,6 +943,31 @@ def sample_captures_by_interval(
 #     pass
 
 
+@functools.cache
+def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxon: "Taxon") -> bool | None:
+    """
+    Determine if a user has made an identification of an occurrence that agrees with the given taxon.
+
+    If a user has identified the same occurrence with the same taxon, then they "agree".
+
+    @TODO if we want to reduce this to one query per request, we can accept just User & Occurrence
+    then return the list of Taxon IDs that the user has added to that occurrence.
+    then the view functions can check if the given taxon is in that list.
+    """
+
+    print(f"Checking if {user} agrees with {taxon} for {occurrence}")
+
+    if not user or not user.pk or not taxon or not occurrence:
+        return None
+
+    return Identification.objects.filter(
+        occurrence=occurrence,
+        user=user,
+        taxon=taxon,
+        withdrawn=False,
+    ).exists()
+
+
 @final
 class Identification(BaseModel):
     """A classification of an occurrence by a human."""
@@ -964,6 +990,20 @@ class Identification(BaseModel):
         related_name="identifications",
     )
     withdrawn = models.BooleanField(default=False)
+    agreed_with_identification = models.ForeignKey(
+        "Identification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agreed_identifications",
+    )
+    agreed_with_prediction = models.ForeignKey(
+        "Classification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agreed_identifications",
+    )
 
     class Meta:
         ordering = [
@@ -975,6 +1015,8 @@ class Identification(BaseModel):
         If this is a new identification:
         - Set previous identifications by this user to withdrawn
         - Set the determination of the occurrence to the taxon of this identification if it is primary
+
+        # @TODO Add tests
         """
 
         if not self.pk and not self.withdrawn and self.user:
@@ -990,6 +1032,39 @@ class Identification(BaseModel):
         super().save(*args, **kwargs)
 
         update_occurrence_determination(self.occurrence)
+
+    def delete(self, *args, **kwargs):
+        """
+        If this is the current identification for the occurrence, set the determination to the next best ID.
+        and un-withdraw the previous ID by the same user.
+
+        @TODO Add tests
+        """
+        current_best: Identification | None = self.occurrence.best_identification
+        if current_best and current_best == self:
+            # Invalidate the cached property so it will be re-calculated
+            del self.occurrence.best_identification
+            if self.user:
+                previous_id = (
+                    Identification.objects.filter(
+                        occurrence=self.occurrence,
+                        user=self.user,
+                        withdrawn=True,
+                    )
+                    .exclude(pk=self.pk)
+                    # The "next best" ID by the same user is just the most recent one.
+                    # but this could be more complex in the future.
+                    .order_by("-created_at")
+                    .first()
+                )
+                if previous_id:
+                    previous_id.withdrawn = False
+                    previous_id.save()
+
+        super().delete(*args, **kwargs)
+
+        # Allow the update_occurrence_determination to determine the next best ID
+        update_occurrence_determination(self.occurrence, current_determination=self.taxon)
 
 
 @final
@@ -1165,6 +1240,8 @@ class OccurrenceManager(models.Manager):
 class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
 
+    # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
+    # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
     determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -1264,7 +1341,7 @@ class Occurrence(BaseModel):
         return f"https://app.preview.insectai.org/occurrences/{self.pk}"
 
 
-def update_occurrence_determination(occurrence, current_determination: typing.Optional["Taxon"] = None):
+def update_occurrence_determination(occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None):
     """
     Update the determination of the occurrence based on the identifications & predictions.
 
@@ -1275,6 +1352,8 @@ def update_occurrence_determination(occurrence, current_determination: typing.Op
     The `occurrence` object may already have a different un-saved determination set
     so it is neccessary to retrieve the current determination from the database, but
     this can also be passed in as an argument to avoid an extra database query.
+
+    @TODO Add tests for this important method!
     """
     current_determination = (
         current_determination
@@ -1288,7 +1367,7 @@ def update_occurrence_determination(occurrence, current_determination: typing.Op
     if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
         new_determination = top_identification.taxon
     elif not top_identification:
-        top_prediction = occurrence.best_prediciton
+        top_prediction = occurrence.best_prediction
         if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
             new_determination = top_prediction.taxon
 

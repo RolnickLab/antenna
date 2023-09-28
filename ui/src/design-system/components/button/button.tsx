@@ -8,6 +8,7 @@ export enum ButtonTheme {
   Success = 'success',
   Plain = 'plain',
   Neutral = 'neutral',
+  Destructive = 'neutral',
 }
 
 interface ButtonProps {
@@ -45,14 +46,20 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           [styles.success]: theme === ButtonTheme.Success,
           [styles.plain]: theme === ButtonTheme.Plain,
           [styles.neutral]: theme === ButtonTheme.Neutral,
-          [styles.disabled]: disabled ?? loading,
+          [styles.destructive]: theme === ButtonTheme.Destructive,
+          [styles.disabled]: disabled,
         })}
-        disabled={disabled ?? loading}
+        disabled={disabled}
         type={type}
-        onClick={onClick}
+        onClick={() => {
+          if (loading) {
+            return
+          }
+          onClick?.()
+        }}
         {...rest}
       >
-        {icon && <Icon type={icon} theme={iconTheme} size={16} />}
+        {icon && <Icon type={icon} theme={iconTheme} size={14} />}
         <span>{!loading ? label : `${label}...`}</span>
       </button>
     )

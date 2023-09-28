@@ -1,40 +1,67 @@
+import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import _ from 'lodash'
+import { forwardRef } from 'react'
 import { RADIUS, STROKE_WIDTH, THEMES } from './constants'
 import styles from './identification-status.module.scss'
 
 interface IdentificationStatusProps {
+  /** Integer in range [0, 1] */
+  alertThreshold?: number
+
   isVerified?: boolean
 
   /** Integer in range [0, 1] */
   score: number
 
   /** Integer in range [0, 1] */
-  scoreThreshold?: number
+  warningThreshold?: number
+
+  onStatusClick?: () => void
 }
 
-export const IdentificationStatus = ({
-  isVerified,
-  score,
-  scoreThreshold = 0.6,
-}: IdentificationStatusProps) => {
-  const normalizedRadius = RADIUS - STROKE_WIDTH / 2
-  const circumference = normalizedRadius * 2 * Math.PI
-  const strokeDashoffset = circumference - score * circumference
-  const theme = score >= scoreThreshold ? THEMES.success : THEMES.alert
-  const tooltipContent = isVerified
-    ? 'Verified'
-    : `Machine prediction\nscore ${_.round(score, 4)}`
+export const IdentificationStatus = forwardRef<
+  HTMLDivElement,
+  IdentificationStatusProps
+>(
+  (
+    {
+      alertThreshold = 0.6,
+      isVerified,
+      score,
+      warningThreshold = 0.8,
+      onStatusClick,
+      ...rest
+    },
+    forwardedRef
+  ) => {
+    const normalizedRadius = RADIUS - STROKE_WIDTH / 2
+    const circumference = normalizedRadius * 2 * Math.PI
+    const strokeDashoffset = circumference - score * circumference
 
-  return (
-    <Tooltip content={tooltipContent}>
-      <div className={styles.wrapper}>
+    const theme = (() => {
+      if (score >= warningThreshold) {
+        return THEMES.success
+      }
+      if (score >= alertThreshold) {
+        return THEMES.warning
+      }
+      return THEMES.alert
+    })()
+
+    return (
+      <div
+        {...rest}
+        ref={forwardedRef}
+        className={classNames(styles.wrapper, {
+          [styles.clickable]: !!onStatusClick,
+        })}
+        onClick={onStatusClick}
+      >
         <div className={styles.iconWrapper}>
           <Icon
-            type={isVerified ? IconType.Identifiers : IconType.BatchId}
+            type={isVerified ? IconType.ShieldCheck : IconType.BatchId}
             theme={IconTheme.Primary}
-            size={16}
+            size={14}
           />
         </div>
         <svg height={RADIUS * 2} width={RADIUS * 2} transform="rotate(-90)">
@@ -59,6 +86,6 @@ export const IdentificationStatus = ({
           />
         </svg>
       </div>
-    </Tooltip>
-  )
-}
+    )
+  }
+)

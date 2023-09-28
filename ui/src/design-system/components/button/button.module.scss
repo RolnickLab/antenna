@@ -37,6 +37,12 @@
     border-color: $color-neutral-600;
   }
 
+  &.destructive {
+    background-color: $color-destructive-500;
+    color: $color-generic-white;
+    border-color: $color-destructive-500;
+  }
+
   &:not(.disabled) {
     &:hover {
       cursor: pointer;

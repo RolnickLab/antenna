@@ -1,24 +1,28 @@
 import _ from 'lodash'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { UserPermission } from 'utils/user/types'
 import { Occurrence, ServerOccurrence } from './occurrence'
 import { Taxon } from './taxa'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
-interface Identification {
+export interface Identification {
+  applied?: boolean
   id: string
   overridden?: boolean
   taxon: Taxon
+  userPermissions: UserPermission[]
 }
 
-interface HumanIdentification extends Identification {
+export interface HumanIdentification extends Identification {
   user: {
+    id: string
     name: string
     image?: string
   }
 }
 
-interface MachinePrediction extends Identification {
+export interface MachinePrediction extends Identification {
   score: number
 }
 
@@ -42,11 +46,17 @@ export class OccurrenceDetails extends Occurrence {
     this._humanIdentifications = this._occurrence.identifications
       .sort(sortByDate)
       .map((i: any) => {
+        const taxon = new Taxon(i.taxon)
+        const overridden = i.withdrawn
+        const applied = taxon.id === this.determinationTaxon.id
+
         const identification: HumanIdentification = {
           id: `${i.id}`,
-          overridden: this._isIdentificationOverridden(i),
-          taxon: new Taxon(i.taxon),
-          user: { name: i.user.name, image: i.user.image },
+          applied,
+          overridden,
+          taxon,
+          user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
+          userPermissions: i.user_permissions,
         }
 
         return identification
@@ -54,13 +64,18 @@ export class OccurrenceDetails extends Occurrence {
 
     this._machinePredictions = this._occurrence.predictions
       .sort(sortByDate)
-      .map((i: any) => {
-        const taxon = new Taxon(i.taxon)
+      .map((p: any) => {
+        const taxon = new Taxon(p.taxon)
+        const overridden = taxon.id !== this.determinationTaxon.id
+        const applied = taxon.id === this.determinationTaxon.id
+
         const prediction: MachinePrediction = {
-          id: `${i.id}`,
-          overridden: taxon.id !== this.determinationId,
+          id: `${p.id}`,
+          applied,
+          overridden,
           taxon,
-          score: i.score,
+          score: p.score,
+          userPermissions: p.user_permissions,
         }
 
         return prediction
@@ -109,20 +124,5 @@ export class OccurrenceDetails extends Occurrence {
         date: new Date(detection.timestamp),
       }),
     }
-  }
-
-  private _isIdentificationOverridden(identification: any) {
-    if (identification.withdrawn) {
-      return true
-    }
-
-    return this._occurrence.identifications
-      .filter((i: any) => i.user.id === identification.user.id)
-      .some((i: any) => {
-        const date1 = new Date(i.created_at)
-        const date2 = new Date(identification.created_at)
-
-        return date2.getTime() - date1.getTime() < 0
-      })
   }
 }

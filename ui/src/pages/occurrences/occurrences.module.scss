@@ -33,12 +33,16 @@
 }
 
 .taxonCell {
-  .taxon {
+  .taxonCellContent {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 16px;
+    row-gap: 8px;
     min-width: 240px;
-    margin-bottom: 8px;
   }
 
   .taxonActions {
+    grid-column: 2;
     display: flex;
     align-items: center;
     justify-content: flex-start;
