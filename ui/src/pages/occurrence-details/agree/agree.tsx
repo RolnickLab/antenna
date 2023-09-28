@@ -1,6 +1,7 @@
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { useEffect } from 'react'
 
 interface AgreeProps {
   agreed?: boolean
@@ -15,8 +16,12 @@ export const Agree = ({
   occurrenceId,
   taxonId,
 }: AgreeProps) => {
-  const { createIdentification, isLoading, isSuccess } =
+  const { createIdentification, isLoading, isSuccess, reset } =
     useCreateIdentification()
+
+  useEffect(() => {
+    reset()
+  }, [agreed])
 
   if (isSuccess || agreed) {
     return (
