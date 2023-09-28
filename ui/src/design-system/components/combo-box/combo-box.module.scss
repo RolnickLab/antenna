@@ -1,6 +1,8 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+$loading-wrapper-size: 38px;
+
 .content {
   border-radius: 4px;
   background-color: $color-generic-white;
@@ -28,6 +30,10 @@
   border: 1px solid $color-neutral-300;
   box-sizing: border-box;
   margin-bottom: 8px;
+
+  &.loading {
+    padding-right: $loading-wrapper-size;
+  }
 
   &::placeholder {
     color: $color-neutral-500;
@@ -76,6 +82,17 @@
 .wrapper {
   position: relative;
   width: 100%;
+
+  .loadingWrapper {
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    top: 0;
+    right: 0;
+    width: $loading-wrapper-size;
+    height: $loading-wrapper-size;
+  }
 
   .items {
     position: absolute;

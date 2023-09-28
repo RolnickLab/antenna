@@ -14,7 +14,7 @@ export const TaxonSearch = ({
 }) => {
   const [searchString, setSearchString] = useState('')
   const debouncedSearchString = useDebounce(searchString, 200)
-  const { data } = useTaxonSearch(debouncedSearchString)
+  const { data, isLoading } = useTaxonSearch(debouncedSearchString)
 
   const items = useMemo(() => {
     if (!data?.length) {
@@ -31,6 +31,7 @@ export const TaxonSearch = ({
     <ComboBoxFlat
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       items={items}
+      loading={isLoading}
       searchString={searchString}
       selectedItemId={taxon?.id}
       onItemSelect={(id) => {
