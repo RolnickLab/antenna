@@ -943,6 +943,27 @@ def sample_captures_by_interval(
 #     pass
 
 
+@functools.cache
+def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxon: "Taxon") -> bool | None:
+    """
+    Determine if a user has made an identification of an occurrence that agrees with the given taxon.
+
+    If a user has identified the same occurrence with the same taxon, then they "agree".
+    """
+
+    print(f"Checking if {user} agrees with {taxon} for {occurrence}")
+
+    if not user or not user.pk or not taxon or not occurrence:
+        return None
+
+    return Identification.objects.filter(
+        occurrence=occurrence,
+        user=user,
+        taxon=taxon,
+        withdrawn=False,
+    ).exists()
+
+
 @final
 class Identification(BaseModel):
     """A classification of an occurrence by a human."""
@@ -984,26 +1005,6 @@ class Identification(BaseModel):
         ordering = [
             "-created_at",
         ]
-
-    @functools.cache
-    def user_agrees(self, user: User) -> bool | None:
-        """
-        Return True if the user agrees with the current identification.
-
-        If a user has identified the same occurrence with the same taxon, then they "agree".
-
-        Return None if this identification is missing a user or a taxon.
-        """
-
-        if user and user.pk and self.taxon and self.user:
-            return Identification.objects.filter(
-                occurrence=self.occurrence,
-                user=user,
-                taxon=self.taxon,
-                withdrawn=False,
-            ).exists()
-        else:
-            return None
 
     def save(self, *args, **kwargs):
         """
