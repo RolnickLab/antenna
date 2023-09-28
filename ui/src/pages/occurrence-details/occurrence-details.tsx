@@ -14,7 +14,7 @@ import { IdentificationStatus } from 'design-system/components/identification/id
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -37,6 +37,7 @@ export const OccurrenceDetails = ({
 }: {
   occurrence: Occurrence
 }) => {
+  const suggestIdInputRef = useRef<HTMLInputElement>(null)
   const {
     user: { loggedIn },
   } = useUser()
@@ -159,6 +160,7 @@ export const OccurrenceDetails = ({
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
+                  suggestIdInputRef?.current?.focus()
                 }}
               />
             </>
@@ -196,6 +198,7 @@ export const OccurrenceDetails = ({
                 <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>
                     <SuggestId
+                      inputRef={suggestIdInputRef}
                       occurrenceId={occurrence.id}
                       open={suggestIdOpen}
                       onOpenChange={setSuggestIdOpen}
