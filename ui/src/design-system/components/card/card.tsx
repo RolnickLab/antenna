@@ -29,7 +29,7 @@ export const Card = ({
     <div className={styles.container} style={{ maxWidth }}>
       <div className={styles.square}>
         {image ? (
-          <img src={image.src} alt={image.alt} className={styles.image} />
+          <img src={image.src + '?width=300&height=300'} alt={image.alt} className={styles.image} />
         ) : (
           <div className={styles.image}>
             <Icon

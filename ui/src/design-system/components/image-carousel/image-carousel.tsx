@@ -68,7 +68,7 @@ const BasicImageCarousel = ({
       <div style={getPlaceholderStyles(size?.ratio)} />
       <div className={classNames(styles.slide, styles.visible)}>
         {image ? (
-          <img src={image.src} alt={image.alt} className={styles.image} />
+          <img src={image.src + '?width=300&height=300'} alt={image.alt} className={styles.image} />
         ) : (
           <Icon
             type={IconType.Photograph}
@@ -178,7 +178,7 @@ const MultiImageCarousel = ({
                   [styles.visible]: index === slideIndex,
                 })}
               >
-                <img src={image.src} alt={image.alt} className={styles.image} />
+                <img src={image.src + '?width=300&height=300'} alt={image.alt} className={styles.image} />
               </div>
             )
           })}

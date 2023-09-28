@@ -27,7 +27,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         onMouseOut={() => setShowOverlay(false)}
       >
         <Frame
-          src={activeCapture?.src}
+          src={activeCapture?.src + '?width=1024'}
           width={activeCapture?.width ?? session.firstCapture.width}
           height={activeCapture?.height ?? session.firstCapture.height}
           detections={activeCapture?.detections ?? []}
