@@ -949,6 +949,10 @@ def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxo
     Determine if a user has made an identification of an occurrence that agrees with the given taxon.
 
     If a user has identified the same occurrence with the same taxon, then they "agree".
+
+    @TODO if we want to reduce this to one query per request, we can accept just User & Occurrence
+    then return the list of Taxon IDs that the user has added to that occurrence.
+    then the view functions can check if the given taxon is in that list.
     """
 
     print(f"Checking if {user} agrees with {taxon} for {occurrence}")
