@@ -1,4 +1,4 @@
-import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
+import { TaxonRanks } from 'components/taxon/taxon-ranks/taxon-ranks'
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
 import { Taxon } from 'data-services/models/taxa'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
@@ -58,24 +58,22 @@ const SuggestIdForm = ({
       <div className={styles.content}>
         <span className={styles.new}>New ID</span>
         <InputContent label="Taxon">
-          {taxon && (
-            <div className={styles.taxon}>
-              <TaxonInfo
-                taxon={taxon}
-                getLink={(id: string) =>
-                  getAppRoute({
-                    to: APP_ROUTES.SPECIES_DETAILS({
-                      projectId: projectId as string,
-                      speciesId: id,
-                    }),
-                  })
-                }
-              />
-            </div>
-          )}
           <div className={styles.taxonActions}>
-            <TaxonSearch onChange={setTaxon} />
+            <TaxonSearch taxon={taxon} onTaxonChange={setTaxon} />
           </div>
+          {taxon && (
+            <TaxonRanks
+              ranks={taxon.ranks}
+              getLink={(id: string) =>
+                getAppRoute({
+                  to: APP_ROUTES.SPECIES_DETAILS({
+                    projectId: projectId as string,
+                    speciesId: id,
+                  }),
+                })
+              }
+            />
+          )}
         </InputContent>
         <Input label="Comment" name="comment" disabled />
         <div className={styles.formActions}>
