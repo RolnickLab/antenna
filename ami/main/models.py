@@ -17,8 +17,9 @@ from django.db.models import Q
 import ami.tasks
 import ami.utils
 from ami.main import charts
+from ami.users.models import User
 
-#: That's how constants should be defined.
+# Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
@@ -983,6 +984,26 @@ class Identification(BaseModel):
         ordering = [
             "-created_at",
         ]
+
+    @functools.cache
+    def user_agrees(self, user: User) -> bool | None:
+        """
+        Return True if the user agrees with the current identification.
+
+        If a user has identified the same occurrence with the same taxon, then they "agree".
+
+        Return None if this identification is missing a user or a taxon.
+        """
+
+        if user and user.pk and self.taxon and self.user:
+            return Identification.objects.filter(
+                occurrence=self.occurrence,
+                user=user,
+                taxon=self.taxon,
+                withdrawn=False,
+            ).exists()
+        else:
+            return None
 
     def save(self, *args, **kwargs):
         """

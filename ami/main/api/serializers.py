@@ -2,6 +2,7 @@ import datetime
 import typing
 import urllib.parse
 
+from django.contrib.auth.models import AnonymousUser
 from django.db.models import Count
 from rest_framework import serializers
 from rest_framework.reverse import reverse
@@ -743,6 +744,7 @@ class SourceImageSerializer(DefaultSerializer):
 class OccurrenceIdentificationSerializer(DefaultSerializer):
     user = UserNestedSerializer(read_only=True)
     taxon = TaxonNestedSerializer(read_only=True)
+    current_user_agrees = serializers.SerializerMethodField()
 
     class Meta:
         model = Identification
@@ -752,8 +754,18 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
             "taxon",
             "user",
             "withdrawn",
+            "current_user_agrees",
             "created_at",
         ]
+
+    def get_current_user_agrees(self, obj: Identification) -> bool | None:
+        context = self.context
+        current_user: User | AnonymousUser | None = context["request"].user if context.get("request") else None
+
+        if current_user and not isinstance(current_user, AnonymousUser):
+            return obj.user_agrees(current_user)
+        else:
+            return None
 
 
 class OccurrenceListSerializer(DefaultSerializer):
@@ -783,17 +795,21 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_details",
         ]
 
-    def get_determination_details(self, obj):
+    def get_determination_details(self, obj: Occurrence):
         # @TODO add an equivalent method to the Occurrence model
 
         context = self.context
+        current_user: User | AnonymousUser | None = context["request"].user if context.get("request") else None
+        current_user_agrees = None
 
         taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
-        identification = (
-            OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
-            if obj.best_identification
-            else None
-        )
+        if obj.best_identification:
+            identification = OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+            if current_user and not isinstance(current_user, AnonymousUser):
+                current_user_agrees = obj.best_identification.user_agrees(current_user)
+        else:
+            identification = None
+
         if identification or not obj.best_prediction:
             prediction = None
         else:
@@ -804,6 +820,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             identification=identification,
             prediction=prediction,
             score=obj.determination_score(),
+            current_user_agrees=current_user_agrees,
         )
 
 
