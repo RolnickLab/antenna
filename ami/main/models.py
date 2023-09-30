@@ -2,6 +2,7 @@ import collections
 import datetime
 import functools
 import logging
+import os
 import textwrap
 import typing
 import urllib.parse
@@ -234,6 +235,10 @@ def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
         )
 
 
+def source_image_inventories_directory(instance, filename):
+    return os.path.join("source_image_inventories", str(instance.pk), filename)
+
+
 @final
 class Deployment(BaseModel):
     """
@@ -243,7 +248,9 @@ class Deployment(BaseModel):
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
 
-    # @TODO consider sharing only the "data source auth/config" then a one-to-one config for each deployment
+    # @TODO consider making the "data source auth config" its own model,
+    # and a 2nd model, or a through model with additional fields specific to the deployment
+    # which would be a one-to-one relationship which each deployment
     data_source = models.ForeignKey(
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
@@ -257,6 +264,12 @@ class Deployment(BaseModel):
     # data_source_last_check_duration = models.DurationField(blank=True, null=True)
     # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
+    data_inventory = models.FileField(
+        upload_to=source_image_inventories_directory,
+        blank=True,
+        null=True,
+        unique=True,
+    )
 
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
