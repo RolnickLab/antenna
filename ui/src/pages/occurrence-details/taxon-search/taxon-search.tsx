@@ -18,14 +18,16 @@ export const TaxonSearch = ({
   const debouncedSearchString = useDebounce(searchString, 200)
   const { data, isLoading } = useTaxonSearch(debouncedSearchString)
 
-  const items = useMemo(() => {
+  const nodes = useMemo(() => {
     if (!data?.length) {
       return []
     }
-    return data.map((result) => ({
-      id: result.id,
-      label: result.name,
-      details: result.rank,
+
+    return data.map((taxon) => ({
+      id: taxon.id,
+      label: taxon.name,
+      details: taxon.rank,
+      parentId: taxon.parentId,
     }))
   }, [data])
 
@@ -33,10 +35,10 @@ export const TaxonSearch = ({
     <ComboBoxFlat
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       inputRef={inputRef}
-      items={items}
       loading={isLoading}
+      nodes={nodes}
       searchString={searchString}
-      selectedItemId={taxon?.id}
+      selectedNodeId={taxon?.id}
       onItemSelect={(id) => {
         const taxon = data?.find((i) => i.id === id)
         if (taxon) {

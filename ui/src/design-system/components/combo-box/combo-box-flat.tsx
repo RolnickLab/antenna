@@ -1,35 +1,35 @@
 import classNames from 'classnames'
 import { Command } from 'cmdk'
-import { RefObject, useState } from 'react'
+import { RefObject, useMemo, useState } from 'react'
+import { Icon, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './combo-box.module.scss'
+import { Node, TreeItem } from './types'
+import { buildTree } from './utils'
 
 export const ComboBoxFlat = ({
   emptyLabel,
   inputRef,
-  items = [],
   loading,
+  nodes = [],
   searchString,
-  selectedItemId,
+  selectedNodeId,
   onItemSelect,
   setSearchString,
 }: {
   emptyLabel: string
   inputRef: RefObject<HTMLInputElement>
-  items?: {
-    id: string | number
-    label: string
-    details?: string
-  }[]
   loading?: boolean
+  nodes?: Node[]
   searchString: string
-  selectedItemId?: string
+  selectedNodeId?: string
   onItemSelect: (id: string | number) => void
   setSearchString: (value: string) => void
 }) => {
   const [open, setOpen] = useState(false)
-  const selectedLabel = items?.find((i) => i.id === selectedItemId)?.label ?? ''
+  const selectedLabel = nodes?.find((n) => n.id === selectedNodeId)?.label ?? ''
   const showLodingSpinner = loading && open
+  const tree = useMemo(() => buildTree(nodes), [nodes])
 
   return (
     <Command shouldFilter={false} className={styles.wrapper}>
@@ -52,22 +52,17 @@ export const ComboBoxFlat = ({
       <Command.List
         className={classNames(styles.items, { [styles.open]: open })}
       >
-        {items.length ? (
-          items.map((item) => (
-            <Command.Item
-              key={item.id}
-              className={styles.item}
-              onSelect={() => {
-                onItemSelect(item.id)
-                setSearchString(item.label)
+        {tree.length ? (
+          tree.map((treeItem) => (
+            <ComboBoxFlatItem
+              key={treeItem.id}
+              treeItem={treeItem}
+              onSelect={(treeItem) => {
+                onItemSelect(treeItem.id)
+                setSearchString(treeItem.label)
                 inputRef?.current?.blur()
               }}
-            >
-              <span>{item.label}</span>
-              {item.details ? (
-                <span className={styles.details}>{item.details}</span>
-              ) : null}
-            </Command.Item>
+            />
           ))
         ) : searchString.length ? (
           <div className={classNames(styles.item, styles.empty)}>
@@ -78,3 +73,38 @@ export const ComboBoxFlat = ({
     </Command>
   )
 }
+
+const ComboBoxFlatItem = ({
+  level = 0,
+  treeItem,
+  onSelect,
+}: {
+  level?: number
+  treeItem: TreeItem
+  onSelect: (treeItem: TreeItem) => void
+}) => (
+  <>
+    <Command.Item
+      className={styles.item}
+      style={{ paddingLeft: `${level * 12}px` }}
+      onSelect={() => onSelect(treeItem)}
+    >
+      <div className={styles.accessory}>
+        {treeItem.children.length ? <Icon type={IconType.ToggleRight} /> : null}
+      </div>
+      <span>{treeItem.label}</span>
+      <div className={styles.spacer} />
+      {treeItem.details ? (
+        <span className={styles.details}>{treeItem.details}</span>
+      ) : null}
+    </Command.Item>
+    {treeItem.children.map((child) => (
+      <ComboBoxFlatItem
+        key={child.id}
+        level={level + 1}
+        treeItem={child}
+        onSelect={onSelect}
+      />
+    ))}
+  </>
+)
