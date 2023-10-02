@@ -1,5 +1,5 @@
 import { Taxon } from 'data-services/models/taxa'
-import { ComboBoxFlat } from 'design-system/components/combo-box/combo-box-flat'
+import { ComboBoxTree } from 'design-system/components/combo-box/combo-box-tree/combo-box-tree'
 import { RefObject, useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useDebounce } from 'utils/useDebounce'
@@ -32,7 +32,7 @@ export const TaxonSearch = ({
   }, [data])
 
   return (
-    <ComboBoxFlat
+    <ComboBoxTree
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       inputRef={inputRef}
       loading={isLoading}

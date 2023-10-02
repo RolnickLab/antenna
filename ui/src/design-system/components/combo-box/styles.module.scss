@@ -3,19 +3,21 @@
 
 $loading-wrapper-size: 38px;
 
+.wrapper {
+  position: relative;
+  min-width: 100%;
+}
+
 .content {
   border-radius: 4px;
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  z-index: 2;
   box-sizing: border-box;
   padding: 8px;
   max-width: 480px;
-}
-
-.arrow {
-  fill: $color-generic-white;
+  max-height: 320px;
+  overflow: auto;
+  z-index: 2;
 }
 
 .input {
@@ -46,21 +48,35 @@ $loading-wrapper-size: 38px;
   }
 }
 
+.loadingWrapper {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  top: 0;
+  right: 0;
+  width: $loading-wrapper-size;
+  height: $loading-wrapper-size;
+}
+
 .item {
   all: unset;
   display: flex;
-  padding: 8px 12px;
-  border-radius: 4px;
   align-items: center;
   justify-content: flex-start;
+  padding: 8px 12px;
+  border-radius: 4px;
   @include paragraph-small();
-  white-space: nowrap;
   color: $color-neutral-800;
+  box-sizing: border-box;
 
   &:not(.empty) {
     &:hover {
       cursor: pointer;
-      opacity: 0.7;
+
+      &:not(.selected) {
+        opacity: 0.7;
+      }
     }
 
     &:focus-visible {
@@ -70,6 +86,14 @@ $loading-wrapper-size: 38px;
     &[aria-selected='true'] {
       background-color: $color-primary-2-50;
     }
+
+    &.selected {
+      background-color: #e4effe;
+    }
+  }
+
+  .spacer {
+    flex: 1;
   }
 
   .accessory {
@@ -78,55 +102,39 @@ $loading-wrapper-size: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transform: rotate(90deg);
     flex-shrink: 0;
-  }
-
-  .spacer {
-    flex: 1;
-  }
-
-  .details {
-    @include paragraph-xx-small();
-    color: $color-neutral-500;
-    padding-left: 16px;
-    justify-self: flex-end;
   }
 }
 
-/* For flat version */
-.wrapper {
-  position: relative;
-  min-width: 100%;
+/* For simple version */
+.arrow {
+  fill: $color-generic-white;
+}
 
-  .loadingWrapper {
-    position: absolute;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    top: 0;
-    right: 0;
-    width: $loading-wrapper-size;
-    height: $loading-wrapper-size;
+/* For tree version */
+.treeItems {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding: 0;
+  transform: translateY(100%);
+  width: 100%;
+  max-width: auto;
+
+  > div {
+    display: grid;
   }
 
-  .items {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    transform: translateY(100%);
-    border-radius: 4px;
-    background-color: $color-generic-white;
-    box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
-    outline: none;
-    z-index: 3;
-
-    &:not(.open) {
-      display: none;
-    }
+  &:not(.open) {
+    display: none;
   }
 
   .item {
-    padding: 4px 12px;
+    border-radius: 0;
+    white-space: nowrap;
+
+    &:not(.empty) {
+      padding: 4px 0;
+    }
   }
 }
