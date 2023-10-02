@@ -5,7 +5,6 @@ import { LoadingSpinner } from '../../loading-spinner/loading-spinner'
 import styles from '../styles.module.scss'
 import { buildTree } from './buildTree'
 import { ComboBoxTreeItem } from './combo-box-tree-item'
-import { sortTree } from './sortTree'
 import { Node } from './types'
 
 export const ComboBoxTree = ({
@@ -29,11 +28,7 @@ export const ComboBoxTree = ({
 }) => {
   const [open, setOpen] = useState(false)
   const selectedLabel = nodes?.find((n) => n.id === selectedNodeId)?.label ?? ''
-  const tree = useMemo(() => {
-    const tree = buildTree(nodes)
-    const sortedTree = sortTree(tree)
-    return sortedTree
-  }, [nodes])
+  const tree = useMemo(() => buildTree(nodes), [nodes])
 
   return (
     <Command shouldFilter={false} className={styles.wrapper}>
