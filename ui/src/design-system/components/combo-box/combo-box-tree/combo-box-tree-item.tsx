@@ -26,7 +26,7 @@ export const ComboBoxTreeItem = ({
       >
         <div className={styles.accessory}>
           {treeItem.children.length ? (
-            <Icon type={IconType.ToggleRight} />
+            <Icon type={IconType.ToggleDown} />
           ) : null}
         </div>
         <span>{treeItem.label}</span>
