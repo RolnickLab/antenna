@@ -5,6 +5,8 @@ import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 const convertToServerFieldValues = (fieldValues: any) => ({
+  agreed_with_identification_id: fieldValues.agreeWith?.identificationId,
+  agreed_with_prediction_id: fieldValues.agreeWith?.predictionId,
   occurrence_id: fieldValues.occurrenceId,
   taxon_id: fieldValues.taxonId,
 })
