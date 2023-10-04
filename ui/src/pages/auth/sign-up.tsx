@@ -4,11 +4,11 @@ import { FormConfig } from 'components/form/types'
 import { useSignUp } from 'data-services/hooks/auth/useSignUp'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
-import { parseServerError } from 'utils/parseServerError/parseServerError'
+import { useFormError } from 'utils/useFormError'
 import styles from './auth.module.scss'
 
 interface SignUpFormValues {
@@ -35,14 +35,17 @@ const config: FormConfig = {
 }
 
 export const SignUp = () => {
-  const [serverError, setServerError] = useState<string | undefined>()
-  const [signedUpEmail, setSignedUpEmail] = useState<string | undefined>()
-
   const navigate = useNavigate()
-  const { control, getValues, handleSubmit, resetField, setError } =
-    useForm<SignUpFormValues>({
-      defaultValues: { email: '', password: '' },
-    })
+  const [signedUpEmail, setSignedUpEmail] = useState<string | undefined>()
+  const {
+    control,
+    getValues,
+    handleSubmit,
+    resetField,
+    setError: setFieldError,
+  } = useForm<SignUpFormValues>({
+    defaultValues: { email: '', password: '' },
+  })
   const { signUp, isLoading, isSuccess, error } = useSignUp({
     onSuccess: () => {
       setSignedUpEmail(getValues('email'))
@@ -50,22 +53,7 @@ export const SignUp = () => {
       resetField('password')
     },
   })
-
-  useEffect(() => {
-    if (error) {
-      const { message, fieldErrors } = parseServerError(error)
-      setServerError(fieldErrors.length ? undefined : message)
-      fieldErrors.forEach((error) => {
-        setError(
-          error.key as any,
-          { message: error.message },
-          { shouldFocus: true }
-        )
-      })
-    } else {
-      setServerError(undefined)
-    }
-  }, [error])
+  const errorMessage = useFormError({ error, setFieldError })
 
   return (
     <>
@@ -89,9 +77,11 @@ export const SignUp = () => {
           theme={ButtonTheme.Success}
           loading={isLoading}
         />
-        {serverError ? (
-          <p className={classNames(styles.text, styles.error)}>{serverError}</p>
-        ) : null}
+        {errorMessage && (
+          <p className={classNames(styles.text, styles.error)}>
+            {errorMessage}
+          </p>
+        )}
         <p className={styles.text}>
           {isSuccess ? (
             <>

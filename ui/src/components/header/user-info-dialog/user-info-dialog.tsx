@@ -13,31 +13,29 @@ export const UserInfoDialog = () => {
   }
 
   return (
-    <>
-      <Dialog.Root>
-        <Dialog.Trigger>
-          <div
-            role="button"
-            tabIndex={0}
-            className={styles.userInfo}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                e.currentTarget.click()
-              }
-            }}
-          >
-            <UserInfoButtonContent userInfo={userInfo} />
-          </div>
-        </Dialog.Trigger>
-        <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-          <Dialog.Header title="Edit user info" />
-          <div className={styles.content}>
-            <UserInfoForm userInfo={userInfo} />
-          </div>
-        </Dialog.Content>
-      </Dialog.Root>
-    </>
+    <Dialog.Root>
+      <Dialog.Trigger>
+        <div
+          role="button"
+          tabIndex={0}
+          className={styles.userInfo}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.currentTarget.click()
+            }
+          }}
+        >
+          <UserInfoButtonContent userInfo={userInfo} />
+        </div>
+      </Dialog.Trigger>
+      <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
+        <Dialog.Header title="Edit user info" />
+        <div className={styles.content}>
+          <UserInfoForm userInfo={userInfo} />
+        </div>
+      </Dialog.Content>
+    </Dialog.Root>
   )
 }
 
@@ -53,7 +51,7 @@ const UserInfoButtonContent = ({ userInfo }: { userInfo: UserInfo }) => {
   })()
 
   if (userInfo.image) {
-    return <img alt={`Profile image for ${name}`} src={userInfo.image} />
+    return <img alt="Profile image" src={userInfo.image} />
   }
 
   return <span>{name.charAt(0)}</span>

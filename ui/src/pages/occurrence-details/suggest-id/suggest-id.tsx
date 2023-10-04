@@ -1,3 +1,4 @@
+import { FormError } from 'components/form/layout/layout'
 import { TaxonRanks } from 'components/taxon/taxon-ranks/taxon-ranks'
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
 import { Taxon } from 'data-services/models/taxa'
@@ -56,11 +57,9 @@ const SuggestIdForm = ({
 
   return (
     <div className={styles.wrapper}>
-      {formError ? (
-        <div className={styles.formError}>
-          <span>{formError}</span>
-        </div>
-      ) : null}
+      {formError && (
+        <FormError message={formError} style={{ padding: '8px 16px' }} />
+      )}
       <div className={styles.content}>
         <StatusLabel label="New ID" />
         <InputContent label="Taxon">

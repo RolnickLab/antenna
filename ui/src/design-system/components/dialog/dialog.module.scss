@@ -63,10 +63,11 @@ $dialog-padding-medium: 32px;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 24px 32px;
+  height: $dialog-header-height;
+  padding: 0 32px;
   box-sizing: border-box;
   background-color: $color-neutral-50;
-  border-bottom: 2px solid $color-neutral-100;
+  border-bottom: 1px solid $color-neutral-100;
   z-index: 1;
 }
 
@@ -127,6 +128,7 @@ $dialog-padding-medium: 32px;
   }
 
   .dialogHeader {
-    padding: 16px 32px 16px 16px;
+    height: $dialog-header-height-small;
+    padding: 0 16px;
   }
 }

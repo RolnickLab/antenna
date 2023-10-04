@@ -6,7 +6,7 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
-import { parseServerError } from 'utils/parseServerError/parseServerError'
+import { useFormError } from 'utils/useFormError'
 import styles from './auth.module.scss'
 
 interface LoginFormValues {
@@ -35,9 +35,14 @@ export const Login = () => {
   const { login, isLoading, error } = useLogin({
     onSuccess: () => navigate(state?.to ?? APP_ROUTES.HOME),
   })
-  const { control, handleSubmit } = useForm<LoginFormValues>({
+  const {
+    control,
+    handleSubmit,
+    setError: setFieldError,
+  } = useForm<LoginFormValues>({
     defaultValues: { email: state?.email ?? '', password: '' },
   })
+  const errorMessage = useFormError({ error, setFieldError })
 
   return (
     <>
@@ -59,11 +64,11 @@ export const Login = () => {
           theme={ButtonTheme.Success}
           loading={isLoading}
         />
-        {error ? (
+        {errorMessage && (
           <p className={classNames(styles.text, styles.error)}>
-            {parseServerError(error).message}
+            {errorMessage}
           </p>
-        ) : null}
+        )}
         <p className={styles.text}>
           No account yet? <Link to={APP_ROUTES.SIGN_UP}>Sign up</Link>
         </p>
