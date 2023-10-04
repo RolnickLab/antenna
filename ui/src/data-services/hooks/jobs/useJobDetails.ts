@@ -1,6 +1,10 @@
 import { API_ROUTES, API_URL } from 'data-services/constants'
+import { ServerJob } from 'data-services/models/job'
 import { JobDetails, ServerJobDetails } from 'data-services/models/job-details'
+import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
+
+const convertServerRecord = (record: ServerJob) => new JobDetails(record)
 
 export const useJobDetails = (
   id: string
@@ -16,8 +20,13 @@ export const useJobDetails = (
       url: `${API_URL}/${API_ROUTES.JOBS}/${id}/`,
     })
 
+  const job = useMemo(
+    () => (data ? convertServerRecord(data) : undefined),
+    [data]
+  )
+
   return {
-    job: data,
+    job,
     isLoading,
     isFetching,
     error,
