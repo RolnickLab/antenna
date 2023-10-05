@@ -1,0 +1,19 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: $color-primary-2-50;
+
+  img {
+    max-width: 100%;
+  }
+}
+
+.info {
+  @include paragraph-small();
+  color: $color-neutral-500;
+  margin: 96px 32px;
+}
