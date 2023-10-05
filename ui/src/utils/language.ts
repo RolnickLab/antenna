@@ -13,7 +13,9 @@ export enum STRING {
   /* DIALOG */
   DIALOG_DEPLOYMENT_DETAILS,
   DIALOG_EDIT_DEPLOYMENT,
+  DIALOG_EDIT_PROJECT,
   DIALOG_NEW_DEPLOYMENT,
+  DIALOG_NEW_PROJECT,
 
   /* FIELD_LABEL */
   FIELD_LABEL_AVG_TEMP,
@@ -96,7 +98,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* DIALOG */
   [STRING.DIALOG_DEPLOYMENT_DETAILS]: 'Deployment details',
   [STRING.DIALOG_EDIT_DEPLOYMENT]: 'Edit deployment',
+  [STRING.DIALOG_EDIT_PROJECT]: 'Edit project',
   [STRING.DIALOG_NEW_DEPLOYMENT]: 'Register new deployment',
+  [STRING.DIALOG_NEW_PROJECT]: 'Register new project',
 
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
