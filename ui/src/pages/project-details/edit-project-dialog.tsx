@@ -1,4 +1,5 @@
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
@@ -9,7 +10,7 @@ import styles from './styles.module.scss'
 
 export const EditProjectDialog = ({ id }: { id: string }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoaded, setIsLoaded] = useState(false)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -18,13 +19,13 @@ export const EditProjectDialog = ({ id }: { id: string }) => {
       </Dialog.Trigger>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={isLoading}
+        isLoading={!isLoaded}
       >
         <Dialog.Header title={translate(STRING.DIALOG_EDIT_PROJECT)} />
         <div className={styles.content}>
           <EditProjectDialogContent
             id={id}
-            onLoaded={() => setIsLoading(false)}
+            onLoaded={() => setIsLoaded(true)}
           />
         </div>
       </Dialog.Content>
@@ -40,6 +41,12 @@ const EditProjectDialogContent = ({
   onLoaded: () => void
 }) => {
   const { project, isLoading } = useProjectDetails(id)
+  const {
+    updateProject,
+    isLoading: isUpdateLoading,
+    isSuccess,
+    error,
+  } = useUpdateProject(id)
 
   useEffect(() => {
     if (!isLoading) {
@@ -52,11 +59,10 @@ const EditProjectDialogContent = ({
       {project && (
         <ProjectDetailsForm
           project={project}
-          error={undefined}
-          isLoading={false}
-          onSubmit={async (data) => {
-            /* TODO */
-          }}
+          error={error}
+          isLoading={isUpdateLoading}
+          isSuccess={isSuccess}
+          onSubmit={(data) => updateProject(data)}
         />
       )}
     </div>

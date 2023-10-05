@@ -1,3 +1,4 @@
+import { useCreateProject } from 'data-services/hooks/projects/useCreateProject'
 import { Project } from 'data-services/models/project'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -13,6 +14,7 @@ const newProject = new Project({
 
 export const NewProjectDialog = () => {
   const [isOpen, setIsOpen] = useState(false)
+  const { createProject, isLoading, error } = useCreateProject()
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -28,11 +30,9 @@ export const NewProjectDialog = () => {
         <div className={styles.content}>
           <ProjectDetailsForm
             project={newProject}
-            error={undefined}
-            isLoading={false}
-            onSubmit={async (data) => {
-              /* TODO */
-            }}
+            error={error}
+            isLoading={isLoading}
+            onSubmit={async (data) => createProject(data)}
           />
         </div>
       </Dialog.Content>

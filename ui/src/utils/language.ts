@@ -8,6 +8,7 @@ export enum STRING {
   REFRESH,
   RESET,
   SAVE,
+  SAVED,
   SEARCH_MAP,
 
   /* DIALOG */
@@ -93,6 +94,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REFRESH]: 'Refresh',
   [STRING.RESET]: 'Reset',
   [STRING.SAVE]: 'Save',
+  [STRING.SAVED]: 'Saved',
   [STRING.SEARCH_MAP]: 'Search on the map',
 
   /* DIALOG */

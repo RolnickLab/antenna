@@ -8,6 +8,7 @@ import {
 import { FormConfig } from 'components/form/types'
 import { Project } from 'data-services/models/project'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { IconType } from 'design-system/components/icon/icon'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -32,11 +33,13 @@ const config: FormConfig = {
 export const ProjectDetailsForm = ({
   error,
   isLoading,
+  isSuccess,
   project,
   onSubmit,
 }: {
   error?: unknown
   isLoading?: boolean
+  isSuccess?: boolean
   project: Project
   onSubmit: (data: ProjectFormValues) => void
 }) => {
@@ -46,8 +49,8 @@ export const ProjectDetailsForm = ({
     setError: setFieldError,
   } = useForm<ProjectFormValues>({
     defaultValues: {
-      name: project.name,
-      description: project.description,
+      name: project.name ?? '',
+      description: project.description ?? '',
     },
     mode: 'onChange',
   })
@@ -77,7 +80,8 @@ export const ProjectDetailsForm = ({
       </FormSection>
       <FormActions>
         <Button
-          label={translate(STRING.SAVE)}
+          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
+          icon={isSuccess ? IconType.RadixCheck : undefined}
           type="submit"
           theme={ButtonTheme.Success}
           loading={isLoading}
