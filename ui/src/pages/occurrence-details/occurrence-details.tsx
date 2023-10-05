@@ -150,6 +150,10 @@ export const OccurrenceDetails = ({
                   taxonId: occurrence.determinationTaxon.id,
                   userId: userInfo?.id,
                 })}
+                agreeWith={{
+                  identificationId: occurrence.determinationIdentificationId,
+                  predictionId: occurrence.determinationPredictionId,
+                }}
                 buttonTheme={ButtonTheme.Success}
                 occurrenceId={occurrence.id}
                 taxonId={occurrence.determinationTaxon.id}

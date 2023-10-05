@@ -37,7 +37,6 @@ export const IdentificationCard = ({
   const { projectId } = useParams()
   const [deleteIdOpen, setDeleteIdOpen] = useState(false)
   const byCurrentUser = currentUser && user?.id === currentUser.id
-
   const canAgree = occurrence.userPermissions.includes(UserPermission.Update)
   const canDelete = identification.userPermissions.includes(
     UserPermission.Update
@@ -80,6 +79,11 @@ export const IdentificationCard = ({
                 taxonId: identification.taxon.id,
                 userId: currentUser?.id,
               })}
+              agreeWith={
+                user
+                  ? { identificationId: identification.id }
+                  : { predictionId: identification.id }
+              }
               occurrenceId={occurrence.id}
               taxonId={identification.taxon.id}
             />

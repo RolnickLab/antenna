@@ -94,9 +94,12 @@ const SuggestIdForm = ({
             loading={isLoading}
             disabled={!taxon}
             onClick={() => {
+              if (!taxon) {
+                return
+              }
               createIdentification({
                 occurrenceId: occurrenceId,
-                taxonId: taxon?.id,
+                taxonId: taxon.id,
               })
             }}
           />
