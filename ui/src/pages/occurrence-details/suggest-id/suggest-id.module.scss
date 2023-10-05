@@ -27,12 +27,3 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
-
-.formError {
-  width: 100%;
-  @include paragraph-x-small();
-  padding: 8px 16px;
-  background-color: $color-destructive-100;
-  color: $color-destructive-600;
-  box-sizing: border-box;
-}

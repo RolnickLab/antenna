@@ -1,3 +1,4 @@
+import { FormRow, FormSection } from 'components/form/layout/layout'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -43,77 +44,62 @@ export const DeploymentDetailsInfo = ({
         </div>
       </Dialog.Header>
       <div className={styles.content}>
-        <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>
-            {translate(STRING.FIELD_LABEL_GENERAL)}
-          </h2>
-          <div className={styles.sectionContent}>
-            <div className={styles.sectionRow}>
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_NAME)}
-                value={deployment.name}
-              />
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
-                value={deployment.description}
-              />
-            </div>
-          </div>
-        </div>
+        <FormSection title={translate(STRING.FIELD_LABEL_GENERAL)}>
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_NAME)}
+              value={deployment.name}
+            />
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
+              value={deployment.description}
+            />
+          </FormRow>
+        </FormSection>
 
-        <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>
-            {translate(STRING.FIELD_LABEL_LOCATION)}
-          </h2>
-          <div className={styles.sectionContent}>
-            <MultiMarkerMap markers={markers} />
-            <div className={styles.sectionRow}>
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_LATITUDE)}
-                value={deployment.latitude}
-              />
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_LONGITUDE)}
-                value={deployment.longitude}
-              />
-            </div>
-          </div>
-        </div>
+        <FormSection title={translate(STRING.FIELD_LABEL_LOCATION)}>
+          <MultiMarkerMap markers={markers} />
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_LATITUDE)}
+              value={deployment.latitude}
+            />
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_LONGITUDE)}
+              value={deployment.longitude}
+            />
+          </FormRow>
+        </FormSection>
 
-        <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>
-            {translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
-          </h2>
-          <div className={styles.sectionContent}>
-            <div className={styles.sectionRow}>
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_PATH)}
-                value={deployment.path}
-              />
-              <ConnectionStatus
-                status={status}
-                onRefreshClick={refreshStatus}
-                lastUpdated={lastUpdated}
-              />
-            </div>
-            <div className={styles.sectionRow}>
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_CAPTURES)}
-                value={deployment.numImages}
-              />
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
-                value={deployment.exampleCaptures.length}
-              />
-            </div>
-            <div className={styles.exampleCapturesContainer}>
-              <ImageCarousel
-                images={deployment.exampleCaptures}
-                size={{ width: '100%', ratio: 16 / 9 }}
-              />
-            </div>
+        <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_PATH)}
+              value={deployment.path}
+            />
+            <ConnectionStatus
+              status={status}
+              onRefreshClick={refreshStatus}
+              lastUpdated={lastUpdated}
+            />
+          </FormRow>
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_CAPTURES)}
+              value={deployment.numImages}
+            />
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
+              value={deployment.exampleCaptures.length}
+            />
+          </FormRow>
+          <div className={styles.section}>
+            <ImageCarousel
+              images={deployment.exampleCaptures}
+              size={{ width: '100%', ratio: 16 / 9 }}
+            />
           </div>
-        </div>
+        </FormSection>
       </div>
     </>
   )

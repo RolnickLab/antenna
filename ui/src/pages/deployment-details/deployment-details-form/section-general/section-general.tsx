@@ -1,5 +1,9 @@
-import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
+import {
+  FormActions,
+  FormRow,
+  FormSection,
+} from 'components/form/layout/layout'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import _ from 'lodash'
@@ -9,7 +13,6 @@ import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
 import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
-import styles from '../../styles.module.scss'
 import { config } from '../config'
 import { Section } from '../types'
 
@@ -44,24 +47,19 @@ export const SectionGeneral = ({ onNext }: { onNext: () => void }) => {
         setFormSectionValues(Section.General, values)
       )}
     >
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>
-          {translate(STRING.FIELD_LABEL_GENERAL)}
-        </h2>
-        <div className={styles.sectionContent}>
-          <div className={styles.sectionRow}>
-            <FormField name="name" control={control} config={config} />
-            <FormField name="description" control={control} config={config} />
-          </div>
-        </div>
-      </div>
-      <div className={classNames(styles.section, styles.formActions)}>
+      <FormSection title={translate(STRING.FIELD_LABEL_GENERAL)}>
+        <FormRow>
+          <FormField name="name" control={control} config={config} />
+          <FormField name="description" control={control} config={config} />
+        </FormRow>
+      </FormSection>
+      <FormActions>
         <Button
           label={translate(STRING.NEXT)}
           onClick={onNext}
           theme={ButtonTheme.Success}
         />
-      </div>
+      </FormActions>
     </form>
   )
 }
