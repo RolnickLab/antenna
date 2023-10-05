@@ -1,10 +1,10 @@
+import { DeleteForm } from 'components/form/delete-form/delete-form'
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { useDeleteIdentification } from 'data-services/hooks/identifications/useDeleteIdentification'
 import {
   Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationSummary } from 'design-system/components/identification/identification-summary/identification-summary'
@@ -12,7 +12,6 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
-import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 import { userAgreed } from '../agree/userAgreed'
@@ -103,34 +102,19 @@ const DeleteIdForm = ({
   id: string
   onCancel: () => void
 }) => {
-  const { deleteIdentification, isLoading, error, isSuccess } =
+  const { deleteIdentification, isLoading, isSuccess, error } =
     useDeleteIdentification()
-
-  const formError = error ? parseServerError(error)?.message : undefined
 
   return (
     <div className={styles.identificationCard}>
-      {formError ? (
-        <div className={styles.deleteFormError}>
-          <span>{formError}</span>
-        </div>
-      ) : null}
-      <div className={styles.content}>
-        <span className={styles.deleteFormTitle}>Delete identification</span>
-        <span className={styles.deleteFormDescription}>
-          Are you sure you want to delete this identification?
-        </span>
-        <div className={styles.deleteFormActions}>
-          <Button label="Cancel" onClick={onCancel} />
-          <Button
-            label={isSuccess ? 'Deleted' : 'Delete'}
-            icon={isSuccess ? IconType.RadixCheck : undefined}
-            theme={ButtonTheme.Destructive}
-            loading={isLoading}
-            onClick={() => deleteIdentification(id)}
-          />
-        </div>
-      </div>
+      <DeleteForm
+        error={error}
+        isSuccess={isSuccess}
+        isLoading={isLoading}
+        type="identification"
+        onCancel={onCancel}
+        onSubmit={() => deleteIdentification(id)}
+      />
     </div>
   )
 }
