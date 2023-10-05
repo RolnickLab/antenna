@@ -5,10 +5,12 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { DeleteDeploymentDialog } from 'pages/deployment-details/delete-deployment-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import styles from './deployments.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   projectId: string
@@ -111,5 +113,18 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => <BasicTableCell value={item.lastDate} />,
+  },
+  {
+    id: 'actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: Deployment) => (
+      <div className={styles.deploymentActions}>
+        <DeleteDeploymentDialog id={item.id} />
+      </div>
+    ),
   },
 ]
