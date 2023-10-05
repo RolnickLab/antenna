@@ -8,13 +8,19 @@ import { STRING, translate } from 'utils/language'
 import { ProjectDetailsForm } from './project-details-form'
 import styles from './styles.module.scss'
 
+const CLOSE_TIMEOUT = 1000
+
 const newProject = new Project({
   id: 'new-project',
 })
 
 export const NewProjectDialog = () => {
   const [isOpen, setIsOpen] = useState(false)
-  const { createProject, isLoading, error } = useCreateProject()
+  const { createProject, isLoading, isSuccess, error } = useCreateProject(() =>
+    setTimeout(() => {
+      setIsOpen(false)
+    }, CLOSE_TIMEOUT)
+  )
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -32,7 +38,8 @@ export const NewProjectDialog = () => {
             project={newProject}
             error={error}
             isLoading={isLoading}
-            onSubmit={async (data) => createProject(data)}
+            isSuccess={isSuccess}
+            onSubmit={(data) => createProject(data)}
           />
         </div>
       </Dialog.Content>

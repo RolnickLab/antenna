@@ -2,6 +2,7 @@ import { Gallery } from 'components/gallery/gallery'
 import { Project } from 'data-services/models/project'
 import { Button } from 'design-system/components/button/button'
 import { Card, CardSize } from 'design-system/components/card/card'
+import { DeleteProjectDialog } from 'pages/project-details/delete-project-dialog'
 import { EditProjectDialog } from 'pages/project-details/edit-project-dialog'
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -47,6 +48,7 @@ export const ProjectGallery = ({
           to={item.to}
         >
           <div className={styles.projectActions}>
+            <DeleteProjectDialog id={item.id} />
             <EditProjectDialog id={item.id} />
             <Button label="View project" onClick={() => navigate(item.to)} />
           </div>
