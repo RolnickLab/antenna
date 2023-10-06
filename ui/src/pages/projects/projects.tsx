@@ -20,11 +20,11 @@ export const Projects = () => {
       </div>
       <div className={styles.header}>
         <h1 className={styles.title}>{translate(STRING.NAV_ITEM_PROJECTS)}</h1>
-        <NewProjectDialog />
       </div>
       <div className={styles.divider} />
       <ProjectGallery projects={projects} isLoading={isLoading} />
       <div className={styles.spacer} />
+      <NewProjectDialog />
     </>
   )
 }
