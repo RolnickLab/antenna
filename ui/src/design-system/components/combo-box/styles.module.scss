@@ -92,10 +92,6 @@ $loading-wrapper-size: 38px;
     }
   }
 
-  .spacer {
-    flex: 1;
-  }
-
   .accessory {
     width: 24px;
     height: 24px;
@@ -103,6 +99,16 @@ $loading-wrapper-size: 38px;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .details {
+    @include paragraph-xx-small();
+    color: $color-neutral-500;
+    padding-left: 16px;
   }
 }
 

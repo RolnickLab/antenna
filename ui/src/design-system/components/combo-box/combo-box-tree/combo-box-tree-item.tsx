@@ -1,6 +1,6 @@
 import classNames from 'classnames'
 import { Command } from 'cmdk'
-import { Icon, IconType } from '../../icon/icon'
+import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from '../styles.module.scss'
 import { TreeItem } from './types'
 
@@ -26,13 +26,19 @@ export const ComboBoxTreeItem = ({
       >
         <div className={styles.accessory}>
           {treeItem.children.length ? (
-            <Icon type={IconType.ToggleDown} />
+            <Icon type={IconType.ToggleDown} theme={IconTheme.Neutral} />
           ) : null}
         </div>
         <span>{treeItem.label}</span>
-        <div className={styles.accessory}>
-          {isSelected ? <Icon type={IconType.RadixCheck} /> : null}
-        </div>
+        {isSelected ? (
+          <div className={styles.accessory}>
+            <Icon type={IconType.RadixCheck} />{' '}
+          </div>
+        ) : null}
+        <div className={styles.spacer} />
+        {treeItem.details ? (
+          <span className={styles.details}>{treeItem.details}</span>
+        ) : null}
       </Command.Item>
       {treeItem.children.map((child) => (
         <ComboBoxTreeItem
