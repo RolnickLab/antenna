@@ -147,6 +147,10 @@ const TaxonCell = ({
           {showQuickActions && (
             <div className={styles.taxonActions}>
               <Agree
+                agreeWith={{
+                  identificationId: item.determinationIdentificationId,
+                  predictionId: item.determinationPredictionId,
+                }}
                 buttonTheme={ButtonTheme.Success}
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}

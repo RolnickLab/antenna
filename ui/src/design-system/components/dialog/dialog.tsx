@@ -26,11 +26,13 @@ const Trigger = ({ children }: { children: ReactNode }) => (
 const Content = ({
   ariaCloselabel,
   children,
+  isCompact,
   isLoading,
   onOpenAutoFocus,
 }: {
   ariaCloselabel: string
   children: ReactNode
+  isCompact?: boolean
   isLoading?: boolean
   onOpenAutoFocus?: (event: Event) => void
 }) => (
@@ -43,7 +45,10 @@ const Content = ({
       ) : null}
     </Dialog.Overlay>
     <Dialog.Content
-      className={classNames(styles.dialog, { [styles.loading]: isLoading })}
+      className={classNames(styles.dialog, {
+        [styles.compact]: isCompact,
+        [styles.loading]: isLoading,
+      })}
       onOpenAutoFocus={onOpenAutoFocus}
     >
       <div className={styles.dialogContent}>{children}</div>

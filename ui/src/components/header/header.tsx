@@ -42,7 +42,7 @@ export const Header = () => {
               label="Logout"
               theme={ButtonTheme.Plain}
               loading={isLogoutLoading}
-              onClick={logout}
+              onClick={() => logout()}
             />
             <UserInfoDialog />
           </>
