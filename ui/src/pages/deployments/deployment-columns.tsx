@@ -123,7 +123,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     },
     renderCell: (item: Deployment) => (
       <div className={styles.deploymentActions}>
-        <DeleteDeploymentDialog id={item.id} />
+        {item.canDelete && <DeleteDeploymentDialog id={item.id} />}
       </div>
     ),
   },
