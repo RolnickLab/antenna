@@ -38,22 +38,26 @@ export const ProjectGallery = ({
       cardSize={CardSize.Large}
       isLoading={isLoading}
       items={items}
-      renderItem={(item) => (
-        <Card
-          key={item.id}
-          title={item.title}
-          subTitle={item.subTitle}
-          image={item.image}
-          size={CardSize.Large}
-          to={item.to}
-        >
-          <div className={styles.projectActions}>
-            <DeleteProjectDialog id={item.id} />
-            <EditProjectDialog id={item.id} />
-            <Button label="View project" onClick={() => navigate(item.to)} />
-          </div>
-        </Card>
-      )}
+      renderItem={(item) => {
+        const project = projects.find((p) => p.id === item.id)
+
+        return (
+          <Card
+            key={item.id}
+            title={item.title}
+            subTitle={item.subTitle}
+            image={item.image}
+            size={CardSize.Large}
+            to={item.to}
+          >
+            <div className={styles.projectActions}>
+              {project?.canDelete && <DeleteProjectDialog id={item.id} />}
+              {project?.canUpdate && <EditProjectDialog id={item.id} />}
+              <Button label="View project" onClick={() => navigate(item.to)} />
+            </div>
+          </Card>
+        )
+      }}
       style={{ gridTemplateColumns: '1fr 1fr 1fr' }}
     />
   )

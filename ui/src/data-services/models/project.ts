@@ -1,3 +1,4 @@
+import { UserPermission } from 'utils/user/types'
 import { Deployment, ServerDeployment } from './deployment'
 
 export type ServerProject = any // TODO: Update this type
@@ -22,6 +23,15 @@ export class Project {
     this._deployments = (project.deployments ?? []).map(
       (deployment: ServerDeployment) => new Deployment(deployment)
     )
+  }
+
+  get canDelete(): boolean {
+    // TODO: Check delete permission instead of update
+    return this._project.user_permissions.includes(UserPermission.Update)
+  }
+
+  get canUpdate(): boolean {
+    return this._project.user_permissions.includes(UserPermission.Update)
   }
 
   get description(): string {

@@ -3,15 +3,19 @@ import { useProjects } from 'data-services/hooks/projects/useProjects'
 import { Error } from 'pages/error/error'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 import { ProjectGallery } from './project-gallery'
 import styles from './projects.module.scss'
 
 export const Projects = () => {
-  const { projects, isLoading, isFetching, error } = useProjects()
+  const { projects, userPermissions, isLoading, isFetching, error } =
+    useProjects()
 
   if (!isLoading && error) {
     return <Error />
   }
+
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
     <>
@@ -24,7 +28,7 @@ export const Projects = () => {
       <div className={styles.divider} />
       <ProjectGallery projects={projects} isLoading={isLoading} />
       <div className={styles.spacer} />
-      <NewProjectDialog />
+      {canCreate && <NewProjectDialog />}
     </>
   )
 }
