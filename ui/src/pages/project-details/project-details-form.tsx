@@ -12,9 +12,12 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
+import { bytesToMB } from 'utils/bytesToMB'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { ProjectImageUpload } from './project-image-upload/project-image-upload'
+
+const IMAGE_MAX_SIZE = 1024 * 1024 // 1MB
 
 interface ProjectFormValues {
   name?: string
@@ -34,7 +37,18 @@ const config: FormConfig = {
   },
   image: {
     label: 'Image',
-    description: 'Valid formats are PNG, GIF and JPEG.',
+    description: `The image must smaller than ${bytesToMB(
+      IMAGE_MAX_SIZE
+    )} MB. Valid formats are PNG, GIF and JPEG.`,
+    rules: {
+      validate: (file: File) => {
+        if (file) {
+          if (file?.size > IMAGE_MAX_SIZE) {
+            return translate(STRING.MESSAGE_IMAGE_TOO_BIG)
+          }
+        }
+      },
+    },
   },
 }
 
