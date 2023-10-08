@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import { forwardRef } from 'react'
+import { forwardRef, MouseEvent } from 'react'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './button.module.scss'
 
@@ -18,7 +18,7 @@ interface ButtonProps {
   loading?: boolean
   theme?: ButtonTheme
   type?: 'submit' | 'button'
-  onClick?: () => void
+  onClick?: (e: MouseEvent) => void
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -51,11 +51,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         })}
         disabled={disabled}
         type={type}
-        onClick={() => {
+        onClick={(e) => {
           if (loading) {
             return
           }
-          onClick?.()
+          onClick?.(e)
         }}
         {...rest}
       >

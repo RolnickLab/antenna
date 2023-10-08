@@ -1,5 +1,9 @@
-import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
+import {
+  FormActions,
+  FormRow,
+  FormSection,
+} from 'components/form/layout/layout'
 import {
   DeploymentDetails,
   DeploymentFieldValues,
@@ -58,44 +62,39 @@ export const SectionSourceImages = ({
         setFormSectionValues(Section.SourceImages, values)
       )}
     >
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>
-          {translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
-        </h2>
-        <div className={styles.sectionContent}>
-          <div className={styles.sectionRow}>
-            <FormField name="path" control={control} config={config} />
-            <ConnectionStatus
-              status={status}
-              onRefreshClick={refreshStatus}
-              lastUpdated={lastUpdated}
-            />
-          </div>
-          {status === Status.Connected ? (
-            <>
-              <div className={styles.sectionRow}>
-                <InputValue
-                  label={translate(STRING.FIELD_LABEL_CAPTURES)}
-                  value={deployment.numImages}
-                />
-                <InputValue
-                  label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
-                  value={deployment.exampleCaptures.length}
-                />
-              </div>
-              <div className={styles.exampleCapturesContainer}>
-                <ImageCarousel
-                  images={deployment.exampleCaptures}
-                  size={{ width: '100%', ratio: 16 / 9 }}
-                />
-              </div>
-            </>
-          ) : null}
-        </div>
-      </div>
-      <div className={classNames(styles.section, styles.formActions)}>
+      <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
+        <FormRow>
+          <FormField name="path" control={control} config={config} />
+          <ConnectionStatus
+            status={status}
+            onRefreshClick={refreshStatus}
+            lastUpdated={lastUpdated}
+          />
+        </FormRow>
+        {status === Status.Connected ? (
+          <>
+            <FormRow>
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_CAPTURES)}
+                value={deployment.numImages}
+              />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
+                value={deployment.exampleCaptures.length}
+              />
+            </FormRow>
+            <div className={styles.exampleCapturesContainer}>
+              <ImageCarousel
+                images={deployment.exampleCaptures}
+                size={{ width: '100%', ratio: 16 / 9 }}
+              />
+            </div>
+          </>
+        ) : null}
+      </FormSection>
+      <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
-      </div>
+      </FormActions>
     </form>
   )
 }

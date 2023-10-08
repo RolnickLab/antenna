@@ -5,6 +5,10 @@ import { useEffect } from 'react'
 
 interface AgreeProps {
   agreed?: boolean
+  agreeWith: {
+    identificationId?: string
+    predictionId?: string
+  }
   buttonTheme?: ButtonTheme
   occurrenceId: string
   taxonId: string
@@ -12,6 +16,7 @@ interface AgreeProps {
 
 export const Agree = ({
   agreed,
+  agreeWith,
   buttonTheme,
   occurrenceId,
   taxonId,
@@ -34,7 +39,13 @@ export const Agree = ({
       label="Agree"
       loading={isLoading}
       theme={buttonTheme}
-      onClick={() => createIdentification({ occurrenceId, taxonId })}
+      onClick={() =>
+        createIdentification({
+          agreeWith,
+          occurrenceId,
+          taxonId,
+        })
+      }
     />
   )
 }

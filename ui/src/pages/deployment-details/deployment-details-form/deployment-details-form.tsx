@@ -1,3 +1,4 @@
+import { FormError as _FormError } from 'components/form/layout/layout'
 import {
   DeploymentDetails,
   DeploymentFieldValues,
@@ -8,7 +9,7 @@ import { FormStepper as _FormStepper } from 'design-system/components/form-stepp
 import { useCallback, useContext, useMemo } from 'react'
 import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
-import { parseServerError } from 'utils/parseServerError/parseServerError'
+import { useFormError } from 'utils/useFormError'
 import styles from '../styles.module.scss'
 import { SectionGeneral } from './section-general/section-general'
 import { SectionLocation } from './section-location/section-location'
@@ -25,7 +26,7 @@ export const DeploymentDetailsForm = ({
   onSubmit,
 }: {
   deployment: DeploymentDetails
-  serverError?: any
+  serverError?: unknown
   isLoading?: boolean
   startValid?: boolean
   title: string
@@ -67,12 +68,12 @@ export const DeploymentDetailsForm = ({
         <SaveButton isLoading={isLoading} onSubmit={onSubmit} />
       </div>
     </Dialog.Header>
-    {serverError && <FormError error={serverError} />}
+    <FormError error={serverError} />
     <div className={styles.content}>
       <div className={styles.section}>
         <FormStepper />
       </div>
-      <FormSection deployment={deployment} />
+      <FormContent deployment={deployment} />
     </div>
   </FormContextProvider>
 )
@@ -149,7 +150,15 @@ const FormStepper = () => {
   )
 }
 
-const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
+const FormError = ({ error }: { error: unknown }) => {
+  const errorMessage = useFormError({ error })
+
+  return errorMessage ? (
+    <_FormError inDialog intro="Could not save" message={errorMessage} />
+  ) : null
+}
+
+const FormContent = ({ deployment }: { deployment: DeploymentDetails }) => {
   const { currentSection, setCurrentSection } = useContext(FormContext)
 
   switch (currentSection) {
@@ -174,25 +183,4 @@ const FormSection = ({ deployment }: { deployment: DeploymentDetails }) => {
     default:
       return null
   }
-}
-
-const FormError = ({ error }: { error: any }) => {
-  const { message, fieldErrors } = parseServerError(error)
-
-  return (
-    <div className={styles.formError}>
-      <>
-        <span>Could not save: </span>
-        <span>{message}</span>
-      </>
-      {fieldErrors.length ? (
-        <>
-          <br />
-          <span>
-            {fieldErrors[0].key}: {fieldErrors[0].message}
-          </span>
-        </>
-      ) : null}
-    </div>
-  )
 }

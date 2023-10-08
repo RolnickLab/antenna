@@ -38,6 +38,22 @@ export class Occurrence {
     return `${this._occurrence.determination.id}`
   }
 
+  get determinationIdentificationId(): string | undefined {
+    const determinationIdentification =
+      this._occurrence.determination_details?.identification
+
+    return determinationIdentification
+      ? `${determinationIdentification.id}`
+      : undefined
+  }
+
+  get determinationPredictionId(): string | undefined {
+    const determinationPrediction =
+      this._occurrence.determination_details?.prediction
+
+    return determinationPrediction ? `${determinationPrediction.id}` : undefined
+  }
+
   get determinationScore(): number {
     const score = this._occurrence.determination_details.score
 

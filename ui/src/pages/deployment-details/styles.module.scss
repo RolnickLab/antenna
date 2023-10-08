@@ -15,81 +15,11 @@
 }
 
 .section {
-  margin: 32px;
-  box-sizing: border-box;
-
-  &:not(:first-child) {
-    padding-top: 32px;
-    border-top: 1px solid $color-neutral-100;
-  }
-}
-
-.sectionTitle {
-  @include paragraph-large();
-  color: $color-neutral-800;
-  font-weight: 600;
-  margin: 0 0 32px;
-}
-
-.sectionContent {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 32px;
-
-  &:not(:last-child) {
-    margin-bottom: 32px;
-  }
-}
-
-.sectionRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 32px;
-}
-
-.formActions {
-  display: flex;
-  gap: 16px;
-}
-
-.exampleCapturesContainer {
   margin: 32px 0;
-}
-
-.formError {
-  @include paragraph-x-small();
-  padding: 16px 32px;
-  color: $color-destructive-600;
-  border-bottom: 2px solid $color-neutral-100;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .section {
-    margin: 16px;
-
-    &:not(:first-child) {
-      padding-top: 16px;
-    }
-  }
-
-  .sectionTitle {
-    margin: 0 0 16px;
-  }
-
-  .sectionContent {
-    gap: 16px;
-
-    &:not(:last-child) {
-      margin-bottom: 16px;
-    }
-  }
-
-  .sectionRow {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .exampleCapturesContainer {
     margin: 16px 0;
   }
 }
