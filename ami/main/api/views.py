@@ -179,6 +179,7 @@ class SourceImageViewSet(DefaultViewSet):
             detections_count=models.Count("detections", distinct=True),
         )
         .select_related("event", "deployment")
+        .prefetch_related("detections")
         .order_by("timestamp")
         .all()
     )
