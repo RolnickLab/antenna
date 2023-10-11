@@ -783,6 +783,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
         # Add the user to the validated data
         request = self.context.get("request")
         user = get_current_user(request)
+        # @TODO IMPORTANT ensure current user is a member of the deployment's project
         obj = SourceImageUpload.objects.create(user=user, **validated_data)
         source_image = _create_source_image_from_upload(
             obj.image,
@@ -798,8 +799,10 @@ class SourceImageUploadSerializer(DefaultSerializer):
         # Ensure that image filename contains a timestamp
         timestamp = get_image_timestamp_from_filename(value.name)
         if timestamp is None:
+            # @TODO bring back EXIF support
             raise serializers.ValidationError(
-                "Image filename does not contain a timestamp in the format YYYYMMDDHHMMSS"
+                "Image filename does not contain a timestamp in the format YYYYMMDDHHMMSS "
+                " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
             )
         return value
 

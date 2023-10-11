@@ -216,7 +216,10 @@ class SourceImageUploadViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
-        return super().get_queryset().filter(user=self.request.user)
+        qs = super().get_queryset()
+        if self.request.user.pk:
+            qs = qs.filter(user=self.request.user)
+        return qs
 
 
 class DetectionViewSet(DefaultViewSet):
