@@ -10,8 +10,7 @@ export class Deployment {
   }
 
   get canDelete(): boolean {
-    // TODO: Check delete permission instead of update
-    return this._deployment.user_permissions.includes(UserPermission.Update)
+    return this._deployment.user_permissions.includes(UserPermission.Delete)
   }
 
   get canUpdate(): boolean {
