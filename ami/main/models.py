@@ -810,6 +810,7 @@ class SourceImageUpload(BaseModel):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         ami.tasks.regroup_events.delay(self.deployment.pk)
+        self.deployment.save()  # Update counts, this could be async too
 
 
 @final
