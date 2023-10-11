@@ -1,6 +1,7 @@
 import collections
 import datetime
 import functools
+import hashlib
 import logging
 import textwrap
 import typing
@@ -11,8 +12,10 @@ from typing import Final, final  # noqa: F401
 
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 from django.db.models import Q
+from django.db.models.fields.files import ImageFieldFile
 
 import ami.tasks
 import ami.utils
@@ -752,6 +755,61 @@ class S3StorageSource(BaseModel):
             for deployment in self.deployments.all():
                 ami.tasks.update_public_urls.delay(deployment.pk, self.public_base_url)
         super().save(*args, **kwargs)
+
+
+def validate_filename_timestamp(filename: str) -> None:
+    # Ensure filename has a timestamp
+    timestamp = ami.utils.dates.get_image_timestamp_from_filename(filename)
+    if not timestamp:
+        raise ValidationError("Filename must contain a timestamp in the format YYYYMMDDHHMMSS")
+
+
+def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+    """Create a complete SourceImage from an uploaded file."""
+    # md5 checksum from file
+    checksum = hashlib.md5(image.read()).hexdigest()
+    checksum_algorithm = "md5"
+
+    # get full public media url of image:
+    if request:
+        base_url = request.build_absolute_uri(settings.MEDIA_URL)
+    else:
+        base_url = settings.MEDIA_URL
+
+    source_image = SourceImage(
+        path=image.name,  # Includes relative path from MEDIA_ROOT
+        public_base_url=base_url,  # @TODO how to merge this with the data source?
+        project=deployment.project,
+        deployment=deployment,
+        timestamp=None,  # Will be calculated from filename or EXIF data on save
+        event=None,  # Will be assigned when the image is grouped into events
+        size=image.size,
+        checksum=checksum,
+        checksum_algorithm=checksum_algorithm,
+        width=image.width,
+        height=image.height,
+    )
+    source_image.save()
+    return source_image
+
+
+def upload_to_with_deployment(instance, filename: str) -> str:
+    """Nest uploads under subdir for a deployment."""
+    return f"example_captures/{instance.deployment.pk}/{filename}"
+
+
+@final
+class SourceImageUpload(BaseModel):
+    """A manually uploaded image that has not yet been imported"""
+
+    image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE)
+    capture = models.OneToOneField("SourceImage", on_delete=models.SET_NULL, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        ami.tasks.regroup_events.delay(self.deployment.pk)
 
 
 @final

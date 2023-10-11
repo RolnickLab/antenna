@@ -80,3 +80,16 @@ def populate_collection(collection_id: int) -> None:
         collection.populate_sample()
     else:
         logger.error(f"SourceImageCollection with id {collection_id} not found")
+
+
+# Task to group images into events
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def regroup_events(deployment_id: int) -> None:
+    from ami.main.models import Deployment, group_images_into_events
+
+    deployment = Deployment.objects.get(id=deployment_id)
+    if deployment:
+        logger.info(f"Grouping captures for {deployment}")
+        group_images_into_events(deployment)
+    else:
+        logger.error(f"Deployment with id {deployment_id} not found")
