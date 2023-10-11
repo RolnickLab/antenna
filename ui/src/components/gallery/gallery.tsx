@@ -5,25 +5,28 @@ import { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './gallery.module.scss'
 
+interface GalleryItem {
+  id: string
+  image?: {
+    src: string
+    alt?: string
+  }
+  subTitle?: string
+  title: string
+  to: string
+}
+
 export const Gallery = ({
   cardSize,
   isLoading,
   items,
+  renderItem,
   style,
 }: {
   cardSize?: CardSize
   isLoading: boolean
-  items: {
-    id: string
-    image?: {
-      src: string
-      alt?: string
-    }
-    subTitle?: string
-    title: string
-    to: string
-  }[]
-
+  items: GalleryItem[]
+  renderItem?: (item: GalleryItem) => JSX.Element
   style?: CSSProperties
 }) => (
   <div
@@ -33,16 +36,19 @@ export const Gallery = ({
     })}
     style={style}
   >
-    {items?.map((item) => (
-      <Link key={item.id} to={item.to}>
-        <Card
-          title={item.title}
-          subTitle={item.subTitle ?? ''}
-          image={item.image}
-          size={cardSize}
-        />
-      </Link>
-    ))}
+    {items?.map(
+      (item) =>
+        renderItem?.(item) ?? (
+          <Link key={item.id} to={item.to}>
+            <Card
+              title={item.title}
+              subTitle={item.subTitle}
+              image={item.image}
+              size={cardSize}
+            />
+          </Link>
+        )
+    )}
     {isLoading && (
       <div className={styles.loadingWrapper}>
         <LoadingSpinner />
