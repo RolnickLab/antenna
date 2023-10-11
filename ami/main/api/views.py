@@ -140,7 +140,7 @@ class EventViewSet(DefaultViewSet):
     queryset = (
         Event.objects.select_related("deployment")
         .annotate(
-            captures_count=models.Count("captures"),
+            captures_count=models.Count("captures", distinct=True),
             detections_count=models.Count("captures__detections"),
             occurrences_count=models.Count("occurrences"),
             taxa_count=models.Count("occurrences__determination", distinct=True),
