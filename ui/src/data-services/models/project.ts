@@ -26,8 +26,7 @@ export class Project {
   }
 
   get canDelete(): boolean {
-    // TODO: Check delete permission instead of update
-    return this._project.user_permissions.includes(UserPermission.Update)
+    return this._project.user_permissions.includes(UserPermission.Delete)
   }
 
   get canUpdate(): boolean {
