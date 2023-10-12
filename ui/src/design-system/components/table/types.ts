@@ -17,6 +17,7 @@ export interface TableColumn<T> {
   styles?: {
     textAlign?: TextAlign
     padding?: string
+    width?: string | number
   }
   visuallyHidden?: boolean
   renderCell: (item: T, rowIndex: number, columnIndex: number) => JSX.Element

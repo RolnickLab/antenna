@@ -2,6 +2,10 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import {
+  TaxonInfo,
+  TaxonInfoSize,
+} from 'components/taxon/taxon-info/taxon-info'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { useMemo } from 'react'
@@ -54,7 +58,18 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
-        <span className={styles.title}>{species.name}</span>
+        <TaxonInfo
+          taxon={species}
+          size={TaxonInfoSize.Large}
+          getLink={(id: string) =>
+            getAppRoute({
+              to: APP_ROUTES.SPECIES_DETAILS({
+                projectId: projectId as string,
+                speciesId: id,
+              }),
+            })
+          }
+        />
       </div>
       <div className={styles.content}>
         <div className={styles.column}>
