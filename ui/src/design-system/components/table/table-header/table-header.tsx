@@ -38,7 +38,7 @@ const BasicTableHeader = <T,>({
 }: Omit<TableHeaderProps<T>, 'sortSettings' | 'onSortClick'>) => (
   <th
     key={column.id}
-    style={{ textAlign: column.styles?.textAlign }}
+    style={{ textAlign: column.styles?.textAlign, width: column.styles?.width }}
     className={styles.tableHeader}
   >
     <div
