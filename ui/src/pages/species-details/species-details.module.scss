@@ -41,11 +41,6 @@
   overflow-y: auto;
 }
 
-.title {
-  @include heading-4-italic();
-  color: $color-primary-1-600;
-}
-
 @media only screen and (max-width: $small-screen-breakpoint) {
   .wrapper {
     width: 100%;
