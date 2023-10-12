@@ -40,7 +40,8 @@ export const UserInfoImageUpload = ({
         accept={FileInputAccept.Images}
         label={imageUrl ? 'Change image' : 'Choose image'}
         name="user-image"
-        onChange={onChange}
+        withClear
+        onChange={(files) => onChange(files ? files[0] : null)}
       />
     </>
   )

@@ -12,15 +12,19 @@ interface FileInputProps {
   accept?: FileInputAccept
   label?: string
   loading?: boolean
+  multiple?: boolean
   name: string
-  onChange: (file: File | null) => void
+  withClear?: boolean
+  onChange: (files: FileList | null) => void
 }
 
 export const FileInput = ({
   accept = FileInputAccept.All,
   label = 'Choose file',
   loading,
+  multiple,
   name,
+  withClear,
   onChange,
 }: FileInputProps) => {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -32,29 +36,32 @@ export const FileInput = ({
         className={styles.fileInput}
         disabled={loading}
         id={name}
+        multiple={multiple}
         name={name}
         ref={inputRef}
         type="file"
         onChange={(e) => {
-          const file = e.currentTarget.files?.[0]
-          if (!file) {
+          const files = e.currentTarget.files
+          if (!files?.length) {
             return
           }
-          onChange(file)
+          onChange(files)
         }}
       />
       <label htmlFor={name}>{!loading ? label : `${label}...`}</label>
-      <Button
-        label="Clear"
-        theme={ButtonTheme.Plain}
-        onClick={() => {
-          if (inputRef.current) {
-            inputRef.current.value = ''
-            inputRef.current.files = null
-          }
-          onChange(null)
-        }}
-      />
+      {withClear && (
+        <Button
+          label="Clear"
+          theme={ButtonTheme.Plain}
+          onClick={() => {
+            if (inputRef.current) {
+              inputRef.current.value = ''
+              inputRef.current.files = null
+            }
+            onChange(null)
+          }}
+        />
+      )}
     </div>
   )
 }

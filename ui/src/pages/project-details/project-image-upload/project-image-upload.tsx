@@ -34,8 +34,9 @@ export const ProjectImageUpload = ({
       <FileInput
         accept={FileInputAccept.Images}
         label={imageUrl ? 'Change image' : 'Choose image'}
-        name="image"
-        onChange={onChange}
+        name="project-image"
+        withClear
+        onChange={(files) => onChange(files ? files[0] : null)}
       />
     </>
   )
