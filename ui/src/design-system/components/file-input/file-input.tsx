@@ -10,6 +10,7 @@ const acceptValues: { [key in FileInputAccept]: string | undefined } = {
 
 interface FileInputProps {
   accept?: FileInputAccept
+  files?: FileList | null
   label?: string
   loading?: boolean
   multiple?: boolean
@@ -20,6 +21,7 @@ interface FileInputProps {
 
 export const FileInput = ({
   accept = FileInputAccept.All,
+  files,
   label = 'Choose file',
   loading,
   multiple,
@@ -46,6 +48,7 @@ export const FileInput = ({
             return
           }
           onChange(files)
+          e.currentTarget.value = ''
         }}
       />
       <label htmlFor={name}>{!loading ? label : `${label}...`}</label>

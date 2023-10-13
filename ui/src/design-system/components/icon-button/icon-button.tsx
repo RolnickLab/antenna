@@ -15,6 +15,7 @@ export enum IconButtonTheme {
   Plain = 'plain',
   Primary = 'primary',
   Success = 'success',
+  Error = 'error',
 }
 
 interface IconButtonProps {
@@ -44,6 +45,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
           return IconTheme.Primary
         case IconButtonTheme.Plain:
           return IconTheme.Dark
+        case IconButtonTheme.Error:
+          return IconTheme.Error
         default:
           return IconTheme.Light
       }
@@ -63,6 +66,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
           [styles.plain]: theme === IconButtonTheme.Plain,
           [styles.primary]: theme === IconButtonTheme.Primary,
           [styles.success]: theme === IconButtonTheme.Success,
+          [styles.error]: theme === IconButtonTheme.Error,
 
           // Other
           [styles.disabled]: disabled,

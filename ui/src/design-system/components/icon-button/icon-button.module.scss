@@ -49,6 +49,11 @@
     border-color: $color-success-500;
   }
 
+  &.error {
+    background-color: $color-destructive-100;
+    background-color: $color-destructive-100;
+  }
+
   // Other
   &.disabled {
     opacity: 0.5;

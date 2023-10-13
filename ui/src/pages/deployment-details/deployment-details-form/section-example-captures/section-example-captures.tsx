@@ -1,9 +1,30 @@
+import { useDeleteCapture } from 'data-services/hooks/captures/useDeleteCapture'
+import { useUploadCapture } from 'data-services/hooks/captures/useUploadCapture'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
+import {
+  IconButton,
+  IconButtonShape,
+  IconButtonTheme,
+} from 'design-system/components/icon-button/icon-button'
+import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
+import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from './section-example-captures.module.scss'
+
+const constructErrorMessage = (error: unknown) => {
+  const { message, fieldErrors } = parseServerError(error)
+
+  if (fieldErrors.length) {
+    return fieldErrors.map((e) => e.message).join('\n')
+  }
+
+  return message
+}
 
 const IMAGE_CONFIG = {
   MAX_SIZE: 1024 * 1024, // 1MB
@@ -21,30 +42,39 @@ export const SectionExampleCaptures = ({
   return (
     <InputContent
       label="Example captures"
-      description={`Upload a maximum of ${IMAGE_CONFIG.NUM_IMAGES} images. Valid formats are PNG, GIF and JPEG.`}
+      description="Valid formats are PNG, GIF and JPEG."
     >
       <div className={styles.collection}>
-        {deployment.exampleCaptures.map((exampelCapture, index) => (
-          <Card key={index}>
-            <img src={exampelCapture.src} />
-          </Card>
-        ))}
-        {files.map((file, index) => (
-          <Card key={index}>
-            <img src={URL.createObjectURL(file)} />
-          </Card>
-        ))}
-        <Card>
-          <FileInput
-            accept={FileInputAccept.Images}
-            label="Choose images"
-            multiple
-            name="example-captures"
-            onChange={(newFiles) => {
-              setFiles([...files, ...Array.from(newFiles ?? [])])
-            }}
+        {deployment.exampleCaptures.map((exampelCapture) => (
+          <ExampleCapture
+            key={exampelCapture.id}
+            id={exampelCapture.id}
+            src={exampelCapture.src}
           />
-        </Card>
+        ))}
+
+        {files.map((file, index) => (
+          <AddedExampleCapture
+            key={index}
+            deploymentId={deployment.id}
+            file={file}
+            onUploaded={() => setFiles(files.filter((f) => f !== file))}
+          />
+        ))}
+
+        {deployment.exampleCaptures.length <= IMAGE_CONFIG.MAX_SIZE ? (
+          <Card>
+            <FileInput
+              accept={FileInputAccept.Images}
+              label="Choose images"
+              multiple
+              name="example-captures"
+              onChange={(newFiles) =>
+                setFiles([...files, ...Array.from(newFiles ?? [])])
+              }
+            />
+          </Card>
+        ) : null}
       </div>
     </InputContent>
   )
@@ -60,3 +90,91 @@ const Card = ({ children }: { children: ReactNode }) => (
     <div className={styles.cardContent}>{children}</div>
   </div>
 )
+
+const ExampleCapture = ({ id, src }: { id: string; src: string }) => {
+  const { deleteCapture, isLoading, error, isSuccess } = useDeleteCapture()
+
+  if (isSuccess) {
+    return null
+  }
+
+  return (
+    <Card>
+      <div className={styles.cardContent}>
+        <img src={src} />
+      </div>
+      <div className={styles.cardContent}>
+        {isLoading ? (
+          <LoadingSpinner size={32} />
+        ) : (
+          <div className={styles.deleteContainer}>
+            <IconButton
+              icon={IconType.Cross}
+              shape={IconButtonShape.Round}
+              onClick={() => deleteCapture(id)}
+            />
+          </div>
+        )}
+        {!!error && (
+          <Tooltip content={constructErrorMessage(error)}>
+            <IconButton
+              icon={IconType.ShieldAlert}
+              theme={IconButtonTheme.Error}
+              onClick={() => deleteCapture(id)}
+            />
+          </Tooltip>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+const AddedExampleCapture = ({
+  deploymentId,
+  file,
+  onUploaded,
+}: {
+  deploymentId: string
+  file: File
+  onUploaded: () => void
+}) => {
+  const { uploadCapture, isLoading, isSuccess, error } =
+    useUploadCapture(onUploaded)
+
+  useEffect(() => {
+    uploadCapture({ deploymentId, file })
+  }, [])
+
+  if (isSuccess) {
+    return null
+  }
+
+  return (
+    <Card>
+      <div className={styles.cardContent}>
+        <img src={URL.createObjectURL(file)} />
+      </div>
+      <div className={styles.cardContent}>
+        {isLoading ? <LoadingSpinner size={32} /> : null}
+        {!!error && (
+          <>
+            <Tooltip content={constructErrorMessage(error)}>
+              <IconButton
+                icon={IconType.ShieldAlert}
+                theme={IconButtonTheme.Error}
+                onClick={() => uploadCapture({ deploymentId, file })}
+              />
+            </Tooltip>
+            <div className={styles.deleteContainer}>
+              <IconButton
+                icon={IconType.Cross}
+                shape={IconButtonShape.Round}
+                onClick={onUploaded}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  )
+}
