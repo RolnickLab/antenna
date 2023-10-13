@@ -118,7 +118,7 @@ const ExampleCapture = ({ id, src }: { id: string; src: string }) => {
         {!!error && (
           <Tooltip content={constructErrorMessage(error)}>
             <IconButton
-              icon={IconType.ShieldAlert}
+              icon={IconType.Error}
               theme={IconButtonTheme.Error}
               onClick={() => deleteCapture(id)}
             />
@@ -160,7 +160,7 @@ const AddedExampleCapture = ({
           <>
             <Tooltip content={constructErrorMessage(error)}>
               <IconButton
-                icon={IconType.ShieldAlert}
+                icon={IconType.Error}
                 theme={IconButtonTheme.Error}
                 onClick={() => uploadCapture({ deploymentId, file })}
               />
