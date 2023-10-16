@@ -34,7 +34,7 @@ export const SectionExampleCaptures = ({
   return (
     <InputContent
       label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
-      description="Valid formats are PNG, GIF and JPEG."
+      description="Valid formats are PNG, GIF and JPEG. Image filenames must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg)."
     >
       <div className={styles.collection}>
         {deployment.exampleCaptures.map((exampelCapture) => (
