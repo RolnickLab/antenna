@@ -13,6 +13,7 @@ import { InputContent } from 'design-system/components/input/input'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
+import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from './section-example-captures.module.scss'
 
@@ -41,7 +42,7 @@ export const SectionExampleCaptures = ({
 
   return (
     <InputContent
-      label="Example captures"
+      label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
       description="Valid formats are PNG, GIF and JPEG."
     >
       <div className={styles.collection}>
