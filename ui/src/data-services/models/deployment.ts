@@ -9,6 +9,10 @@ export class Deployment {
     this._deployment = deployment
   }
 
+  get canDelete(): boolean {
+    return this._deployment.user_permissions.includes(UserPermission.Delete)
+  }
+
   get canUpdate(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Update)
   }

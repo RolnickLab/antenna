@@ -140,7 +140,7 @@ class EventViewSet(DefaultViewSet):
     queryset = (
         Event.objects.select_related("deployment")
         .annotate(
-            captures_count=models.Count("captures"),
+            captures_count=models.Count("captures", distinct=True),
             detections_count=models.Count("captures__detections"),
             occurrences_count=models.Count("occurrences"),
             taxa_count=models.Count("occurrences__determination", distinct=True),
@@ -179,6 +179,8 @@ class SourceImageViewSet(DefaultViewSet):
             detections_count=models.Count("detections", distinct=True),
         )
         .select_related("event", "deployment")
+        .prefetch_related("detections")
+        .order_by("timestamp")
         .all()
     )
     serializer_class = SourceImageSerializer

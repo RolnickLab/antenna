@@ -1,4 +1,6 @@
 import classNames from 'classnames'
+import { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './card.module.scss'
 
@@ -8,28 +10,38 @@ export enum CardSize {
 }
 
 interface CardProps {
-  title: string
-  subTitle: string
+  children?: ReactNode
   image?: {
     src: string
     alt?: string
   }
   maxWidth?: string
   size?: CardSize
+  subTitle?: string
+  title: string
+  to?: string
 }
 
 export const Card = ({
-  title,
-  subTitle,
+  children,
   image,
   maxWidth,
   size = CardSize.Medium,
+  subTitle = '',
+  title,
+  to,
 }: CardProps) => {
   return (
     <div className={styles.container} style={{ maxWidth }}>
       <div className={styles.square}>
         {image ? (
-          <img src={image.src} alt={image.alt} className={styles.image} />
+          to ? (
+            <Link to={to}>
+              <img src={image.src} alt={image.alt} className={styles.image} />
+            </Link>
+          ) : (
+            <img src={image.src} alt={image.alt} className={styles.image} />
+          )
         ) : (
           <div className={styles.image}>
             <Icon
@@ -40,7 +52,7 @@ export const Card = ({
           </div>
         )}
       </div>
-      <div className={styles.footer}>
+      <div className={styles.content}>
         <span
           className={classNames(styles.title, {
             [styles.medium]: size === CardSize.Medium,
@@ -58,6 +70,7 @@ export const Card = ({
           {subTitle}
         </span>
       </div>
+      {children && <div className={styles.content}>{children}</div>}
     </div>
   )
 }

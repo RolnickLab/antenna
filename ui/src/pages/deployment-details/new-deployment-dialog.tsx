@@ -1,7 +1,8 @@
 import { useCreateDeployment } from 'data-services/hooks/deployments/useCreateDeployment'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
+import { IconType } from 'design-system/components/icon/icon'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -21,7 +22,7 @@ export const NewDeploymentDialog = () => {
       <Dialog.Trigger>
         <Button
           label={translate(STRING.DIALOG_NEW_DEPLOYMENT)}
-          theme={ButtonTheme.Plain}
+          icon={IconType.Plus}
         />
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
