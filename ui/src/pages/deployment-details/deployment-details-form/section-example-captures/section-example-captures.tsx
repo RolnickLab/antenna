@@ -139,7 +139,9 @@ const AddedExampleCapture = ({
     useUploadCapture(onUploaded)
 
   useEffect(() => {
-    uploadCapture({ deploymentId, file })
+    if (!isSuccess) {
+      uploadCapture({ deploymentId, file })
+    }
   }, [])
 
   if (isSuccess) {
