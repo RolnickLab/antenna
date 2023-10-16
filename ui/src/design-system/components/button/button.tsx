@@ -9,6 +9,7 @@ export enum ButtonTheme {
   Plain = 'plain',
   Neutral = 'neutral',
   Destructive = 'neutral',
+  Error = 'error',
 }
 
 interface ButtonProps {
@@ -34,10 +35,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ...rest
     } = props
 
-    const iconTheme =
-      theme === ButtonTheme.Success || theme === ButtonTheme.Neutral
-        ? IconTheme.Light
-        : IconTheme.Primary
+    const iconTheme = (() => {
+      switch (theme) {
+        case ButtonTheme.Success:
+        case ButtonTheme.Neutral:
+          return IconTheme.Light
+        case ButtonTheme.Error:
+          return IconTheme.Error
+        default:
+          return IconTheme.Primary
+      }
+    })()
 
     return (
       <button
@@ -47,6 +55,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           [styles.plain]: theme === ButtonTheme.Plain,
           [styles.neutral]: theme === ButtonTheme.Neutral,
           [styles.destructive]: theme === ButtonTheme.Destructive,
+          [styles.error]: theme === ButtonTheme.Error,
           [styles.disabled]: disabled,
         })}
         disabled={disabled}

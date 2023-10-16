@@ -1,6 +1,7 @@
 import { useDeleteCapture } from 'data-services/hooks/captures/useDeleteCapture'
 import { useUploadCapture } from 'data-services/hooks/captures/useUploadCapture'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
 import {
@@ -16,16 +17,6 @@ import { ReactNode, useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from './section-example-captures.module.scss'
-
-const constructErrorMessage = (error: unknown) => {
-  const { message, fieldErrors } = parseServerError(error)
-
-  if (fieldErrors.length) {
-    return fieldErrors.map((e) => e.message).join('\n')
-  }
-
-  return message
-}
 
 const IMAGE_CONFIG = {
   MAX_SIZE: 1024 * 1024, // 1MB
@@ -124,13 +115,11 @@ const ExampleCapture = ({ id, src }: { id: string; src: string }) => {
           </div>
         )}
         {!!error && (
-          <Tooltip content={constructErrorMessage(error)}>
-            <IconButton
-              icon={IconType.Error}
-              theme={IconButtonTheme.Error}
-              onClick={() => deleteCapture(id)}
-            />
-          </Tooltip>
+          <ErrorMessage
+            error={error}
+            label="Retry delete"
+            onClick={() => deleteCapture(id)}
+          />
         )}
       </div>
     </Card>
@@ -166,13 +155,11 @@ const AddedExampleCapture = ({
         {isLoading ? <LoadingSpinner size={32} /> : null}
         {!!error && (
           <>
-            <Tooltip content={constructErrorMessage(error)}>
-              <IconButton
-                icon={IconType.Error}
-                theme={IconButtonTheme.Error}
-                onClick={() => uploadCapture({ deploymentId, file })}
-              />
-            </Tooltip>
+            <ErrorMessage
+              error={error}
+              label="Retry upload"
+              onClick={() => uploadCapture({ deploymentId, file })}
+            />
             <div className={styles.deleteContainer}>
               <IconButton
                 icon={IconType.Cross}
@@ -184,5 +171,36 @@ const AddedExampleCapture = ({
         )}
       </div>
     </Card>
+  )
+}
+
+const ErrorMessage = ({
+  error,
+  label,
+  onClick,
+}: {
+  error: unknown
+  label: string
+  onClick: () => void
+}) => {
+  const errorMessage = (() => {
+    const { message, fieldErrors } = parseServerError(error)
+
+    if (fieldErrors.length) {
+      return fieldErrors.map((e) => e.message).join('\n')
+    }
+
+    return message
+  })()
+
+  return (
+    <Tooltip content={errorMessage}>
+      <Button
+        icon={IconType.Error}
+        label={label}
+        theme={ButtonTheme.Error}
+        onClick={onClick}
+      />
+    </Tooltip>
   )
 }

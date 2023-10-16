@@ -25,6 +25,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
 
   img {
     width: 100%;
@@ -37,14 +38,4 @@
   position: absolute;
   top: 8px;
   right: 8px;
-}
-
-.errorMessage {
-  width: 24px;
-  height: 24px;
-  background-color: $color-destructive-100;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
