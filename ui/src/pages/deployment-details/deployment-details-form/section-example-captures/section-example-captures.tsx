@@ -67,9 +67,16 @@ export const SectionExampleCaptures = ({
           <Card>
             <FileInput
               accept={FileInputAccept.Images}
-              label="Choose images"
               multiple
               name="example-captures"
+              renderInput={(props) => (
+                <IconButton
+                  {...props}
+                  icon={IconType.Plus}
+                  shape={IconButtonShape.Round}
+                  theme={IconButtonTheme.Success}
+                />
+              )}
               onChange={(newFiles) =>
                 setFiles([...files, ...Array.from(newFiles ?? [])])
               }

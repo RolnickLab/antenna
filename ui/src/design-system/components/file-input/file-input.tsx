@@ -10,20 +10,23 @@ const acceptValues: { [key in FileInputAccept]: string | undefined } = {
 
 interface FileInputProps {
   accept?: FileInputAccept
-  label?: string
   loading?: boolean
   multiple?: boolean
   name: string
+  renderInput: (props: {
+    loading?: boolean
+    onClick: () => void
+  }) => JSX.Element
   withClear?: boolean
   onChange: (files: FileList | null) => void
 }
 
 export const FileInput = ({
   accept = FileInputAccept.All,
-  label = 'Choose file',
   loading,
   multiple,
   name,
+  renderInput,
   withClear,
   onChange,
 }: FileInputProps) => {
@@ -39,6 +42,7 @@ export const FileInput = ({
         multiple={multiple}
         name={name}
         ref={inputRef}
+        tabIndex={-1}
         type="file"
         onChange={(e) => {
           const files = e.currentTarget.files
@@ -49,7 +53,7 @@ export const FileInput = ({
           e.currentTarget.value = ''
         }}
       />
-      <label htmlFor={name}>{!loading ? label : `${label}...`}</label>
+      {renderInput({ loading, onClick: () => inputRef.current?.click() })}
       {withClear && (
         <Button
           label="Clear"

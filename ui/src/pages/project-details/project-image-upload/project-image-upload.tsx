@@ -1,4 +1,5 @@
 import { Project } from 'data-services/models/project'
+import { Button } from 'design-system/components/button/button'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
 import styles from './project-image-upload.module.scss'
@@ -33,8 +34,13 @@ export const ProjectImageUpload = ({
       </div>
       <FileInput
         accept={FileInputAccept.Images}
-        label={imageUrl ? 'Change image' : 'Choose image'}
         name="project-image"
+        renderInput={(props) => (
+          <Button
+            {...props}
+            label={imageUrl ? 'Change image' : 'Choose image'}
+          />
+        )}
         withClear
         onChange={(files) => onChange(files ? files[0] : null)}
       />
