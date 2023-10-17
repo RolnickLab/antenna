@@ -551,6 +551,9 @@ class Event(BaseModel):
 
         return plots
 
+    def total_filesize(self) -> int:
+        return self.captures.aggregate(total_size=models.Sum("size"))["total_size"]
+
     def update_calculated_fields(self):
         if not self.group_by and self.start:
             # If no group_by is set, use the start "day"

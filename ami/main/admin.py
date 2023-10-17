@@ -3,12 +3,16 @@ from typing import Any
 from django.contrib import admin
 from django.db import models
 from django.db.models.query import QuerySet
+from django.http import HttpResponse
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
+from django.utils import timezone
 from django.utils.formats import number_format
+from rest_framework.response import Response
 
 import ami.utils
 from ami import tasks
+from ami.main.api.serializers import EventListFlatSerializer
 
 from .models import (
     BlogPost,
@@ -81,7 +85,29 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         msg = f"Syncing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
         self.message_user(request, msg)
 
-    actions = [sync_captures]
+    # Export deployment as CSV using EventListFlatSerializer
+    @admin.action(description="Export events as CSV")
+    def export_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> HttpResponse:
+        qs = (
+            Event.objects.select_related("deployment")
+            .filter(deployment__in=queryset)
+            .annotate(
+                captures_count=models.Count("captures", distinct=True),
+                detections_count=models.Count("captures__detections"),
+                occurrences_count=models.Count("occurrences"),
+                taxa_count=models.Count("occurrences__determination", distinct=True),
+            )
+            .select_related("deployment", "project")
+        )  # .prefetch_related("captures").all()
+        data = EventListFlatSerializer(qs, many=True).data
+
+        response = Response(data, content_type="text/csv")
+        deployment_ids_str = ",".join([str(deployment.pk) for deployment in queryset])
+        filename = f"summary_of_deployments_{deployment_ids_str}_{timezone.now().isoformat()}.csv"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    actions = [sync_captures, export_events]
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)

@@ -240,6 +240,37 @@ class SourceImageQuickListSerializer(DefaultSerializer):
         ]
 
 
+class EventListFlatSerializer(DefaultSerializer):
+    deployment = serializers.SerializerMethodField()
+    project = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Event
+        fields = [
+            "id",
+            "name",
+            "project",
+            "deployment",
+            "start",
+            "end",
+            "day",
+            "date_label",
+            "duration",
+            "duration_label",
+            "captures_count",
+            "total_filesize",
+            "detections_count",
+            "occurrences_count",
+            "taxa_count",
+        ]
+
+    def get_deployment(self, obj):
+        return obj.deployment.name
+
+    def get_project(self, obj):
+        return obj.deployment.project.name
+
+
 class EventListSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(
         read_only=True,

@@ -34,6 +34,7 @@ from .serializers import (
     DeploymentSerializer,
     DetectionListSerializer,
     DetectionSerializer,
+    EventListFlatSerializer,
     EventListSerializer,
     EventSerializer,
     IdentificationSerializer,
@@ -165,8 +166,35 @@ class EventViewSet(DefaultViewSet):
         """
         if self.action == "list":
             return EventListSerializer
+        elif self.action == "tabular":
+            return EventListFlatSerializer
         else:
             return EventSerializer
+
+    @action(detail=False, methods=["get"], name="tabular")
+    def tabular(self, request):
+        """
+        Return a list of events, with the most recent first.
+        """
+        response = super().list(request)
+        data = EventListFlatSerializer(response.data["results"], many=True, context={"request": request}).data
+        response = Response(data, content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="events_summary.csv"'
+        return response
+
+    # Override list method and return a CSV file based on query param "csv"
+    def list(self, request, *args, **kwargs):
+        """
+        Return a list of events, with the most recent first.
+        """
+        if request.query_params.get("csv") == "1":
+            response = super().list(request, *args, **kwargs)
+            data = EventListFlatSerializer(response.data["results"], many=True, context={"request": request}).data
+            response = Response(data, content_type="text/csvj")
+            response["Content-Disposition"] = 'attachment; filename="events_summary.csv"'
+            return response
+        else:
+            return super().list(request, *args, **kwargs)
 
 
 class SourceImageViewSet(DefaultViewSet):
