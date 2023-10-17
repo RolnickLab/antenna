@@ -6,10 +6,12 @@ import { useDebounce } from 'utils/useDebounce'
 import { useTaxonSearch } from './useTaxonSearch'
 
 export const TaxonSearch = ({
+  containerRef,
   inputRef,
   taxon,
   onTaxonChange,
 }: {
+  containerRef: RefObject<HTMLDivElement>
   inputRef: RefObject<HTMLInputElement>
   taxon?: Taxon
   onTaxonChange: (taxon: Taxon) => void
@@ -33,11 +35,13 @@ export const TaxonSearch = ({
 
   return (
     <ComboBoxTree
+      containerRef={containerRef}
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       inputRef={inputRef}
       loading={isLoading}
       nodes={nodes}
       searchString={searchString}
+      selectedLabel={taxon?.name}
       selectedNodeId={taxon?.id}
       onItemSelect={(id) => {
         const taxon = data?.find((i) => i.id === id)

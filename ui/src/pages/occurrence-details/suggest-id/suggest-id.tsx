@@ -14,45 +14,22 @@ import { TaxonSearch } from '../taxon-search/taxon-search'
 import styles from './suggest-id.module.scss'
 
 interface SuggestIdProps {
-  inputRef: RefObject<HTMLInputElement>
-  occurrenceId: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}
-
-export const SuggestId = ({
-  inputRef,
-  occurrenceId,
-  open,
-  onOpenChange,
-}: SuggestIdProps) => {
-  if (!open) {
-    return null
-  }
-
-  return (
-    <SuggestIdForm
-      inputRef={inputRef}
-      occurrenceId={occurrenceId}
-      onCancel={() => onOpenChange(false)}
-    />
-  )
-}
-
-const SuggestIdForm = ({
-  inputRef,
-  occurrenceId,
-  onCancel,
-}: {
+  containerRef: RefObject<HTMLDivElement>
   inputRef: RefObject<HTMLInputElement>
   occurrenceId: string
   onCancel: () => void
-}) => {
+}
+
+export const SuggestId = ({
+  containerRef,
+  inputRef,
+  occurrenceId,
+  onCancel,
+}: SuggestIdProps) => {
   const { projectId } = useParams()
   const [taxon, setTaxon] = useState<Taxon>()
-  const { createIdentification, isLoading, error } = useCreateIdentification(
-    () => onCancel()
-  )
+  const { createIdentification, isLoading, error } =
+    useCreateIdentification(onCancel)
   const formError = error ? parseServerError(error)?.message : undefined
 
   return (
@@ -65,6 +42,7 @@ const SuggestIdForm = ({
         <InputContent label="Taxon">
           <div className={styles.taxonActions}>
             <TaxonSearch
+              containerRef={containerRef}
               inputRef={inputRef}
               taxon={taxon}
               onTaxonChange={setTaxon}

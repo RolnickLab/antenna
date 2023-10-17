@@ -6,29 +6,38 @@ import styles from '../styles.module.scss'
 import { buildTree } from './buildTree'
 import { ComboBoxTreeItem } from './combo-box-tree-item'
 import { Node } from './types'
+import { useBottomAnchor } from './useBottomAnchor'
 
 export const ComboBoxTree = ({
+  containerRef,
   emptyLabel,
   inputRef,
   loading,
   nodes = [],
   searchString,
   selectedNodeId,
+  selectedLabel = '',
   onItemSelect,
   setSearchString,
 }: {
+  containerRef: RefObject<HTMLDivElement>
   emptyLabel: string
   inputRef: RefObject<HTMLInputElement>
   loading?: boolean
   nodes?: Node[]
   searchString: string
   selectedNodeId?: string
+  selectedLabel?: string
   onItemSelect: (id: string | number) => void
   setSearchString: (value: string) => void
 }) => {
   const [open, setOpen] = useState(false)
-  const selectedLabel = nodes?.find((n) => n.id === selectedNodeId)?.label ?? ''
   const tree = useMemo(() => buildTree(nodes), [nodes])
+  const { top, left } = useBottomAnchor({
+    containerRef,
+    elementRef: inputRef,
+    active: open,
+  })
 
   return (
     <Command shouldFilter={false} className={styles.wrapper}>
@@ -50,8 +59,12 @@ export const ComboBoxTree = ({
       )}
       <Command.List
         className={classNames(styles.content, styles.treeItems, {
-          [styles.open]: open,
+          [styles.open]: open && searchString.length,
         })}
+        style={{
+          top,
+          left,
+        }}
       >
         {tree.length ? (
           tree.map((treeItem) => (
@@ -66,11 +79,11 @@ export const ComboBoxTree = ({
               }}
             />
           ))
-        ) : searchString.length ? (
+        ) : (
           <div className={classNames(styles.item, styles.empty)}>
             {emptyLabel}
           </div>
-        ) : null}
+        )}
       </Command.List>
     </Command>
   )

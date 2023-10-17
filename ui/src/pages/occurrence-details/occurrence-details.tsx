@@ -37,6 +37,7 @@ export const OccurrenceDetails = ({
 }: {
   occurrence: Occurrence
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null)
   const suggestIdInputRef = useRef<HTMLInputElement>(null)
   const {
     user: { loggedIn },
@@ -115,7 +116,7 @@ export const OccurrenceDetails = ({
   ]
 
   return (
-    <div className={styles.wrapper}>
+    <div className={styles.wrapper} ref={containerRef}>
       <div className={styles.header}>
         <TaxonInfo
           taxon={occurrence.determinationTaxon}
@@ -201,12 +202,14 @@ export const OccurrenceDetails = ({
                 </Tabs.Content>
                 <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>
-                    <SuggestId
-                      inputRef={suggestIdInputRef}
-                      occurrenceId={occurrence.id}
-                      open={suggestIdOpen}
-                      onOpenChange={setSuggestIdOpen}
-                    />
+                    {suggestIdOpen && (
+                      <SuggestId
+                        containerRef={containerRef}
+                        inputRef={suggestIdInputRef}
+                        occurrenceId={occurrence.id}
+                        onCancel={() => setSuggestIdOpen(false)}
+                      />
+                    )}
 
                     {occurrence.humanIdentifications.map((i) => (
                       <IdentificationCard

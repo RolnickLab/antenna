@@ -16,8 +16,9 @@ $loading-wrapper-size: 38px;
   padding: 8px;
   max-width: 480px;
   max-height: 320px;
-  overflow: auto;
-  z-index: 2;
+  overflow-x: hidden;
+  overflow-y: auto;
+  z-index: 1;
 }
 
 .input {
@@ -108,7 +109,7 @@ $loading-wrapper-size: 38px;
   .details {
     @include paragraph-xx-small();
     color: $color-neutral-500;
-    padding-left: 16px;
+    padding: 0 8px 0 32px;
   }
 }
 
@@ -119,13 +120,7 @@ $loading-wrapper-size: 38px;
 
 /* For tree version */
 .treeItems {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  padding: 0;
-  transform: translateY(100%);
-  width: 100%;
-  max-width: auto;
+  position: fixed;
 
   > div {
     display: grid;
