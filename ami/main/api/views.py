@@ -314,7 +314,7 @@ class TaxonViewSet(DefaultViewSet):
                 taxa = (
                     Taxon.objects.select_related("parent", "parent__parent")
                     .annotate(similarity=TrigramSimilarity("name", query))
-                    .order_by("-similarity")[:default_results_limit]
+                    .order_by("-similarity")[:limit]
                 )
                 return Response(TaxonNestedSerializer(taxa, many=True, context={"request": request}).data)
             else:
