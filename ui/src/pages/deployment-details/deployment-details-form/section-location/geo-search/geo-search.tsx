@@ -1,4 +1,4 @@
-import { ComboBox } from 'design-system/components/combo-box/combo-box'
+import { ComboBoxSimple } from 'design-system/components/combo-box/combo-box-simple/combo-box-simple'
 import { MarkerPosition } from 'design-system/map/types'
 import { useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -12,7 +12,7 @@ export const GeoSearch = ({
 }) => {
   const [searchString, setSearchString] = useState('')
   const debouncedSearchString = useDebounce(searchString, 200)
-  const { data } = useGeoSearch(debouncedSearchString)
+  const { data, isLoading } = useGeoSearch(debouncedSearchString)
 
   const items = useMemo(() => {
     if (!data?.length) {
@@ -25,12 +25,12 @@ export const GeoSearch = ({
   }, [data])
 
   return (
-    <ComboBox
+    <ComboBoxSimple
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       items={items}
       label={translate(STRING.SEARCH_MAP)}
+      loading={isLoading}
       searchString={searchString}
-      shouldFilter={false}
       onItemSelect={(id) => {
         const item = data?.find((i) => i.osmId === id)
         if (item) {
