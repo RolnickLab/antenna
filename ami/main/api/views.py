@@ -25,6 +25,7 @@ from ..models import (
     Page,
     Project,
     SourceImage,
+    SourceImageUpload,
     Taxon,
 )
 from .serializers import (
@@ -47,6 +48,7 @@ from .serializers import (
     ProjectSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
+    SourceImageUploadSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
     TaxonNestedSerializer,
@@ -201,6 +203,23 @@ class SourceImageViewSet(DefaultViewSet):
             return SourceImageListSerializer
         else:
             return SourceImageSerializer
+
+
+class SourceImageUploadViewSet(DefaultViewSet):
+    """
+    Endpoint for uploading images.
+    """
+
+    queryset = SourceImageUpload.objects.all()
+
+    serializer_class = SourceImageUploadSerializer
+
+    def get_queryset(self) -> QuerySet:
+        # Only allow users to see their own uploads
+        qs = super().get_queryset()
+        if self.request.user.pk:
+            qs = qs.filter(user=self.request.user)
+        return qs
 
 
 class DetectionViewSet(DefaultViewSet):
