@@ -788,6 +788,8 @@ def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployme
         checksum_algorithm=checksum_algorithm,
         width=image.width,
         height=image.height,
+        test_image=True,
+        uploaded_by=request.user,
     )
     source_image.save()
     return source_image
@@ -800,17 +802,32 @@ def upload_to_with_deployment(instance, filename: str) -> str:
 
 @final
 class SourceImageUpload(BaseModel):
-    """A manually uploaded image that has not yet been imported"""
+    """
+    A manually uploaded image that has not yet been imported.
+
+    The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
+    """
 
     image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE)
-    capture = models.OneToOneField("SourceImage", on_delete=models.SET_NULL, null=True, blank=True)
+    source_image = models.OneToOneField("SourceImage", on_delete=models.CASCADE, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         ami.tasks.regroup_events.delay(self.deployment.pk)
         self.deployment.save()  # Update counts, this could be async too
+
+    def delete(self, *args, **kwargs):
+        """
+        A SourceImageUpload are automatically deleted when deleting a SourceImage because of the CASCADE setting.
+        However the SourceImage needs to be deleted using an extra method when deleting a SourceImageUpload.
+        """
+        if self.source_image:
+            self.source_image.delete()
+        super().delete(*args, **kwargs)
+        ami.tasks.regroup_events.delay(self.deployment.pk)
+        self.deployment.save()
 
 
 @final
@@ -826,6 +843,8 @@ class SourceImage(BaseModel):
     last_modified = models.DateTimeField(null=True, blank=True)
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    test_image = models.BooleanField(default=False)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
