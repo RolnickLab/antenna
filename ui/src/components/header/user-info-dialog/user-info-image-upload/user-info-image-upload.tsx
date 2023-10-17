@@ -1,3 +1,4 @@
+import { Button } from 'design-system/components/button/button'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
 import { UserInfo } from 'utils/user/types'
@@ -38,9 +39,15 @@ export const UserInfoImageUpload = ({
       </div>
       <FileInput
         accept={FileInputAccept.Images}
-        label={imageUrl ? 'Change image' : 'Choose image'}
         name="user-image"
-        onChange={onChange}
+        renderInput={(props) => (
+          <Button
+            {...props}
+            label={imageUrl ? 'Change image' : 'Choose image'}
+          />
+        )}
+        withClear
+        onChange={(files) => onChange(files ? files[0] : null)}
       />
     </>
   )

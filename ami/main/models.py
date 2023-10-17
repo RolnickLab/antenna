@@ -17,6 +17,8 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 
 import ami.tasks
 import ami.utils
@@ -522,6 +524,8 @@ class Deployment(BaseModel):
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+            # @TODO Use "dirty" flag strategy to only update when needed
+            ami.tasks.regroup_events.delay(self.pk)
         super().save(*args, **kwargs)
 
 
@@ -751,9 +755,9 @@ def delete_empty_events(dry_run=False):
 
     if dry_run:
         for event in events:
-            print(f"Would delete event {event}")
+            logger.debug(f"Would delete event {event} (dry run)")
     else:
-        print(f"Deleting {events.count()} empty events")
+        logger.info(f"Deleting {events.count()} empty events")
         events.delete()
 
 
@@ -881,6 +885,8 @@ def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployme
         checksum_algorithm=checksum_algorithm,
         width=image.width,
         height=image.height,
+        test_image=True,
+        uploaded_by=request.user,
     )
     source_image.save()
     return source_image
@@ -893,17 +899,39 @@ def upload_to_with_deployment(instance, filename: str) -> str:
 
 @final
 class SourceImageUpload(BaseModel):
-    """A manually uploaded image that has not yet been imported"""
+    """
+    A manually uploaded image that has not yet been imported.
+
+    The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
+    """
 
     image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE)
-    capture = models.OneToOneField("SourceImage", on_delete=models.SET_NULL, null=True, blank=True)
+    source_image = models.OneToOneField(
+        "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
+    )
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        ami.tasks.regroup_events.delay(self.deployment.pk)
-        self.deployment.save()  # Update counts, this could be async too
+        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+        self.deployment.save()
+
+
+@receiver(pre_delete, sender=SourceImageUpload)
+def delete_source_image(sender, instance, **kwargs):
+    """
+    A SourceImageUpload are automatically deleted when deleting a SourceImage because of the CASCADE setting.
+    However the SourceImage needs to be deleted using a signal when deleting a SourceImageUpload.
+    """
+    if instance.source_image:
+        # Disconnect the SourceImage from the upload to prevent recursion error
+        source_image = instance.source_image
+        instance.source_image = None
+        instance.save()
+        source_image.delete()
+    # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+    instance.deployment.save()
 
 
 class InventoryStorageSource:
@@ -924,6 +952,8 @@ class SourceImage(BaseModel):
     last_modified = models.DateTimeField(null=True, blank=True)
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    test_image = models.BooleanField(default=False)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")

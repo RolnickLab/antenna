@@ -748,11 +748,15 @@ class SourceImageListSerializer(DefaultSerializer):
 class SourceImageSerializer(DefaultSerializer):
     detections_count = serializers.IntegerField(read_only=True)
     detections = CaptureDetectionsSerializer(many=True, read_only=True)
+    uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
         model = SourceImage
-        fields = SourceImageListSerializer.Meta.fields + []
+        fields = SourceImageListSerializer.Meta.fields + [
+            "uploaded_by",
+            "test_image",
+        ]
 
 
 class SourceImageUploadSerializer(DefaultSerializer):
@@ -765,7 +769,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
     user = serializers.PrimaryKeyRelatedField(
         read_only=True,
     )
-    capture = SourceImageNestedSerializer(read_only=True)
+    source_image = SourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = SourceImageUpload
@@ -774,7 +778,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
             "details",
             "image",
             "deployment",
-            "capture",
+            "source_image",
             "user",
             "created_at",
         ]
@@ -791,7 +795,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
             request,
         )
         if source_image is not None:
-            obj.capture = source_image  # type: ignore
+            obj.source_image = source_image  # type: ignore
             obj.save()
         return obj
 

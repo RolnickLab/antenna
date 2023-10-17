@@ -12,6 +12,7 @@ one_day = one_hour * 24
 two_days = one_hour * 24 * 2
 
 
+# @TODO use shared_task decorator instead of celery_app?
 @celery_app.task(soft_time_limit=two_days, time_limit=two_days + one_hour)
 def sync_source_images(deployment_id: int) -> int:
     from ami.main.models import Deployment
@@ -90,6 +91,7 @@ def regroup_events(deployment_id: int) -> None:
     deployment = Deployment.objects.get(id=deployment_id)
     if deployment:
         logger.info(f"Grouping captures for {deployment}")
-        group_images_into_events(deployment)
+        events = group_images_into_events(deployment)
+        logger.info(f"{deployment } now has {len(events)} events")
     else:
         logger.error(f"Deployment with id {deployment_id} not found")
