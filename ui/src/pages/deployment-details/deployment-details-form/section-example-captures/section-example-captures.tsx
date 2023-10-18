@@ -22,7 +22,7 @@ import styles from './section-example-captures.module.scss'
 import { useCaptureError } from './useCaptureError'
 
 export const CAPTURE_CONFIG = {
-  MAX_SIZE: 1024 * 1024 * 10, // 10MB
+  MAX_SIZE: 1024 * 1024 * 1, // 10MB
   NUM_CAPTURES: 20,
   RATIO: 16 / 9,
 }
@@ -59,6 +59,10 @@ export const SectionExampleCaptures = ({
     )
   }
 
+  const canUpload =
+    deployment.exampleCaptures.length + files.length <
+    CAPTURE_CONFIG.NUM_CAPTURES
+
   return (
     <InputContent
       label={COPY.FIELD_LABEL_UPLOADED_CAPTURES}
@@ -83,7 +87,7 @@ export const SectionExampleCaptures = ({
           />
         ))}
 
-        {deployment.exampleCaptures.length <= CAPTURE_CONFIG.NUM_CAPTURES ? (
+        {canUpload && (
           <Card>
             <FileInput
               accept={FileInputAccept.Images}
@@ -102,7 +106,7 @@ export const SectionExampleCaptures = ({
               }
             />
           </Card>
-        ) : null}
+        )}
       </div>
     </InputContent>
   )
