@@ -34,8 +34,20 @@
   }
 }
 
-.deleteContainer {
+.cancelContainer {
   position: absolute;
   top: 8px;
   right: 8px;
+}
+
+.deleteContainer {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+}
+
+.deleteDialog {
+  width: 320px;
+  max-width: 100%;
+  box-sizing: border-box;
 }

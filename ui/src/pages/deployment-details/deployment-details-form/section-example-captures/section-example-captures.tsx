@@ -1,7 +1,9 @@
+import { DeleteForm } from 'components/form/delete-form/delete-form'
 import { useDeleteCapture } from 'data-services/hooks/captures/useDeleteCapture'
 import { useUploadCapture } from 'data-services/hooks/captures/useUploadCapture'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import * as Dialog from 'design-system/components/dialog/dialog'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
 import {
@@ -90,41 +92,18 @@ const Card = ({ children }: { children: ReactNode }) => (
   </div>
 )
 
-const ExampleCapture = ({ id, src }: { id: string; src: string }) => {
-  const { deleteCapture, isLoading, error, isSuccess } = useDeleteCapture()
-
-  if (isSuccess) {
-    return null
-  }
-
-  return (
-    <Card>
-      <div className={styles.cardContent}>
-        <img src={src} />
+const ExampleCapture = ({ id, src }: { id: string; src: string }) => (
+  <Card>
+    <div className={styles.cardContent}>
+      <img src={src} />
+    </div>
+    <div className={styles.cardContent}>
+      <div className={styles.deleteContainer}>
+        <DeleteCaptureDialog id={id} />
       </div>
-      <div className={styles.cardContent}>
-        {isLoading ? (
-          <LoadingSpinner size={32} />
-        ) : (
-          <div className={styles.deleteContainer}>
-            <IconButton
-              icon={IconType.Cross}
-              shape={IconButtonShape.Round}
-              onClick={() => deleteCapture(id)}
-            />
-          </div>
-        )}
-        {!!error && (
-          <ErrorMessage
-            error={error}
-            label="Retry delete"
-            onClick={() => deleteCapture(id)}
-          />
-        )}
-      </div>
-    </Card>
-  )
-}
+    </div>
+  </Card>
+)
 
 const AddedExampleCapture = ({
   deploymentId,
@@ -148,6 +127,20 @@ const AddedExampleCapture = ({
     return null
   }
 
+  const errorMessage = (() => {
+    if (!error) {
+      return undefined
+    }
+
+    const { message, fieldErrors } = parseServerError(error)
+
+    if (fieldErrors.length) {
+      return fieldErrors.map(({ message }) => message).join('\n')
+    }
+
+    return message
+  })()
+
   return (
     <Card>
       <div className={styles.cardContent}>
@@ -155,14 +148,17 @@ const AddedExampleCapture = ({
       </div>
       <div className={styles.cardContent}>
         {isLoading ? <LoadingSpinner size={32} /> : null}
-        {!!error && (
+        {errorMessage && (
           <>
-            <ErrorMessage
-              error={error}
-              label="Retry upload"
-              onClick={() => uploadCapture({ deploymentId, file })}
-            />
-            <div className={styles.deleteContainer}>
+            <Tooltip content={errorMessage}>
+              <Button
+                icon={IconType.Error}
+                label="Retry"
+                theme={ButtonTheme.Error}
+                onClick={() => uploadCapture({ deploymentId, file })}
+              />
+            </Tooltip>
+            <div className={styles.cancelContainer}>
               <IconButton
                 icon={IconType.Cross}
                 shape={IconButtonShape.Round}
@@ -176,33 +172,27 @@ const AddedExampleCapture = ({
   )
 }
 
-const ErrorMessage = ({
-  error,
-  label,
-  onClick,
-}: {
-  error: unknown
-  label: string
-  onClick: () => void
-}) => {
-  const errorMessage = (() => {
-    const { message, fieldErrors } = parseServerError(error)
-
-    if (fieldErrors.length) {
-      return fieldErrors.map((e) => e.message).join('\n')
-    }
-
-    return message
-  })()
+const DeleteCaptureDialog = ({ id }: { id: string }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const { deleteCapture, isLoading, error, isSuccess } = useDeleteCapture()
 
   return (
-    <Tooltip content={errorMessage}>
-      <Button
-        icon={IconType.Error}
-        label={label}
-        theme={ButtonTheme.Error}
-        onClick={onClick}
-      />
-    </Tooltip>
+    <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog.Trigger>
+        <IconButton icon={IconType.RadixTrash} />
+      </Dialog.Trigger>
+      <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
+        <div className={styles.deleteDialog}>
+          <DeleteForm
+            error={error}
+            type="capture"
+            isLoading={isLoading}
+            isSuccess={isSuccess}
+            onCancel={() => setIsOpen(false)}
+            onSubmit={() => deleteCapture(id)}
+          />
+        </div>
+      </Dialog.Content>
+    </Dialog.Root>
   )
 }
