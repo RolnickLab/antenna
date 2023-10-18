@@ -33,6 +33,15 @@ export const SectionExampleCaptures = ({
 }) => {
   const [files, setFiles] = useState<File[]>([])
 
+  if (!deployment.createdAt) {
+    return (
+      <InputContent
+        label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
+        description="Deployment must be saved before uploading captures."
+      />
+    )
+  }
+
   return (
     <InputContent
       label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}

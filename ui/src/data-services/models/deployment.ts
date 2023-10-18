@@ -9,6 +9,12 @@ export class Deployment {
     this._deployment = deployment
   }
 
+  get createdAt(): Date | undefined {
+    return this._deployment.created_at
+      ? new Date(this._deployment.created_at)
+      : undefined
+  }
+
   get canDelete(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Delete)
   }
