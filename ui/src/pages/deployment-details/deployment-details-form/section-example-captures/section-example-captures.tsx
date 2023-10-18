@@ -11,19 +11,36 @@ import {
   IconButtonShape,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
+import { bytesToMB } from 'utils/bytesToMB'
 import { STRING, translate } from 'utils/language'
-import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from './section-example-captures.module.scss'
+import { useCaptureError } from './useCaptureError'
 
-const IMAGE_CONFIG = {
-  MAX_SIZE: 1024 * 1024, // 1MB
-  NUM_IMAGES: 12,
+export const CAPTURE_CONFIG = {
+  MAX_SIZE: 1024 * 1024 * 10, // 10MB
+  NUM_CAPTURES: 20,
   RATIO: 16 / 9,
+}
+
+// TODO: Move to translations when we are happy with the copy
+export const COPY = {
+  CAPTURE: 'capture',
+  DESCRIPTIONS: [
+    `A maximum of ${CAPTURE_CONFIG.NUM_CAPTURES} captures can be uploaded.`,
+    `The image must smaller than ${bytesToMB(CAPTURE_CONFIG.MAX_SIZE)} MB.`,
+    'Valid formats are PNG, GIF and JPEG.',
+    'Image filenames must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
+  ],
+  FIELD_LABEL_UPLOADED_CAPTURES: 'Manually uploaded captures',
+  MESSAGE_CAPTURE_UPLOAD_HIDDEN:
+    'Deployment must be saved before uploading captures.',
+  MESSAGE_CAPTURE_LIMIT: `To upload more than ${CAPTURE_CONFIG.NUM_CAPTURES} images you must configure a data source.`,
+  RETRY: 'Retry',
 }
 
 export const SectionExampleCaptures = ({
@@ -36,16 +53,16 @@ export const SectionExampleCaptures = ({
   if (!deployment.createdAt) {
     return (
       <InputContent
-        label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
-        description="Deployment must be saved before uploading captures."
+        label={COPY.FIELD_LABEL_UPLOADED_CAPTURES}
+        description={COPY.MESSAGE_CAPTURE_UPLOAD_HIDDEN}
       />
     )
   }
 
   return (
     <InputContent
-      label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
-      description="Valid formats are PNG, GIF and JPEG. Image filenames must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg)."
+      label={COPY.FIELD_LABEL_UPLOADED_CAPTURES}
+      description={COPY.DESCRIPTIONS.join('\n')}
     >
       <div className={styles.collection}>
         {deployment.exampleCaptures.map((exampelCapture) => (
@@ -61,11 +78,12 @@ export const SectionExampleCaptures = ({
             key={index}
             deploymentId={deployment.id}
             file={file}
+            index={deployment.exampleCaptures.length + index}
             onUploaded={() => setFiles(files.filter((f) => f !== file))}
           />
         ))}
 
-        {deployment.exampleCaptures.length <= IMAGE_CONFIG.MAX_SIZE ? (
+        {deployment.exampleCaptures.length <= CAPTURE_CONFIG.NUM_CAPTURES ? (
           <Card>
             <FileInput
               accept={FileInputAccept.Images}
@@ -94,7 +112,7 @@ const Card = ({ children }: { children: ReactNode }) => (
   <div
     className={styles.card}
     style={{
-      paddingBottom: `${(1 / IMAGE_CONFIG.RATIO) * 100}%`,
+      paddingBottom: `${(1 / CAPTURE_CONFIG.RATIO) * 100}%`,
     }}
   >
     <div className={styles.cardContent}>{children}</div>
@@ -116,39 +134,35 @@ const ExampleCapture = ({ id, src }: { id: string; src: string }) => (
 
 const AddedExampleCapture = ({
   deploymentId,
+  index,
   file,
   onUploaded,
 }: {
   deploymentId: string
   file: File
+  index: number
   onUploaded: () => void
 }) => {
   const { uploadCapture, isLoading, isSuccess, error } =
     useUploadCapture(onUploaded)
 
+  const { isValid, errorMessage, allowRetry } = useCaptureError({
+    error,
+    file,
+    index,
+  })
+
   useEffect(() => {
-    if (!isSuccess) {
-      uploadCapture({ deploymentId, file })
+    if (!isValid || isSuccess) {
+      return
     }
+
+    uploadCapture({ deploymentId, file })
   }, [])
 
   if (isSuccess) {
     return null
   }
-
-  const errorMessage = (() => {
-    if (!error) {
-      return undefined
-    }
-
-    const { message, fieldErrors } = parseServerError(error)
-
-    if (fieldErrors.length) {
-      return fieldErrors.map(({ message }) => message).join('\n')
-    }
-
-    return message
-  })()
 
   return (
     <Card>
@@ -160,12 +174,20 @@ const AddedExampleCapture = ({
         {errorMessage && (
           <>
             <Tooltip content={errorMessage}>
-              <Button
-                icon={IconType.Error}
-                label="Retry"
-                theme={ButtonTheme.Error}
-                onClick={() => uploadCapture({ deploymentId, file })}
-              />
+              {allowRetry ? (
+                <Button
+                  icon={IconType.Error}
+                  label={COPY.RETRY}
+                  theme={ButtonTheme.Error}
+                  onClick={() => {
+                    uploadCapture({ deploymentId, file })
+                  }}
+                />
+              ) : (
+                <div className={styles.iconWrapper}>
+                  <Icon type={IconType.Error} theme={IconTheme.Error} />
+                </div>
+              )}
             </Tooltip>
             <div className={styles.cancelContainer}>
               <IconButton
@@ -194,7 +216,7 @@ const DeleteCaptureDialog = ({ id }: { id: string }) => {
         <div className={styles.deleteDialog}>
           <DeleteForm
             error={error}
-            type="capture"
+            type={COPY.CAPTURE}
             isLoading={isLoading}
             isSuccess={isSuccess}
             onCancel={() => setIsOpen(false)}
