@@ -70,6 +70,7 @@
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .blueprint {
+    min-width: 100%;
     flex-direction: row;
 
     &.empty {
