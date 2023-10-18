@@ -27,9 +27,12 @@ $dialog-padding-medium: 32px;
   all: unset;
   display: block;
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: auto;
+  width: fit-content;
   max-width: calc(100% - (2 * $dialog-padding-large));
   height: calc(100vh - (2 * $dialog-padding-large));
   height: calc(100dvh - (2 * $dialog-padding-large));
@@ -84,7 +87,7 @@ $dialog-padding-medium: 32px;
 }
 
 .dialogClose {
-  position: fixed;
+  position: absolute;
   top: 8px;
   right: 8px;
   padding: 0 4px;

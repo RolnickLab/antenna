@@ -1,17 +1,18 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import classNames from 'classnames'
 import { Command } from 'cmdk'
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { useState } from 'react'
-import { Button } from '../button/button'
-import { IconType } from '../icon/icon'
-import styles from './combo-box.module.scss'
+import { Button } from '../../button/button'
+import { IconType } from '../../icon/icon'
+import styles from '../styles.module.scss'
 
-export const ComboBox = ({
+export const ComboBoxSimple = ({
   emptyLabel,
   items = [],
   label,
+  loading,
   searchString,
-  shouldFilter,
   onItemSelect,
   setSearchString,
 }: {
@@ -19,11 +20,10 @@ export const ComboBox = ({
   items?: {
     id: string | number
     label: string
-    details?: string
   }[]
   label: string
+  loading?: boolean
   searchString: string
-  shouldFilter?: boolean
   onItemSelect: (id: string | number) => void
   setSearchString: (value: string) => void
 }) => {
@@ -41,13 +41,20 @@ export const ComboBox = ({
         sideOffset={8}
       >
         <DropdownMenu.Arrow className={styles.arrow} />
-        <Command shouldFilter={shouldFilter}>
+        <Command shouldFilter={false} className={styles.wrapper}>
           <Command.Input
             autoFocus
-            className={styles.input}
+            className={classNames(styles.input, {
+              [styles.loading]: loading,
+            })}
             value={searchString}
             onValueChange={setSearchString}
           />
+          {loading && (
+            <div className={styles.loadingWrapper}>
+              <LoadingSpinner size={12} />
+            </div>
+          )}
           <Command.List>
             {items.length ? (
               items.map((item) => (
@@ -60,9 +67,6 @@ export const ComboBox = ({
                   className={styles.item}
                 >
                   <span>{item.label}</span>
-                  {item.details ? (
-                    <span className={styles.details}>{item.details}</span>
-                  ) : null}
                 </Command.Item>
               ))
             ) : (

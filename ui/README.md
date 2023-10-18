@@ -1,8 +1,6 @@
 # AMI Platform
 
-## Good to know
-
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Web interface to explore data from automated insect monitoring stations. We use React and TypeScript for the implementation. The project was setup using [Create React App](https://github.com/facebook/create-react-app).
 
 ## System requirements
 
