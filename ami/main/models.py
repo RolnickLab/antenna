@@ -3,6 +3,7 @@ import datetime
 import functools
 import hashlib
 import logging
+import re
 import textwrap
 import typing
 import urllib.parse
@@ -176,7 +177,7 @@ class DeploymentManager(models.Manager):
         )
 
 
-def _create_source_image_for_sync(
+def _create_source_image_from_s3_obj(
     deployment: "Deployment",
     obj: ami.utils.s3.ObjectTypeDef,
 ) -> typing.Union["SourceImage", None]:
@@ -189,6 +190,70 @@ def _create_source_image_for_sync(
         size=obj.get("Size"),
         checksum=obj.get("ETag", "").strip('"'),
         checksum_algorithm=obj.get("ChecksumAlgorithm"),
+    )
+    logger.debug(f"Preparing to create or update SourceImage {source_image.path}")
+    source_image.update_calculated_fields()
+    return source_image
+
+
+def _create_source_image_from_csv_row(
+    deployment: "Deployment",
+    row: dict[str, str],
+    public_base_url: str | None = None,
+    regex_filter: str | None = None,
+) -> typing.Union["SourceImage", None]:
+    assert "path" in row, f"Cannot import source image, no path found in row: {row}"
+    path = row["path"]
+
+    path_parts = urllib.parse.urlparse(path)
+    path = path_parts.path
+    if not path.startswith("/"):
+        path = f"/{path}"
+
+    if deployment.data_source_subdir:
+        # Skip any files that are not in the subdir
+        if not path.lstrip("/").lower().startswith(deployment.data_source_subdir.lstrip("/").lower()):
+            logger.debug(f"Skipping file {path} because it is not in subdir {deployment.data_source_subdir}")
+            return None
+
+    if deployment.data_source_regex:
+        # Skip any files that don't match the regex
+        regex = re.compile(str(regex_filter)) if regex_filter else None
+        if regex and not regex.match(path):
+            logger.debug(f"Skipping file {path} because it does not match regex {deployment.data_source_regex}")
+            return None
+
+    if not public_base_url:
+        if path_parts.scheme and path_parts.netloc:
+            public_base_url = f"{path_parts.scheme}://{path_parts.netloc}"
+        else:
+            public_base_url = settings.MEDIA_URL
+    assert public_base_url, f"Cannot determine public base URL for source image: {row}"
+
+    if "checksum" not in row:
+        # If there is a column using the name of a checksum algorithm, use that
+        for checksum_type in ["md5", "sha256"]:
+            if checksum_type in row:
+                row["checksum"] = row[checksum_type]
+                row["checksum_algorithm"] = checksum_type
+                break
+
+    # Cast size to an integer if it exists
+    filesize = row.get("size")
+    if filesize:
+        try:
+            filesize = int(filesize)
+        except ValueError:
+            logger.warning(f"Could not parse size '{filesize}' as an integer.")
+
+    source_image = SourceImage(
+        deployment=deployment,
+        path=path,
+        public_base_url=public_base_url,
+        last_modified=row.get("last_modified"),
+        size=filesize,
+        checksum=row.get("checksum", "").strip('"'),
+        checksum_algorithm=row.get("checksum_algorithm"),
     )
     logger.debug(f"Preparing to create or update SourceImage {source_image.path}")
     source_image.update_calculated_fields()
@@ -252,6 +317,7 @@ class Deployment(BaseModel):
     data_source = models.ForeignKey(
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
+    data_source_inventory = models.FileField(upload_to="source_image_inventories", blank=True, null=True)
     data_source_total_files = models.IntegerField(blank=True, null=True)
     data_source_total_size = models.BigIntegerField(blank=True, null=True)
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
@@ -262,6 +328,8 @@ class Deployment(BaseModel):
     # data_source_last_check_duration = models.DurationField(blank=True, null=True)
     # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
+    assumed_image_width = models.IntegerField(blank=True, null=True)
+    assumed_image_height = models.IntegerField(blank=True, null=True)
 
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
@@ -353,28 +421,53 @@ class Deployment(BaseModel):
             uri = None
         return uri
 
-    def sync_captures(self, batch_size=1000) -> int:
-        """Import images from the deployment's data source"""
+    def iterate_incoming_source_images(self) -> typing.Generator[typing.Optional["SourceImage"], None, None]:
+        """Iterate over source images in the deployment's data source or inventor file."""
+
+        if self.data_source_inventory:
+            # Read CSV file and import each row
+            logger.info(f"Reading source image inventory from {self.data_source_inventory.name}")
+            # @TODO consider supporting compressed files
+            with self.data_source_inventory.open("r") as f:
+                for row in ami.utils.tabular.iterate_rows(f):
+                    source_image = _create_source_image_from_csv_row(self, row)
+                    yield source_image
+
+        elif self.data_source:
+            # Read files from S3 bucket
+            s3_config = self.data_source.config
+
+            logger.info(f"Reading source images from {self.data_source_uri()}")
+            for obj in ami.utils.s3.list_files_paginated(
+                s3_config,
+                subdir=self.data_source_subdir,
+                regex_filter=self.data_source_regex,
+            ):
+                source_image = _create_source_image_from_s3_obj(self, obj)
+                if source_image:
+                    yield source_image
+
+        else:
+            raise ValueError(
+                f"Deployment {self.name} has no inventory file or data source configured. "
+                "Cannot import source images."
+            )
+
+    def sync_captures(self, batch_size=500) -> int:
+        """Import images from the deployment's inventory file or data source"""
 
         deployment = self
-        assert deployment.data_source, f"Deployment {deployment.name} has no data source configured"
 
-        s3_config = deployment.data_source.config
         total_size = 0
         total_files = 0
         source_images = []
         django_batch_size = batch_size
-        sql_batch_size = 1000
+        sql_batch_size = 500
 
-        for obj in ami.utils.s3.list_files_paginated(
-            s3_config,
-            subdir=self.data_source_subdir,
-            regex_filter=self.data_source_regex,
-        ):
-            source_image = _create_source_image_for_sync(deployment, obj)
+        for source_image in deployment.iterate_incoming_source_images():
             if source_image:
                 total_files += 1
-                total_size += obj.get("Size", 0)
+                total_size += source_image.size or 0
                 source_images.append(source_image)
 
             if len(source_images) >= django_batch_size:
@@ -768,7 +861,7 @@ def validate_filename_timestamp(filename: str) -> None:
         raise ValidationError("Filename must contain a timestamp in the format YYYYMMDDHHMMSS")
 
 
-def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
     """Create a complete SourceImage from an uploaded file."""
     # md5 checksum from file
     checksum = hashlib.md5(image.read()).hexdigest()
@@ -839,6 +932,11 @@ def delete_source_image(sender, instance, **kwargs):
         source_image.delete()
     # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
     instance.deployment.save()
+
+
+class InventoryStorageSource:
+    # @TODO implement storage model that reads from a CSV file.
+    pass
 
 
 @final
@@ -912,10 +1010,9 @@ class SourceImage(BaseModel):
 
     def get_dimensions(self) -> tuple[int | None, int | None]:
         """Calculate the width and height of the original image."""
-        if self.path and self.deployment and self.deployment.data_source:
-            config = self.deployment.data_source.config
+        if self.path and self.deployment:
             try:
-                img = ami.utils.s3.read_image(config=config, key=self.path)
+                img = ami.utils.images.get_image_from_url(self.public_url())
             except Exception as e:
                 logger.error(f"Could not determine image dimensions for {self.path}: {e}")
             else:
@@ -969,7 +1066,8 @@ def set_dimensions_for_collection(
 
     if not width or not height:
         # Try retrieving dimensions from deployment
-        width, height = getattr(event.deployment, "assumed_image_dimensions", (None, None))
+        if event.deployment:
+            width, height = event.deployment.assumed_image_width, event.deployment.assumed_image_height
 
     if not width or not height:
         # Try retrieving dimensions from the first image that has them already

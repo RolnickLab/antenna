@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
 
-from ami.main.models import _create_source_image_from_upload
+from ami.main.models import create_source_image_from_upload
 from ami.users.models import User
 from ami.utils.dates import get_image_timestamp_from_filename
 
@@ -789,7 +789,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
         user = get_current_user(request)
         # @TODO IMPORTANT ensure current user is a member of the deployment's project
         obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        source_image = _create_source_image_from_upload(
+        source_image = create_source_image_from_upload(
             obj.image,
             obj.deployment,
             request,

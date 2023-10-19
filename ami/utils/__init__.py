@@ -1,3 +1,3 @@
-from . import dates, s3
+from . import dates, images, s3, tabular
 
-__all__ = ["dates", "s3"]
+__all__ = ["dates", "s3", "tabular", "images"]
