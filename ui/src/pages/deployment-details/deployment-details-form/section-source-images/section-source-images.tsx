@@ -9,10 +9,7 @@ import {
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
-import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
-import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
-import { Status } from 'pages/deployment-details/connection-status/types'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
@@ -21,8 +18,8 @@ import { STRING, translate } from 'utils/language'
 import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
 import { ConnectionStatus } from '../../connection-status/connection-status'
 import { useConnectionStatus } from '../../connection-status/useConnectionStatus'
-import styles from '../../styles.module.scss'
 import { config } from '../config'
+import { SectionExampleCaptures } from '../section-example-captures/section-example-captures'
 import { Section } from '../types'
 
 type SectionSourceImagesFieldValues = Pick<DeploymentFieldValues, 'path'>
@@ -71,26 +68,7 @@ export const SectionSourceImages = ({
             lastUpdated={lastUpdated}
           />
         </FormRow>
-        {status === Status.Connected ? (
-          <>
-            <FormRow>
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_CAPTURES)}
-                value={deployment.numImages}
-              />
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
-                value={deployment.exampleCaptures.length}
-              />
-            </FormRow>
-            <div className={styles.exampleCapturesContainer}>
-              <ImageCarousel
-                images={deployment.exampleCaptures}
-                size={{ width: '100%', ratio: 16 / 9 }}
-              />
-            </div>
-          </>
-        ) : null}
+        <SectionExampleCaptures deployment={deployment} />
       </FormSection>
       <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
