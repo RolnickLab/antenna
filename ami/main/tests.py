@@ -194,7 +194,7 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.occurrences.first().project is None
 
 
-class TestSourceImageCollectins(TestCase):
+class TestSourceImageCollections(TestCase):
     def setUp(self) -> None:
         from ami.main.models import Deployment, Project
 
@@ -302,3 +302,49 @@ class TestSourceImageCollectins(TestCase):
 
         with self.assertRaises(TypeError):
             collection.populate_sample()
+
+    def test_last_and_random(self):
+        from ami.main.models import SourceImageCollection
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Last and Random Collection",
+            project=self.project_one,
+            method="last_and_random_from_each_event",
+            kwargs={"num_each": 2},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        collection_images = collection.images.all()
+
+        # 2 nights, last image from each, 2 additional random images from each
+        self.assertEqual(collection_images.count(), 6)
+
+        for event in self.project_one.events.all():
+            last_capture = event.captures.last()
+            assert last_capture
+            # ensure last_capture is in the collection
+            self.assertIn(last_capture, collection_images)
+            # ensure there are 2 other random images from each event
+            self.assertEqual(collection_images.filter(event=event).exclude(pk=last_capture.pk).count(), 2)
+
+    def test_random_from_each_event(self):
+        from ami.main.models import SourceImageCollection
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Random From Each Event Collection",
+            project=self.project_one,
+            method="random_from_each_event",
+            kwargs={"num_each": 2},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        collection_images = collection.images.all()
+
+        # 2 nights, 2 random images from each
+        assert collection_images.count() == 4
+
+        # Test that there are 2 images from each event
+        for event in self.project_one.events.all():
+            assert collection_images.filter(event=event).count() == 2
