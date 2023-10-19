@@ -310,7 +310,7 @@ class TestSourceImageCollections(TestCase):
             name="Test Last and Random Collection",
             project=self.project_one,
             method="last_and_random_from_each_event",
-            kwargs={"size_each": 2},
+            kwargs={"num_each": 2},
         )
         collection.save()
         collection.populate_sample()
@@ -335,7 +335,7 @@ class TestSourceImageCollections(TestCase):
             name="Test Random From Each Event Collection",
             project=self.project_one,
             method="random_from_each_event",
-            kwargs={"size_each": 2},
+            kwargs={"num_each": 2},
         )
         collection.save()
         collection.populate_sample()
