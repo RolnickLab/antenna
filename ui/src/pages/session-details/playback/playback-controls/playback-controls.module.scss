@@ -3,6 +3,8 @@
 
 .controls {
   display: flex;
+  align-items: center;
+  justify-content: flex-start;
   padding: 16px;
   gap: 16px;
   background-color: $color-neutral-700;
