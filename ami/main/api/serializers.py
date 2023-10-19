@@ -762,6 +762,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
         fields = [
             "id",
             "details",
+            "name",
             "project",
             "method",
             "kwargs",
