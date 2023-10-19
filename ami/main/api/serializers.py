@@ -755,12 +755,14 @@ class SourceImageSerializer(DefaultSerializer):
 
 class SourceImageCollectionSerializer(DefaultSerializer):
     source_images = serializers.SerializerMethodField()
+    kwargs = serializers.JSONField(initial=dict, required=False)
 
     class Meta:
         model = SourceImageCollection
         fields = [
             "id",
             "details",
+            "project",
             "method",
             "kwargs",
             "source_images",
