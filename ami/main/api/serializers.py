@@ -23,6 +23,7 @@ from ..models import (
     Page,
     Project,
     SourceImage,
+    SourceImageCollection,
     SourceImageUpload,
     Taxon,
 )
@@ -809,6 +810,37 @@ class SourceImageUploadSerializer(DefaultSerializer):
                 " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
             )
         return value
+
+
+class SourceImageCollectionSerializer(DefaultSerializer):
+    source_images = serializers.SerializerMethodField()
+    kwargs = serializers.JSONField(initial=dict, required=False)
+
+    class Meta:
+        model = SourceImageCollection
+        fields = [
+            "id",
+            "details",
+            "name",
+            "project",
+            "method",
+            "kwargs",
+            "source_images",
+            "source_image_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_source_images(self, obj):
+        """
+        Return URL to the captures endpoint filtered by this collection.
+        """
+
+        return reverse_with_params(
+            "sourceimage-list",
+            request=self.context.get("request"),
+            params={"collections": obj.pk},
+        )
 
 
 class OccurrenceIdentificationSerializer(DefaultSerializer):
