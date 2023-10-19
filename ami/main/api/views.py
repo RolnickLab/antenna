@@ -25,6 +25,7 @@ from ..models import (
     Page,
     Project,
     SourceImage,
+    SourceImageCollection,
     Taxon,
 )
 from .serializers import (
@@ -45,6 +46,7 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
     StorageStatusSerializer,
@@ -184,7 +186,7 @@ class SourceImageViewSet(DefaultViewSet):
         .all()
     )
     serializer_class = SourceImageSerializer
-    filterset_fields = ["event", "deployment", "deployment__project"]
+    filterset_fields = ["event", "deployment", "deployment__project", "collections"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -201,6 +203,15 @@ class SourceImageViewSet(DefaultViewSet):
             return SourceImageListSerializer
         else:
             return SourceImageSerializer
+
+
+class SourceImageCollectionViewSet(DefaultReadOnlyViewSet):
+    """
+    Endpoint for viewing collections or samples of source images.
+    """
+
+    queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
+    serializer_class = SourceImageCollectionSerializer
 
 
 class DetectionViewSet(DefaultViewSet):

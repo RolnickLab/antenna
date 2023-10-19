@@ -1912,6 +1912,10 @@ class SourceImageCollection(BaseModel):
         "Arguments", null=True, blank=True, help_text="Arguments passed to the sampling function", default=dict
     )
 
+    def source_image_count(self):
+        # Use self.images.count() to count without annotations
+        raise ValueError("This source image count can only be accessed if the queryset has been annotated.")
+
     def get_queryset(self):
         return SourceImage.objects.filter(project=self.project)
 
