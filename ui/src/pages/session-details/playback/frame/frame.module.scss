@@ -35,9 +35,11 @@
   position: absolute;
   box-sizing: border-box;
 
-  &:hover {
-    cursor: pointer;
-    opacity: 1;
+  &.clickable {
+    &:hover {
+      cursor: pointer;
+      opacity: 1;
+    }
   }
 
   &.active {
