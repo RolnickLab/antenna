@@ -88,10 +88,6 @@ export const DeploymentDetailsInfo = ({
               label={translate(STRING.FIELD_LABEL_CAPTURES)}
               value={deployment.numImages}
             />
-            <InputValue
-              label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
-              value={deployment.exampleCaptures.length}
-            />
           </FormRow>
           <div className={styles.section}>
             <ImageCarousel

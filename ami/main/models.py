@@ -1,6 +1,7 @@
 import collections
 import datetime
 import functools
+import hashlib
 import logging
 import textwrap
 import typing
@@ -11,8 +12,12 @@ from typing import Final, final  # noqa: F401
 
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 from django.db.models import Q
+from django.db.models.fields.files import ImageFieldFile
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 
 import ami.tasks
 import ami.utils
@@ -426,6 +431,8 @@ class Deployment(BaseModel):
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+            # @TODO Use "dirty" flag strategy to only update when needed
+            ami.tasks.regroup_events.delay(self.pk)
         super().save(*args, **kwargs)
 
 
@@ -655,9 +662,9 @@ def delete_empty_events(dry_run=False):
 
     if dry_run:
         for event in events:
-            print(f"Would delete event {event}")
+            logger.debug(f"Would delete event {event} (dry run)")
     else:
-        print(f"Deleting {events.count()} empty events")
+        logger.info(f"Deleting {events.count()} empty events")
         events.delete()
 
 
@@ -754,6 +761,86 @@ class S3StorageSource(BaseModel):
         super().save(*args, **kwargs)
 
 
+def validate_filename_timestamp(filename: str) -> None:
+    # Ensure filename has a timestamp
+    timestamp = ami.utils.dates.get_image_timestamp_from_filename(filename)
+    if not timestamp:
+        raise ValidationError("Filename must contain a timestamp in the format YYYYMMDDHHMMSS")
+
+
+def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+    """Create a complete SourceImage from an uploaded file."""
+    # md5 checksum from file
+    checksum = hashlib.md5(image.read()).hexdigest()
+    checksum_algorithm = "md5"
+
+    # get full public media url of image:
+    if request:
+        base_url = request.build_absolute_uri(settings.MEDIA_URL)
+    else:
+        base_url = settings.MEDIA_URL
+
+    source_image = SourceImage(
+        path=image.name,  # Includes relative path from MEDIA_ROOT
+        public_base_url=base_url,  # @TODO how to merge this with the data source?
+        project=deployment.project,
+        deployment=deployment,
+        timestamp=None,  # Will be calculated from filename or EXIF data on save
+        event=None,  # Will be assigned when the image is grouped into events
+        size=image.size,
+        checksum=checksum,
+        checksum_algorithm=checksum_algorithm,
+        width=image.width,
+        height=image.height,
+        test_image=True,
+        uploaded_by=request.user,
+    )
+    source_image.save()
+    return source_image
+
+
+def upload_to_with_deployment(instance, filename: str) -> str:
+    """Nest uploads under subdir for a deployment."""
+    return f"example_captures/{instance.deployment.pk}/{filename}"
+
+
+@final
+class SourceImageUpload(BaseModel):
+    """
+    A manually uploaded image that has not yet been imported.
+
+    The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
+    """
+
+    image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE)
+    source_image = models.OneToOneField(
+        "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
+    )
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+        self.deployment.save()
+
+
+@receiver(pre_delete, sender=SourceImageUpload)
+def delete_source_image(sender, instance, **kwargs):
+    """
+    A SourceImageUpload are automatically deleted when deleting a SourceImage because of the CASCADE setting.
+    However the SourceImage needs to be deleted using a signal when deleting a SourceImageUpload.
+    """
+    if instance.source_image:
+        # Disconnect the SourceImage from the upload to prevent recursion error
+        source_image = instance.source_image
+        instance.source_image = None
+        instance.save()
+        source_image.delete()
+    # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+    instance.deployment.save()
+
+
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
@@ -767,6 +854,8 @@ class SourceImage(BaseModel):
     last_modified = models.DateTimeField(null=True, blank=True)
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    test_image = models.BooleanField(default=False)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")

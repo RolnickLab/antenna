@@ -22,6 +22,5 @@ export const config: FormConfig = {
   },
   path: {
     label: translate(STRING.FIELD_LABEL_PATH),
-    rules: { required: true },
   },
 }
