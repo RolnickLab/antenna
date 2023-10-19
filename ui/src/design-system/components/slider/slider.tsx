@@ -1,7 +1,6 @@
 import * as _Slider from '@radix-ui/react-slider'
 import { useState } from 'react'
-import { Tooltip } from '../tooltip/tooltip'
-import styles from './slider.module.scss'
+import styles from './styles.module.scss'
 
 interface SliderProps {
   label: string
@@ -40,58 +39,6 @@ export const Slider = ({
         </_Slider.Thumb>
       </_Slider.Root>
       <span className={styles.description}>{description}</span>
-    </div>
-  )
-}
-
-interface PlaybackSliderProps {
-  value: number
-  onValueChange: (value: number) => void
-  onValueCommit: (value: number) => void
-  settings?: {
-    min: number
-    max: number
-    step: number
-    defaultValue: number
-  }
-  tooltip: string
-}
-
-export const PlaybackSlider = ({
-  value,
-  onValueChange,
-  onValueCommit,
-  settings = { min: 0, max: 1, step: 0.01, defaultValue: 0.5 },
-  tooltip,
-}: PlaybackSliderProps) => {
-  const [active, setActive] = useState(false)
-
-  return (
-    <div>
-      <_Slider.Root
-        className={styles.playbackSliderRoot}
-        defaultValue={[settings.defaultValue]}
-        min={settings.min}
-        max={settings.max}
-        step={settings.step}
-        value={[value]}
-        onValueChange={(values) => onValueChange(values[0])}
-        onValueCommit={(values) => onValueCommit(values[0])}
-        onPointerDown={() => setActive(true)}
-        onPointerUp={() => setActive(false)}
-        onPointerLeave={() => {
-          if (active) {
-            onValueCommit(value)
-          }
-        }}
-      >
-        <_Slider.Track className={styles.sliderTrack}>
-          <_Slider.Range className={styles.sliderRange} />
-        </_Slider.Track>
-        <Tooltip content={tooltip}>
-          <_Slider.Thumb className={styles.sliderThumb} />
-        </Tooltip>
-      </_Slider.Root>
     </div>
   )
 }

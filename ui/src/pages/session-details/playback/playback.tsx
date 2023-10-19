@@ -3,6 +3,7 @@ import { SessionDetails } from 'data-services/models/session-details'
 import { useState } from 'react'
 import { CapturePicker } from './capture-picker/capture-picker'
 import { Frame } from './frame/frame'
+import { PlaybackControls } from './playback-controls/playback-controls'
 import styles from './playback.module.scss'
 import { useActiveCapture } from './useActiveCapture'
 
@@ -25,18 +26,20 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
 
   return (
     <div className={styles.wrapper}>
-      <div
-        className={styles.playbackFrame}
-        onMouseOver={() => setShowOverlay(true)}
-        onMouseOut={() => setShowOverlay(false)}
-      >
-        <Frame
-          src={activeCapture?.src}
-          width={activeCapture?.width ?? session.firstCapture.width}
-          height={activeCapture?.height ?? session.firstCapture.height}
-          detections={activeCapture?.detections ?? []}
-          showOverlay={showOverlay}
-        />
+      <div className={styles.playbackFrame}>
+        <div
+          onMouseOver={() => setShowOverlay(true)}
+          onMouseOut={() => setShowOverlay(false)}
+        >
+          <Frame
+            src={activeCapture?.src}
+            width={activeCapture?.width ?? session.firstCapture.width}
+            height={activeCapture?.height ?? session.firstCapture.height}
+            detections={activeCapture?.detections ?? []}
+            showOverlay={showOverlay}
+          />
+        </div>
+        <PlaybackControls />
       </div>
 
       <div className={styles.capturePicker}>

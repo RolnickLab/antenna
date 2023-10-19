@@ -1,0 +1,17 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/variables.scss';
+
+.controls {
+  display: flex;
+  padding: 16px;
+  gap: 16px;
+  background-color: $color-neutral-700;
+}
+
+.slider {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
