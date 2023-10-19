@@ -26,6 +26,10 @@
     color: $color-success-700;
   }
 
+  &.error {
+    color: $color-destructive-600;
+  }
+
   &.fixedSized {
     > * {
       width: 100%;

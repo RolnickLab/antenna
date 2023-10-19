@@ -19,6 +19,10 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   const { activeCapture, setActiveCapture } = useActiveCapture(captures)
   const [showOverlay, setShowOverlay] = useState(false)
 
+  if (!session.firstCapture) {
+    return null
+  }
+
   return (
     <div className={styles.wrapper}>
       <div

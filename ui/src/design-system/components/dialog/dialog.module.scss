@@ -47,7 +47,7 @@ $dialog-padding-medium: 32px;
   }
 
   &.compact {
-    height: auto;
+    height: fit-content;
   }
 
   &.loading {

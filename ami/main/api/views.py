@@ -28,6 +28,7 @@ from ..models import (
     Project,
     SourceImage,
     SourceImageCollection,
+    SourceImageUpload,
     Taxon,
 )
 from .serializers import (
@@ -51,6 +52,7 @@ from .serializers import (
     SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
+    SourceImageUploadSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
     TaxonNestedSerializer,
@@ -239,6 +241,23 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         collection = self.get_object()
         task = tasks.populate_collection.apply_async([collection.pk])
         return Response({"task": task.id})
+
+
+class SourceImageUploadViewSet(DefaultViewSet):
+    """
+    Endpoint for uploading images.
+    """
+
+    queryset = SourceImageUpload.objects.all()
+
+    serializer_class = SourceImageUploadSerializer
+
+    def get_queryset(self) -> QuerySet:
+        # Only allow users to see their own uploads
+        qs = super().get_queryset()
+        if self.request.user.pk:
+            qs = qs.filter(user=self.request.user)
+        return qs
 
 
 class DetectionViewSet(DefaultViewSet):

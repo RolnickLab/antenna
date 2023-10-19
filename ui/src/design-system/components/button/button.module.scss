@@ -43,6 +43,10 @@
     border-color: $color-destructive-500;
   }
 
+  &.error {
+    color: $color-destructive-600;
+  }
+
   &:not(.disabled) {
     &:hover {
       cursor: pointer;
