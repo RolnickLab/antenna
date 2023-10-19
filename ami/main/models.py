@@ -935,6 +935,64 @@ def sample_captures_by_interval(
                 last_capture = capture
 
 
+def sample_captures_by_position(
+    position: int,
+    qs: models.QuerySet[SourceImage] | None = None,
+) -> typing.Generator[SourceImage | None, None, None]:
+    """
+    Return the n-th position capture from each event.
+
+    For example if position = 0, the first capture from each event will be returned.
+    If position = -1, the last capture from each event will be returned.
+    """
+
+    if not qs:
+        qs = SourceImage.objects.all()
+    qs = qs.exclude(timestamp=None).order_by("timestamp")
+
+    events = Event.objects.filter(captures__in=qs).distinct()
+    for event in events:
+        qs = qs.filter(event=event)
+        if position < 0:
+            # Negative positions are relative to the end of the queryset
+            # e.g. -1 is the last item, -2 is the second last item, etc.
+            # but querysets do not support negative indexing, so we
+            # sort the queryset in reverse order and then use positive indexing.
+            # e.g. -1 becomes 0, -2 becomes 1, etc.
+            position = abs(position) - 1
+            qs = qs.order_by("-timestamp")
+        else:
+            qs = qs.order_by("timestamp")
+        try:
+            capture = qs[position]
+        except IndexError:
+            # If the position is out of range, just return the last capture
+            capture = qs.last()
+
+        yield capture
+
+
+def sample_captures_by_nth(
+    nth: int,
+    qs: models.QuerySet[SourceImage] | None = None,
+) -> typing.Generator[SourceImage, None, None]:
+    """
+    Return every nth capture from each event.
+
+    For example if nth = 1, every capture from each event will be returned.
+    If nth = 5, every 5th capture from each event will be returned.
+    """
+
+    if not qs:
+        qs = SourceImage.objects.all()
+    qs = qs.exclude(timestamp=None).order_by("timestamp")
+
+    events = Event.objects.filter(captures__in=qs).distinct()
+    for event in events:
+        qs = qs.filter(event=event).order_by("timestamp")
+        yield from qs[::nth]
+
+
 # @final
 # class IdentificationHistory(BaseModel):
 #     """A history of identifications for an occurrence."""
@@ -1832,6 +1890,9 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "stratified_random",
     "interval",
     "manual",
+    "random_from_each_event",
+    "last_and_random_from_each_event",
+    "greatest_file_size_from_each_event",
 ]
 
 
@@ -1855,40 +1916,98 @@ class SourceImageCollection(BaseModel):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
     method = models.CharField(max_length=255, choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS))
     kwargs = models.JSONField(
-        "Arguments", null=True, blank=True, help_text="Arguments passed to the sampling function", default=dict
+        "Arguments",
+        null=True,
+        blank=True,
+        help_text="Arguments passed to the sampling function (JSON dict)",
+        default=dict,
     )
+
+    def source_image_count(self):
+        # This should always be pre-populated using queryset annotations
+        return self.images.count()
+
+    def get_queryset(self):
+        return SourceImage.objects.filter(project=self.project)
+
+    @classmethod
+    def sampling_methods(cls):
+        return [method for method in dir(cls) if method.startswith("sample_")]
 
     def populate_sample(self):
         """Create a sample of source images based on the method and kwargs"""
         kwargs = self.kwargs or {}
 
-        if self.method == "random":
-            self.images.set(self.create_random_sample(**kwargs))
-        elif self.method == "interval":
-            self.images.set(self.create_interval_sample(**kwargs))
-        elif self.method == "manual":
-            self.images.set(self.create_manual_sample(**kwargs))
-        else:
+        method_name = f"sample_{self.method}"
+        if not hasattr(self, method_name):
             raise ValueError(f"Invalid sampling method: {self.method}. Choices are: {_SOURCE_IMAGE_SAMPLING_METHODS}")
-        self.save()
+        else:
+            method = getattr(self, method_name)
+            self.images.set(method(**kwargs))
+            self.save()
 
-    def create_random_sample(self, size: int = 100):
+    def sample_random(self, size: int = 100):
         """Create a random sample of source images"""
 
-        qs = SourceImage.objects.filter(project=self.project).order_by("?")
-        return qs[:size]
+        qs = self.get_queryset()
+        return qs.order_by("?")[:size]
 
-    def create_manual_sample(self, image_ids: list[int]):
+    def sample_manual(self, image_ids: list[int]):
         """Create a sample of source images based on a list of source image IDs"""
 
-        qs = SourceImage.objects.filter(project=self.project)
+        qs = self.get_queryset()
         return qs.filter(id__in=image_ids)
 
-    def create_interval_sample(self, minute_interval: int = 10, exclude_events: list[int] = []):
+    def sample_interval(self, minute_interval: int = 10, exclude_events: list[int] = []):
         """Create a sample of source images based on a time interval"""
 
-        qs = SourceImage.objects.filter(project=self.project)
+        qs = self.get_queryset()
         if exclude_events:
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
         return sample_captures_by_interval(minute_interval, qs)
+
+    def sample_positional(self, position: int = -1):
+        """Sample the single nth source image from all events in the project"""
+
+        qs = self.get_queryset()
+        return sample_captures_by_position(position, qs)
+
+    def sample_nth(self, nth: int):
+        """Sample every nth source image from all events in the project"""
+
+        qs = self.get_queryset()
+        return sample_captures_by_nth(nth, qs)
+
+    def sample_random_from_each_event(self, num_each: int = 10):
+        """Sample n random source images from each event in the project."""
+
+        qs = self.get_queryset()
+        captures = set()
+        for event in self.project.events.all():
+            captures.update(qs.filter(event=event).order_by("?")[:num_each])
+        return captures
+
+    def sample_last_and_random_from_each_event(self, num_each: int = 1):
+        """Sample the last image from each event and n random from each event."""
+
+        qs = self.get_queryset()
+        captures = set()
+        for event in self.project.events.all():
+            last_capture = qs.filter(event=event).order_by("timestamp").last()
+            if not last_capture:
+                # This event has no captures
+                continue
+            captures.add(last_capture)
+            random_captures = qs.filter(event=event).exclude(pk=last_capture.pk).order_by("?")[:num_each]
+            captures.update(random_captures)
+        return captures
+
+    def sample_greatest_file_size_from_each_event(self, num_each: int = 1):
+        """Sample the image with the greatest file size from each event."""
+
+        qs = self.get_queryset()
+        captures = set()
+        for event in self.project.events.all():
+            captures.update(qs.filter(event=event).order_by("-size")[:num_each])
+        return captures

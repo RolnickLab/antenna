@@ -13,6 +13,8 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ami import tasks
+
 from ..models import (
     Algorithm,
     Classification,
@@ -25,6 +27,7 @@ from ..models import (
     Page,
     Project,
     SourceImage,
+    SourceImageCollection,
     Taxon,
 )
 from .serializers import (
@@ -45,6 +48,7 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
     StorageStatusSerializer,
@@ -200,7 +204,7 @@ class SourceImageViewSet(DefaultViewSet):
         return queryset
 
     serializer_class = SourceImageSerializer
-    filterset_fields = ["event", "deployment", "deployment__project"]
+    filterset_fields = ["event", "deployment", "deployment__project", "collections"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -217,6 +221,24 @@ class SourceImageViewSet(DefaultViewSet):
             return SourceImageListSerializer
         else:
             return SourceImageSerializer
+
+
+class SourceImageCollectionViewSet(DefaultViewSet):
+    """
+    Endpoint for viewing collections or samples of source images.
+    """
+
+    queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
+    serializer_class = SourceImageCollectionSerializer
+
+    @action(detail=True, methods=["post"], name="populate")
+    def populate(self, request, pk=None):
+        """
+        Populate a collection with source images using the configured sampling method and arguments.
+        """
+        collection = self.get_object()
+        task = tasks.populate_collection.apply_async([collection.pk])
+        return Response({"task": task.id})
 
 
 class DetectionViewSet(DefaultViewSet):

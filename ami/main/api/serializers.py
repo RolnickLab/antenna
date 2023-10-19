@@ -21,6 +21,7 @@ from ..models import (
     Page,
     Project,
     SourceImage,
+    SourceImageCollection,
     Taxon,
 )
 from .permissions import add_object_level_permissions
@@ -750,6 +751,37 @@ class SourceImageSerializer(DefaultSerializer):
     class Meta:
         model = SourceImage
         fields = SourceImageListSerializer.Meta.fields + []
+
+
+class SourceImageCollectionSerializer(DefaultSerializer):
+    source_images = serializers.SerializerMethodField()
+    kwargs = serializers.JSONField(initial=dict, required=False)
+
+    class Meta:
+        model = SourceImageCollection
+        fields = [
+            "id",
+            "details",
+            "name",
+            "project",
+            "method",
+            "kwargs",
+            "source_images",
+            "source_image_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_source_images(self, obj):
+        """
+        Return URL to the captures endpoint filtered by this collection.
+        """
+
+        return reverse_with_params(
+            "sourceimage-list",
+            request=self.context.get("request"),
+            params={"collections": obj.pk},
+        )
 
 
 class OccurrenceIdentificationSerializer(DefaultSerializer):
