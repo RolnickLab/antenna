@@ -1,13 +1,13 @@
 import { ComponentMeta, ComponentStory } from '@storybook/react'
 import { useState } from 'react'
-import { ComboBox } from './combo-box'
+import { ComboBoxSimple } from './combo-box-simple'
 
-type Meta = ComponentMeta<typeof ComboBox>
-type Story = ComponentStory<typeof ComboBox>
+type Meta = ComponentMeta<typeof ComboBoxSimple>
+type Story = ComponentStory<typeof ComboBoxSimple>
 
 export default {
-  title: 'Components/Form/ComboBox',
-  component: ComboBox,
+  title: 'Components/Form/ComboBox/ComboBoxSimple',
+  component: ComboBoxSimple,
 } as Meta
 
 const items = [
@@ -22,7 +22,7 @@ const ComboBoxTemplate: Story = () => {
   const [searchString, setSearchString] = useState('')
 
   return (
-    <ComboBox
+    <ComboBoxSimple
       emptyLabel="No results to show"
       items={items}
       label="Search for a fruit"

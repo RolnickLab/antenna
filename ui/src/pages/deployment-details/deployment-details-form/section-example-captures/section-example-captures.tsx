@@ -1,7 +1,9 @@
+import { DeleteForm } from 'components/form/delete-form/delete-form'
 import { useDeleteCapture } from 'data-services/hooks/captures/useDeleteCapture'
 import { useUploadCapture } from 'data-services/hooks/captures/useUploadCapture'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import * as Dialog from 'design-system/components/dialog/dialog'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
 import {
@@ -9,19 +11,36 @@ import {
   IconButtonShape,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
+import { bytesToMB } from 'utils/bytesToMB'
 import { STRING, translate } from 'utils/language'
-import { parseServerError } from 'utils/parseServerError/parseServerError'
 import styles from './section-example-captures.module.scss'
+import { useCaptureError } from './useCaptureError'
 
-const IMAGE_CONFIG = {
-  MAX_SIZE: 1024 * 1024, // 1MB
-  NUM_IMAGES: 12,
+export const CAPTURE_CONFIG = {
+  MAX_SIZE: 1024 * 1024 * 1, // 10MB
+  NUM_CAPTURES: 20,
   RATIO: 16 / 9,
+}
+
+// TODO: Move to translations when we are happy with the copy
+export const COPY = {
+  CAPTURE: 'capture',
+  DESCRIPTIONS: [
+    `A maximum of ${CAPTURE_CONFIG.NUM_CAPTURES} captures can be uploaded.`,
+    `The image must smaller than ${bytesToMB(CAPTURE_CONFIG.MAX_SIZE)} MB.`,
+    'Valid formats are PNG, GIF and JPEG.',
+    'Image filenames must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
+  ],
+  FIELD_LABEL_UPLOADED_CAPTURES: 'Manually uploaded captures',
+  MESSAGE_CAPTURE_UPLOAD_HIDDEN:
+    'Deployment must be saved before uploading captures.',
+  MESSAGE_CAPTURE_LIMIT: `To upload more than ${CAPTURE_CONFIG.NUM_CAPTURES} images you must configure a data source.`,
+  RETRY: 'Retry',
 }
 
 export const SectionExampleCaptures = ({
@@ -31,10 +50,23 @@ export const SectionExampleCaptures = ({
 }) => {
   const [files, setFiles] = useState<File[]>([])
 
+  if (!deployment.createdAt) {
+    return (
+      <InputContent
+        label={COPY.FIELD_LABEL_UPLOADED_CAPTURES}
+        description={COPY.MESSAGE_CAPTURE_UPLOAD_HIDDEN}
+      />
+    )
+  }
+
+  const canUpload =
+    deployment.exampleCaptures.length + files.length <
+    CAPTURE_CONFIG.NUM_CAPTURES
+
   return (
     <InputContent
-      label={translate(STRING.FIELD_LABEL_EXAMPLE_CAPTURES)}
-      description="Valid formats are PNG, GIF and JPEG. Image filenames must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg)."
+      label={COPY.FIELD_LABEL_UPLOADED_CAPTURES}
+      description={COPY.DESCRIPTIONS.join('\n')}
     >
       <div className={styles.collection}>
         {deployment.exampleCaptures.map((exampelCapture) => (
@@ -50,11 +82,12 @@ export const SectionExampleCaptures = ({
             key={index}
             deploymentId={deployment.id}
             file={file}
+            index={deployment.exampleCaptures.length + index}
             onUploaded={() => setFiles(files.filter((f) => f !== file))}
           />
         ))}
 
-        {deployment.exampleCaptures.length <= IMAGE_CONFIG.MAX_SIZE ? (
+        {canUpload && (
           <Card>
             <FileInput
               accept={FileInputAccept.Images}
@@ -73,7 +106,7 @@ export const SectionExampleCaptures = ({
               }
             />
           </Card>
-        ) : null}
+        )}
       </div>
     </InputContent>
   )
@@ -83,65 +116,52 @@ const Card = ({ children }: { children: ReactNode }) => (
   <div
     className={styles.card}
     style={{
-      paddingBottom: `${(1 / IMAGE_CONFIG.RATIO) * 100}%`,
+      paddingBottom: `${(1 / CAPTURE_CONFIG.RATIO) * 100}%`,
     }}
   >
     <div className={styles.cardContent}>{children}</div>
   </div>
 )
 
-const ExampleCapture = ({ id, src }: { id: string; src: string }) => {
-  const { deleteCapture, isLoading, error, isSuccess } = useDeleteCapture()
-
-  if (isSuccess) {
-    return null
-  }
-
-  return (
-    <Card>
-      <div className={styles.cardContent}>
-        <img src={src} />
+const ExampleCapture = ({ id, src }: { id: string; src: string }) => (
+  <Card>
+    <div className={styles.cardContent}>
+      <img src={src} />
+    </div>
+    <div className={styles.cardContent}>
+      <div className={styles.deleteContainer}>
+        <DeleteCaptureDialog id={id} />
       </div>
-      <div className={styles.cardContent}>
-        {isLoading ? (
-          <LoadingSpinner size={32} />
-        ) : (
-          <div className={styles.deleteContainer}>
-            <IconButton
-              icon={IconType.Cross}
-              shape={IconButtonShape.Round}
-              onClick={() => deleteCapture(id)}
-            />
-          </div>
-        )}
-        {!!error && (
-          <ErrorMessage
-            error={error}
-            label="Retry delete"
-            onClick={() => deleteCapture(id)}
-          />
-        )}
-      </div>
-    </Card>
-  )
-}
+    </div>
+  </Card>
+)
 
 const AddedExampleCapture = ({
   deploymentId,
+  index,
   file,
   onUploaded,
 }: {
   deploymentId: string
   file: File
+  index: number
   onUploaded: () => void
 }) => {
   const { uploadCapture, isLoading, isSuccess, error } =
     useUploadCapture(onUploaded)
 
+  const { isValid, errorMessage, allowRetry } = useCaptureError({
+    error,
+    file,
+    index,
+  })
+
   useEffect(() => {
-    if (!isSuccess) {
-      uploadCapture({ deploymentId, file })
+    if (!isValid || isSuccess) {
+      return
     }
+
+    uploadCapture({ deploymentId, file })
   }, [])
 
   if (isSuccess) {
@@ -155,14 +175,25 @@ const AddedExampleCapture = ({
       </div>
       <div className={styles.cardContent}>
         {isLoading ? <LoadingSpinner size={32} /> : null}
-        {!!error && (
+        {errorMessage && (
           <>
-            <ErrorMessage
-              error={error}
-              label="Retry upload"
-              onClick={() => uploadCapture({ deploymentId, file })}
-            />
-            <div className={styles.deleteContainer}>
+            <Tooltip content={errorMessage}>
+              {allowRetry ? (
+                <Button
+                  icon={IconType.Error}
+                  label={COPY.RETRY}
+                  theme={ButtonTheme.Error}
+                  onClick={() => {
+                    uploadCapture({ deploymentId, file })
+                  }}
+                />
+              ) : (
+                <div className={styles.iconWrapper}>
+                  <Icon type={IconType.Error} theme={IconTheme.Error} />
+                </div>
+              )}
+            </Tooltip>
+            <div className={styles.cancelContainer}>
               <IconButton
                 icon={IconType.Cross}
                 shape={IconButtonShape.Round}
@@ -176,33 +207,27 @@ const AddedExampleCapture = ({
   )
 }
 
-const ErrorMessage = ({
-  error,
-  label,
-  onClick,
-}: {
-  error: unknown
-  label: string
-  onClick: () => void
-}) => {
-  const errorMessage = (() => {
-    const { message, fieldErrors } = parseServerError(error)
-
-    if (fieldErrors.length) {
-      return fieldErrors.map((e) => e.message).join('\n')
-    }
-
-    return message
-  })()
+const DeleteCaptureDialog = ({ id }: { id: string }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const { deleteCapture, isLoading, error, isSuccess } = useDeleteCapture()
 
   return (
-    <Tooltip content={errorMessage}>
-      <Button
-        icon={IconType.Error}
-        label={label}
-        theme={ButtonTheme.Error}
-        onClick={onClick}
-      />
-    </Tooltip>
+    <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog.Trigger>
+        <IconButton icon={IconType.RadixTrash} />
+      </Dialog.Trigger>
+      <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
+        <div className={styles.deleteDialog}>
+          <DeleteForm
+            error={error}
+            type={COPY.CAPTURE}
+            isLoading={isLoading}
+            isSuccess={isSuccess}
+            onCancel={() => setIsOpen(false)}
+            onSubmit={() => deleteCapture(id)}
+          />
+        </div>
+      </Dialog.Content>
+    </Dialog.Root>
   )
 }

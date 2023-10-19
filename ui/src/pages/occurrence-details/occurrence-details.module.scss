@@ -23,7 +23,7 @@
   background: $color-neutral-100;
   background-color: $color-neutral-50;
   border-bottom: 2px solid $color-neutral-100;
-  z-index: 1;
+  z-index: 2;
 
   .title {
     @include heading-4-italic();

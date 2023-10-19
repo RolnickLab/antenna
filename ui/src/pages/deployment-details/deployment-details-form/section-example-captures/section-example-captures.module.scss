@@ -34,8 +34,31 @@
   }
 }
 
-.deleteContainer {
+.cancelContainer {
   position: absolute;
   top: 8px;
   right: 8px;
+}
+
+.deleteContainer {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+}
+
+.iconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid $color-neutral-100;
+  background-color: $color-generic-white;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.deleteDialog {
+  width: 320px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
