@@ -150,7 +150,7 @@ const FrameDetections = ({
           return null
         }
 
-        const isActive = detection
+        const isActive = detection.occurrenceId
           ? activeOccurrences.includes(detection.occurrenceId)
           : false
 
@@ -160,18 +160,23 @@ const FrameDetections = ({
             content={detection?.label ?? ''}
             frame={containerRef.current}
             open={isActive ? isActive : undefined}
-            to={APP_ROUTES.OCCURRENCE_DETAILS({
-              projectId: projectId as string,
-              occurrenceId: detection.occurrenceId,
-            })}
+            to={
+              detection.occurrenceId
+                ? APP_ROUTES.OCCURRENCE_DETAILS({
+                    projectId: projectId as string,
+                    occurrenceId: detection.occurrenceId,
+                  })
+                : undefined
+            }
           >
             <div
               style={style}
               className={classNames(styles.detection, {
+                [styles.clickable]: !!detection.occurrenceId,
                 [styles.active]: isActive,
               })}
               onClick={() => {
-                if (detection) {
+                if (detection.occurrenceId) {
                   toggleActiveState(detection?.occurrenceId)
                 }
               }}

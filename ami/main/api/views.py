@@ -189,6 +189,22 @@ class SourceImageViewSet(DefaultViewSet):
         .order_by("timestamp")
         .all()
     )
+
+    def get_queryset(self) -> QuerySet:
+        queryset = super().get_queryset()
+        has_detections = self.request.query_params.get("has_detections")
+
+        if has_detections is not None:
+            has_detections = BooleanField(required=False).clean(has_detections)
+            queryset = (
+                queryset.annotate(
+                    has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+                )
+                .filter(has_detections=has_detections)
+                .order_by("?")
+            )
+        return queryset
+
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment", "deployment__project", "collections"]
     ordering_fields = [
