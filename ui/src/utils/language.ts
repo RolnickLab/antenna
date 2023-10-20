@@ -171,6 +171,19 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 }
 
 // When we have more translations available, this function could return a value based on current language settings.
-export const translate = (key: STRING): string => {
-  return ENGLISH_STRINGS[key]
+export const translate = (
+  key: STRING,
+  values?: { [key: string]: string | number }
+): string => {
+  let string = ENGLISH_STRINGS[key]
+
+  if (!values) {
+    return string
+  }
+
+  Object.entries(values).forEach(([key, value]) => {
+    string = string.replace(`{{${key}}}`, `${value}`)
+  })
+
+  return string
 }
