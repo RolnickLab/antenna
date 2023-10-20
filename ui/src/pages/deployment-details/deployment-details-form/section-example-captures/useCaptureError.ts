@@ -1,6 +1,6 @@
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
-import { CAPTURE_CONFIG, COPY } from './section-example-captures'
+import { CAPTURE_CONFIG } from './section-example-captures'
 
 export const useCaptureError = ({
   error,
@@ -13,7 +13,9 @@ export const useCaptureError = ({
 }) => {
   const clientError = (() => {
     if (index >= CAPTURE_CONFIG.NUM_CAPTURES) {
-      return COPY.MESSAGE_CAPTURE_LIMIT
+      return translate(STRING.MESSAGE_CAPTURE_TOO_MANY, {
+        numCaptures: CAPTURE_CONFIG.NUM_CAPTURES,
+      })
     }
 
     if (file.size > CAPTURE_CONFIG.MAX_SIZE) {

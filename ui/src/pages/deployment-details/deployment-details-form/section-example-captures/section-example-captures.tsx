@@ -27,21 +27,17 @@ export const CAPTURE_CONFIG = {
   RATIO: 16 / 9,
 }
 
-// TODO: Move to translations when we are happy with the copy
-export const COPY = {
-  CAPTURE: 'capture',
-  DESCRIPTIONS: [
-    `A maximum of ${CAPTURE_CONFIG.NUM_CAPTURES} captures can be uploaded.`,
-    `The image must smaller than ${bytesToMB(CAPTURE_CONFIG.MAX_SIZE)} MB.`,
-    'Valid formats are PNG, GIF and JPEG.',
-    'Image filenames must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
-  ],
-  FIELD_LABEL_UPLOADED_CAPTURES: 'Manually uploaded captures',
-  MESSAGE_CAPTURE_UPLOAD_HIDDEN:
-    'Deployment must be saved before uploading captures.',
-  MESSAGE_CAPTURE_LIMIT: `To upload more than ${CAPTURE_CONFIG.NUM_CAPTURES} images you must configure a data source.`,
-  RETRY: 'Retry',
-}
+const CAPTURE_FIELD_DESCRIPTION = [
+  translate(STRING.MESSAGE_CAPTURE_LIMIT, {
+    numCaptures: CAPTURE_CONFIG.NUM_CAPTURES,
+  }),
+  translate(STRING.MESSAGE_IMAGE_SIZE, {
+    value: bytesToMB(CAPTURE_CONFIG.MAX_SIZE),
+    unit: 'MB',
+  }),
+  translate(STRING.MESSAGE_IMAGE_FORMAT),
+  translate(STRING.MESSAGE_CAPTURE_FILENAME),
+].join('\n')
 
 export const SectionExampleCaptures = ({
   deployment,
@@ -53,8 +49,8 @@ export const SectionExampleCaptures = ({
   if (!deployment.createdAt) {
     return (
       <InputContent
-        label={COPY.FIELD_LABEL_UPLOADED_CAPTURES}
-        description={COPY.MESSAGE_CAPTURE_UPLOAD_HIDDEN}
+        label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
+        description={translate(STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN)}
       />
     )
   }
@@ -65,8 +61,8 @@ export const SectionExampleCaptures = ({
 
   return (
     <InputContent
-      label={COPY.FIELD_LABEL_UPLOADED_CAPTURES}
-      description={COPY.DESCRIPTIONS.join('\n')}
+      label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
+      description={CAPTURE_FIELD_DESCRIPTION}
     >
       <div className={styles.collection}>
         {deployment.exampleCaptures.map((exampelCapture) => (
@@ -181,7 +177,7 @@ const AddedExampleCapture = ({
               {allowRetry ? (
                 <Button
                   icon={IconType.Error}
-                  label={COPY.RETRY}
+                  label={translate(STRING.RETRY)}
                   theme={ButtonTheme.Error}
                   onClick={() => {
                     uploadCapture({ deploymentId, file })
@@ -220,7 +216,7 @@ const DeleteCaptureDialog = ({ id }: { id: string }) => {
         <div className={styles.deleteDialog}>
           <DeleteForm
             error={error}
-            type={COPY.CAPTURE}
+            type={translate(STRING.CAPTURE)}
             isLoading={isLoading}
             isSuccess={isSuccess}
             onCancel={() => setIsOpen(false)}
