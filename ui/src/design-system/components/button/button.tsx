@@ -39,6 +39,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       switch (theme) {
         case ButtonTheme.Success:
         case ButtonTheme.Neutral:
+        case ButtonTheme.Destructive:
           return IconTheme.Light
         case ButtonTheme.Error:
           return IconTheme.Error

@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { DeleteJobsDialog } from './delete-jobs-dialog'
+import styles from './jobs.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Job>[] = (
   projectId: string
@@ -24,11 +26,6 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
-  },
-  {
-    id: 'project',
-    name: translate(STRING.FIELD_LABEL_PROJECT),
-    renderCell: (item: Job) => <BasicTableCell value={item.project} />,
   },
   {
     id: 'started-at',
@@ -65,5 +62,18 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
         />
       )
     },
+  },
+  {
+    id: 'actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: Job) => (
+      <div className={styles.jobActions}>
+        {item.canDelete && <DeleteJobsDialog id={item.id} />}
+      </div>
+    ),
   },
 ]

@@ -1,14 +1,15 @@
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 
 export type ServerJob = any // TODO: Update this type
 
 export enum JobStatus {
-  Pending = 'pending',
-  Started = 'started',
-  Success = 'success',
-  Unknown = 'unknown',
+  Pending = 'PENDING',
+  Started = 'STARTED',
+  Success = 'SUCCESS',
+  Unknown = 'UNKNOWN',
 }
 
 export class Job {
@@ -16,6 +17,10 @@ export class Job {
 
   public constructor(job: ServerJob) {
     this._job = job
+  }
+
+  get canDelete(): boolean {
+    return this._job.user_permissions.includes(UserPermission.Delete)
   }
 
   get finishedAt(): string | undefined {
