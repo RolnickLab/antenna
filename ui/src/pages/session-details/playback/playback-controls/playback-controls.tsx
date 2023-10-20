@@ -1,3 +1,4 @@
+import { SessionDetails } from 'data-services/models/session-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { PlaybackSlider } from 'design-system/components/slider/playback-slider'
@@ -6,7 +7,7 @@ import styles from './playback-controls.module.scss'
 
 const DEFAULT_VALUE = 0.6 // TODO: Current model should decide this value
 
-export const PlaybackControls = () => {
+export const PlaybackControls = ({ session }: { session: SessionDetails }) => {
   const [threshold, setThreshold] = useState(DEFAULT_VALUE)
 
   return (
@@ -17,13 +18,15 @@ export const PlaybackControls = () => {
         icon={IconType.BatchId}
       />
       <div className={styles.slider}>
-        <PlaybackSlider
-          defaultValue={DEFAULT_VALUE}
-          label="Confidence"
-          value={threshold}
-          onValueChange={setThreshold}
-          onValueCommit={setThreshold}
-        />
+        {session.numDetections && session.numDetections > 0 ? (
+          <PlaybackSlider
+            defaultValue={DEFAULT_VALUE}
+            label="Score"
+            value={threshold}
+            onValueChange={setThreshold}
+            onValueCommit={setThreshold}
+          />
+        ) : null}
       </div>
     </div>
   )

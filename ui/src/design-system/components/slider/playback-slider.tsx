@@ -71,7 +71,7 @@ const DefaultValueThumb = ({
   const percent = _.round(defaultValue * 100, 0)
 
   return (
-    <Tooltip content="Recommended threshold">
+    <Tooltip content="Default threshold">
       <div
         className={classNames(styles.sliderThumb, styles.default, {
           [styles.primary]: value > defaultValue,
