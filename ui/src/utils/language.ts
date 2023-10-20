@@ -7,6 +7,7 @@ export enum STRING {
   NEXT,
   REFRESH,
   RESET,
+  RETRY,
   SAVE,
   SAVED,
   SEARCH_MAP,
@@ -49,6 +50,12 @@ export enum STRING {
   FIELD_LABEL_UPLOADED_CAPTURES,
 
   /* MESSAGE */
+  MESSAGE_CAPTURE_FILENAME,
+  MESSAGE_CAPTURE_LIMIT,
+  MESSAGE_CAPTURE_TOO_MANY,
+  MESSAGE_CAPTURE_UPLOAD_HIDDEN,
+  MESSAGE_IMAGE_FORMAT,
+  MESSAGE_IMAGE_SIZE,
   MESSAGE_IMAGE_TOO_BIG,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
@@ -70,6 +77,7 @@ export enum STRING {
   TAB_ITEM_TABLE,
 
   /* OTHER */
+  CAPTURE,
   CLOSE,
   CONNECTED,
   CONNECTING,
@@ -93,6 +101,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NEXT]: 'Next',
   [STRING.REFRESH]: 'Refresh',
   [STRING.RESET]: 'Reset',
+  [STRING.RETRY]: 'Retry',
   [STRING.SAVE]: 'Save',
   [STRING.SAVED]: 'Saved',
   [STRING.SEARCH_MAP]: 'Search on the map',
@@ -135,6 +144,17 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_UPLOADED_CAPTURES]: 'Manually uploaded captures',
 
   /* MESSAGE */
+  [STRING.MESSAGE_CAPTURE_FILENAME]:
+    'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
+  [STRING.MESSAGE_CAPTURE_LIMIT]:
+    'A maximum of {{numCaptures}} captures can be uploaded.',
+  [STRING.MESSAGE_CAPTURE_TOO_MANY]:
+    'To upload more than {{numCaptures}} images you must configure a data source.',
+  [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
+    'Deployment must be saved before uploading captures.',
+  [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
+  [STRING.MESSAGE_IMAGE_SIZE]:
+    'The image must smaller than {{value}} {{unit}}.',
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
@@ -156,6 +176,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TAB_ITEM_TABLE]: 'Table',
 
   /* OTHER */
+  [STRING.CAPTURE]: 'Capture',
   [STRING.CLOSE]: 'Close',
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting',
