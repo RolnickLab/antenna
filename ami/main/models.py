@@ -1982,6 +1982,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "random_from_each_event",
     "last_and_random_from_each_event",
     "greatest_file_size_from_each_event",
+    "detections_only",
 ]
 
 
@@ -2100,3 +2101,9 @@ class SourceImageCollection(BaseModel):
         for event in self.project.events.all():
             captures.update(qs.filter(event=event).order_by("-size")[:num_each])
         return captures
+
+    def sample_detections_only(self):
+        """Sample all source images with detections"""
+
+        qs = self.get_queryset()
+        return qs.filter(detections__isnull=False).distinct()
