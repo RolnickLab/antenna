@@ -22,7 +22,7 @@ import styles from './section-example-captures.module.scss'
 import { useCaptureError } from './useCaptureError'
 
 export const CAPTURE_CONFIG = {
-  MAX_SIZE: 1024 * 1024 * 1, // 10MB
+  MAX_SIZE: 1024 * 1024 * 10, // 10MB
   NUM_CAPTURES: 20,
   RATIO: 16 / 9,
 }
