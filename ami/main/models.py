@@ -31,8 +31,12 @@ _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
 class TaxonRank(Enum):
     ORDER = "Order"
+    SUPERFAMILY = "Superfamily"
     FAMILY = "Family"
+    SUBFAMILY = "Subfamily"
     GENUS = "Genus"
+    TRIBE = "Tribe"
+    SUBTRIBE = "Subtribe"
     SPECIES = "Species"
 
     @classmethod
@@ -1640,7 +1644,12 @@ class Taxon(BaseModel):
     # taxonomy = models.JSONField(null=True, blank=True)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
+
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
+    bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
+    inat_taxon_id = models.BigIntegerField("iNaturalist taxon ID", blank=True, null=True)
+
+    notes = models.TextField(blank=True)
 
     projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
@@ -1649,8 +1658,10 @@ class Taxon(BaseModel):
     classifications: models.QuerySet["Classification"]
     lists: models.QuerySet["TaxaList"]
 
+    author = models.CharField(max_length=255, blank=True)
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
+    sort_phylogeny = models.BigIntegerField(blank=True, null=True)
 
     objects: TaxaManager = TaxaManager()
 
