@@ -216,7 +216,7 @@ const DeleteCaptureDialog = ({ id }: { id: string }) => {
         <div className={styles.deleteDialog}>
           <DeleteForm
             error={error}
-            type={translate(STRING.CAPTURE)}
+            type={translate(STRING.ENTITY_TYPE_CAPTURE)}
             isLoading={isLoading}
             isSuccess={isSuccess}
             onCancel={() => setIsOpen(false)}

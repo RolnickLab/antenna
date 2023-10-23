@@ -2,7 +2,12 @@ export enum STRING {
   /* BUTTON */
   BACK,
   CANCEL,
+  CHANGE_IMAGE,
+  CHOOSE_IMAGE,
+  CLEAR,
   CURRENT_LOCATION,
+  DELETE,
+  DELETED,
   EDIT,
   NEXT,
   REFRESH,
@@ -12,12 +17,16 @@ export enum STRING {
   SAVED,
   SEARCH_MAP,
 
-  /* DIALOG */
-  DIALOG_DEPLOYMENT_DETAILS,
-  DIALOG_EDIT_DEPLOYMENT,
-  DIALOG_EDIT_PROJECT,
-  DIALOG_NEW_DEPLOYMENT,
-  DIALOG_NEW_PROJECT,
+  /* ENTITY */
+  ENTITY_CREATE,
+  ENTITY_DELETE,
+  ENTITY_DETAILS,
+  ENTITY_EDIT,
+  ENTITY_TYPE_CAPTURE,
+  ENTITY_TYPE_DEPLOYMENT,
+  ENTITY_TYPE_IDENTIFICATION,
+  ENTITY_TYPE_PROJECT,
+  ENTITY_VIEW,
 
   /* FIELD_LABEL */
   FIELD_LABEL_AVG_TEMP,
@@ -30,6 +39,7 @@ export enum STRING {
   FIELD_LABEL_DURATION,
   FIELD_LABEL_GENERAL,
   FIELD_LABEL_ID,
+  FIELD_LABEL_IMAGE,
   FIELD_LABEL_LATITUDE,
   FIELD_LABEL_LOCATION,
   FIELD_LABEL_LONGITUDE,
@@ -54,12 +64,14 @@ export enum STRING {
   MESSAGE_CAPTURE_LIMIT,
   MESSAGE_CAPTURE_TOO_MANY,
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
+  MESSAGE_DELETE_CONFIRM,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
   MESSAGE_IMAGE_TOO_BIG,
+  MESSAGE_NO_IMAGE,
+  MESSAGE_NO_RESULTS,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
-  MESSAGE_NO_RESULTS,
 
   /* NAV_ITEM */
   NAV_ITEM_DEPLOYMENTS,
@@ -77,7 +89,6 @@ export enum STRING {
   TAB_ITEM_TABLE,
 
   /* OTHER */
-  CAPTURE,
   CLOSE,
   CONNECTED,
   CONNECTING,
@@ -95,7 +106,12 @@ export enum STRING {
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
   [STRING.BACK]: 'Back',
+  [STRING.DELETE]: 'Delete',
+  [STRING.DELETED]: 'Deleted',
   [STRING.CANCEL]: 'Cancel',
+  [STRING.CHANGE_IMAGE]: 'Change image',
+  [STRING.CHOOSE_IMAGE]: 'Choose image',
+  [STRING.CLEAR]: 'Clear',
   [STRING.CURRENT_LOCATION]: 'Use current location',
   [STRING.EDIT]: 'Edit',
   [STRING.NEXT]: 'Next',
@@ -105,13 +121,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SAVE]: 'Save',
   [STRING.SAVED]: 'Saved',
   [STRING.SEARCH_MAP]: 'Search on the map',
-
-  /* DIALOG */
-  [STRING.DIALOG_DEPLOYMENT_DETAILS]: 'Deployment details',
-  [STRING.DIALOG_EDIT_DEPLOYMENT]: 'Edit deployment',
-  [STRING.DIALOG_EDIT_PROJECT]: 'Edit project',
-  [STRING.DIALOG_NEW_DEPLOYMENT]: 'Register new deployment',
-  [STRING.DIALOG_NEW_PROJECT]: 'Register new project',
 
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
@@ -124,6 +133,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
   [STRING.FIELD_LABEL_GENERAL]: 'General',
   [STRING.FIELD_LABEL_ID]: 'ID',
+  [STRING.FIELD_LABEL_IMAGE]: 'Image',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
   [STRING.FIELD_LABEL_LONGITUDE]: 'Longitude',
@@ -143,6 +153,17 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
   [STRING.FIELD_LABEL_UPLOADED_CAPTURES]: 'Manually uploaded captures',
 
+  /* ENTITY */
+  [STRING.ENTITY_CREATE]: 'Register new {{type}}',
+  [STRING.ENTITY_DELETE]: 'Delete {{type}}',
+  [STRING.ENTITY_DETAILS]: '{{type}} details',
+  [STRING.ENTITY_EDIT]: 'Edit {{type}}',
+  [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
+  [STRING.ENTITY_TYPE_DEPLOYMENT]: 'deployment',
+  [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
+  [STRING.ENTITY_TYPE_PROJECT]: 'project',
+  [STRING.ENTITY_VIEW]: 'View {{type}}',
+
   /* MESSAGE */
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
@@ -152,13 +173,16 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'To upload more than {{numCaptures}} images you must configure a data source.',
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
     'Deployment must be saved before uploading captures.',
+  [STRING.MESSAGE_DELETE_CONFIRM]:
+    'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
     'The image must smaller than {{value}} {{unit}}.',
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
+  [STRING.MESSAGE_NO_IMAGE]: 'No image',
+  [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
-  [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
@@ -176,7 +200,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TAB_ITEM_TABLE]: 'Table',
 
   /* OTHER */
-  [STRING.CAPTURE]: 'Capture',
   [STRING.CLOSE]: 'Close',
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting',

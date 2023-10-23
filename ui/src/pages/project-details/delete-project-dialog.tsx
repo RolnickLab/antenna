@@ -21,7 +21,7 @@ export const DeleteProjectDialog = ({ id }: { id: string }) => {
         <div className={classNames(styles.content, styles.compact)}>
           <DeleteForm
             error={error}
-            type="project"
+            type={translate(STRING.ENTITY_TYPE_PROJECT)}
             isLoading={isLoading}
             isSuccess={isSuccess}
             onCancel={() => setIsOpen(false)}

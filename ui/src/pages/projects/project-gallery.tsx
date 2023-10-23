@@ -7,6 +7,7 @@ import { EditProjectDialog } from 'pages/project-details/edit-project-dialog'
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import styles from './projects.module.scss'
 
 export const ProjectGallery = ({
@@ -53,7 +54,12 @@ export const ProjectGallery = ({
             <div className={styles.projectActions}>
               {project?.canDelete && <DeleteProjectDialog id={item.id} />}
               {project?.canUpdate && <EditProjectDialog id={item.id} />}
-              <Button label="View project" onClick={() => navigate(item.to)} />
+              <Button
+                label={translate(STRING.ENTITY_VIEW, {
+                  type: translate(STRING.ENTITY_TYPE_PROJECT),
+                })}
+                onClick={() => navigate(item.to)}
+              />
             </div>
           </Card>
         )
