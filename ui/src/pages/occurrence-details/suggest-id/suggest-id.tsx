@@ -8,6 +8,7 @@ import { RefObject, useState } from 'react'
 import { useParams } from 'react-router'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { StatusLabel } from '../status-label/status-label'
 import { TaxonSearch } from '../taxon-search/taxon-search'
@@ -38,8 +39,8 @@ export const SuggestId = ({
         <FormError message={formError} style={{ padding: '8px 16px' }} />
       )}
       <div className={styles.content}>
-        <StatusLabel label="New ID" />
-        <InputContent label="Taxon">
+        <StatusLabel label={translate(STRING.NEW_ID)} />
+        <InputContent label={translate(STRING.FIELD_LABEL_TAXON)}>
           <div className={styles.taxonActions}>
             <TaxonSearch
               containerRef={containerRef}
@@ -62,11 +63,15 @@ export const SuggestId = ({
             />
           )}
         </InputContent>
-        <Input label="Comment" name="comment" disabled />
+        <Input
+          label={translate(STRING.FIELD_LABEL_COMMENT)}
+          name="comment"
+          disabled
+        />
         <div className={styles.formActions}>
-          <Button label="Cancel" onClick={onCancel} />
+          <Button label={translate(STRING.CANCEL)} onClick={onCancel} />
           <Button
-            label="Submit"
+            label={translate(STRING.SUBMIT)}
             theme={ButtonTheme.Success}
             loading={isLoading}
             disabled={!taxon}
