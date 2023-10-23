@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import styles from './auth.module.scss'
 
@@ -18,15 +19,14 @@ interface SignUpFormValues {
 
 const config: FormConfig = {
   email: {
-    label: 'Email',
+    label: translate(STRING.FIELD_LABEL_EMAIL),
     rules: {
       required: true,
     },
   },
   password: {
-    label: 'Password',
-    description:
-      'The password must contain at least 8 characters and cannot be entirely numeric.',
+    label: translate(STRING.FIELD_LABEL_PASSWORD),
+    description: translate(STRING.MESSAGE_PASSWORD_FORMAT),
     rules: {
       required: true,
       minLength: 8,
@@ -57,7 +57,7 @@ export const SignUp = () => {
 
   return (
     <>
-      <h1 className={styles.title}>Sign up</h1>
+      <h1 className={styles.title}>{translate(STRING.SIGN_UP)}</h1>
       <form
         className={styles.form}
         onSubmit={handleSubmit((values) =>
@@ -72,7 +72,7 @@ export const SignUp = () => {
           control={control}
         />
         <Button
-          label="Sign up"
+          label={translate(STRING.SIGN_UP)}
           type="submit"
           theme={ButtonTheme.Success}
           loading={isLoading}
@@ -90,21 +90,23 @@ export const SignUp = () => {
                 size={12}
                 theme={IconTheme.Success}
               />
-              <span>Signed up successfully!</span>
+              <span>{translate(STRING.MESSAGE_SIGNED_UP)}</span>
             </>
           ) : (
-            <span>Already have an account?</span>
+            <span>{translate(STRING.MESSAGE_HAS_ACCOUNT)}</span>
           )}
           <Link
             to={APP_ROUTES.LOGIN}
             state={isSuccess ? { email: signedUpEmail } : undefined}
           >
-            Login
+            {translate(STRING.LOGIN)}
           </Link>
         </p>
-        <p className={classNames(styles.text, styles.divider)}>OR</p>
+        <p className={classNames(styles.text, styles.divider)}>
+          {translate(STRING.OR).toUpperCase()}
+        </p>
         <Button
-          label="View public projects"
+          label={translate(STRING.VIEW_PUBLIC_PROJECTS)}
           type="button"
           theme={ButtonTheme.Default}
           onClick={() => navigate(APP_ROUTES.HOME)}

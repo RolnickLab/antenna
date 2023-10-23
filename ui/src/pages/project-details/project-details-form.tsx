@@ -86,7 +86,11 @@ export const ProjectDetailsForm = ({
   return (
     <form onSubmit={handleSubmit((values) => onSubmit(values))}>
       {errorMessage && (
-        <FormError inDialog intro="Could not save" message={errorMessage} />
+        <FormError
+          inDialog
+          intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
+          message={errorMessage}
+        />
       )}
       <FormSection>
         <FormRow>
