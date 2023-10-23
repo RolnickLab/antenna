@@ -17,20 +17,21 @@ export const NewDeploymentDialog = () => {
   const [isOpen, setIsOpen] = useState(false)
   const { createDeployment, isLoading, error } = useCreateDeployment()
 
+  const label = translate(STRING.ENTITY_CREATE, {
+    type: translate(STRING.ENTITY_TYPE_DEPLOYMENT),
+  })
+
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <Button
-          label={translate(STRING.DIALOG_NEW_DEPLOYMENT)}
-          icon={IconType.Plus}
-        />
+        <Button label={label} icon={IconType.Plus} />
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         <DeploymentDetailsForm
           deployment={newDeployment}
           serverError={error}
           isLoading={isLoading}
-          title={translate(STRING.DIALOG_NEW_DEPLOYMENT)}
+          title={label}
           onCancelClick={() => setIsOpen(false)}
           onSubmit={async (data) => {
             await createDeployment({ ...data, projectId })

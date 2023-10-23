@@ -1,6 +1,7 @@
 import { Button } from 'design-system/components/button/button'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
+import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
 import styles from './user-info-image-upload.module.scss'
 
@@ -33,7 +34,7 @@ export const UserInfoImageUpload = ({
               <ImageOverlay />
             </>
           ) : (
-            <span>No image</span>
+            <span>{translate(STRING.MESSAGE_NO_IMAGE)}</span>
           )}
         </div>
       </div>
@@ -43,7 +44,11 @@ export const UserInfoImageUpload = ({
         renderInput={(props) => (
           <Button
             {...props}
-            label={imageUrl ? 'Change image' : 'Choose image'}
+            label={
+              imageUrl
+                ? translate(STRING.CHANGE_IMAGE)
+                : translate(STRING.CHOOSE_IMAGE)
+            }
           />
         )}
         withClear

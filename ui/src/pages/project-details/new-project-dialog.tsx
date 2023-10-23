@@ -22,17 +22,21 @@ export const NewProjectDialog = () => {
     }, CLOSE_TIMEOUT)
   )
 
+  const label = translate(STRING.ENTITY_CREATE, {
+    type: translate(STRING.ENTITY_TYPE_PROJECT),
+  })
+
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
         <Button
-          label={translate(STRING.DIALOG_NEW_PROJECT)}
+          label={label}
           icon={IconType.Plus}
           theme={ButtonTheme.Default}
         />
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-        <Dialog.Header title={translate(STRING.DIALOG_NEW_PROJECT)} />
+        <Dialog.Header title={label} />
         <div className={styles.content}>
           <ProjectDetailsForm
             project={newProject}
