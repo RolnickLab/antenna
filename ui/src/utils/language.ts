@@ -1,5 +1,7 @@
 export enum STRING {
   /* BUTTON */
+  AGREE,
+  AGREED,
   BACK,
   CANCEL,
   CHANGE_IMAGE,
@@ -19,6 +21,8 @@ export enum STRING {
   SAVED,
   SEARCH_MAP,
   SIGN_UP,
+  SUBMIT,
+  SUGGEST_ID,
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
@@ -35,6 +39,7 @@ export enum STRING {
   /* FIELD_LABEL */
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_CAPTURES,
+  FIELD_LABEL_COMMENT,
   FIELD_LABEL_CONNECTION_STATUS,
   FIELD_LABEL_DATE,
   FIELD_LABEL_DEPLOYMENT,
@@ -59,6 +64,7 @@ export enum STRING {
   FIELD_LABEL_SOURCE_IMAGES,
   FIELD_LABEL_SPECIES,
   FIELD_LABEL_STATUS,
+  FIELD_LABEL_TAXON,
   FIELD_LABEL_TIME,
   FIELD_LABEL_TRAINING_IMAGES,
   FIELD_LABEL_FIRST_DATE,
@@ -105,8 +111,12 @@ export enum STRING {
   CONNECTED,
   CONNECTING,
   DONE,
+  ID_APPLIED,
   LAST_UPDATED,
   LOADING_DATA,
+  MACHINE_PREDICTION_SCORE,
+  MACHINE_SUGGESTION,
+  NEW_ID,
   NOT_CONNECTED,
   OR,
   PENDING,
@@ -115,10 +125,13 @@ export enum STRING {
   UNKNOWN,
   UPDATING_DATA,
   USER_INFO,
+  VERIFIED_BY,
 }
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.AGREE]: 'Agree',
+  [STRING.AGREED]: 'Agreed',
   [STRING.BACK]: 'Back',
   [STRING.DELETE]: 'Delete',
   [STRING.DELETED]: 'Deleted',
@@ -138,11 +151,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SAVED]: 'Saved',
   [STRING.SEARCH_MAP]: 'Search on the map',
   [STRING.SIGN_UP]: 'Sign up',
+  [STRING.SUBMIT]: 'Submit',
+  [STRING.SUGGEST_ID]: 'Suggest ID',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
+  [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_DATE]: 'Date',
   [STRING.FIELD_LABEL_DEPLOYMENT]: 'Deployment',
@@ -167,6 +183,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.FIELD_LABEL_SPECIES]: 'Species',
   [STRING.FIELD_LABEL_STATUS]: 'Status',
+  [STRING.FIELD_LABEL_TAXON]: 'Taxon',
   [STRING.FIELD_LABEL_TIME]: 'Time',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Training images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
@@ -234,8 +251,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting',
   [STRING.DONE]: 'Done',
+  [STRING.ID_APPLIED]: 'ID applied',
   [STRING.LAST_UPDATED]: 'Last updated',
   [STRING.LOADING_DATA]: 'Loading data',
+  [STRING.MACHINE_PREDICTION_SCORE]: 'Machine prediction\nscore {{score}}',
+  [STRING.MACHINE_SUGGESTION]: 'Machine suggestion',
+  [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.OR]: 'Or',
   [STRING.PENDING]: 'Pending',
@@ -244,6 +265,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.UNKNOWN]: 'Unknown',
   [STRING.UPDATING_DATA]: 'Updating data',
   [STRING.USER_INFO]: 'User info',
+  [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
 }
 
 // When we have more translations available, this function could return a value based on current language settings.

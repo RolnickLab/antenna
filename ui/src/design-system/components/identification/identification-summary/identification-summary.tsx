@@ -1,4 +1,5 @@
 import { ReactNode } from 'react'
+import { STRING, translate } from 'utils/language'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './identification-summary.module.scss'
 
@@ -19,7 +20,7 @@ export const IdentificationSummary = ({
       {user ? (
         <div className={styles.profileImage}>
           {user.image ? (
-            <img src={user.image} alt="User profile image" />
+            <img src={user.image} alt="" />
           ) : (
             <Icon
               type={IconType.Photograph}
@@ -32,7 +33,7 @@ export const IdentificationSummary = ({
         <Icon type={IconType.BatchId} theme={IconTheme.Primary} size={16} />
       )}
       <span className={styles.username}>
-        {user?.name ?? 'Machine suggestion'}
+        {user?.name ?? translate(STRING.MACHINE_SUGGESTION)}
       </span>
     </div>
     {children}
