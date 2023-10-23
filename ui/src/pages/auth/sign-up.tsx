@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { useFormError } from 'utils/useFormError'
+import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import styles from './auth.module.scss'
 
 interface SignUpFormValues {
@@ -54,6 +55,11 @@ export const SignUp = () => {
     },
   })
   const errorMessage = useFormError({ error, setFieldError })
+
+  usePageBreadcrumb({
+    title: 'Sign up',
+    path: APP_ROUTES.SIGN_UP,
+  })
 
   return (
     <>

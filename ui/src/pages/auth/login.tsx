@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { useFormError } from 'utils/useFormError'
+import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import styles from './auth.module.scss'
 
 interface LoginFormValues {
@@ -43,6 +44,11 @@ export const Login = () => {
     defaultValues: { email: state?.email ?? '', password: '' },
   })
   const errorMessage = useFormError({ error, setFieldError })
+
+  usePageBreadcrumb({
+    title: 'Login',
+    path: APP_ROUTES.LOGIN,
+  })
 
   return (
     <>
