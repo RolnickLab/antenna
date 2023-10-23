@@ -6,6 +6,7 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import styles from './auth.module.scss'
 
@@ -16,13 +17,13 @@ interface LoginFormValues {
 
 const config: FormConfig = {
   email: {
-    label: 'Email',
+    label: translate(STRING.FIELD_LABEL_EMAIL),
     rules: {
       required: true,
     },
   },
   password: {
-    label: 'Password',
+    label: translate(STRING.FIELD_LABEL_PASSWORD),
     rules: {
       required: true,
     },
@@ -46,7 +47,7 @@ export const Login = () => {
 
   return (
     <>
-      <h1 className={styles.title}>Login</h1>
+      <h1 className={styles.title}>{translate(STRING.LOGIN)}</h1>
       <form
         className={styles.form}
         onSubmit={handleSubmit((values) => login(values))}
@@ -59,7 +60,7 @@ export const Login = () => {
           control={control}
         />
         <Button
-          label="Login"
+          label={translate(STRING.LOGIN)}
           type="submit"
           theme={ButtonTheme.Success}
           loading={isLoading}
@@ -70,11 +71,14 @@ export const Login = () => {
           </p>
         )}
         <p className={styles.text}>
-          No account yet? <Link to={APP_ROUTES.SIGN_UP}>Sign up</Link>
+          {translate(STRING.MESSAGE_NO_ACCOUNT_YET)}{' '}
+          <Link to={APP_ROUTES.SIGN_UP}>{translate(STRING.SIGN_UP)}</Link>
         </p>
-        <p className={classNames(styles.text, styles.divider)}>OR</p>
+        <p className={classNames(styles.text, styles.divider)}>
+          {translate(STRING.OR).toUpperCase()}
+        </p>
         <Button
-          label="View public projects"
+          label={translate(STRING.VIEW_PUBLIC_PROJECTS)}
           type="button"
           theme={ButtonTheme.Default}
           onClick={() => navigate(APP_ROUTES.HOME)}
