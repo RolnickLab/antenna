@@ -21,7 +21,11 @@ export const EditProjectDialog = ({ id }: { id: string }) => {
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={!isLoaded}
       >
-        <Dialog.Header title={translate(STRING.DIALOG_EDIT_PROJECT)} />
+        <Dialog.Header
+          title={translate(STRING.ENTITY_EDIT, {
+            type: translate(STRING.ENTITY_TYPE_PROJECT),
+          })}
+        />
         <div className={styles.content}>
           <EditProjectDialogContent
             id={id}

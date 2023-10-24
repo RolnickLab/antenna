@@ -21,7 +21,7 @@ export const DeleteDeploymentDialog = ({ id }: { id: string }) => {
         <div className={classNames(styles.content, styles.compact)}>
           <DeleteForm
             error={error}
-            type="deployment"
+            type={translate(STRING.ENTITY_TYPE_DEPLOYMENT)}
             isLoading={isLoading}
             isSuccess={isSuccess}
             onCancel={() => setIsOpen(false)}

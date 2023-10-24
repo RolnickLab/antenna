@@ -134,8 +134,12 @@ export const OccurrenceDetails = ({
           <Tooltip
             content={
               occurrence.determinationVerified
-                ? `Verified by\n${occurrence.determinationVerifiedBy}`
-                : `Machine prediction\nscore ${occurrence.determinationScore}`
+                ? translate(STRING.VERIFIED_BY, {
+                    name: occurrence.determinationVerifiedBy as string,
+                  })
+                : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                    score: occurrence.determinationScore,
+                  })
             }
           >
             <IdentificationStatus
@@ -160,7 +164,7 @@ export const OccurrenceDetails = ({
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
-                label="Suggest ID"
+                label={translate(STRING.SUGGEST_ID)}
                 icon={IconType.ShieldAlert}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
