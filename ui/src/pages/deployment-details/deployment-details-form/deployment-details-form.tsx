@@ -154,7 +154,11 @@ const FormError = ({ error }: { error: unknown }) => {
   const errorMessage = useFormError({ error })
 
   return errorMessage ? (
-    <_FormError inDialog intro="Could not save" message={errorMessage} />
+    <_FormError
+      inDialog
+      intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
+      message={errorMessage}
+    />
   ) : null
 }
 

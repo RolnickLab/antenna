@@ -30,7 +30,11 @@ export const UserInfoDialog = () => {
         </div>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-        <Dialog.Header title="Edit user info" />
+        <Dialog.Header
+          title={translate(STRING.ENTITY_EDIT, {
+            type: translate(STRING.USER_INFO).toLowerCase(),
+          })}
+        />
         <div className={styles.content}>
           <UserInfoForm userInfo={userInfo} />
         </div>
@@ -51,7 +55,7 @@ const UserInfoButtonContent = ({ userInfo }: { userInfo: UserInfo }) => {
   })()
 
   if (userInfo.image) {
-    return <img alt="Profile image" src={userInfo.image} />
+    return <img alt="" src={userInfo.image} />
   }
 
   return <span>{name.charAt(0)}</span>
