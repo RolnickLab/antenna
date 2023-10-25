@@ -84,11 +84,11 @@ class DefaultViewSetMixin:
     permission_classes = [permissions.AllowAny]
 
 
-class DefaultViewSet(viewsets.ModelViewSet, DefaultViewSetMixin):
+class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
     pass
 
 
-class DefaultReadOnlyViewSet(viewsets.ReadOnlyModelViewSet, DefaultViewSetMixin):
+class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
     pass
 
 
