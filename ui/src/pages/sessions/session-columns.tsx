@@ -18,7 +18,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    sortField: 'start',
+    sortField: 'updated_at',
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -35,6 +35,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'session',
+    sortField: 'start',
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Session) => (
       <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
