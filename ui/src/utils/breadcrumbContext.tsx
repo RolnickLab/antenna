@@ -2,7 +2,7 @@ import { createContext, ReactNode, useState } from 'react'
 
 export interface Breadcrumb {
   title: string
-  path: string
+  path?: string
 }
 
 interface BreadcrumbContextValues {
