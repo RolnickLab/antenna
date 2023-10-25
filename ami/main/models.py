@@ -7,7 +7,6 @@ import textwrap
 import typing
 import urllib.parse
 from datetime import timedelta
-from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
@@ -23,20 +22,21 @@ import ami.tasks
 import ami.utils
 from ami.main import charts
 from ami.users.models import User
+from ami.utils.schemas import OrderedEnum
 
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
 
-class TaxonRank(Enum):
+class TaxonRank(OrderedEnum):
     ORDER = "Order"
     SUPERFAMILY = "Superfamily"
     FAMILY = "Family"
     SUBFAMILY = "Subfamily"
-    GENUS = "Genus"
     TRIBE = "Tribe"
     SUBTRIBE = "Subtribe"
+    GENUS = "Genus"
     SPECIES = "Species"
 
     @classmethod
@@ -1669,6 +1669,9 @@ class Taxon(BaseModel):
         return self.get_display_name()
 
     def get_display_name(self):
+        """
+        This must be unique because it is used for choice keys in Label Studio.
+        """
         if self.rank == "SPECIES":
             return self.name
         elif self.rank == "GENUS":
@@ -1744,6 +1747,11 @@ class Taxon(BaseModel):
             "name",
         ]
         verbose_name_plural = "Taxa"
+
+        # Set unique contstraints on name & rank
+        # constraints = [
+        #     models.UniqueConstraint(fields=["name", "rank", "parent"], name="unique_name_and_placement"),
+        # ]
 
     def save(self, *args, **kwargs):
         """Update the display name before saving."""
