@@ -1719,6 +1719,12 @@ class Taxon(BaseModel):
         else:
             return self.name
 
+    def get_rank(self) -> TaxonRank:
+        """
+        Return the rank str value as a TaxonRank enum.
+        """
+        return TaxonRank(self.rank)
+
     def num_direct_children(self) -> int:
         return self.direct_children.count()
 
