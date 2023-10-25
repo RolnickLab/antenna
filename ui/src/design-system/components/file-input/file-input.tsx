@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { STRING, translate } from 'utils/language'
 import { Button, ButtonTheme } from '../button/button'
 import styles from './file-input.module.scss'
 import { FileInputAccept } from './types'
@@ -56,7 +57,7 @@ export const FileInput = ({
       {renderInput({ loading, onClick: () => inputRef.current?.click() })}
       {withClear && (
         <Button
-          label="Clear"
+          label={translate(STRING.CLEAR)}
           theme={ButtonTheme.Plain}
           onClick={() => {
             if (inputRef.current) {

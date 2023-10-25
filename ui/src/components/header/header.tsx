@@ -4,6 +4,7 @@ import { usePages } from 'data-services/hooks/pages/usePages'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
 import ami from './ami.png'
@@ -35,14 +36,14 @@ export const Header = () => {
           <InfoDialog key={page.id} name={page.name} slug={page.slug} />
         ))}
         <Button
-          label="Sign up"
+          label={translate(STRING.SIGN_UP)}
           theme={ButtonTheme.Plain}
           onClick={() => navigate(APP_ROUTES.SIGN_UP)}
         />
         {user.loggedIn ? (
           <>
             <Button
-              label="Logout"
+              label={translate(STRING.LOGOUT)}
               theme={ButtonTheme.Plain}
               loading={isLogoutLoading}
               onClick={() => logout()}
@@ -51,7 +52,7 @@ export const Header = () => {
           </>
         ) : (
           <Button
-            label="Login"
+            label={translate(STRING.LOGIN)}
             theme={ButtonTheme.Plain}
             onClick={() =>
               navigate(APP_ROUTES.LOGIN, { state: { to: location.pathname } })

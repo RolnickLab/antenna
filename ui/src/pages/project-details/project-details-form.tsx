@@ -27,19 +27,23 @@ interface ProjectFormValues {
 
 const config: FormConfig = {
   name: {
-    label: 'Name',
+    label: translate(STRING.FIELD_LABEL_NAME),
     rules: {
       required: true,
     },
   },
   description: {
-    label: 'Description',
+    label: translate(STRING.FIELD_LABEL_DESCRIPTION),
   },
   image: {
-    label: 'Image',
-    description: `The image must smaller than ${bytesToMB(
-      IMAGE_MAX_SIZE
-    )} MB. Valid formats are PNG, GIF and JPEG.`,
+    label: translate(STRING.FIELD_LABEL_IMAGE),
+    description: [
+      translate(STRING.MESSAGE_IMAGE_SIZE, {
+        value: bytesToMB(IMAGE_MAX_SIZE),
+        unit: 'MB',
+      }),
+      translate(STRING.MESSAGE_IMAGE_FORMAT),
+    ].join('\n'),
     rules: {
       validate: (file: File) => {
         if (file) {
@@ -82,7 +86,11 @@ export const ProjectDetailsForm = ({
   return (
     <form onSubmit={handleSubmit((values) => onSubmit(values))}>
       {errorMessage && (
-        <FormError inDialog intro="Could not save" message={errorMessage} />
+        <FormError
+          inDialog
+          intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
+          message={errorMessage}
+        />
       )}
       <FormSection>
         <FormRow>

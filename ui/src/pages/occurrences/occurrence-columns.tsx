@@ -125,8 +125,12 @@ const TaxonCell = ({
           <Tooltip
             content={
               item.determinationVerified
-                ? `Verified by\n${item.determinationVerifiedBy}`
-                : `Machine prediction\nscore ${item.determinationScore}`
+                ? translate(STRING.VERIFIED_BY, {
+                    name: item.determinationVerifiedBy as string,
+                  })
+                : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                    score: item.determinationScore,
+                  })
             }
           >
             <IdentificationStatus
@@ -155,7 +159,7 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <Tooltip content="Suggest ID">
+              <Tooltip content={translate(STRING.SUGGEST_ID)}>
                 <IconButton
                   icon={IconType.ShieldAlert}
                   onClick={() =>
