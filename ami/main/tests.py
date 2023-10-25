@@ -426,8 +426,9 @@ class TestTaxonomy(TestCase):
         filter_ranks = [TaxonRank.ORDER, TaxonRank.FAMILY, TaxonRank.GENUS]
         self._test_filtered_tree(filter_ranks)
 
-    def test_tree_filtered_order(self):
+    def test_tree_filtered_root(self):
         # Try skipping over order
-        filter_ranks = [TaxonRank.FAMILY, TaxonRank.GENUS, TaxonRank.SPECIES]
+        root = Taxon.objects.root()
+        filter_ranks = [rank for rank in TaxonRank if rank != root.get_rank()]
         with self.assertRaises(ValueError):
             self._test_filtered_tree(filter_ranks)
