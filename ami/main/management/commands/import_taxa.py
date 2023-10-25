@@ -1,19 +1,31 @@
 import csv
+import datetime
 import json
 import logging
 import pathlib
+import re
 import tempfile
 import time
 from urllib.request import urlopen
 
 from django.core.management.base import BaseCommand, CommandError  # noqa
 
+# import progress bar
+from tqdm import tqdm
+
 from ...models import TaxaList, Taxon, TaxonRank
 
+RANK_CHOICES = [rank for rank in TaxonRank]
+
 logger = logging.getLogger(__name__)
+# Set level
+logger.setLevel(logging.INFO)
 
 # Panama species list
 # url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQLlxfuzZHrHEeHFXmhjtngy0JFqhdOju-wJGNOCWSAbtsIpoZ8OoQFvW6IsqUaUA/pub?gid=1847011020&single=true&output=csv" # noqa
+
+# Panama genera
+# https://docs.google.com/spreadsheets/d/e/2PACX-1vQFY_FmkjS1GYpNccRQaRMt4I7yIXmErieu5LMK23HZLsBUbfBXtOr749vMfD9qJfpmTJSnAPrp3hGp/pub?gid=409403959&single=true&output=csv
 
 
 def read_csv(fname: str) -> list[dict]:
@@ -38,30 +50,90 @@ def fetch_url(url: str) -> str:
     return fname
 
 
-def parse_author_and_year(name: str) -> tuple[str | None, str | None]:
+def parse_author_and_year(name: str) -> tuple[str | None, datetime.date | None]:
     author, year = None, None
-    name = name.strip().strip("()")
+    name = name.strip().strip("()[]")
     split_name = name.split(",")
     if len(split_name) == 2:
         author = split_name[0]
-        year = split_name[1]
+        year = split_name[1].strip()
+        # parse 4 digit year from string using regex
+        # and convert date object
+        year_match = re.search(r"\d{4}", year)
+        if year_match:
+            year = year_match.group()
+            year = datetime.datetime.strptime(year, "%Y").date()
+        else:
+            year = None
     else:
         author = name
     return author, year
 
 
-def fix_columns(taxon_data: dict) -> dict:
-    # lowercase all columns, strip whitespace, replace spaces with underscores
-    fixed_taxon_data = {}
+def fix_generic_names(taxon_data: dict) -> dict:
+    # For names that contain "sp", use BOLD BIN as name
+    fixed_taxon_data = taxon_data.copy()
+    generic_names = ["sp.", "sp", "spp", "spp.", "cf.", "cf", "aff.", "aff"]
+    fallback_name_keys = ["bold_taxon_bin", "inat_taxon_id", "gbif_taxon_key"]
     for key, value in taxon_data.items():
-        new_key = key.lower().strip().replace(" ", "_")
-        fixed_taxon_data[new_key] = value
-        if new_key == "author":
-            author, year = parse_author_and_year(value)
-            fixed_taxon_data["author"] = author
-            fixed_taxon_data["year"] = year
+        if value and value.lower() in generic_names:
+            # set name to first fallback name that exists
+            fallback_name = None
+            for fallback_name_key in fallback_name_keys:
+                fallback_name = taxon_data.get(fallback_name_key, None)
+                if fallback_name:
+                    logger.info(f"Setting name of {taxon_data} to {fallback_name}")
+                    fixed_taxon_data["name"] = fallback_name
+                    break
+            if not fallback_name:
+                raise ValueError(f"Could not find fallback name for generic taxon {taxon_data}")
 
     return fixed_taxon_data
+
+
+def fix_columns(taxon_data: dict) -> dict:
+    # lowercase all columns, strip whitespace, replace spaces with underscores
+    keys_to_update = []
+    for key in taxon_data.keys():
+        new_key = key.lower().strip().replace(" ", "_")
+        if new_key != key:
+            logger.debug(f"Renaming {key} to {new_key}")
+        keys_to_update.append((key, new_key))
+
+    for key, new_key in keys_to_update:
+        taxon_data[new_key] = taxon_data.pop(key)
+
+    if "author" in taxon_data:
+        value = taxon_data["author"]
+        author, year = parse_author_and_year(value)
+        taxon_data["author"] = author
+        taxon_data["authorship_date"] = year
+
+    return taxon_data
+
+
+def fix_values(taxon_data: dict) -> dict:
+    """
+    If a value in any cell matches a null value, set it to None
+
+    Convert known types (e.g. "sort_phylogeny" to int)
+
+    @TODO Consider switching to pandas at this point?
+    """
+    null_values = ["z_unplaced", "incertae_sedis", ""]
+    known_types = {"sort_phylogeny": int, "gbif_taxon_key": int, "inat_taxon_id": int}
+
+    for key, value in taxon_data.items():
+        if str(value).strip() in null_values:
+            logger.debug(f"Setting {key} of {taxon_data} to None")
+            value = None
+            taxon_data[key] = value
+
+        if value and key in known_types:
+            logger.debug(f"Converting {key} to {known_types[key]}")
+            taxon_data[key] = known_types[key](value)
+
+    return taxon_data
 
 
 def create_root_taxon() -> Taxon:
@@ -138,9 +210,9 @@ class Command(BaseCommand):
                 format = "csv"
 
         if format == "json":
-            taxa = read_json(fname)
+            incoming_taxa = read_json(fname)
         elif format == "csv":
-            taxa = read_csv(fname)
+            incoming_taxa = read_csv(fname)
         else:
             raise CommandError("Please specify a format for the taxa file (json or csv)")
 
@@ -157,72 +229,156 @@ class Command(BaseCommand):
         if options["purge"]:
             self.stdout.write(self.style.WARNING("Purging all taxa from the database in 5 seconds..."))
             time.sleep(5)
-            count = TaxaList.taxa.count()
+            count = taxalist.taxa.count()
             self.stdout.write(f"Purging {count} tax from list {taxalist}..")
-            TaxaList.taxa.all().delete()
+            # show status indicator while deleting taxa with unknown total
+            with tqdm():
+                taxalist.taxa.all().delete()
 
         root_taxon_parent = create_root_taxon()
 
-        for taxon in taxa:
+        total_created_taxa = 0
+        total_updated_taxa = 0
+
+        for i, taxon_data in enumerate(tqdm(incoming_taxa)):
+            num_keys_with_values = len([key for key, value in taxon_data.items() if value])
+            logger.debug(f"Importing row {i} of {len(incoming_taxa)} with {num_keys_with_values} keys")
             # Add all entries to taxalist
-            taxon = fix_columns(taxon)
-            created_taxa = self.create_taxon(taxon, root_taxon_parent)
-            taxalist.taxa.add(*created_taxa)
+            taxon_data = fix_columns(taxon_data)
+            taxon_data = fix_values(taxon_data)
+            logger.debug(f"Parsed taxon data: {taxon_data}")
+            if taxon_data:
+                created_taxa, updated_taxa = self.create_taxon(taxon_data, root_taxon_parent)
+                if created_taxa:
+                    logger.info(f"Created {len(created_taxa)} taxa from incoming row {i}")
+                    taxalist.taxa.add(*created_taxa)
+                    total_created_taxa += len(created_taxa)
+                if updated_taxa:
+                    logger.info(f"Updated {len(updated_taxa)} taxa from incoming row {i}")
+                    taxalist.taxa.add(*updated_taxa)
+                    total_updated_taxa += len(updated_taxa)
+            if not taxon_data:
+                raise ValueError(f"Could not find any data to import in {taxon_data}")
 
-    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> list[Taxon]:
-        print(taxon_data)
-        taxa = []
-        created_taxa = []
-        updated_taxa = []
+        logger.info("SUMMARY:")
+        logger.info(f"Created {total_created_taxa} total taxa")
+        logger.info(f"Updated {total_updated_taxa} total taxa")
 
-        rank_choices = [rank for rank in TaxonRank]
-        parent_taxon = None
-        for rank in rank_choices:
+    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon]]:
+        taxa_in_row = []
+        created_taxa = set()
+        updated_taxa = set()
+
+        # parent_must_match = ["SPECIES"]#], "SUBSPECIES", "VARIETY", "FORM"]
+        global parent_taxon
+        parent_taxon = root_taxon_parent
+
+        for i, rank in enumerate(sorted(RANK_CHOICES)):
+            logger.debug(f"Checking rank {rank} {i} of {len(RANK_CHOICES)}")
+            logger.debug(f"Current parent taxon: {parent_taxon}")
             # Create all parents and parents of parents
             # Assume ranks are in order of rank
-            if rank.name.lower() in taxon_data:
+            if rank.name.lower() in taxon_data.keys() and taxon_data[rank.name.lower()]:
                 name = taxon_data[rank.name.lower()]
                 rank = rank.name.upper()
-                taxon, created = Taxon.objects.get_or_create(name=name, rank=rank)
-                taxa.append(taxon)
+                logger.debug(f"Taxon found in incoming row {i}: {rank} {name}")
+                try:
+                    taxon, created = Taxon.objects.get_or_create(name=name, defaults={"rank": rank})
+                except (Taxon.MultipleObjectsReturned, Exception) as e:
+                    logger.error(f"Error creating taxon {name} {rank}: {e}")
+                    raise
+
+                taxa_in_row.append(taxon)
+
                 if created:
-                    logger.info(f"Created taxon {taxon}")
-                    created_taxa.append(taxon)
-                if not taxon.parent or taxon.parent != parent_taxon:
+                    logger.info(f"Created new taxon #{taxon.id} {taxon} ({taxon.rank})")
+                    created_taxa.add(taxon)
+
+                # Add or update the rank of the taxon based on incoming data
+                if not taxon.rank or taxon.rank != rank:
+                    if not created:
+                        logger.warn(f"Rank of existing {taxon} is {taxon.rank}, changing to {rank}")
+                    taxon.rank = rank
+                    taxon.save()
+                    if not created:
+                        updated_taxa.add(taxon)
+
+                # Add or update the parent of the taxon based on incoming data
+                # if the incoming parent is more specific than the existing parent
+                # (e.g. if the existing parent is Lepidoptera and the existing parent is a family)
+                if not taxon.parent or TaxonRank[parent_taxon.rank] > TaxonRank[taxon.parent.rank]:
                     parent = parent_taxon or root_taxon_parent
-                    logger.info(f"Assigning parent of {taxon} to {parent}")
+                    if not created:
+                        logger.warn(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
                     taxon.parent = parent
                     taxon.save()
-                    updated_taxa.append(taxon)
+                    if not created:
+                        updated_taxa.add(taxon)
+
                 parent_taxon = taxon
+                logger.debug(f"Next parent taxon: {parent_taxon.rank} {parent_taxon}")
+            else:
+                logger.debug(f"Did not find {rank} in incoming row, checking next rank")
 
         accepted_name = taxon_data.get("synonym_of", None)
 
-        specific_taxon = taxa[-1]
+        if not taxa_in_row:
+            raise ValueError(f"Could not find any ranks in {taxon_data}")
 
-        specific_taxon_columns = ["author", "year", "gbif_taxon_key", "bold_taxon_bin", "inat_taxon_id"]
+        # Make sure incoming taxa are sorted by rank
+        taxa_in_row = sorted(taxa_in_row, key=lambda taxon: TaxonRank[taxon.rank])
 
+        logger.debug(f"Found {len(taxa_in_row)} taxa in row: {taxa_in_row}")
+
+        specific_taxon = taxa_in_row[-1]
+        expected_specific_taxon_ranks = TaxonRank.SPECIES, TaxonRank.GENUS
+        if TaxonRank[specific_taxon.rank] not in expected_specific_taxon_ranks:
+            logger.warn(f"Assumming the most specific taxon of this row is: {specific_taxon} {specific_taxon.rank}")
+
+        specific_taxon_columns = [
+            "author",
+            "authorship_date",
+            "gbif_taxon_key",
+            "bold_taxon_bin",
+            "inat_taxon_id",
+            "notes",
+            "sort_phylogeny",
+        ]
+
+        is_new = specific_taxon in created_taxa
+        needs_update = False
         for column in specific_taxon_columns:
             if column in taxon_data:
-                logger.info(f"Setting {column} of {specific_taxon} to {taxon_data[column]}")
-                setattr(specific_taxon, column, taxon_data[column])
-        specific_taxon.save()
-        updated_taxa.append(specific_taxon)
+                existing_value = getattr(specific_taxon, column)
+                incoming_value = taxon_data[column]
+                if existing_value != incoming_value:
+                    if not is_new:
+                        logger.info(
+                            f"Changing {column} of {specific_taxon} to from {existing_value} to {incoming_value}"
+                        )
+                    setattr(specific_taxon, column, taxon_data[column])
+                    needs_update = True
+        if needs_update:
+            specific_taxon.save()
+            if not is_new:
+                # raise ValueError(f"TAXON DATA CHANGED for {specific_taxon}")
+                logger.warn(f"TAXON DATA CHANGED for existing {specific_taxon} ({specific_taxon.id})")
+                updated_taxa.add(specific_taxon)
 
         if accepted_name:
             accepted_taxon, created = Taxon.objects.get_or_create(
                 name=accepted_name,
-                rank="SPECIES",
+                rank=specific_taxon.rank,
                 defaults={"parent": parent_taxon},
             )
             if created:
                 logger.info(f"Created accepted taxon {accepted_taxon}")
-                created_taxa.append(accepted_taxon)
+                created_taxa.add(accepted_taxon)
 
             if specific_taxon.synonym_of != accepted_taxon:
                 logger.info(f"Setting synonym_of of {specific_taxon} to {accepted_taxon}")
                 specific_taxon.synonym_of = accepted_taxon
                 specific_taxon.save()
-                updated_taxa.append(specific_taxon)
+                updated_taxa.add(specific_taxon)
 
-        return specific_taxon
+        return created_taxa, updated_taxa

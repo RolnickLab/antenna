@@ -197,8 +197,17 @@ class TaxonParentFilter(admin.SimpleListFilter):
 class TaxonAdmin(admin.ModelAdmin[Taxon]):
     """Admin panel example for ``Taxon`` model."""
 
-    list_display = ("name", "occurrence_count", "rank", "parent", "parent_names", "list_names")
-    list_filter = ("rank", TaxonParentFilter)
+    list_display = (
+        "name",
+        "occurrence_count",
+        "rank",
+        "parent",
+        "parent_names",
+        "list_names",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("lists", "rank", TaxonParentFilter)
     search_fields = ("name",)
     exclude = ("parents",)
 
