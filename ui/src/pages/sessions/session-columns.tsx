@@ -18,6 +18,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    sortField: 'start',
     styles: {
       padding: '16px 32px 16px 50px',
     },
@@ -60,7 +61,6 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'date',
-    sortField: 'start',
     name: translate(STRING.FIELD_LABEL_DATE),
     renderCell: (item: Session) => (
       <BasicTableCell value={item.datespanLabel} />
@@ -75,7 +75,6 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'duration',
-    sortField: 'duration',
     name: translate(STRING.FIELD_LABEL_DURATION),
     renderCell: (item: Session) => (
       <BasicTableCell value={item.durationLabel} />
@@ -92,6 +91,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'detections',
+    sortField: 'detections_count',
     name: translate(STRING.FIELD_LABEL_DETECTIONS),
     styles: {
       textAlign: TextAlign.Right,
@@ -120,6 +120,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'species',
+    sortField: 'taxa_count',
     name: translate(STRING.FIELD_LABEL_SPECIES),
     styles: {
       textAlign: TextAlign.Right,
