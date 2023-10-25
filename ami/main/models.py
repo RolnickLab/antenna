@@ -29,7 +29,7 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
 
-class TaxonRank(str, OrderedEnum):
+class TaxonRank(OrderedEnum):
     ORDER = "Order"
     SUPERFAMILY = "Superfamily"
     FAMILY = "Family"
@@ -48,9 +48,16 @@ class TaxonRank(str, OrderedEnum):
     def _missing_(cls, value: str):
         """Allow case-insensitive lookups."""
         for member in cls:
-            if member.upper() == value.upper():
+            if member.value.upper() == value.upper():
                 return member
         return None
+
+    def __eq__(self, other):
+        # @TODO this does not work
+        # But essentially we want to prevent accidental comparisons between TaxonRank and Django string field.
+        if not isinstance(other, TaxonRank):
+            raise TypeError(f"Cannot compare TaxonRank to {other.__class__}")
+        return super().__eq__(other)
 
 
 DEFAULT_RANKS = sorted(
