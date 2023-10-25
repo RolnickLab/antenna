@@ -12,6 +12,7 @@ from ami.main.models import (
     SourceImage,
     TaxaList,
     Taxon,
+    TaxonRank,
     group_images_into_events,
 )
 
@@ -42,12 +43,14 @@ def create_captures(
 
 
 def create_taxa(project: Project) -> TaxaList:
-    taxa_list = TaxaList.objects.create(project=project, name="Test Taxa List")
-    parent_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Lepidoptera", rank="order")
-    family_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Nymphalidae", parent=parent_taxon, rank="family")
-    genus_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Vanessa", parent=family_taxon, rank="genus")
+    taxa_list = TaxaList.objects.create(name="Test Taxa List")
+    taxa_list.projects.add(project)
+    root = Taxon.objects.create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
+    family_taxon = Taxon.objects.create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
+    genus_taxon = Taxon.objects.create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
     for species in ["Vanessa itea", "Vanessa cardui", "Vanessa atalanta"]:
-        Taxon.objects.create(taxa_list=taxa_list, name=species, parent=genus_taxon, rank="species")
+        Taxon.objects.create(name=species, parent=genus_taxon, rank=TaxonRank.SPECIES.name)
+    taxa_list.taxa.set([root, family_taxon, genus_taxon])
     return taxa_list
 
 
@@ -348,3 +351,83 @@ class TestSourceImageCollections(TestCase):
         # Test that there are 2 images from each event
         for event in self.project_one.events.all():
             assert collection_images.filter(event=event).count() == 2
+
+
+class TestTaxonomy(TestCase):
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        return super().setUp()
+
+    def test_tree(self):
+        """
+        example_tree = {
+            'taxon': <Taxon: Lepidoptera (order)>,
+            'children': [
+                {
+                    'taxon': <Taxon: Vanessa (genus)>,
+                    'children': [
+                        {'taxon': <Taxon: Vanessa atalanta (species)>, 'children': []},
+                        {'taxon': <Taxon: Vanessa cardui (species)>, 'children': []},
+                        {'taxon': <Taxon: Vanessa itea (species)>, 'children': []}
+                    ]
+                }
+            ]
+        }
+        """
+        from ami.main.models import Taxon
+
+        tree = Taxon.objects.tree()
+        self.assertDictContainsSubset({"taxon": Taxon.objects.get(name="Lepidoptera")}, tree)
+
+    def test_rank_formatting(self):
+        """
+        Test that all ranks in the DB are uppercase and match a TaxonRank value
+        """
+
+        from ami.main.models import Taxon
+
+        for taxon in Taxon.objects.all():
+            self.assertIn(taxon.rank, [rank.name for rank in TaxonRank])
+            self.assertEqual(taxon.rank, taxon.rank.upper())
+
+    def _test_filtered_tree(self, filter_ranks: list[TaxonRank]):
+        """ """
+        filter_rank_names = [rank.name for rank in filter_ranks]
+        expected_taxa = list(Taxon.objects.filter(rank__in=filter_rank_names).all())
+
+        tree = Taxon.objects.tree(filter_ranks=filter_ranks)
+
+        # collect all Taxon objects in tree to test against expected
+        def _tree_taxa(tree: dict) -> list[Taxon]:
+            taxa = []
+            taxa.append(tree["taxon"])
+            for child in tree["children"]:
+                taxa.extend(_tree_taxa(child))
+            return taxa
+
+        taxa_in_tree = _tree_taxa(tree)
+        expected_taxa = expected_taxa
+
+        self.assertListEqual(taxa_in_tree, expected_taxa)
+
+    def test_tree_filtered_families(self):
+        # Try skipping over family
+        filter_ranks = [TaxonRank.ORDER, TaxonRank.GENUS, TaxonRank.SPECIES]
+        self._test_filtered_tree(filter_ranks)
+
+    def test_tree_filtered_genera(self):
+        # Try skipping over genus
+        filter_ranks = [TaxonRank.ORDER, TaxonRank.FAMILY, TaxonRank.SPECIES]
+        self._test_filtered_tree(filter_ranks)
+
+    def test_tree_filtered_species(self):
+        # Try skipping over species
+        filter_ranks = [TaxonRank.ORDER, TaxonRank.FAMILY, TaxonRank.GENUS]
+        self._test_filtered_tree(filter_ranks)
+
+    def test_tree_filtered_order(self):
+        # Try skipping over order
+        filter_ranks = [TaxonRank.FAMILY, TaxonRank.GENUS, TaxonRank.SPECIES]
+        with self.assertRaises(ValueError):
+            self._test_filtered_tree(filter_ranks)

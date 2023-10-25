@@ -37,9 +37,9 @@ def taxa_tree_to_xml(taxa_tree):
 
     def _node_to_xml(node, level=0):
         indent = "  " * level
-        value = html.escape(str(node["taxon"]))
+        value = html.escape(str(node["taxon"].get_display_name()))
         rank = html.escape(str(node["taxon"].rank))
-        xml = f'\n{indent}<Choice value="{value}" taxon_rank="{rank}">'
+        xml = f'\n{indent}<Choice value="{value}" hint="{rank}">'
         for child in node["children"]:
             xml += _node_to_xml(child, level + 1)
         xml += f"{indent}</Choice>\n"
@@ -198,9 +198,9 @@ class LabelStudioConfigViewSet(viewsets.ViewSet):
         taxa_list_id = request.query_params.get("taxa_list", None)
         if taxa_list_id:
             taxa_list = TaxaList.objects.get(id=taxa_list_id)
-            taxa_tree = taxa_list.taxa.tree(filter_ranks=DEFAULT_RANKS)  # type: ignore
+            taxa_tree = taxa_list.taxa.tree()  # type: ignore
         else:
-            taxa_tree = Taxon.objects.tree(filter_ranks=DEFAULT_RANKS)
+            taxa_tree = Taxon.objects.tree()
 
         data = {
             "label_config": {
@@ -258,7 +258,7 @@ class LabelStudioConfigViewSet(viewsets.ViewSet):
                 # If a matching node is not found, return an empty response
                 return HttpResponse("", content_type="text/xml")
         else:
-            taxa_tree = Taxon.objects.tree()
+            taxa_tree = Taxon.objects.tree(filter_ranks=DEFAULT_RANKS)
         content = taxa_tree_to_xml(taxa_tree)
         return HttpResponse(content, content_type="text/xml")
 

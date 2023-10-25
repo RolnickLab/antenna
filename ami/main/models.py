@@ -29,7 +29,7 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
 
-class TaxonRank(OrderedEnum):
+class TaxonRank(str, OrderedEnum):
     ORDER = "Order"
     SUPERFAMILY = "Superfamily"
     FAMILY = "Family"
@@ -44,9 +44,18 @@ class TaxonRank(OrderedEnum):
         """For use in Django text fields with choices."""
         return tuple((i.name, i.value) for i in cls)
 
+    @classmethod
+    def _missing_(cls, value: str):
+        """Allow case-insensitive lookups."""
+        for member in cls:
+            if member.upper() == value.upper():
+                return member
+        return None
+
 
 DEFAULT_RANKS = sorted(
     [
+        TaxonRank.ORDER,
         TaxonRank.FAMILY,
         TaxonRank.SUBFAMILY,
         TaxonRank.TRIBE,
@@ -1580,7 +1589,7 @@ class TaxaManager(models.Manager):
         self.bulk_update(taxa, ["display_name"])
 
     # Method that returns taxa nested in a tree structure
-    def tree(self, root: typing.Optional["Taxon"] = None, filter_ranks: list[TaxonRank] | None = None) -> dict:
+    def tree(self, root: typing.Optional["Taxon"] = None, filter_ranks: list[TaxonRank] = []) -> dict:
         """Build a recursive tree of taxa."""
 
         root = root or self.root()
@@ -1591,7 +1600,19 @@ class TaxaManager(models.Manager):
         # Build index of taxa by parent
         taxa_by_parent = collections.defaultdict(list)
         for taxon in taxa:
-            taxa_by_parent[taxon.parent].append(taxon)
+            # Skip adding this taxon if its rank is excluded
+            if filter_ranks and TaxonRank(taxon.rank) not in filter_ranks:
+                continue
+
+            parent = taxon.parent or root
+
+            # Attach taxa to the nearest parent with a rank that is not excluded
+            if filter_ranks and TaxonRank(parent.rank) not in filter_ranks:
+                while parent and TaxonRank(parent.rank) not in filter_ranks:
+                    parent = parent.parent
+
+            if parent != taxon:
+                taxa_by_parent[parent].append(taxon)
 
         # Recursively build a nested tree
         def _tree(taxon):
@@ -1600,19 +1621,10 @@ class TaxaManager(models.Manager):
                 "children": [_tree(child) for child in taxa_by_parent[taxon]],
             }
 
-        branch = _tree(root)
-        if filter_ranks:
-            return self.filter_ranks(branch, filter_ranks)
-        else:
-            return branch
+        if filter_ranks and TaxonRank(root.rank) not in filter_ranks:
+            raise ValueError(f"Cannot filter rank {root.rank} from tree because the root taxon must be included")
 
-    def filter_ranks(self, tree: dict, ranks: list[TaxonRank] = DEFAULT_RANKS) -> dict:
-        # Recursively filter out any taxon that is not of the given ranks
-        if ranks:
-            tree["children"] = [
-                self.filter_ranks(child, ranks) for child in tree["children"] if child["taxon"].rank in ranks
-            ]
-        return tree
+        return _tree(root)
 
     def tree_of_names(self, root: typing.Optional["Taxon"] = None) -> dict:
         """
@@ -1691,7 +1703,8 @@ class Taxon(BaseModel):
     objects: TaxaManager = TaxaManager()
 
     def __str__(self) -> str:
-        return self.get_display_name()
+        name_with_rank = f"{self.name} ({self.rank})"
+        return name_with_rank
 
     def get_display_name(self):
         """
