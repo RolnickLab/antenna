@@ -118,6 +118,22 @@ const ProjectContainer = () => {
     }
   }, [projectDetails.project])
 
+  useEffect(() => {
+    const meta = document.getElementsByTagName('meta').namedItem('description')
+    const newDescription = projectDetails.project?.description
+    const prevDescription = meta?.content
+
+    if (meta && newDescription) {
+      meta.content = newDescription
+    }
+
+    return () => {
+      if (meta && prevDescription) {
+        meta.content = prevDescription
+      }
+    }
+  }, [projectDetails.project])
+
   return (
     <>
       <Menu />
