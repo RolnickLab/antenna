@@ -45,6 +45,17 @@ class TaxonRank(OrderedEnum):
         return tuple((i.name, i.value) for i in cls)
 
 
+DEFAULT_RANKS = sorted(
+    [
+        TaxonRank.FAMILY,
+        TaxonRank.SUBFAMILY,
+        TaxonRank.TRIBE,
+        TaxonRank.GENUS,
+        TaxonRank.SPECIES,
+    ]
+)
+
+
 # @TODO move to settings & make configurable
 _SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
 _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
@@ -1569,7 +1580,7 @@ class TaxaManager(models.Manager):
         self.bulk_update(taxa, ["display_name"])
 
     # Method that returns taxa nested in a tree structure
-    def tree(self, root: typing.Optional["Taxon"] = None) -> dict:
+    def tree(self, root: typing.Optional["Taxon"] = None, filter_ranks: list[TaxonRank] | None = None) -> dict:
         """Build a recursive tree of taxa."""
 
         root = root or self.root()
@@ -1589,7 +1600,19 @@ class TaxaManager(models.Manager):
                 "children": [_tree(child) for child in taxa_by_parent[taxon]],
             }
 
-        return _tree(root)
+        branch = _tree(root)
+        if filter_ranks:
+            return self.filter_ranks(branch, filter_ranks)
+        else:
+            return branch
+
+    def filter_ranks(self, tree: dict, ranks: list[TaxonRank] = DEFAULT_RANKS) -> dict:
+        # Recursively filter out any taxon that is not of the given ranks
+        if ranks:
+            tree["children"] = [
+                self.filter_ranks(child, ranks) for child in tree["children"] if child["taxon"].rank in ranks
+            ]
+        return tree
 
     def tree_of_names(self, root: typing.Optional["Taxon"] = None) -> dict:
         """
@@ -1638,7 +1661,9 @@ class Taxon(BaseModel):
     name = models.CharField(max_length=255, unique=True)
     display_name = models.CharField("Cached display name", max_length=255, null=True, blank=True, unique=True)
     rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)
-    parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
+    parent = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="direct_children"
+    )
     # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
     # taxonomy = models.JSONField(null=True, blank=True)
@@ -1676,8 +1701,8 @@ class Taxon(BaseModel):
             return self.name
         elif self.rank == "GENUS":
             return f"{self.name} sp."
-        elif self.rank not in ["ORDER", "FAMILY"]:
-            return f"{self.name} ({self.rank})"
+        # elif self.rank not in ["ORDER", "FAMILY"]:
+        #     return f"{self.name} ({self.rank})"
         else:
             return self.name
 
