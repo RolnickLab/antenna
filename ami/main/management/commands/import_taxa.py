@@ -264,6 +264,16 @@ class Command(BaseCommand):
         logger.info(f"Created {total_created_taxa} total taxa")
         logger.info(f"Updated {total_updated_taxa} total taxa")
 
+        logger.info("Updating display names for all taxa in list")
+        with tqdm():
+            Taxon.objects.update_display_names(Taxon.objects.filter(lists=taxalist))
+
+        # Ensure the root taxon still exists and has no parent
+        root = Taxon.objects.root()
+        if not root:
+            root_taxon_parent.parent = None
+            root_taxon_parent.save()
+
     def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon]]:
         taxa_in_row = []
         created_taxa = set()
@@ -308,12 +318,16 @@ class Command(BaseCommand):
                 # (e.g. if the existing parent is Lepidoptera and the existing parent is a family)
                 if not taxon.parent or TaxonRank[parent_taxon.rank] > TaxonRank[taxon.parent.rank]:
                     parent = parent_taxon or root_taxon_parent
-                    if not created:
-                        logger.warn(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
-                    taxon.parent = parent
-                    taxon.save()
-                    if not created:
-                        updated_taxa.add(taxon)
+                    if parent == taxon:
+                        logger.debug(f"Parent of {taxon} is itself, changing to (or keeping as) None")
+                        parent = None
+                    if taxon.parent != parent:
+                        if not created:
+                            logger.warn(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
+                        taxon.parent = parent
+                        taxon.save()
+                        if not created:
+                            updated_taxa.add(taxon)
 
                 parent_taxon = taxon
                 logger.debug(f"Next parent taxon: {parent_taxon.rank} {parent_taxon}")
