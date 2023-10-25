@@ -250,11 +250,11 @@ class Command(BaseCommand):
             if taxon_data:
                 created_taxa, updated_taxa = self.create_taxon(taxon_data, root_taxon_parent)
                 if created_taxa:
-                    logger.info(f"Created {len(created_taxa)} taxa from incoming row {i}")
+                    logger.debug(f"Created {len(created_taxa)} taxa from incoming row {i}")
                     taxalist.taxa.add(*created_taxa)
                     total_created_taxa += len(created_taxa)
                 if updated_taxa:
-                    logger.info(f"Updated {len(updated_taxa)} taxa from incoming row {i}")
+                    logger.debug(f"Updated {len(updated_taxa)} taxa from incoming row {i}")
                     taxalist.taxa.add(*updated_taxa)
                     total_updated_taxa += len(updated_taxa)
             if not taxon_data:
@@ -291,7 +291,7 @@ class Command(BaseCommand):
                 taxa_in_row.append(taxon)
 
                 if created:
-                    logger.info(f"Created new taxon #{taxon.id} {taxon} ({taxon.rank})")
+                    logger.debug(f"Created new taxon #{taxon.id} {taxon} ({taxon.rank})")
                     created_taxa.add(taxon)
 
                 # Add or update the rank of the taxon based on incoming data
