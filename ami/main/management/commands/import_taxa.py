@@ -316,7 +316,7 @@ class Command(BaseCommand):
                 # Add or update the parent of the taxon based on incoming data
                 # if the incoming parent is more specific than the existing parent
                 # (e.g. if the existing parent is Lepidoptera and the existing parent is a family)
-                if not taxon.parent or TaxonRank[parent_taxon.rank] > TaxonRank[taxon.parent.rank]:
+                if not taxon.parent or parent_taxon.get_rank() > taxon.parent.get_rank():
                     parent = parent_taxon or root_taxon_parent
                     if parent == taxon:
                         logger.debug(f"Parent of {taxon} is itself, changing to (or keeping as) None")
@@ -340,13 +340,13 @@ class Command(BaseCommand):
             raise ValueError(f"Could not find any ranks in {taxon_data}")
 
         # Make sure incoming taxa are sorted by rank
-        taxa_in_row = sorted(taxa_in_row, key=lambda taxon: TaxonRank[taxon.rank])
+        taxa_in_row = sorted(taxa_in_row, key=lambda taxon: taxon.get_rank())
 
         logger.debug(f"Found {len(taxa_in_row)} taxa in row: {taxa_in_row}")
 
         specific_taxon = taxa_in_row[-1]
         expected_specific_taxon_ranks = TaxonRank.SPECIES, TaxonRank.GENUS
-        if TaxonRank[specific_taxon.rank] not in expected_specific_taxon_ranks:
+        if specific_taxon.get_rank() not in expected_specific_taxon_ranks:
             logger.warn(f"Assumming the most specific taxon of this row is: {specific_taxon} {specific_taxon.rank}")
 
         specific_taxon_columns = [
