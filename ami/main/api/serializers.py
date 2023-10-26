@@ -407,6 +407,8 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences",
             "occurrence_images",
             "last_detected",
+            "created_at",
+            "updated_at",
         ]
 
     def get_occurrences(self, obj):

@@ -84,11 +84,11 @@ class DefaultViewSetMixin:
     permission_classes = [permissions.AllowAny]
 
 
-class DefaultViewSet(viewsets.ModelViewSet, DefaultViewSetMixin):
+class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
     pass
 
 
-class DefaultReadOnlyViewSet(viewsets.ReadOnlyModelViewSet, DefaultViewSetMixin):
+class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
     pass
 
 
@@ -120,13 +120,23 @@ class DeploymentViewSet(DefaultViewSet):
         events_count=models.Count("events", distinct=True),
         occurrences_count=models.Count("occurrences", distinct=True),
         taxa_count=models.Count("occurrences__determination", distinct=True),
+        captures_count=models.Count("events__captures", distinct=True),
         # The first and last date should come from the captures,
         # but it may be much slower to query.
         first_date=models.Min("events__start__date"),
         last_date=models.Max("events__end__date"),
     ).select_related("project")
     filterset_fields = ["project"]
-    ordering_fields = ["created_at", "updated_at", "occurrences_count", "events_count"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "captures_count",
+        "events_count",
+        "occurrences_count",
+        "taxa_count",
+        "first_date",
+        "last_date",
+    ]
 
     def get_serializer_class(self):
         """
@@ -162,6 +172,7 @@ class EventViewSet(DefaultViewSet):
         "captures_count",
         "detections_count",
         "occurrences_count",
+        "taxa_count",
         "duration",
     ]
 
