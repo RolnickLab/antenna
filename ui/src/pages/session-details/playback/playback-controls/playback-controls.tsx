@@ -15,9 +15,8 @@ import { JobDetails } from 'pages/job-details/job-details'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { useThreshold } from 'utils/threshold/thresholdContext'
 import styles from './playback-controls.module.scss'
-
-const DEFAULT_VALUE = 0.6 // TODO: Current model should decide this value
 
 export const PlaybackControls = ({
   activeCapture,
@@ -26,7 +25,8 @@ export const PlaybackControls = ({
   activeCapture?: Capture
   session: SessionDetails
 }) => {
-  const [threshold, setThreshold] = useState(DEFAULT_VALUE)
+  const { defaultThreshold, threshold, setThreshold } = useThreshold()
+  const [displayThreshold, setDisplayThreshold] = useState(threshold)
 
   return (
     <div className={styles.controls}>
@@ -36,11 +36,14 @@ export const PlaybackControls = ({
       <div className={styles.slider}>
         {session.numDetections && session.numDetections > 0 ? (
           <PlaybackSlider
-            defaultValue={DEFAULT_VALUE}
+            defaultValue={defaultThreshold}
             label="Score"
-            value={threshold}
-            onValueChange={setThreshold}
-            onValueCommit={setThreshold}
+            value={displayThreshold}
+            onValueChange={setDisplayThreshold}
+            onValueCommit={(value) => {
+              setDisplayThreshold(value)
+              setThreshold(value)
+            }}
           />
         ) : null}
       </div>

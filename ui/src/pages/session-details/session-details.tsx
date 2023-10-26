@@ -7,6 +7,7 @@ import { useContext, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
+import { ThresholdContextProvider } from 'utils/threshold/thresholdContext'
 import { Playback } from './playback/playback'
 import { useActiveCaptureId } from './playback/useActiveCapture'
 import { useActiveOccurrences } from './playback/useActiveOccurrences'
@@ -57,7 +58,9 @@ export const SessionDetails = () => {
         </div>
       )}
       <div className={styles.playbackWrapper}>
-        <Playback session={session} />
+        <ThresholdContextProvider>
+          <Playback session={session} />
+        </ThresholdContextProvider>
       </div>
       <div className={styles.details}>
         <div className={styles.detailsContainer}>
