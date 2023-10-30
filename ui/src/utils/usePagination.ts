@@ -5,7 +5,6 @@ const DEFAULT_PAGINATION = {
   perPage: 20,
 }
 const SEARCH_PARAM_KEY_PAGE = 'page'
-const SEARCH_PARAM_KEY_PER_PAGE = 'per_page'
 
 const useSearchParam = ({
   key,
@@ -15,7 +14,6 @@ const useSearchParam = ({
   defaultValue: number
 }) => {
   const [searchParams, setSearchParams] = useSearchParams()
-
   const value = Number(searchParams.get(key) ?? defaultValue)
 
   const setValue = (value: number) => {
@@ -32,6 +30,7 @@ const useSearchParam = ({
   const clearValue = () => {
     if (searchParams.has(key)) {
       searchParams.delete(key)
+      setSearchParams(searchParams)
     }
   }
 
@@ -44,17 +43,11 @@ export const usePagination = () => {
     defaultValue: DEFAULT_PAGINATION.page,
   })
 
-  const { value: perPage } = useSearchParam({
-    key: SEARCH_PARAM_KEY_PER_PAGE,
-    defaultValue: DEFAULT_PAGINATION.perPage,
-  })
-
   return {
     pagination: {
       page,
-      perPage,
+      perPage: DEFAULT_PAGINATION.perPage,
     },
-    setPrevPage: () => setPage(page - 1),
-    setNextPage: () => setPage(page + 1),
+    setPage,
   }
 }

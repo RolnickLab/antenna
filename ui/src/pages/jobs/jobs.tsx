@@ -16,7 +16,7 @@ import styles from './jobs.module.scss'
 
 export const Jobs = () => {
   const { projectId, id } = useParams()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { pagination, setPage } = usePagination()
   const { jobs, total, isLoading, isFetching, error } = useJobs({
     projectId,
     pagination,
@@ -44,8 +44,7 @@ export const Jobs = () => {
           page={pagination.page}
           perPage={pagination.perPage}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
     </>

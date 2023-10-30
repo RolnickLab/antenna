@@ -6,21 +6,24 @@
   height: 64px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-
-  span {
-    @include paragraph-small();
-    font-weight: 600;
-    color: $color-neutral-500;
-  }
+  justify-content: flex-start;
+  gap: 8px;
 }
 
-.paginationButtons {
+.pageWindow {
   display: flex;
   align-items: center;
   justify-content: center;
+}
 
-  :not(:last-child) {
-    margin-right: 4px;
-  }
+.divider {
+  @include paragraph-small();
+  font-weight: 600;
+  color: $color-neutral-300;
+}
+
+.pageButton {
+  @include paragraph-small();
+  font-weight: 600;
+  padding: 0 8px;
 }

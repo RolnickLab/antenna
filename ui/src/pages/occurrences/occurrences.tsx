@@ -35,7 +35,7 @@ export const Occurrences = () => {
     detections: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
@@ -102,8 +102,7 @@ export const Occurrences = () => {
           page={pagination.page}
           perPage={pagination.perPage}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
       {!isLoading && id ? <OccurrenceDetailsDialog id={id} /> : null}

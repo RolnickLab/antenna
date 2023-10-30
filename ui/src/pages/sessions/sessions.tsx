@@ -31,7 +31,7 @@ export const Sessions = () => {
     species: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({
     projectId,
@@ -95,8 +95,7 @@ export const Sessions = () => {
           page={pagination.page}
           perPage={pagination.perPage}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
     </>

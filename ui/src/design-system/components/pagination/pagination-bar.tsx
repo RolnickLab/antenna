@@ -1,61 +1,87 @@
-import { IconButton } from '../icon-button/icon-button'
+import { Button, ButtonTheme } from '../button/button'
+import { IconButton, IconButtonShape } from '../icon-button/icon-button'
 import { IconType } from '../icon/icon'
+import { getPageWindow } from './getPageWindow'
 import styles from './pagination-bar.module.scss'
-
-const getValueInRange = (args: { value: number; min: number; max: number }) =>
-  Math.min(args.max, Math.max(args.min, args.value))
 
 interface PaginationBarProps {
   page: number
   perPage: number
   total: number
-  onPrevClick: () => void
-  onNextClick: () => void
+  setPage: (page: number) => void
 }
 
 export const PaginationBar = ({
-  page,
+  page: currentPage,
   perPage,
   total,
-  onPrevClick,
-  onNextClick,
+  setPage,
 }: PaginationBarProps) => {
-  const minIndex = 0
-  const maxIndex = total - 1
-
-  const startIndex = getValueInRange({
-    value: page * perPage,
-    min: minIndex,
-    max: maxIndex,
-  })
-  const endIndex = getValueInRange({
-    value: startIndex + perPage - 1,
-    min: minIndex,
-    max: maxIndex,
-  })
-
-  const prevDisabled = startIndex - 1 < minIndex
-  const nextDisabled = endIndex + 1 > maxIndex
-
-  const infoLabel = `Showing ${startIndex + 1}-${
-    endIndex + 1
-  } of ${total} results`
+  const numPages = Math.ceil(total / perPage)
+  const pageWindow = getPageWindow(currentPage, numPages)
+  const firstPage = 0
+  const lastPage = numPages - 1
+  const showStartDivider = pageWindow[0] - firstPage > 1
+  const showEndDivider = lastPage - pageWindow[pageWindow.length - 1] > 1
 
   return (
     <div className={styles.paginationBar}>
-      <span>{infoLabel}</span>
-      <div className={styles.paginationButtons}>
-        <IconButton
-          icon={IconType.ToggleLeft}
-          disabled={prevDisabled}
-          onClick={onPrevClick}
-        />
-        <IconButton
-          icon={IconType.ToggleRight}
-          disabled={nextDisabled}
-          onClick={onNextClick}
-        />
+      <IconButton
+        disabled={currentPage <= firstPage}
+        icon={IconType.ToggleLeft}
+        shape={IconButtonShape.RoundLarge}
+        onClick={() => setPage(currentPage - 1)}
+      />
+      <div className={styles.pageWindow}>
+        {!pageWindow.includes(firstPage) && (
+          <>
+            <PageButton page={firstPage} onClick={() => setPage(firstPage)} />
+            {showStartDivider ? (
+              <span className={styles.divider}>...</span>
+            ) : null}
+          </>
+        )}
+        {pageWindow.map((page) => (
+          <PageButton
+            key={page}
+            active={page === currentPage}
+            page={page}
+            onClick={() => setPage(page)}
+          />
+        ))}
+        {!pageWindow.includes(lastPage) && (
+          <>
+            {showEndDivider ? (
+              <span className={styles.divider}>...</span>
+            ) : null}
+            <PageButton page={lastPage} onClick={() => setPage(lastPage)} />
+          </>
+        )}
       </div>
+      <IconButton
+        disabled={currentPage >= lastPage}
+        icon={IconType.ToggleRight}
+        shape={IconButtonShape.RoundLarge}
+        onClick={() => setPage(currentPage + 1)}
+      />
     </div>
   )
 }
+
+const PageButton = ({
+  page,
+  active,
+  onClick,
+}: {
+  page: number
+  active?: boolean
+  onClick: () => void
+}) => (
+  <Button
+    customClass={styles.pageButton}
+    disabled={active}
+    label={`${page}`}
+    theme={ButtonTheme.Plain}
+    onClick={onClick}
+  />
+)

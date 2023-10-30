@@ -24,7 +24,7 @@ import styles from './species.module.scss'
 export const Species = () => {
   const { projectId, id } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
@@ -79,8 +79,7 @@ export const Species = () => {
           page={pagination.page}
           perPage={pagination.perPage}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
 
