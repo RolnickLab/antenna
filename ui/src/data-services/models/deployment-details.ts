@@ -12,7 +12,7 @@ export interface DeploymentFieldValues {
 }
 
 export class DeploymentDetails extends Deployment {
-  private readonly _exampleCaptures: { src: string }[] = []
+  private readonly _exampleCaptures: { id: string; src: string }[] = []
 
   public constructor(deployment: ServerDeploymentDetails) {
     super(deployment)
@@ -20,6 +20,7 @@ export class DeploymentDetails extends Deployment {
     if (deployment.example_captures?.length) {
       this._exampleCaptures = deployment.example_captures?.map(
         (capture: any) => ({
+          id: `${capture.id}`,
           src: capture.url,
         })
       )
@@ -30,7 +31,7 @@ export class DeploymentDetails extends Deployment {
     return this._deployment.description
   }
 
-  get exampleCaptures(): { src: string }[] {
+  get exampleCaptures(): { id: string; src: string }[] {
     return this._exampleCaptures
   }
 

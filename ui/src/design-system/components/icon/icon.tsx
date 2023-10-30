@@ -16,11 +16,14 @@ import { ReactComponent as Overview } from './assets/overview.svg'
 import { ReactComponent as Photograph } from './assets/photograph.svg'
 import { ReactComponent as PlayButton } from './assets/play-button.svg'
 import { ReactComponent as RadixCheck } from './assets/radix/check.svg'
+import { ReactComponent as Cross } from './assets/radix/cross.svg'
+import { ReactComponent as Error } from './assets/radix/error.svg'
 import { ReactComponent as Options } from './assets/radix/options.svg'
 import { ReactComponent as Pencil } from './assets/radix/pencil.svg'
 import { ReactComponent as Plus } from './assets/radix/plus.svg'
 import { ReactComponent as RadixQuestionMark } from './assets/radix/question-mark.svg'
 import { ReactComponent as RadixSearch } from './assets/radix/search.svg'
+import { ReactComponent as ToggleDown } from './assets/radix/toggle-down.svg'
 import { ReactComponent as ToggleLeft } from './assets/radix/toggle-left.svg'
 import { ReactComponent as ToggleRight } from './assets/radix/toggle-right.svg'
 import { ReactComponent as RadixTrash } from './assets/radix/trash.svg'
@@ -38,9 +41,11 @@ export enum IconType {
   BatchId = 'batch-id',
   Checkmark = 'checkmark',
   Close = 'close',
+  Cross = 'cross',
   Deployments = 'deployments',
   Detections = 'detections',
   Download = 'download',
+  Error = 'error',
   Filters = 'filters',
   GalleryView = 'gallery-view',
   Images = 'images',
@@ -65,6 +70,7 @@ export enum IconType {
   Sort = 'sort',
   Species = 'species',
   TableView = 'table-view',
+  ToggleDown = 'toggle-down',
   ToggleLeft = 'toggle-left',
   ToggleRight = 'toggle-right',
 }
@@ -75,15 +81,18 @@ export enum IconTheme {
   Dark = 'dark',
   Primary = 'primary',
   Success = 'success',
+  Error = 'error',
 }
 
 const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.BatchId]: BatchId,
   [IconType.Checkmark]: Checkmark,
   [IconType.Close]: Close,
+  [IconType.Cross]: Cross,
   [IconType.Deployments]: Deployments,
   [IconType.Detections]: Detections,
   [IconType.Download]: Download,
+  [IconType.Error]: Error,
   [IconType.Filters]: Filters,
   [IconType.GalleryView]: GalleryView,
   [IconType.Images]: Images,
@@ -108,6 +117,7 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.Sort]: Sort,
   [IconType.Species]: Species,
   [IconType.TableView]: TableView,
+  [IconType.ToggleDown]: ToggleDown,
   [IconType.ToggleLeft]: ToggleLeft,
   [IconType.ToggleRight]: ToggleRight,
 }
@@ -130,6 +140,7 @@ export const Icon = ({ type, theme = IconTheme.Dark, size }: IconProps) => {
         [styles.neutral]: theme === IconTheme.Neutral,
         [styles.primary]: theme === IconTheme.Primary,
         [styles.success]: theme === IconTheme.Success,
+        [styles.error]: theme === IconTheme.Error,
         [styles.fixedSized]: fixedSized,
       })}
       style={

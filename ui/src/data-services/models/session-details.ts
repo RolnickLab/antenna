@@ -16,19 +16,21 @@ interface SummaryData {
 }
 
 export class SessionDetails extends Session {
-  private readonly _firstCapture: Capture
+  private readonly _firstCapture?: Capture
 
   public constructor(event: ServerEventDetails) {
     super(event)
 
-    this._firstCapture = new Capture(event.first_capture)
+    if (event.first_capture) {
+      this._firstCapture = new Capture(event.first_capture)
+    }
   }
 
   get captureOffset(): number | undefined {
     return this._event.capture_page_offset
   }
 
-  get firstCapture(): Capture {
+  get firstCapture(): Capture | undefined {
     return this._firstCapture
   }
 

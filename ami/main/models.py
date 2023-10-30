@@ -1,6 +1,7 @@
 import collections
 import datetime
 import functools
+import hashlib
 import logging
 import textwrap
 import typing
@@ -11,8 +12,12 @@ from typing import Final, final  # noqa: F401
 
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 from django.db.models import Q
+from django.db.models.fields.files import ImageFieldFile
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 
 import ami.tasks
 import ami.utils
@@ -426,6 +431,8 @@ class Deployment(BaseModel):
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+            # @TODO Use "dirty" flag strategy to only update when needed
+            ami.tasks.regroup_events.delay(self.pk)
         super().save(*args, **kwargs)
 
 
@@ -658,9 +665,9 @@ def delete_empty_events(dry_run=False):
 
     if dry_run:
         for event in events:
-            print(f"Would delete event {event}")
+            logger.debug(f"Would delete event {event} (dry run)")
     else:
-        print(f"Deleting {events.count()} empty events")
+        logger.info(f"Deleting {events.count()} empty events")
         events.delete()
 
 
@@ -757,6 +764,86 @@ class S3StorageSource(BaseModel):
         super().save(*args, **kwargs)
 
 
+def validate_filename_timestamp(filename: str) -> None:
+    # Ensure filename has a timestamp
+    timestamp = ami.utils.dates.get_image_timestamp_from_filename(filename)
+    if not timestamp:
+        raise ValidationError("Filename must contain a timestamp in the format YYYYMMDDHHMMSS")
+
+
+def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+    """Create a complete SourceImage from an uploaded file."""
+    # md5 checksum from file
+    checksum = hashlib.md5(image.read()).hexdigest()
+    checksum_algorithm = "md5"
+
+    # get full public media url of image:
+    if request:
+        base_url = request.build_absolute_uri(settings.MEDIA_URL)
+    else:
+        base_url = settings.MEDIA_URL
+
+    source_image = SourceImage(
+        path=image.name,  # Includes relative path from MEDIA_ROOT
+        public_base_url=base_url,  # @TODO how to merge this with the data source?
+        project=deployment.project,
+        deployment=deployment,
+        timestamp=None,  # Will be calculated from filename or EXIF data on save
+        event=None,  # Will be assigned when the image is grouped into events
+        size=image.size,
+        checksum=checksum,
+        checksum_algorithm=checksum_algorithm,
+        width=image.width,
+        height=image.height,
+        test_image=True,
+        uploaded_by=request.user,
+    )
+    source_image.save()
+    return source_image
+
+
+def upload_to_with_deployment(instance, filename: str) -> str:
+    """Nest uploads under subdir for a deployment."""
+    return f"example_captures/{instance.deployment.pk}/{filename}"
+
+
+@final
+class SourceImageUpload(BaseModel):
+    """
+    A manually uploaded image that has not yet been imported.
+
+    The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
+    """
+
+    image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE)
+    source_image = models.OneToOneField(
+        "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
+    )
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+        self.deployment.save()
+
+
+@receiver(pre_delete, sender=SourceImageUpload)
+def delete_source_image(sender, instance, **kwargs):
+    """
+    A SourceImageUpload are automatically deleted when deleting a SourceImage because of the CASCADE setting.
+    However the SourceImage needs to be deleted using a signal when deleting a SourceImageUpload.
+    """
+    if instance.source_image:
+        # Disconnect the SourceImage from the upload to prevent recursion error
+        source_image = instance.source_image
+        instance.source_image = None
+        instance.save()
+        source_image.delete()
+    # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+    instance.deployment.save()
+
+
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
@@ -770,6 +857,8 @@ class SourceImage(BaseModel):
     last_modified = models.DateTimeField(null=True, blank=True)
     checksum = models.CharField(max_length=255, blank=True, null=True)
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    test_image = models.BooleanField(default=False)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
@@ -936,6 +1025,64 @@ def sample_captures_by_interval(
             if delta.total_seconds() >= minute_interval * 60:
                 yield capture
                 last_capture = capture
+
+
+def sample_captures_by_position(
+    position: int,
+    qs: models.QuerySet[SourceImage] | None = None,
+) -> typing.Generator[SourceImage | None, None, None]:
+    """
+    Return the n-th position capture from each event.
+
+    For example if position = 0, the first capture from each event will be returned.
+    If position = -1, the last capture from each event will be returned.
+    """
+
+    if not qs:
+        qs = SourceImage.objects.all()
+    qs = qs.exclude(timestamp=None).order_by("timestamp")
+
+    events = Event.objects.filter(captures__in=qs).distinct()
+    for event in events:
+        qs = qs.filter(event=event)
+        if position < 0:
+            # Negative positions are relative to the end of the queryset
+            # e.g. -1 is the last item, -2 is the second last item, etc.
+            # but querysets do not support negative indexing, so we
+            # sort the queryset in reverse order and then use positive indexing.
+            # e.g. -1 becomes 0, -2 becomes 1, etc.
+            position = abs(position) - 1
+            qs = qs.order_by("-timestamp")
+        else:
+            qs = qs.order_by("timestamp")
+        try:
+            capture = qs[position]
+        except IndexError:
+            # If the position is out of range, just return the last capture
+            capture = qs.last()
+
+        yield capture
+
+
+def sample_captures_by_nth(
+    nth: int,
+    qs: models.QuerySet[SourceImage] | None = None,
+) -> typing.Generator[SourceImage, None, None]:
+    """
+    Return every nth capture from each event.
+
+    For example if nth = 1, every capture from each event will be returned.
+    If nth = 5, every 5th capture from each event will be returned.
+    """
+
+    if not qs:
+        qs = SourceImage.objects.all()
+    qs = qs.exclude(timestamp=None).order_by("timestamp")
+
+    events = Event.objects.filter(captures__in=qs).distinct()
+    for event in events:
+        qs = qs.filter(event=event).order_by("timestamp")
+        yield from qs[::nth]
 
 
 # @final
@@ -1835,6 +1982,10 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "stratified_random",
     "interval",
     "manual",
+    "random_from_each_event",
+    "last_and_random_from_each_event",
+    "greatest_file_size_from_each_event",
+    "detections_only",
 ]
 
 
@@ -1858,40 +2009,104 @@ class SourceImageCollection(BaseModel):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
     method = models.CharField(max_length=255, choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS))
     kwargs = models.JSONField(
-        "Arguments", null=True, blank=True, help_text="Arguments passed to the sampling function", default=dict
+        "Arguments",
+        null=True,
+        blank=True,
+        help_text="Arguments passed to the sampling function (JSON dict)",
+        default=dict,
     )
+
+    def source_image_count(self):
+        # This should always be pre-populated using queryset annotations
+        return self.images.count()
+
+    def get_queryset(self):
+        return SourceImage.objects.filter(project=self.project)
+
+    @classmethod
+    def sampling_methods(cls):
+        return [method for method in dir(cls) if method.startswith("sample_")]
 
     def populate_sample(self):
         """Create a sample of source images based on the method and kwargs"""
         kwargs = self.kwargs or {}
 
-        if self.method == "random":
-            self.images.set(self.create_random_sample(**kwargs))
-        elif self.method == "interval":
-            self.images.set(self.create_interval_sample(**kwargs))
-        elif self.method == "manual":
-            self.images.set(self.create_manual_sample(**kwargs))
-        else:
+        method_name = f"sample_{self.method}"
+        if not hasattr(self, method_name):
             raise ValueError(f"Invalid sampling method: {self.method}. Choices are: {_SOURCE_IMAGE_SAMPLING_METHODS}")
-        self.save()
+        else:
+            method = getattr(self, method_name)
+            self.images.set(method(**kwargs))
+            self.save()
 
-    def create_random_sample(self, size: int = 100):
+    def sample_random(self, size: int = 100):
         """Create a random sample of source images"""
 
-        qs = SourceImage.objects.filter(project=self.project).order_by("?")
-        return qs[:size]
+        qs = self.get_queryset()
+        return qs.order_by("?")[:size]
 
-    def create_manual_sample(self, image_ids: list[int]):
+    def sample_manual(self, image_ids: list[int]):
         """Create a sample of source images based on a list of source image IDs"""
 
-        qs = SourceImage.objects.filter(project=self.project)
+        qs = self.get_queryset()
         return qs.filter(id__in=image_ids)
 
-    def create_interval_sample(self, minute_interval: int = 10, exclude_events: list[int] = []):
+    def sample_interval(self, minute_interval: int = 10, exclude_events: list[int] = []):
         """Create a sample of source images based on a time interval"""
 
-        qs = SourceImage.objects.filter(project=self.project)
+        qs = self.get_queryset()
         if exclude_events:
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
         return sample_captures_by_interval(minute_interval, qs)
+
+    def sample_positional(self, position: int = -1):
+        """Sample the single nth source image from all events in the project"""
+
+        qs = self.get_queryset()
+        return sample_captures_by_position(position, qs)
+
+    def sample_nth(self, nth: int):
+        """Sample every nth source image from all events in the project"""
+
+        qs = self.get_queryset()
+        return sample_captures_by_nth(nth, qs)
+
+    def sample_random_from_each_event(self, num_each: int = 10):
+        """Sample n random source images from each event in the project."""
+
+        qs = self.get_queryset()
+        captures = set()
+        for event in self.project.events.all():
+            captures.update(qs.filter(event=event).order_by("?")[:num_each])
+        return captures
+
+    def sample_last_and_random_from_each_event(self, num_each: int = 1):
+        """Sample the last image from each event and n random from each event."""
+
+        qs = self.get_queryset()
+        captures = set()
+        for event in self.project.events.all():
+            last_capture = qs.filter(event=event).order_by("timestamp").last()
+            if not last_capture:
+                # This event has no captures
+                continue
+            captures.add(last_capture)
+            random_captures = qs.filter(event=event).exclude(pk=last_capture.pk).order_by("?")[:num_each]
+            captures.update(random_captures)
+        return captures
+
+    def sample_greatest_file_size_from_each_event(self, num_each: int = 1):
+        """Sample the image with the greatest file size from each event."""
+
+        qs = self.get_queryset()
+        captures = set()
+        for event in self.project.events.all():
+            captures.update(qs.filter(event=event).order_by("-size")[:num_each])
+        return captures
+
+    def sample_detections_only(self):
+        """Sample all source images with detections"""
+
+        qs = self.get_queryset()
+        return qs.filter(detections__isnull=False).distinct()

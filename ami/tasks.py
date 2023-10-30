@@ -12,6 +12,7 @@ one_day = one_hour * 24
 two_days = one_hour * 24 * 2
 
 
+# @TODO use shared_task decorator instead of celery_app?
 @celery_app.task(soft_time_limit=two_days, time_limit=two_days + one_hour)
 def sync_source_images(deployment_id: int) -> int:
     from ami.main.models import Deployment
@@ -80,3 +81,17 @@ def populate_collection(collection_id: int) -> None:
         collection.populate_sample()
     else:
         logger.error(f"SourceImageCollection with id {collection_id} not found")
+
+
+# Task to group images into events
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def regroup_events(deployment_id: int) -> None:
+    from ami.main.models import Deployment, group_images_into_events
+
+    deployment = Deployment.objects.get(id=deployment_id)
+    if deployment:
+        logger.info(f"Grouping captures for {deployment}")
+        events = group_images_into_events(deployment)
+        logger.info(f"{deployment } now has {len(events)} events")
+    else:
+        logger.error(f"Deployment with id {deployment_id} not found")

@@ -7,7 +7,9 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
 
+from ami.main.models import _create_source_image_from_upload
 from ami.users.models import User
+from ami.utils.dates import get_image_timestamp_from_filename
 
 from ..models import (
     Algorithm,
@@ -21,6 +23,8 @@ from ..models import (
     Page,
     Project,
     SourceImage,
+    SourceImageCollection,
+    SourceImageUpload,
     Taxon,
 )
 from .permissions import add_object_level_permissions
@@ -434,6 +438,8 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences",
             "occurrence_images",
             "last_detected",
+            "created_at",
+            "updated_at",
         ]
 
     def get_occurrences(self, obj):
@@ -776,11 +782,98 @@ class SourceImageListSerializer(DefaultSerializer):
 class SourceImageSerializer(DefaultSerializer):
     detections_count = serializers.IntegerField(read_only=True)
     detections = CaptureDetectionsSerializer(many=True, read_only=True)
+    uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
         model = SourceImage
-        fields = SourceImageListSerializer.Meta.fields + []
+        fields = SourceImageListSerializer.Meta.fields + [
+            "uploaded_by",
+            "test_image",
+        ]
+
+
+class SourceImageUploadSerializer(DefaultSerializer):
+    image = serializers.ImageField(allow_empty_file=False, use_url=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    deployment = serializers.PrimaryKeyRelatedField(
+        queryset=Deployment.objects.all(),
+        required=True,
+    )
+    user = serializers.PrimaryKeyRelatedField(
+        read_only=True,
+    )
+    source_image = SourceImageNestedSerializer(read_only=True)
+
+    class Meta:
+        model = SourceImageUpload
+        fields = [
+            "id",
+            "details",
+            "image",
+            "deployment",
+            "source_image",
+            "user",
+            "created_at",
+        ]
+
+    def create(self, validated_data):
+        # Add the user to the validated data
+        request = self.context.get("request")
+        user = get_current_user(request)
+        # @TODO IMPORTANT ensure current user is a member of the deployment's project
+        obj = SourceImageUpload.objects.create(user=user, **validated_data)
+        source_image = _create_source_image_from_upload(
+            obj.image,
+            obj.deployment,
+            request,
+        )
+        if source_image is not None:
+            obj.source_image = source_image  # type: ignore
+            obj.save()
+        return obj
+
+    def validate_image(self, value):
+        # Ensure that image filename contains a timestamp
+        timestamp = get_image_timestamp_from_filename(value.name)
+        if timestamp is None:
+            # @TODO bring back EXIF support
+            raise serializers.ValidationError(
+                "Image filename does not contain a timestamp in the format YYYYMMDDHHMMSS "
+                " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
+            )
+        return value
+
+
+class SourceImageCollectionSerializer(DefaultSerializer):
+    source_images = serializers.SerializerMethodField()
+    kwargs = serializers.JSONField(initial=dict, required=False)
+
+    class Meta:
+        model = SourceImageCollection
+        fields = [
+            "id",
+            "details",
+            "name",
+            "project",
+            "method",
+            "kwargs",
+            "source_images",
+            "source_image_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_source_images(self, obj):
+        """
+        Return URL to the captures endpoint filtered by this collection.
+        """
+
+        return reverse_with_params(
+            "sourceimage-list",
+            request=self.context.get("request"),
+            params={"collections": obj.pk},
+        )
 
 
 class OccurrenceIdentificationSerializer(DefaultSerializer):

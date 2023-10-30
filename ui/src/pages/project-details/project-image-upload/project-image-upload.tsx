@@ -1,6 +1,8 @@
 import { Project } from 'data-services/models/project'
+import { Button } from 'design-system/components/button/button'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
+import { STRING, translate } from 'utils/language'
 import styles from './project-image-upload.module.scss'
 
 export const ProjectImageUpload = ({
@@ -28,14 +30,26 @@ export const ProjectImageUpload = ({
         {imageUrl ? (
           <img src={imageUrl} />
         ) : (
-          <span className={styles.info}>No image</span>
+          <span className={styles.info}>
+            {translate(STRING.MESSAGE_NO_IMAGE)}
+          </span>
         )}
       </div>
       <FileInput
         accept={FileInputAccept.Images}
-        label={imageUrl ? 'Change image' : 'Choose image'}
-        name="image"
-        onChange={onChange}
+        name="project-image"
+        renderInput={(props) => (
+          <Button
+            {...props}
+            label={
+              imageUrl
+                ? translate(STRING.CHANGE_IMAGE)
+                : translate(STRING.CHOOSE_IMAGE)
+            }
+          />
+        )}
+        withClear
+        onChange={(files) => onChange(files ? files[0] : null)}
       />
     </>
   )

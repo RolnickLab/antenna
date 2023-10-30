@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 import { userAgreed } from '../agree/userAgreed'
@@ -56,7 +57,9 @@ export const IdentificationCard = ({
     <div className={styles.identificationCard}>
       <div className={styles.content}>
         <IdentificationSummary user={user}>
-          {identification.applied && <StatusLabel label="ID applied" />}
+          {identification.applied && (
+            <StatusLabel label={translate(STRING.ID_APPLIED)} />
+          )}
           <TaxonInfo
             overridden={identification.overridden}
             taxon={identification.taxon}

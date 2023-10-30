@@ -2,6 +2,7 @@ import { useCreateIdentification } from 'data-services/hooks/identifications/use
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { useEffect } from 'react'
+import { STRING, translate } from 'utils/language'
 
 interface AgreeProps {
   agreed?: boolean
@@ -30,13 +31,17 @@ export const Agree = ({
 
   if (isSuccess || agreed) {
     return (
-      <Button label="Agreed" icon={IconType.RadixCheck} theme={buttonTheme} />
+      <Button
+        label={translate(STRING.AGREED)}
+        icon={IconType.RadixCheck}
+        theme={buttonTheme}
+      />
     )
   }
 
   return (
     <Button
-      label="Agree"
+      label={translate(STRING.AGREE)}
       loading={isLoading}
       theme={buttonTheme}
       onClick={() =>

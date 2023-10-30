@@ -2,6 +2,7 @@ import { useDeploymentDetails } from 'data-services/hooks/deployments/useDeploym
 import { useUpdateDeployment } from 'data-services/hooks/deployments/useUpdateDeployment'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
+import _ from 'lodash'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -59,7 +60,9 @@ const DeploymentDetailsDialogContent = ({
       {!isEditing ? (
         <DeploymentDetailsInfo
           deployment={deployment}
-          title={translate(STRING.DIALOG_DEPLOYMENT_DETAILS)}
+          title={translate(STRING.ENTITY_DETAILS, {
+            type: _.capitalize(translate(STRING.ENTITY_TYPE_DEPLOYMENT)),
+          })}
           onEditClick={() => setIsEditing(true)}
         />
       ) : (
@@ -68,7 +71,9 @@ const DeploymentDetailsDialogContent = ({
           serverError={error}
           isLoading={isLoading}
           startValid
-          title={translate(STRING.DIALOG_EDIT_DEPLOYMENT)}
+          title={translate(STRING.ENTITY_EDIT, {
+            type: translate(STRING.ENTITY_TYPE_DEPLOYMENT),
+          })}
           onCancelClick={() => setIsEditing(false)}
           onSubmit={(data) => {
             updateDeployment(data)

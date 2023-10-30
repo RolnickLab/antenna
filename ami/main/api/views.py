@@ -13,6 +13,8 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ami import tasks
+
 from ..models import (
     Algorithm,
     Classification,
@@ -25,6 +27,8 @@ from ..models import (
     Page,
     Project,
     SourceImage,
+    SourceImageCollection,
+    SourceImageUpload,
     Taxon,
 )
 from .serializers import (
@@ -46,8 +50,10 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
+    SourceImageUploadSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
     TaxonNestedSerializer,
@@ -79,11 +85,11 @@ class DefaultViewSetMixin:
     permission_classes = [permissions.AllowAny]
 
 
-class DefaultViewSet(viewsets.ModelViewSet, DefaultViewSetMixin):
+class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
     pass
 
 
-class DefaultReadOnlyViewSet(viewsets.ReadOnlyModelViewSet, DefaultViewSetMixin):
+class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
     pass
 
 
@@ -115,13 +121,23 @@ class DeploymentViewSet(DefaultViewSet):
         events_count=models.Count("events", distinct=True),
         occurrences_count=models.Count("occurrences", distinct=True),
         taxa_count=models.Count("occurrences__determination", distinct=True),
+        captures_count=models.Count("events__captures", distinct=True),
         # The first and last date should come from the captures,
         # but it may be much slower to query.
         first_date=models.Min("events__start__date"),
         last_date=models.Max("events__end__date"),
     ).select_related("project")
     filterset_fields = ["project"]
-    ordering_fields = ["created_at", "updated_at", "occurrences_count", "events_count"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "captures_count",
+        "events_count",
+        "occurrences_count",
+        "taxa_count",
+        "first_date",
+        "last_date",
+    ]
 
     def get_serializer_class(self):
         """
@@ -157,6 +173,7 @@ class EventViewSet(DefaultViewSet):
         "captures_count",
         "detections_count",
         "occurrences_count",
+        "taxa_count",
         "duration",
     ]
 
@@ -211,8 +228,24 @@ class SourceImageViewSet(DefaultViewSet):
         .order_by("timestamp")
         .all()
     )
+
+    def get_queryset(self) -> QuerySet:
+        queryset = super().get_queryset()
+        has_detections = self.request.query_params.get("has_detections")
+
+        if has_detections is not None:
+            has_detections = BooleanField(required=False).clean(has_detections)
+            queryset = (
+                queryset.annotate(
+                    has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+                )
+                .filter(has_detections=has_detections)
+                .order_by("?")
+            )
+        return queryset
+
     serializer_class = SourceImageSerializer
-    filterset_fields = ["event", "deployment", "deployment__project"]
+    filterset_fields = ["event", "deployment", "deployment__project", "collections"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -229,6 +262,41 @@ class SourceImageViewSet(DefaultViewSet):
             return SourceImageListSerializer
         else:
             return SourceImageSerializer
+
+
+class SourceImageCollectionViewSet(DefaultViewSet):
+    """
+    Endpoint for viewing collections or samples of source images.
+    """
+
+    queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
+    serializer_class = SourceImageCollectionSerializer
+
+    @action(detail=True, methods=["post"], name="populate")
+    def populate(self, request, pk=None):
+        """
+        Populate a collection with source images using the configured sampling method and arguments.
+        """
+        collection = self.get_object()
+        task = tasks.populate_collection.apply_async([collection.pk])
+        return Response({"task": task.id})
+
+
+class SourceImageUploadViewSet(DefaultViewSet):
+    """
+    Endpoint for uploading images.
+    """
+
+    queryset = SourceImageUpload.objects.all()
+
+    serializer_class = SourceImageUploadSerializer
+
+    def get_queryset(self) -> QuerySet:
+        # Only allow users to see their own uploads
+        qs = super().get_queryset()
+        if self.request.user.pk:
+            qs = qs.filter(user=self.request.user)
+        return qs
 
 
 class DetectionViewSet(DefaultViewSet):
@@ -342,7 +410,7 @@ class TaxonViewSet(DefaultViewSet):
                 taxa = (
                     Taxon.objects.select_related("parent", "parent__parent")
                     .annotate(similarity=TrigramSimilarity("name", query))
-                    .order_by("-similarity")[:default_results_limit]
+                    .order_by("-similarity")[:limit]
                 )
                 return Response(TaxonNestedSerializer(taxa, many=True, context={"request": request}).data)
             else:
