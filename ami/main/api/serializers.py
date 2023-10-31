@@ -879,6 +879,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "event",
             "deployment",
             "first_appearance",
+            "first_appearance_time",
             "duration",
             "duration_label",
             "determination",
