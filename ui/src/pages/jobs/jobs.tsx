@@ -4,9 +4,12 @@ import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
+import { TableSortSettings } from 'design-system/components/table/types'
 import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
+import { useState, useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -16,10 +19,12 @@ import styles from './jobs.module.scss'
 
 export const Jobs = () => {
   const { projectId, id } = useParams()
+  const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { jobs, total, isLoading, isFetching, error } = useJobs({
     projectId,
     pagination,
+    sort,
   })
 
   if (!isLoading && error) {
@@ -37,6 +42,9 @@ export const Jobs = () => {
         items={jobs}
         isLoading={isLoading}
         columns={columns(projectId as string)}
+        sortable
+        sortSettings={sort}
+        onSortSettingsChange={setSort}
       />
       {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
       {jobs?.length ? (
@@ -55,7 +63,16 @@ export const Jobs = () => {
 const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
+  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { job, isLoading, isFetching } = useJobDetails(id)
+
+  useEffect(() => {
+    setDetailBreadcrumb(job ? { title: job.name } : undefined)
+
+    return () => {
+      setDetailBreadcrumb(undefined)
+    }
+  }, [job])
 
   return (
     <Dialog.Root

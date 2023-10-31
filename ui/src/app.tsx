@@ -23,6 +23,8 @@ import {
   BreadcrumbContextProvider,
 } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
+import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import { UserContextProvider } from 'utils/user/userContext'
 import styles from './app.module.scss'
 
@@ -80,18 +82,30 @@ const AuthContainer = () => (
   </main>
 )
 
-const ProjectsContainer = () => (
-  <main className={styles.main}>
-    <div className={styles.content}>
-      <Projects />
-    </div>
-  </main>
-)
+const ProjectsContainer = () => {
+  usePageBreadcrumb({
+    title: translate(STRING.NAV_ITEM_PROJECTS),
+    path: APP_ROUTES.HOME,
+  })
+
+  return (
+    <main className={styles.main}>
+      <div className={styles.content}>
+        <Projects />
+      </div>
+    </main>
+  )
+}
 
 const ProjectContainer = () => {
   const { projectId } = useParams()
   const projectDetails = useProjectDetails(projectId as string)
   const { setProjectBreadcrumb } = useContext(BreadcrumbContext)
+
+  usePageBreadcrumb({
+    title: translate(STRING.NAV_ITEM_PROJECTS),
+    path: APP_ROUTES.HOME,
+  })
 
   useEffect(() => {
     setProjectBreadcrumb({
@@ -101,6 +115,22 @@ const ProjectContainer = () => {
 
     return () => {
       setProjectBreadcrumb(undefined)
+    }
+  }, [projectDetails.project])
+
+  useEffect(() => {
+    const meta = document.getElementsByTagName('meta').namedItem('description')
+    const newDescription = projectDetails.project?.description
+    const prevDescription = meta?.content
+
+    if (meta && newDescription) {
+      meta.content = newDescription
+    }
+
+    return () => {
+      if (meta && prevDescription) {
+        meta.content = prevDescription
+      }
     }
   }, [projectDetails.project])
 

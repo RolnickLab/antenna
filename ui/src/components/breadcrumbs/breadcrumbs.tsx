@@ -3,8 +3,6 @@ import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { Fragment, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Breadcrumb, BreadcrumbContext } from 'utils/breadcrumbContext'
-import { APP_ROUTES } from 'utils/constants'
-import { STRING, translate } from 'utils/language'
 import styles from './breadcrumbs.module.scss'
 
 export const Breadcrumbs = ({
@@ -15,6 +13,7 @@ export const Breadcrumbs = ({
   activeNavItemId: string
 }) => {
   const {
+    pageBreadcrumb,
     projectBreadcrumb,
     mainBreadcrumb,
     detailBreadcrumb,
@@ -31,10 +30,14 @@ export const Breadcrumbs = ({
         ? { title: activeNavItem.title, path: activeNavItem.path }
         : undefined
     )
+
+    return () => {
+      setMainBreadcrumb(undefined)
+    }
   }, [navItems, activeNavItemId])
 
   const breadcrumbs = [
-    { title: translate(STRING.NAV_ITEM_PROJECTS), path: APP_ROUTES.HOME },
+    pageBreadcrumb,
     projectBreadcrumb,
     mainBreadcrumb,
     detailBreadcrumb,
@@ -43,7 +46,7 @@ export const Breadcrumbs = ({
   return (
     <div className={styles.breadcrumbs}>
       {breadcrumbs.map((breadcrumb, index) => {
-        if (index === breadcrumbs.length - 1) {
+        if (index === breadcrumbs.length - 1 || !breadcrumb.path) {
           return (
             <span key={index} className={styles.breadcrumb}>
               {breadcrumb.title}

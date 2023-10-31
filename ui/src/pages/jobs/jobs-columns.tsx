@@ -30,6 +30,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'started-at',
     name: 'Started at',
+    sortField: 'started_at',
     renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
   },
   {
@@ -40,6 +41,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'status',
     name: translate(STRING.FIELD_LABEL_STATUS),
+    sortField: 'status',
     renderCell: (item: Job) => {
       const status = (() => {
         switch (item.status) {
