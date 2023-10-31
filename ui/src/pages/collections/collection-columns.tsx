@@ -1,13 +1,27 @@
 import { Collection } from 'data-services/models/collection'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { TableColumn, TextAlign } from 'design-system/components/table/types'
+import {
+  CellTheme,
+  TableColumn,
+  TextAlign,
+} from 'design-system/components/table/types'
+import { Link } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Collection>[] = () => [
+export const columns: (projectId: string) => TableColumn<Collection>[] = (
+  projectId: string
+) => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
-    renderCell: (item: Collection) => <BasicTableCell value={item.name} />,
+    renderCell: (item: Collection) => (
+      <Link
+        to={APP_ROUTES.COLLECTION_DETAILS({ projectId, collectionId: item.id })}
+      >
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
+    ),
   },
   {
     id: 'sampling-method',
