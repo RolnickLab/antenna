@@ -1,8 +1,13 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
-.paginationBar {
-  width: 100%;
+.wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pageSettings {
   height: 64px;
   display: flex;
   align-items: center;
@@ -20,10 +25,4 @@
   @include paragraph-small();
   font-weight: 600;
   color: $color-neutral-300;
-}
-
-.pageButton {
-  @include paragraph-small();
-  font-weight: 600;
-  padding: 0 8px;
 }

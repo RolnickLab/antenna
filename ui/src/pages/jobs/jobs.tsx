@@ -2,7 +2,7 @@ import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
+import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
@@ -41,8 +41,7 @@ export const Jobs = () => {
       {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
       {jobs?.length ? (
         <PaginationBar
-          page={pagination.page}
-          perPage={pagination.perPage}
+          pagination={pagination}
           total={total}
           setPage={setPage}
         />

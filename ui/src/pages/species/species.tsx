@@ -4,7 +4,7 @@ import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
-import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
+import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -76,8 +76,7 @@ export const Species = () => {
       </Tabs.Root>
       {species?.length ? (
         <PaginationBar
-          page={pagination.page}
-          perPage={pagination.perPage}
+          pagination={pagination}
           total={total}
           setPage={setPage}
         />
