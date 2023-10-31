@@ -923,7 +923,7 @@ class SourceImage(BaseModel):
     url = public_url
 
     def get_detections_count(self) -> int:
-        return self.detections.count()
+        return self.detections.distinct().count()
 
     def get_base_url(self) -> str:
         """

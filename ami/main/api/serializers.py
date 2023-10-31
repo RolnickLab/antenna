@@ -727,6 +727,8 @@ class DetectionSerializer(DefaultSerializer):
 class SourceImageListSerializer(DefaultSerializer):
     detections_count = serializers.IntegerField(read_only=True)
     detections = CaptureDetectionsSerializer(many=True, read_only=True)
+    deployment = DeploymentNestedSerializer(read_only=True)
+    event = EventNestedSerializer(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -747,9 +749,7 @@ class SourceImageListSerializer(DefaultSerializer):
         ]
 
 
-class SourceImageSerializer(DefaultSerializer):
-    detections_count = serializers.IntegerField(read_only=True)
-    detections = CaptureDetectionsSerializer(many=True, read_only=True)
+class SourceImageSerializer(SourceImageListSerializer):
     uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
