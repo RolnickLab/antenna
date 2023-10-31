@@ -10,8 +10,9 @@ import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { SpeciesDetails } from 'pages/species-details/species-details'
-import { useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -90,7 +91,16 @@ export const Species = () => {
 const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
+  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { species, isLoading } = useSpeciesDetails(id)
+
+  useEffect(() => {
+    setDetailBreadcrumb(species ? { title: species.name } : undefined)
+
+    return () => {
+      setDetailBreadcrumb(undefined)
+    }
+  }, [species])
 
   return (
     <Dialog.Root

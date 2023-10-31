@@ -5,6 +5,7 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
 import ami from './ami.png'
 import styles from './header.module.scss'
@@ -16,6 +17,8 @@ export const Header = () => {
   const { pages = [] } = usePages()
   const { user } = useUser()
   const { logout, isLoading: isLogoutLoading } = useLogout()
+
+  usePageTitle()
 
   return (
     <header className={styles.header}>

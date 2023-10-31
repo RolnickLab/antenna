@@ -3,8 +3,9 @@ import { useUpdateDeployment } from 'data-services/hooks/deployments/useUpdateDe
 import { DeploymentDetails } from 'data-services/models/deployment-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import _ from 'lodash'
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -14,7 +15,16 @@ import { DeploymentDetailsInfo } from './deployment-details-info'
 export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
+  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { deployment, isLoading } = useDeploymentDetails(id)
+
+  useEffect(() => {
+    setDetailBreadcrumb(deployment ? { title: deployment.name } : undefined)
+
+    return () => {
+      setDetailBreadcrumb(undefined)
+    }
+  }, [deployment])
 
   return (
     <Dialog.Root
