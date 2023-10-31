@@ -1,13 +1,15 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useCaptures } from 'data-services/hooks/captures/useCaptures'
+import { useCollectionDetails } from 'data-services/hooks/collections/useCollectionDetails'
 import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
-import { useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './capture-columns'
@@ -16,6 +18,20 @@ import styles from './collection-details.module.scss'
 
 export const CollectionDetails = () => {
   const { projectId, id } = useParams()
+
+  // Collection details
+  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
+  const { collection } = useCollectionDetails(id as string)
+
+  useEffect(() => {
+    setDetailBreadcrumb(collection ? { title: collection.name } : undefined)
+
+    return () => {
+      setDetailBreadcrumb(undefined)
+    }
+  }, [collection])
+
+  // Collection captures
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPrevPage, setNextPage } = usePagination()
   const { captures, total, isLoading, isFetching, error } = useCaptures({
