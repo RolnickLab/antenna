@@ -11,8 +11,9 @@ import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
-import { useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -114,7 +115,18 @@ export const Occurrences = () => {
 const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
+  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading } = useOccurrenceDetails(id)
+
+  useEffect(() => {
+    setDetailBreadcrumb(
+      occurrence ? { title: occurrence.displayName } : undefined
+    )
+
+    return () => {
+      setDetailBreadcrumb(undefined)
+    }
+  }, [occurrence])
 
   return (
     <Dialog.Root
