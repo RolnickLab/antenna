@@ -6,7 +6,6 @@ import logging
 import textwrap
 import typing
 import urllib.parse
-from datetime import timedelta
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
@@ -539,7 +538,14 @@ class Event(BaseModel):
         return self.end - self.start
 
     def duration_label(self) -> str:
-        return ami.utils.dates.format_timedelta(self.duration())
+        """
+        Format the duration for display.
+
+        If duration was populated by a query annotation, use that
+        otherwise call the duration() method to calculate it.
+        """
+        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        return ami.utils.dates.format_timedelta(duration)
 
     # These are now loaded with annotations in EventViewSet
     # But the serializer complains if they're not defined here.
@@ -612,7 +618,7 @@ class Event(BaseModel):
 
 
 def group_images_into_events(
-    deployment: Deployment, max_time_gap=timedelta(minutes=120), delete_empty=True
+    deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
@@ -1445,15 +1451,24 @@ class Occurrence(BaseModel):
 
     @functools.cached_property
     def first_appearance(self) -> SourceImage | None:
+        # @TODO it appears we only need the first timestamp, that could be an annotated value
         first = self.detections.order_by("timestamp").select_related("source_image").first()
         if first:
             return first.source_image
 
     @functools.cached_property
     def last_appearance(self) -> SourceImage | None:
+        # @TODO it appears we only need the last timestamp, that could be an annotated value
         last = self.detections.order_by("-timestamp").select_related("source_image").first()
         if last:
             return last.source_image
+
+    def first_appearance_time(self) -> datetime.time | None:
+        """
+        Return the time part only of the first appearance.
+        ONLY if it has been added with a query annotation.
+        """
+        return None
 
     def duration(self) -> datetime.timedelta | None:
         first = self.first_appearance
@@ -1464,7 +1479,12 @@ class Occurrence(BaseModel):
             return None
 
     def duration_label(self) -> str | None:
-        return ami.utils.dates.format_timedelta(self.duration())
+        """
+        If duration has been calculated by a query annotation, use that value
+        otherwise call the duration() method to calculate it.
+        """
+        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
