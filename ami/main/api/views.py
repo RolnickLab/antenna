@@ -157,8 +157,8 @@ class EventViewSet(DefaultViewSet):
         Event.objects.select_related("deployment")
         .annotate(
             captures_count=models.Count("captures", distinct=True),
-            detections_count=models.Count("captures__detections"),
-            occurrences_count=models.Count("occurrences"),
+            detections_count=models.Count("captures__detections", distinct=True),
+            occurrences_count=models.Count("occurrences", distinct=True),
             taxa_count=models.Count("occurrences__determination", distinct=True),
             duration=models.F("end") - models.F("start"),
         )
@@ -169,7 +169,9 @@ class EventViewSet(DefaultViewSet):
     ordering_fields = [
         "created_at",
         "updated_at",
+        "deployment",
         "start",
+        "start__time",
         "captures_count",
         "detections_count",
         "occurrences_count",
