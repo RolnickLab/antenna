@@ -82,6 +82,15 @@ export const useNavItems = () => {
           speciesId: '*',
         }),
       },
+      {
+        id: 'collections',
+        title: 'Collections',
+        path: APP_ROUTES.COLLECTIONS({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.COLLECTION_DETAILS({
+          projectId: ':projectId',
+          collectionId: '*',
+        }),
+      },
     ],
     [status, projectId]
   )
