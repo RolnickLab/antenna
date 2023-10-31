@@ -33,6 +33,7 @@ export enum STRING {
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_IDENTIFICATION,
+  ENTITY_TYPE_JOB,
   ENTITY_TYPE_PROJECT,
   ENTITY_VIEW,
 
@@ -87,6 +88,7 @@ export enum STRING {
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS,
   MESSAGE_PASSWORD_FORMAT,
+  MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
@@ -198,6 +200,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_TYPE_CAPTURE]: 'dapture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'deployment',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
+  [STRING.ENTITY_TYPE_JOB]: 'job',
   [STRING.ENTITY_TYPE_PROJECT]: 'project',
   [STRING.ENTITY_VIEW]: 'View {{type}}',
 
@@ -208,7 +211,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A maximum of {{numCaptures}} captures can be uploaded.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
     'To upload more than {{numCaptures}} images you must configure a data source.',
-
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
     'Deployment must be saved before uploading captures.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
@@ -222,11 +224,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'The image must smaller than {{value}} {{unit}}.',
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
-
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
   [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
+  [STRING.MESSAGE_RESULT_RANGE]:
+    'Showing {{start}}-{{end}} of {{total}} results',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
