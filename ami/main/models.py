@@ -7,7 +7,6 @@ import textwrap
 import typing
 import urllib.parse
 from datetime import timedelta
-from enum import Enum
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
@@ -23,15 +22,20 @@ import ami.tasks
 import ami.utils
 from ami.main import charts
 from ami.users.models import User
+from ami.utils.schemas import OrderedEnum
 
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 _CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
 
-class TaxonRank(Enum):
+class TaxonRank(OrderedEnum):
     ORDER = "Order"
+    SUPERFAMILY = "Superfamily"
     FAMILY = "Family"
+    SUBFAMILY = "Subfamily"
+    TRIBE = "Tribe"
+    SUBTRIBE = "Subtribe"
     GENUS = "Genus"
     SPECIES = "Species"
 
@@ -39,6 +43,33 @@ class TaxonRank(Enum):
     def choices(cls):
         """For use in Django text fields with choices."""
         return tuple((i.name, i.value) for i in cls)
+
+    @classmethod
+    def _missing_(cls, value: str):
+        """Allow case-insensitive lookups."""
+        for member in cls:
+            if member.value.upper() == value.upper():
+                return member
+        return None
+
+    def __eq__(self, other):
+        # @TODO this does not work
+        # But essentially we want to prevent accidental comparisons between TaxonRank and Django string field.
+        if not isinstance(other, TaxonRank):
+            raise TypeError(f"Cannot compare TaxonRank to {other.__class__}")
+        return super().__eq__(other)
+
+
+DEFAULT_RANKS = sorted(
+    [
+        TaxonRank.ORDER,
+        TaxonRank.FAMILY,
+        TaxonRank.SUBFAMILY,
+        TaxonRank.TRIBE,
+        TaxonRank.GENUS,
+        TaxonRank.SPECIES,
+    ]
+)
 
 
 # @TODO move to settings & make configurable
@@ -1565,7 +1596,7 @@ class TaxaManager(models.Manager):
         self.bulk_update(taxa, ["display_name"])
 
     # Method that returns taxa nested in a tree structure
-    def tree(self, root: typing.Optional["Taxon"] = None) -> dict:
+    def tree(self, root: typing.Optional["Taxon"] = None, filter_ranks: list[TaxonRank] = []) -> dict:
         """Build a recursive tree of taxa."""
 
         root = root or self.root()
@@ -1576,7 +1607,19 @@ class TaxaManager(models.Manager):
         # Build index of taxa by parent
         taxa_by_parent = collections.defaultdict(list)
         for taxon in taxa:
-            taxa_by_parent[taxon.parent].append(taxon)
+            # Skip adding this taxon if its rank is excluded
+            if filter_ranks and TaxonRank(taxon.rank) not in filter_ranks:
+                continue
+
+            parent = taxon.parent or root
+
+            # Attach taxa to the nearest parent with a rank that is not excluded
+            if filter_ranks and TaxonRank(parent.rank) not in filter_ranks:
+                while parent and TaxonRank(parent.rank) not in filter_ranks:
+                    parent = parent.parent
+
+            if parent != taxon:
+                taxa_by_parent[parent].append(taxon)
 
         # Recursively build a nested tree
         def _tree(taxon):
@@ -1584,6 +1627,9 @@ class TaxaManager(models.Manager):
                 "taxon": taxon,
                 "children": [_tree(child) for child in taxa_by_parent[taxon]],
             }
+
+        if filter_ranks and TaxonRank(root.rank) not in filter_ranks:
+            raise ValueError(f"Cannot filter rank {root.rank} from tree because the root taxon must be included")
 
         return _tree(root)
 
@@ -1634,13 +1680,20 @@ class Taxon(BaseModel):
     name = models.CharField(max_length=255, unique=True)
     display_name = models.CharField("Cached display name", max_length=255, null=True, blank=True, unique=True)
     rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)
-    parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, related_name="direct_children")
+    parent = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="direct_children"
+    )
     # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
     parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
     # taxonomy = models.JSONField(null=True, blank=True)
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
+
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
+    bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
+    inat_taxon_id = models.BigIntegerField("iNaturalist taxon ID", blank=True, null=True)
+
+    notes = models.TextField(blank=True)
 
     projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
@@ -1649,23 +1702,35 @@ class Taxon(BaseModel):
     classifications: models.QuerySet["Classification"]
     lists: models.QuerySet["TaxaList"]
 
+    author = models.CharField(max_length=255, blank=True)
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
+    sort_phylogeny = models.BigIntegerField(blank=True, null=True)
 
     objects: TaxaManager = TaxaManager()
 
     def __str__(self) -> str:
-        return self.get_display_name()
+        name_with_rank = f"{self.name} ({self.rank})"
+        return name_with_rank
 
     def get_display_name(self):
+        """
+        This must be unique because it is used for choice keys in Label Studio.
+        """
         if self.rank == "SPECIES":
             return self.name
         elif self.rank == "GENUS":
             return f"{self.name} sp."
-        elif self.rank not in ["ORDER", "FAMILY"]:
-            return f"{self.name} ({self.rank})"
+        # elif self.rank not in ["ORDER", "FAMILY"]:
+        #     return f"{self.name} ({self.rank})"
         else:
             return self.name
+
+    def get_rank(self) -> TaxonRank:
+        """
+        Return the rank str value as a TaxonRank enum.
+        """
+        return TaxonRank(self.rank)
 
     def num_direct_children(self) -> int:
         return self.direct_children.count()
@@ -1733,6 +1798,11 @@ class Taxon(BaseModel):
             "name",
         ]
         verbose_name_plural = "Taxa"
+
+        # Set unique contstraints on name & rank
+        # constraints = [
+        #     models.UniqueConstraint(fields=["name", "rank", "parent"], name="unique_name_and_placement"),
+        # ]
 
     def save(self, *args, **kwargs):
         """Update the display name before saving."""
