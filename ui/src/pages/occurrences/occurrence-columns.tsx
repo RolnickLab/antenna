@@ -27,6 +27,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    sortField: 'updated_at',
     styles: {
       padding: '16px 32px 16px 50px',
     },
