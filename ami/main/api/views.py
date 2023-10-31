@@ -55,6 +55,7 @@ from .serializers import (
     SourceImageSerializer,
     SourceImageUploadSerializer,
     StorageStatusSerializer,
+    TaxonFlatSerializer,
     TaxonListSerializer,
     TaxonNestedSerializer,
     TaxonSearchResultSerializer,
@@ -373,6 +374,7 @@ class TaxonViewSet(DefaultViewSet):
         .distinct()
     )
     serializer_class = TaxonSerializer
+    pagination_class = None
     filterset_fields = [
         "name",
         "rank",
@@ -391,6 +393,27 @@ class TaxonViewSet(DefaultViewSet):
         "name",
     ]
     search_fields = ["name", "parent__name"]
+
+    @action(detail=False, methods=["get"], name="flat", serializer_class=TaxonFlatSerializer)
+    def flat(self, request):
+        return super().list(request)
+
+    #     """ Return a list of taxa, with the most recent first.
+    #     """
+    #     serializer = self.get_serializer(self.get_queryset()[:10], many=True)
+    #     isodate = timezone.now().isoformat()
+    #     # response["Content-Disposition"] = f'attachment; filename="taxa-{isodate}.csv"'
+    #     import csv
+
+    #     # response = Response()
+    #     response = HttpResponse(content_type="text/csv")
+    #     writer = csv.writer(response)
+    #     writer.writerow(serializer.data[0].keys())
+    #     for row in serializer.data:
+    #         writer.writerow(row.values())
+
+    #     response["Content-Disposition"] = f'attachment; filename="taxa-{isodate}.csv"'
+    #     return response
 
     @action(detail=False, methods=["get"], name="suggest")
     def suggest(self, request):
@@ -431,6 +454,8 @@ class TaxonViewSet(DefaultViewSet):
         """
         if self.action == "list":
             return TaxonListSerializer
+        if self.action == "flat":
+            return TaxonFlatSerializer
         else:
             return TaxonSerializer
 

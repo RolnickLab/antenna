@@ -384,9 +384,26 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         fields = [
             "id",
             "name",
+            "display_name",
             "rank",
             "details",
         ]
+
+
+class TaxonFlatSerializer(TaxonNoParentNestedSerializer):
+    name = serializers.CharField(read_only=True, source="display_name")
+
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+        ]
+
+    def get_permissions(self, instance_data):
+        return instance_data
 
 
 class TaxonParentNestedSerializer(TaxonNoParentNestedSerializer):
