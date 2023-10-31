@@ -160,6 +160,7 @@ class EventViewSet(DefaultViewSet):
             detections_count=models.Count("captures__detections"),
             occurrences_count=models.Count("occurrences"),
             taxa_count=models.Count("occurrences__determination", distinct=True),
+            duration=models.F("end") - models.F("start"),
         )
         .select_related("deployment", "project")
     )  # .prefetch_related("captures").all()
@@ -310,13 +311,20 @@ class OccurrenceViewSet(DefaultViewSet):
     queryset = (
         Occurrence.objects.annotate(
             detections_count=models.Count("detections", distinct=True),
+            # Calculate the duration from detections min and max timestamps
+            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
         )
-        .select_related("determination", "deployment", "event")
+        .select_related(
+            "determination",
+            "deployment",
+            "event",
+        )
+        .prefetch_related("detections")
         .all()
     )
     serializer_class = OccurrenceSerializer
     filterset_fields = ["event", "deployment", "determination", "project"]
-    ordering_fields = ["created_at", "updated_at", "timestamp"]
+    ordering_fields = ["created_at", "updated_at", "event__start", "duration"]
 
     def get_serializer_class(self):
         """
