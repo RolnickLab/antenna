@@ -3,6 +3,7 @@ export const API_URL =
 
 export const API_ROUTES = {
   CAPTURES: 'captures',
+  COLLECTIONS: 'captures/collections',
   DEPLOYMENTS: 'deployments',
   IDENTIFICATIONS: 'identifications',
   JOBS: 'jobs',
