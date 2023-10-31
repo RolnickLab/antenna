@@ -2,12 +2,13 @@ import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
+import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
+import _ from 'lodash'
 import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
-import { useState, useContext, useEffect } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
@@ -19,8 +20,8 @@ import styles from './jobs.module.scss'
 
 export const Jobs = () => {
   const { projectId, id } = useParams()
+  const { pagination, setPage } = usePagination()
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
   const { jobs, total, isLoading, isFetching, error } = useJobs({
     projectId,
     pagination,
@@ -49,11 +50,9 @@ export const Jobs = () => {
       {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
       {jobs?.length ? (
         <PaginationBar
-          page={pagination.page}
-          perPage={pagination.perPage}
+          pagination={pagination}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
     </>
@@ -91,7 +90,13 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
         isLoading={isLoading}
       >
         {job ? (
-          <JobDetails job={job} title="Job details" isFetching={isFetching} />
+          <JobDetails
+            job={job}
+            title={translate(STRING.ENTITY_DETAILS, {
+              type: _.capitalize(translate(STRING.ENTITY_TYPE_JOB)),
+            })}
+            isFetching={isFetching}
+          />
         ) : null}
       </Dialog.Content>
     </Dialog.Root>
