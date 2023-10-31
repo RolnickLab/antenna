@@ -195,10 +195,7 @@ class SourceImageViewSet(DefaultViewSet):
     """
 
     queryset = (
-        SourceImage.objects.annotate(
-            detections_count=models.Count("detections", distinct=True),
-        )
-        .select_related("event", "deployment")
+        SourceImage.objects.select_related("event", "deployment")
         .prefetch_related("detections")
         .order_by("timestamp")
         .all()

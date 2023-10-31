@@ -234,7 +234,6 @@ class ProjectSerializer(DefaultSerializer):
 class SourceImageQuickListSerializer(DefaultSerializer):
     class Meta:
         model = SourceImage
-        queryset = SourceImage.objects.annotate(detections_count=Count("detections"))
         fields = [
             "id",
             "details",
