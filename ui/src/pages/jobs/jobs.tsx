@@ -7,8 +7,9 @@ import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
-import { useState } from 'react'
+import { useState, useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -62,7 +63,16 @@ export const Jobs = () => {
 const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
+  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { job, isLoading, isFetching } = useJobDetails(id)
+
+  useEffect(() => {
+    setDetailBreadcrumb(job ? { title: job.name } : undefined)
+
+    return () => {
+      setDetailBreadcrumb(undefined)
+    }
+  }, [job])
 
   return (
     <Dialog.Root
