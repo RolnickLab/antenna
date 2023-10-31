@@ -80,6 +80,10 @@ export class Occurrence {
     return this._occurrence.duration_label
   }
 
+  get displayName(): string {
+    return `${this.determinationTaxon.name} #${this.id}`
+  }
+
   get id(): string {
     return `${this._occurrence.id}`
   }
