@@ -11,7 +11,7 @@ export const PageButton = ({ page, active, onClick }: PageButtonProps) => (
   <Button
     customClass={styles.pageButton}
     disabled={active}
-    label={`${page}`}
+    label={`${page + 1}`}
     theme={ButtonTheme.Plain}
     onClick={onClick}
   />

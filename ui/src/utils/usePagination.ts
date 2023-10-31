@@ -14,11 +14,13 @@ const useSearchParam = ({
   defaultValue: number
 }) => {
   const [searchParams, setSearchParams] = useSearchParams()
-  const value = Number(searchParams.get(key) ?? defaultValue)
+  const value = searchParams.has(key)
+    ? Number(searchParams.get(key)) - 1
+    : defaultValue
 
   const setValue = (value: number) => {
     const currentValue = searchParams.get(key)
-    const newValue = `${value}`
+    const newValue = `${value + 1}`
 
     if (currentValue !== newValue) {
       searchParams.delete(key)
