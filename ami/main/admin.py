@@ -26,6 +26,26 @@ from .models import (
 )
 
 
+class AdminBase(admin.ModelAdmin):
+    """Mixin to add ``created_at`` and ``updated_at`` to admin panel."""
+
+    readonly_fields = ("created_at", "updated_at")
+
+    @admin.action(description="Save selected instances in the background")
+    def save_async(self, request: HttpRequest, queryset: QuerySet[SourceImage]) -> None:
+        app_label = self.model._meta.app_label
+        model_name = self.model._meta.model_name
+        assert app_label and model_name, "Model must have app_label and model_name"
+        batch_size = 10
+        # @TODO should these IDs be split into chunks here for millions of records?
+        # Can we use a queryset iterator or send the queryset directly to the task?
+        instance_pks = list(queryset.values_list("pk", flat=True))
+        tasks.save_model_instances(app_label=app_label, model_name=model_name, pks=instance_pks, batch_size=100)
+        self.message_user(request, f"Saving {len(instance_pks)} instances in background in batches of {batch_size}.")
+
+    actions = [save_async]
+
+
 @admin.register(BlogPost)
 class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
     """Admin panel example for ``BlogPost`` model."""
@@ -135,13 +155,14 @@ class EventAdmin(admin.ModelAdmin[Event]):
 
 
 @admin.register(SourceImage)
-class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
+class SourceImageAdmin(AdminBase):
     """Admin panel example for ``SourceImage`` model."""
 
     list_display = (
         "path",
         "timestamp",
         "event",
+        "detections_count",
         "deployment",
         "width",
         "height",
