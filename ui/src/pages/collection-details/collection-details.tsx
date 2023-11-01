@@ -2,7 +2,6 @@ import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useCaptures } from 'data-services/hooks/captures/useCaptures'
 import { useCollectionDetails } from 'data-services/hooks/collections/useCollectionDetails'
 import { IconType } from 'design-system/components/icon/icon'
-
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'

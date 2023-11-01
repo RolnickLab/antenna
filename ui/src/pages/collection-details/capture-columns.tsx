@@ -2,6 +2,7 @@ import { Capture } from 'data-services/models/capture'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
+  CellTheme,
   ImageCellTheme,
   TableColumn,
   TextAlign,
@@ -51,12 +52,28 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
-    renderCell: () => <BasicTableCell />,
+    renderCell: (item: Capture) => (
+      <Link
+        to={APP_ROUTES.DEPLOYMENT_DETAILS({
+          projectId,
+          deploymentId: item.deploymentId,
+        })}
+      >
+        <BasicTableCell
+          value={item.deploymentLabel}
+          theme={CellTheme.Primary}
+        />
+      </Link>
+    ),
   },
   {
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
-    renderCell: () => <BasicTableCell />,
+    renderCell: (item: Capture) => (
+      <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+        <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
+      </Link>
+    ),
   },
   {
     id: 'detections',

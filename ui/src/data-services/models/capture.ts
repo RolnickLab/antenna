@@ -38,7 +38,11 @@ export class Capture {
   }
 
   get deploymentId(): string {
-    return this._capture.deployment?.id ?? '' // TODO: Not working yet
+    return this._capture.deployment.id
+  }
+
+  get deploymentLabel(): string {
+    return this._capture.deployment.name
   }
 
   get detections(): CaptureDetection[] {
@@ -54,11 +58,15 @@ export class Capture {
   }
 
   get numDetections(): number {
-    return this._capture.detections_count
+    return this._capture.detections_count ?? 0
   }
 
   get sessionId(): string {
-    return this._capture.event?.id ?? '' // TODO: Not working yet
+    return this._capture.event.id
+  }
+
+  get sessionLabel(): string {
+    return this._capture.event.name
   }
 
   get src(): string {
