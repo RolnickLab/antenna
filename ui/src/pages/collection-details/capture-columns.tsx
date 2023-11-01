@@ -69,9 +69,4 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       <BasicTableCell value={item.numDetections} />
     ),
   },
-  {
-    id: 'occurrences',
-    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
-    renderCell: () => <BasicTableCell />,
-  },
 ]
