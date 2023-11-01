@@ -2,7 +2,8 @@ import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useCaptures } from 'data-services/hooks/captures/useCaptures'
 import { useCollectionDetails } from 'data-services/hooks/collections/useCollectionDetails'
 import { IconType } from 'design-system/components/icon/icon'
-import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
+
+import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -33,7 +34,7 @@ export const CollectionDetails = () => {
 
   // Collection captures
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { pagination, setPage } = usePagination()
   const { captures, total, isLoading, isFetching, error } = useCaptures({
     projectId,
     pagination,
@@ -91,11 +92,9 @@ export const CollectionDetails = () => {
 
       {captures?.length ? (
         <PaginationBar
-          page={pagination.page}
-          perPage={pagination.perPage}
+          pagination={pagination}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
     </>

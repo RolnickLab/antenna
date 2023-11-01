@@ -1,6 +1,6 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useCollections } from 'data-services/hooks/collections/useCollections'
-import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
+import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import { Error } from 'pages/error/error'
@@ -13,7 +13,7 @@ import styles from './collections.module.scss'
 export const Collections = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { pagination, setPage } = usePagination()
   const { collections, total, isLoading, isFetching, error } = useCollections({
     projectId,
     pagination,
@@ -41,11 +41,9 @@ export const Collections = () => {
       />
       {collections?.length ? (
         <PaginationBar
-          page={pagination.page}
-          perPage={pagination.perPage}
+          pagination={pagination}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
     </>
