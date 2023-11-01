@@ -1,55 +1,35 @@
-import { useSearchParams } from 'react-router-dom'
+import { TablePaginationSettings } from 'design-system/components/table/types'
+import { useCallback, useState } from 'react'
 
-const DEFAULT_PAGINATION = {
-  page: 0,
-  perPage: 20,
-}
-const SEARCH_PARAM_KEY_PAGE = 'page'
-
-const useSearchParam = ({
-  key,
-  defaultValue,
+export const usePagination = ({
+  defaultPagination = { page: 0, perPage: 20 },
 }: {
-  key: string
-  defaultValue: number
-}) => {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const value = searchParams.has(key)
-    ? Number(searchParams.get(key)) - 1
-    : defaultValue
+  defaultPagination?: TablePaginationSettings
+} = {}) => {
+  const [pagination, setPagination] =
+    useState<TablePaginationSettings>(defaultPagination)
 
-  const setValue = (value: number) => {
-    const currentValue = searchParams.get(key)
-    const newValue = `${value + 1}`
+  const setPrevPage = useCallback(
+    () =>
+      setPagination({
+        ...pagination,
+        page: pagination.page - 1,
+      }),
+    [pagination, setPagination]
+  )
 
-    if (currentValue !== newValue) {
-      searchParams.delete(key)
-      searchParams.set(key, newValue)
-      setSearchParams(searchParams)
-    }
-  }
-
-  const clearValue = () => {
-    if (searchParams.has(key)) {
-      searchParams.delete(key)
-      setSearchParams(searchParams)
-    }
-  }
-
-  return { value, setValue, clearValue }
-}
-
-export const usePagination = () => {
-  const { value: page, setValue: setPage } = useSearchParam({
-    key: SEARCH_PARAM_KEY_PAGE,
-    defaultValue: DEFAULT_PAGINATION.page,
-  })
+  const setNextPage = useCallback(
+    () =>
+      setPagination({
+        ...pagination,
+        page: pagination.page + 1,
+      }),
+    [pagination, setPagination]
+  )
 
   return {
-    pagination: {
-      page,
-      perPage: DEFAULT_PAGINATION.perPage,
-    },
-    setPage,
+    pagination,
+    setPrevPage,
+    setNextPage,
   }
 }

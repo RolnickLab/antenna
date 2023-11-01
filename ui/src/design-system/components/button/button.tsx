@@ -13,7 +13,6 @@ export enum ButtonTheme {
 }
 
 interface ButtonProps {
-  customClass?: string
   disabled?: boolean
   icon?: IconType
   label: string
@@ -26,7 +25,6 @@ interface ButtonProps {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ ...props }, forwardedRef) => {
     const {
-      customClass,
       disabled,
       icon,
       label,
@@ -52,18 +50,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={forwardedRef}
-        className={classNames(
-          styles.button,
-          {
-            [styles.success]: theme === ButtonTheme.Success,
-            [styles.plain]: theme === ButtonTheme.Plain,
-            [styles.neutral]: theme === ButtonTheme.Neutral,
-            [styles.destructive]: theme === ButtonTheme.Destructive,
-            [styles.error]: theme === ButtonTheme.Error,
-            [styles.disabled]: disabled,
-          },
-          customClass
-        )}
+        className={classNames(styles.button, {
+          [styles.success]: theme === ButtonTheme.Success,
+          [styles.plain]: theme === ButtonTheme.Plain,
+          [styles.neutral]: theme === ButtonTheme.Neutral,
+          [styles.destructive]: theme === ButtonTheme.Destructive,
+          [styles.error]: theme === ButtonTheme.Error,
+          [styles.disabled]: disabled,
+        })}
         disabled={disabled}
         type={type}
         onClick={(e) => {

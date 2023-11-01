@@ -1,9 +1,0 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
-
-.infoLabel {
-  display: block;
-  @include paragraph-small();
-  font-weight: 600;
-  color: $color-neutral-500;
-}

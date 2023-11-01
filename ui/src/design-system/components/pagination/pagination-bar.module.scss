@@ -1,28 +1,26 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
-.wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.pageSettings {
+.paginationBar {
+  width: 100%;
   height: 64px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
+  justify-content: space-between;
+
+  span {
+    @include paragraph-small();
+    font-weight: 600;
+    color: $color-neutral-500;
+  }
 }
 
-.pageWindow {
+.paginationButtons {
   display: flex;
   align-items: center;
   justify-content: center;
-}
 
-.divider {
-  @include paragraph-small();
-  font-weight: 600;
-  color: $color-neutral-300;
+  :not(:last-child) {
+    margin-right: 4px;
+  }
 }

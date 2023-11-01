@@ -4,7 +4,7 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
@@ -36,7 +36,7 @@ export const Occurrences = () => {
     detections: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPage } = usePagination()
+  const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
@@ -100,9 +100,11 @@ export const Occurrences = () => {
       </Tabs.Root>
       {occurrences?.length ? (
         <PaginationBar
-          pagination={pagination}
+          page={pagination.page}
+          perPage={pagination.perPage}
           total={total}
-          setPage={setPage}
+          onPrevClick={setPrevPage}
+          onNextClick={setNextPage}
         />
       ) : null}
       {!isLoading && id ? <OccurrenceDetailsDialog id={id} /> : null}

@@ -1,7 +1,7 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessions } from 'data-services/hooks/sessions/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
@@ -31,7 +31,7 @@ export const Sessions = () => {
     species: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPage } = usePagination()
+  const { pagination, setPrevPage, setNextPage } = usePagination()
   const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({
     projectId,
@@ -92,9 +92,11 @@ export const Sessions = () => {
       </Tabs.Root>
       {sessions?.length ? (
         <PaginationBar
-          pagination={pagination}
+          page={pagination.page}
+          perPage={pagination.perPage}
           total={total}
-          setPage={setPage}
+          onPrevClick={setPrevPage}
+          onNextClick={setNextPage}
         />
       ) : null}
     </>
