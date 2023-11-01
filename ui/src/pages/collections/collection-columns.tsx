@@ -15,6 +15,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
+    sortField: 'name',
     renderCell: (item: Collection) => (
       <Link
         to={APP_ROUTES.COLLECTION_DETAILS({ projectId, collectionId: item.id })}
@@ -26,6 +27,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   {
     id: 'sampling-method',
     name: 'Sampling method',
+    sortField: 'method',
     renderCell: (item: Collection) => (
       <BasicTableCell value={item.method} details={item.methodDetails} />
     ),
@@ -33,6 +35,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   {
     id: 'captures',
     name: translate(STRING.FIELD_LABEL_CAPTURES),
+    sortField: 'source_image_count',
     styles: {
       textAlign: TextAlign.Right,
     },
