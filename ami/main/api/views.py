@@ -618,16 +618,15 @@ class JobViewSet(DefaultViewSet):
         else:
             return JobSerializer
 
-    # The default schema is now returned if the progresr or config attrbutes are empty.
-    # def list(self, request, *args, **kwargs):
-    permission_classes = [permissions.AllowAny]
-    #     """
-    #     Return a list of jobs, with the most recent first.
-    #     """
-    #     response = super().list(request, *args, **kwargs)
-    #     response.data["default_config"] = Job.default_config()
-    #     response.data["default_progress"] = Job.default_progress()
-    #     return response
+    @action(detail=True, methods=["post"], name="run")
+    def run(self, request, pk=None):
+        """
+        Run a job (add it to the queue).
+        """
+        job = self.get_object()
+        job.enqueue()
+        job.refresh_from_db()
+        return Response(self.get_serializer(job).data)
 
 
 class PageViewSet(DefaultViewSet):
