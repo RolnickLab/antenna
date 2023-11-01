@@ -8,7 +8,6 @@ import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
 import { SignUp } from 'pages/auth/sign-up'
 import { CollectionDetails } from 'pages/collection-details/collection-details'
-import { Collections } from 'pages/collections/collections'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
@@ -66,7 +65,6 @@ export const App = () => {
                 <Route path="sessions/:id" element={<SessionDetails />} />
                 <Route path="occurrences/:id?" element={<Occurrences />} />
                 <Route path="species/:id?" element={<Species />} />
-                <Route path="collections" element={<Collections />} />
                 <Route path="collections/:id" element={<CollectionDetails />} />
                 <Route path="*" element={<UnderConstruction />} />
               </Route>

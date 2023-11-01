@@ -10,7 +10,7 @@ interface NavigationItem {
   title: string
   icon?: IconType
   count?: number
-  path: string
+  path?: string
   matchPath: string
 }
 
@@ -80,15 +80,6 @@ export const useNavItems = () => {
         matchPath: APP_ROUTES.SPECIES_DETAILS({
           projectId: ':projectId',
           speciesId: '*',
-        }),
-      },
-      {
-        id: 'collections',
-        title: 'Collections',
-        path: APP_ROUTES.COLLECTIONS({ projectId: projectId as string }),
-        matchPath: APP_ROUTES.COLLECTION_DETAILS({
-          projectId: ':projectId',
-          collectionId: '*',
         }),
       },
     ],
