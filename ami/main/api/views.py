@@ -244,6 +244,15 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
     serializer_class = SourceImageCollectionSerializer
 
+    filterset_fields = ["project", "method"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+        "method",
+        "source_image_count",
+    ]
+
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
         """
