@@ -595,7 +595,13 @@ class JobViewSet(DefaultViewSet):
 
     queryset = Job.objects.all()
     serializer_class = JobSerializer
-    filterset_fields = ["status", "project", "deployment"]
+    filterset_fields = [
+        "status",
+        "project",
+        "deployment",
+        "source_image_collection",
+        # "source_image_single", # This is too slow for the DRF browsable API
+    ]
     ordering_fields = [
         "created_at",
         "updated_at",
