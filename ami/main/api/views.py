@@ -224,6 +224,8 @@ class SourceImageViewSet(DefaultViewSet):
         "timestamp",
         "size",
         "detections_count",
+        "deployment__name",
+        "event__start",
     ]
 
     def get_serializer_class(self):

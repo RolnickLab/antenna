@@ -52,6 +52,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    sortField: 'deployment__name',
     renderCell: (item: Capture) => (
       <Link
         to={APP_ROUTES.DEPLOYMENT_DETAILS({
@@ -69,6 +70,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
+    sortField: 'event__start',
     renderCell: (item: Capture) => (
       <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
         <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
