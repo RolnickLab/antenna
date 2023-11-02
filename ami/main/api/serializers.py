@@ -2,7 +2,7 @@ import datetime
 import typing
 import urllib.parse
 
-from django.db.models import Count
+from django.db.models import Count, QuerySet
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
@@ -20,6 +20,7 @@ from ..models import (
     Identification,
     Occurrence,
     Page,
+    Pipeline,
     Project,
     SourceImage,
     SourceImageCollection,
@@ -78,6 +79,17 @@ class ProjectNestedSerializer(DefaultSerializer):
             "image",
             "details",
         ]
+
+
+class PrimaryKeyRelatedFieldWithOwner(serializers.PrimaryKeyRelatedField):
+    def __init__(self, **kwargs):
+        self.queryset: QuerySet
+
+        self.queryset = kwargs["queryset"]
+        super().__init__(**kwargs)
+
+    def get_queryset(self):
+        return self.queryset.filter(owner=self.context["request"].user)
 
 
 class UserNestedSerializer(DefaultSerializer):
@@ -622,6 +634,18 @@ class ClassificationSerializer(DefaultSerializer):
             "score",
             "algorithm",
             "created_at",
+        ]
+
+
+class PipelineNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Pipeline
+        fields = [
+            "id",
+            "name",
+            "details",
+            "created_at",
+            "updated_at",
         ]
 
 
