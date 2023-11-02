@@ -43,6 +43,8 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     renderCell: (item: Job) => {
       const status = (() => {
         switch (item.status) {
+          case JobStatus.Created:
+            return Status.Neutral
           case JobStatus.Pending:
             return Status.Neutral
           case JobStatus.Started:
