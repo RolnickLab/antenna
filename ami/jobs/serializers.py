@@ -4,21 +4,21 @@ from ami.main.api.serializers import (
     DefaultSerializer,
     DeploymentNestedSerializer,
     PipelineNestedSerializer,
-    ProjectNestedSerializer,
-    SourceImageCollectionSerializer,
+    SourceImageCollectionNestedSerializer,
     SourceImageNestedSerializer,
 )
-from ami.main.models import Pipeline, Project, SourceImage, SourceImageCollection
+from ami.main.models import Pipeline, SourceImage, SourceImageCollection
 
 from .models import Job
 
 
 class JobListSerializer(DefaultSerializer):
-    project = ProjectNestedSerializer(read_only=True)
+    delay = serializers.IntegerField()
     deployment = DeploymentNestedSerializer(read_only=True)
     pipeline = PipelineNestedSerializer(read_only=True)
-    source_image_collection = SourceImageCollectionSerializer(read_only=True)
+    source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
+
     source_image_single_id = serializers.PrimaryKeyRelatedField(
         label="Source Image",
         write_only=True,
@@ -53,6 +53,7 @@ class JobListSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
+            "delay",
             "project",
             "deployment",
             "source_image_collection",
@@ -62,9 +63,9 @@ class JobListSerializer(DefaultSerializer):
             "pipeline",
             "pipeline_id",
             "status",
-            "progress",
             "started_at",
             "finished_at",
+            "duration",
             # "duration",
             # "duration_label",
             # "progress",
@@ -79,19 +80,16 @@ class JobListSerializer(DefaultSerializer):
             "result",
             "started_at",
             "finished_at",
-            # "duration",
+            "duration",
         ]
 
 
 class JobSerializer(JobListSerializer):
-    project = ProjectNestedSerializer(read_only=True)
-    project_id = serializers.PrimaryKeyRelatedField(write_only=True, queryset=Project.objects.all(), source="project")
     config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
 
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
             "config",
             "result",
-            "project",
-            "project_id",
+            "progress",
         ]

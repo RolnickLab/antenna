@@ -44,3 +44,13 @@ class JobViewSet(DefaultViewSet):
         job.enqueue()
         job.refresh_from_db()
         return Response(self.get_serializer(job).data)
+
+    @action(detail=True, methods=["post"], name="cancel")
+    def cancel(self, request, pk=None):
+        """
+        Cancel a job (terminate the celery task)
+        """
+        job = self.get_object()
+        job.cancel()
+        job.refresh_from_db()
+        return Response(self.get_serializer(job).data)

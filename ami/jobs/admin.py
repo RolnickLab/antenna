@@ -1,5 +1,3 @@
-import datetime
-
 from django.contrib import admin
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
@@ -30,11 +28,6 @@ class JobAdmin(AdminBase):
         self.message_user(request, f"Queued {queryset.count()} job(s).")
 
     actions = [enqueue_jobs]
-
-    def duration(self, obj: Job) -> datetime.timedelta | None:
-        if obj.started_at and obj.finished_at:
-            return obj.finished_at - obj.started_at
-        return None
 
     exclude = (
         # This takes too long to load in the admin panel
