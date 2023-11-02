@@ -1,6 +1,8 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
+import { Box } from 'design-system/components/box/box'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/plot'
 import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
@@ -52,27 +54,23 @@ export const SessionDetails = () => {
       <div className={styles.playbackWrapper}>
         <Playback session={session} />
       </div>
-      <div className={styles.details}>
-        <div className={styles.detailsContainer}>
-          <div className={styles.detailsContent}>
-            <div className={styles.sessionInfo}>
-              <SessionInfo session={session} />
-            </div>
+      <PlotGrid>
+        <Box>
+          <div className={styles.sessionInfo}>
+            <SessionInfo session={session} />
           </div>
-        </div>
+        </Box>
         {session.summaryData.map((summary, index) => (
-          <div key={index} className={styles.detailsContainer}>
-            <div className={styles.detailsContent}>
-              <Plot
-                title={summary.title}
-                data={summary.data}
-                orientation={summary.orientation}
-                type={summary.type}
-              />
-            </div>
-          </div>
+          <Box key={index}>
+            <Plot
+              title={summary.title}
+              data={summary.data}
+              orientation={summary.orientation}
+              type={summary.type}
+            />
+          </Box>
         ))}
-      </div>
+      </PlotGrid>
     </div>
   )
 }

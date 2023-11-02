@@ -9,7 +9,7 @@ export const Breadcrumbs = ({
   navItems,
   activeNavItemId,
 }: {
-  navItems: { id: string; title: string; path: string }[]
+  navItems: { id: string; title: string; path?: string }[]
   activeNavItemId: string
 }) => {
   const {
@@ -46,26 +46,27 @@ export const Breadcrumbs = ({
   return (
     <div className={styles.breadcrumbs}>
       {breadcrumbs.map((breadcrumb, index) => {
-        if (index === breadcrumbs.length - 1 || !breadcrumb.path) {
-          return (
-            <span key={index} className={styles.breadcrumb}>
-              {breadcrumb.title}
-            </span>
-          )
-        }
+        const isLast = index === breadcrumbs.length - 1
+
         return (
           <Fragment key={index}>
-            <Link
-              to={breadcrumb.path}
-              className={classNames(styles.breadcrumb, styles.link)}
-            >
-              <span>{breadcrumb.title}</span>
-            </Link>
-            <Icon
-              type={IconType.ToggleRight}
-              theme={IconTheme.Neutral}
-              size={8}
-            />
+            {isLast || !breadcrumb.path ? (
+              <span className={styles.breadcrumb}>{breadcrumb.title}</span>
+            ) : (
+              <Link
+                to={breadcrumb.path}
+                className={classNames(styles.breadcrumb, styles.link)}
+              >
+                <span>{breadcrumb.title}</span>
+              </Link>
+            )}
+            {!isLast && (
+              <Icon
+                type={IconType.ToggleRight}
+                theme={IconTheme.Neutral}
+                size={8}
+              />
+            )}
           </Fragment>
         )
       })}

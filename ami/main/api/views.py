@@ -195,10 +195,7 @@ class SourceImageViewSet(DefaultViewSet):
     """
 
     queryset = (
-        SourceImage.objects.annotate(
-            detections_count=models.Count("detections", distinct=True),
-        )
-        .select_related("event", "deployment")
+        SourceImage.objects.select_related("event", "deployment")
         .prefetch_related("detections")
         .order_by("timestamp")
         .all()
@@ -227,6 +224,8 @@ class SourceImageViewSet(DefaultViewSet):
         "timestamp",
         "size",
         "detections_count",
+        "deployment__name",
+        "event__start",
     ]
 
     def get_serializer_class(self):
@@ -246,6 +245,15 @@ class SourceImageCollectionViewSet(DefaultViewSet):
 
     queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
     serializer_class = SourceImageCollectionSerializer
+
+    filterset_fields = ["project", "method"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+        "method",
+        "source_image_count",
+    ]
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):

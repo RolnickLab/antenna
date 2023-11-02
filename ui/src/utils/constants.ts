@@ -37,4 +37,10 @@ export const APP_ROUTES = {
 
   SPECIES_DETAILS: (params: { projectId: string; speciesId: string }) =>
     `/projects/${params.projectId}/species/${params.speciesId}`,
+
+  COLLECTIONS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/collections`,
+
+  COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
+    `/projects/${params.projectId}/collections/${params.collectionId}`,
 }
