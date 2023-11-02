@@ -851,6 +851,16 @@ class SourceImageUploadSerializer(DefaultSerializer):
         return value
 
 
+class SourceImageCollectionNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImageCollection
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
 class SourceImageCollectionSerializer(DefaultSerializer):
     source_images = serializers.SerializerMethodField()
     kwargs = serializers.JSONField(initial=dict, required=False)

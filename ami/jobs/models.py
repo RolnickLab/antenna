@@ -189,6 +189,7 @@ class Job(BaseModel):
     progress = models.JSONField(default=default_job_progress, null=True, blank=False)
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
+    delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
 
     project = models.ForeignKey(
         Project,
@@ -253,19 +254,26 @@ class Job(BaseModel):
         self.finished_at = None
         self.save()
 
-        # check if there is a delay seconds configured
-        delay_seconds = 0
-        config = self.config or {}
-        for stage in config.get("stages", []):
-            if stage.get("key") == "delay_test":
-                for param in stage.get("params", []):
-                    if param.get("key") == "delay_seconds":
-                        delay_seconds = param.get("value", 0)
-        time.sleep(delay_seconds)
+        if self.delay:
+            time.sleep(self.delay)
 
         self.status = "SUCCESS"
         self.finished_at = datetime.datetime.now()
         self.save()
+
+    def cancel(self):
+        """
+        Terminate the celery task.
+        """
+        task_id = self.task_id
+        ami.tasks.run_job.AsyncResult(task_id).revoke(terminate=True)
+        self.status = "REVOKED"
+        self.save()
+
+    def duration(self) -> datetime.timedelta | None:
+        if self.started_at and self.finished_at:
+            return self.finished_at - self.started_at
+        return None
 
     @classmethod
     def default_config(cls) -> dict:
