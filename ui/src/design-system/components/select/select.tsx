@@ -4,24 +4,28 @@ import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './select.module.scss'
 
 interface SelectProps {
-  label: string
-  placeholder?: string
+  description?: string
+  label?: string
   options?: {
     value: string
     label: string
   }[]
-  description: string
+  placeholder?: string
+  value?: string
+  onValueChange: (value: string) => void
 }
 
 export const Select = ({
-  label,
-  placeholder,
-  options = [],
   description,
+  label,
+  options = [],
+  placeholder,
+  value,
+  onValueChange,
 }: SelectProps) => (
   <div>
-    <label className={styles.label}>{label}</label>
-    <_Select.Root>
+    {label && <label className={styles.label}>{label}</label>}
+    <_Select.Root value={value} onValueChange={onValueChange}>
       <_Select.Trigger className={styles.selectTrigger}>
         <_Select.Value placeholder={placeholder} />
         <_Select.Icon className={styles.selectIcon}>
@@ -52,7 +56,9 @@ export const Select = ({
         </_Select.Content>
       </_Select.Portal>
     </_Select.Root>
-    <span className={styles.description}>{description}</span>
+    {description?.length && (
+      <span className={styles.description}>{description}</span>
+    )}
   </div>
 )
 
@@ -71,7 +77,7 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
     >
       <_Select.ItemText>{label}</_Select.ItemText>
       <_Select.ItemIndicator className={styles.itemIndicator}>
-        <Icon type={IconType.Checkmark} size={12} theme={IconTheme.Neutral} />
+        <Icon type={IconType.RadixCheck} size={12} theme={IconTheme.Neutral} />
       </_Select.ItemIndicator>
     </_Select.Item>
   )

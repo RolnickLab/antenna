@@ -8,12 +8,14 @@ interface JobFieldValues {
   delay?: number
   name: string
   projectId: string
+  sourceImages?: string
 }
 
 const convertToServerFieldValues = (fieldValues: JobFieldValues) => ({
   delay: fieldValues.delay ?? 0,
   name: fieldValues.name,
-  project: `http://api.dev.insectai.org/api/v2/projects/${fieldValues.projectId}/`, // TODO: Update
+  project: `http://api.dev.insectai.org/api/v2/projects/${fieldValues.projectId}/`,
+  source_image_collection_id: fieldValues.sourceImages,
 })
 
 export const useCreateJob = (onSuccess?: (id: string) => void) => {

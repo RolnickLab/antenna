@@ -1,3 +1,4 @@
+import { FormController } from 'components/form/form-controller'
 import { FormField } from 'components/form/form-field'
 import {
   FormActions,
@@ -8,13 +9,16 @@ import {
 import { FormConfig } from 'components/form/types'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
+import { CollectionsPicker } from './collections-picker'
 
 interface JobFormValues {
   name: string
   delay: number
+  sourceImages?: string
 }
 
 const config: FormConfig = {
@@ -30,6 +34,10 @@ const config: FormConfig = {
       required: true,
       min: 0,
     },
+  },
+  sourceImages: {
+    label: 'Source images',
+    rules: {},
   },
 }
 
@@ -51,6 +59,7 @@ export const JobDetailsForm = ({
   } = useForm<JobFormValues>({
     defaultValues: {
       name: '',
+      delay: 0,
     },
     mode: 'onChange',
   })
@@ -79,6 +88,25 @@ export const JobDetailsForm = ({
             type="number"
             config={config}
             control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormController
+            name="sourceImages"
+            control={control}
+            config={config.sourceImages}
+            render={({ field, fieldState }) => (
+              <InputContent
+                description={config[field.name].description}
+                label={config[field.name].label}
+                error={fieldState.error?.message}
+              >
+                <CollectionsPicker
+                  value={field.value}
+                  onValueChange={field.onChange}
+                />
+              </InputContent>
+            )}
           />
         </FormRow>
       </FormSection>

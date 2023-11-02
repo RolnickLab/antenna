@@ -5,7 +5,7 @@ import { IconType } from 'design-system/components/icon/icon'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
-import { JobDetailsForm } from './job-details-form'
+import { JobDetailsForm } from './job-details-form/job-details-form'
 import styles from './job-details.module.scss'
 
 const CLOSE_TIMEOUT = 1000
