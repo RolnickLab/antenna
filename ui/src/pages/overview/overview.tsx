@@ -4,6 +4,7 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { useOutletContext } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import styles from './overview.module.scss'
@@ -51,8 +52,14 @@ export const Overview = () => {
       </div>
       <Tabs.Root defaultValue="summary">
         <Tabs.List>
-          <Tabs.Trigger value="summary" label="Summary" />
-          <Tabs.Trigger value="collections" label="Collections" />
+          <Tabs.Trigger
+            value="summary"
+            label={translate(STRING.TAB_ITEM_SUMMARY)}
+          />
+          <Tabs.Trigger
+            value="collections"
+            label={translate(STRING.TAB_ITEM_COLLECTIONS)}
+          />
         </Tabs.List>
         <Tabs.Content value="summary">
           <Summary project={project} />

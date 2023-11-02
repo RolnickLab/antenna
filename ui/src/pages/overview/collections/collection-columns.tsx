@@ -26,7 +26,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   },
   {
     id: 'sampling-method',
-    name: 'Sampling method',
+    name: translate(STRING.FIELD_LABEL_SAMPLING_METHOD),
     sortField: 'method',
     renderCell: (item: Collection) => (
       <BasicTableCell value={item.method} details={item.methodDetails} />
@@ -43,13 +43,13 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   },
   {
     id: 'created-at',
-    name: 'Created at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
     renderCell: (item: Collection) => <BasicTableCell value={item.createdAt} />,
   },
   {
     id: 'updated-at',
-    name: 'Updated at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: Collection) => <BasicTableCell value={item.updatedAt} />,
   },

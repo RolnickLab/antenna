@@ -17,7 +17,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
 ) => [
   {
     id: 'thumbnail',
-    name: 'Thumbnail',
+    name: translate(STRING.FIELD_LABEL_THUMBNAIL),
     renderCell: (item: Capture, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
 
@@ -43,7 +43,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   },
   {
     id: 'timestamp',
-    name: 'Timestamp',
+    name: translate(STRING.FIELD_LABEL_TIMESTAMP),
     sortField: 'timestamp',
     renderCell: (item: Capture) => (
       <BasicTableCell value={item.dateTimeLabel} />
