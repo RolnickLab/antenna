@@ -157,9 +157,10 @@ class EventViewSet(DefaultViewSet):
         Event.objects.select_related("deployment")
         .annotate(
             captures_count=models.Count("captures", distinct=True),
-            detections_count=models.Count("captures__detections"),
-            occurrences_count=models.Count("occurrences"),
+            detections_count=models.Count("captures__detections", distinct=True),
+            occurrences_count=models.Count("occurrences", distinct=True),
             taxa_count=models.Count("occurrences__determination", distinct=True),
+            duration=models.F("end") - models.F("start"),
         )
         .select_related("deployment", "project")
     )  # .prefetch_related("captures").all()
@@ -168,7 +169,9 @@ class EventViewSet(DefaultViewSet):
     ordering_fields = [
         "created_at",
         "updated_at",
+        "deployment",
         "start",
+        "start__time",
         "captures_count",
         "detections_count",
         "occurrences_count",
@@ -192,10 +195,7 @@ class SourceImageViewSet(DefaultViewSet):
     """
 
     queryset = (
-        SourceImage.objects.annotate(
-            detections_count=models.Count("detections", distinct=True),
-        )
-        .select_related("event", "deployment")
+        SourceImage.objects.select_related("event", "deployment")
         .prefetch_related("detections")
         .order_by("timestamp")
         .all()
@@ -224,6 +224,8 @@ class SourceImageViewSet(DefaultViewSet):
         "timestamp",
         "size",
         "detections_count",
+        "deployment__name",
+        "event__start",
     ]
 
     def get_serializer_class(self):
@@ -243,6 +245,15 @@ class SourceImageCollectionViewSet(DefaultViewSet):
 
     queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
     serializer_class = SourceImageCollectionSerializer
+
+    filterset_fields = ["project", "method"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+        "method",
+        "source_image_count",
+    ]
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
@@ -310,13 +321,30 @@ class OccurrenceViewSet(DefaultViewSet):
     queryset = (
         Occurrence.objects.annotate(
             detections_count=models.Count("detections", distinct=True),
+            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
+            first_appearance_time=models.Min("detections__timestamp__time"),
         )
-        .select_related("determination", "deployment", "event")
+        .select_related(
+            "determination",
+            "deployment",
+            "event",
+        )
+        .prefetch_related("detections")
         .all()
     )
     serializer_class = OccurrenceSerializer
     filterset_fields = ["event", "deployment", "determination", "project"]
-    ordering_fields = ["created_at", "updated_at", "timestamp"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "event__start",
+        "first_appearance_time",
+        "duration",
+        "deployment",
+        "determination",
+        "event",
+        "detections_count",
+    ]
 
     def get_serializer_class(self):
         """

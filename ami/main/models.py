@@ -4,9 +4,9 @@ import functools
 import hashlib
 import logging
 import textwrap
+import time
 import typing
 import urllib.parse
-from datetime import timedelta
 from typing import Final, final  # noqa: F401
 
 from django.apps import apps
@@ -539,7 +539,14 @@ class Event(BaseModel):
         return self.end - self.start
 
     def duration_label(self) -> str:
-        return ami.utils.dates.format_timedelta(self.duration())
+        """
+        Format the duration for display.
+
+        If duration was populated by a query annotation, use that
+        otherwise call the duration() method to calculate it.
+        """
+        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        return ami.utils.dates.format_timedelta(duration)
 
     # These are now loaded with annotations in EventViewSet
     # But the serializer complains if they're not defined here.
@@ -612,7 +619,7 @@ class Event(BaseModel):
 
 
 def group_images_into_events(
-    deployment: Deployment, max_time_gap=timedelta(minutes=120), delete_empty=True
+    deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
@@ -887,6 +894,7 @@ class SourceImage(BaseModel):
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
+    detections_count = models.IntegerField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
@@ -914,9 +922,8 @@ class SourceImage(BaseModel):
     # backwards compatibility
     url = public_url
 
-    def detections_count(self) -> int | None:
-        # return self.detections.count()
-        return None
+    def get_detections_count(self) -> int:
+        return self.detections.distinct().count()
 
     def get_base_url(self) -> str:
         """
@@ -962,6 +969,8 @@ class SourceImage(BaseModel):
             self.public_base_url = self.get_base_url()
         if not self.project and self.deployment:
             self.project = self.deployment.project
+        if self.pk is not None:
+            self.detections_count = self.get_detections_count()
 
     def save(self, *args, **kwargs):
         self.update_calculated_fields()
@@ -981,6 +990,27 @@ class SourceImage(BaseModel):
             models.Index(fields=["event", "timestamp"]),
             models.Index(fields=["timestamp"]),
         ]
+
+
+def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None) -> int:
+    """
+    Update the detection count for all source images using a bulk update query.
+
+    @TODO Needs testing.
+    """
+    qs = qs or SourceImage.objects.all()
+    subquery = models.Subquery(
+        Detection.objects.filter(source_image_id=models.OuterRef("pk"))
+        .values("source_image_id")
+        .annotate(count=models.Count("id"))
+        .values("count")
+    )
+    start_time = time.time()
+    num_updated = qs.annotate(count=subquery).update(detections_count=models.F("count"))
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    logger.info(f"Updated detection counts for {num_updated} source images in {elapsed_time:.2f} seconds")
+    return num_updated
 
 
 def set_dimensions_for_collection(
@@ -1445,15 +1475,24 @@ class Occurrence(BaseModel):
 
     @functools.cached_property
     def first_appearance(self) -> SourceImage | None:
+        # @TODO it appears we only need the first timestamp, that could be an annotated value
         first = self.detections.order_by("timestamp").select_related("source_image").first()
         if first:
             return first.source_image
 
     @functools.cached_property
     def last_appearance(self) -> SourceImage | None:
+        # @TODO it appears we only need the last timestamp, that could be an annotated value
         last = self.detections.order_by("-timestamp").select_related("source_image").first()
         if last:
             return last.source_image
+
+    def first_appearance_time(self) -> datetime.time | None:
+        """
+        Return the time part only of the first appearance.
+        ONLY if it has been added with a query annotation.
+        """
+        return None
 
     def duration(self) -> datetime.timedelta | None:
         first = self.first_appearance
@@ -1464,7 +1503,12 @@ class Occurrence(BaseModel):
             return None
 
     def duration_label(self) -> str | None:
-        return ami.utils.dates.format_timedelta(self.duration())
+        """
+        If duration has been calculated by a query annotation, use that value
+        otherwise call the duration() method to calculate it.
+        """
+        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:

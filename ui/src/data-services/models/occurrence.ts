@@ -26,12 +26,12 @@ export class Occurrence {
     return getFormatedDateString({ date })
   }
 
-  get deploymentLabel(): string {
-    return this._occurrence.deployment.name
-  }
-
   get deploymentId(): string {
     return `${this._occurrence.deployment.id}`
+  }
+
+  get deploymentLabel(): string {
+    return this._occurrence.deployment.name
   }
 
   get determinationId(): string {

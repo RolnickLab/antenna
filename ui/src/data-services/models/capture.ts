@@ -1,3 +1,4 @@
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 
 export type ServerCapture = any // TODO: Update this type
@@ -30,6 +31,20 @@ export class Capture {
     }
   }
 
+  get dateTimeLabel(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._capture.timestamp),
+    })
+  }
+
+  get deploymentId(): string {
+    return this._capture.deployment.id
+  }
+
+  get deploymentLabel(): string {
+    return this._capture.deployment.name
+  }
+
   get detections(): CaptureDetection[] {
     return this._detections
   }
@@ -43,7 +58,15 @@ export class Capture {
   }
 
   get numDetections(): number {
-    return this._capture.detections_count
+    return this._capture.detections_count ?? 0
+  }
+
+  get sessionId(): string {
+    return this._capture.event.id
+  }
+
+  get sessionLabel(): string {
+    return this._capture.event.name
   }
 
   get src(): string {

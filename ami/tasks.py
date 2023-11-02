@@ -95,3 +95,31 @@ def regroup_events(deployment_id: int) -> None:
         logger.info(f"{deployment } now has {len(events)} events")
     else:
         logger.error(f"Deployment with id {deployment_id} not found")
+
+
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def save_model_instance(app_label: str, model_name: str, pk: int | str) -> bool:
+    """
+    Call the save method on a model instance.
+    """
+    Model = apps.get_model(app_label, model_name)
+    instance = Model.objects.get(pk=pk)
+    instance.save()
+    return True
+
+
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def save_model_instances(app_label: str, model_name: str, pks: list[int | str], batch_size: int = 100):
+    """
+    Call the save method on many model instances.
+    """
+    Model = apps.get_model(app_label, model_name)
+    instance_pks = Model.objects.filter(pk__in=pks).values_list("pk", flat=True)
+    arguments = [(app_label, model_name, pk) for pk in instance_pks]
+    logger.info(f"Saving {len(instance_pks)} instances of {app_label}.{model_name}")
+    group = save_model_instance.chunks(arguments, batch_size).group()
+    # Offset the start time to limit the number of tasks that are started at once
+    results = group.skew(start=0.1, stop=0.1, step=0.1)()
+    result = all(results)
+    if not result:
+        logger.error(f"Failed to save all {len(instance_pks)} instances of {app_label}.{model_name}")

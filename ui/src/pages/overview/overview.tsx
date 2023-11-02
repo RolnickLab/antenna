@@ -1,11 +1,14 @@
 import { Project } from 'data-services/models/project'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { Plot } from 'design-system/components/plot/plot'
+import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { useOutletContext } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
+import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import styles from './overview.module.scss'
+import { Summary } from './summary/summary'
 
 export const Overview = () => {
   const { project, isLoading, error } = useOutletContext<{
@@ -47,21 +50,24 @@ export const Overview = () => {
           <DeploymentsMap deployments={project.deployments} />
         </div>
       </div>
-      <div className={styles.plotsContainer}>
-        <div className={styles.plotsContent}>
-          <span className={styles.label}>Summary</span>
-          <div className={styles.plots}>
-            {project.summaryData.map((summary, index) => (
-              <Plot
-                key={index}
-                title={summary.title}
-                data={summary.data}
-                type={summary.type}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+      <Tabs.Root defaultValue="summary">
+        <Tabs.List>
+          <Tabs.Trigger
+            value="summary"
+            label={translate(STRING.TAB_ITEM_SUMMARY)}
+          />
+          <Tabs.Trigger
+            value="collections"
+            label={translate(STRING.TAB_ITEM_COLLECTIONS)}
+          />
+        </Tabs.List>
+        <Tabs.Content value="summary">
+          <Summary project={project} />
+        </Tabs.Content>
+        <Tabs.Content value="collections">
+          <Collections />
+        </Tabs.Content>
+      </Tabs.Root>
     </>
   )
 }

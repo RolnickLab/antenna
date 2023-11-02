@@ -33,6 +33,7 @@ export enum STRING {
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_IDENTIFICATION,
+  ENTITY_TYPE_JOB,
   ENTITY_TYPE_PROJECT,
   ENTITY_VIEW,
 
@@ -41,6 +42,7 @@ export enum STRING {
   FIELD_LABEL_CAPTURES,
   FIELD_LABEL_COMMENT,
   FIELD_LABEL_CONNECTION_STATUS,
+  FIELD_LABEL_CREATED_AT,
   FIELD_LABEL_DATE,
   FIELD_LABEL_DEPLOYMENT,
   FIELD_LABEL_DESCRIPTION,
@@ -59,16 +61,20 @@ export enum STRING {
   FIELD_LABEL_PASSWORD,
   FIELD_LABEL_PATH,
   FIELD_LABEL_PROJECT,
+  FIELD_LABEL_SAMPLING_METHOD,
   FIELD_LABEL_SESSION,
   FIELD_LABEL_SESSIONS,
   FIELD_LABEL_SOURCE_IMAGES,
   FIELD_LABEL_SPECIES,
   FIELD_LABEL_STATUS,
   FIELD_LABEL_TAXON,
+  FIELD_LABEL_THUMBNAIL,
   FIELD_LABEL_TIME,
+  FIELD_LABEL_TIMESTAMP,
   FIELD_LABEL_TRAINING_IMAGES,
   FIELD_LABEL_FIRST_DATE,
   FIELD_LABEL_LAST_DATE,
+  FIELD_LABEL_UPDATED_AT,
   FIELD_LABEL_UPLOADED_CAPTURES,
 
   /* MESSAGE */
@@ -87,6 +93,7 @@ export enum STRING {
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS,
   MESSAGE_PASSWORD_FORMAT,
+  MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
@@ -101,9 +108,11 @@ export enum STRING {
   NAV_ITEM_SPECIES,
 
   /* TAB_ITEM */
+  TAB_ITEM_COLLECTIONS,
   TAB_ITEM_FIELDS,
   TAB_ITEM_GALLERY,
   TAB_ITEM_IDENTIFICATION,
+  TAB_ITEM_SUMMARY,
   TAB_ITEM_TABLE,
 
   /* OTHER */
@@ -160,10 +169,11 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
+  [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
   [STRING.FIELD_LABEL_DATE]: 'Date',
   [STRING.FIELD_LABEL_DEPLOYMENT]: 'Deployment',
   [STRING.FIELD_LABEL_DESCRIPTION]: 'Description',
-  [STRING.FIELD_LABEL_DETECTIONS]: 'Detection(s)',
+  [STRING.FIELD_LABEL_DETECTIONS]: 'Detections',
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_GENERAL]: 'General',
@@ -178,16 +188,20 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_PASSWORD]: 'Password',
   [STRING.FIELD_LABEL_PATH]: 'Path',
   [STRING.FIELD_LABEL_PROJECT]: 'Project',
+  [STRING.FIELD_LABEL_SAMPLING_METHOD]: 'Sampling method',
   [STRING.FIELD_LABEL_SESSION]: 'Session',
   [STRING.FIELD_LABEL_SESSIONS]: 'Sessions',
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.FIELD_LABEL_SPECIES]: 'Species',
   [STRING.FIELD_LABEL_STATUS]: 'Status',
   [STRING.FIELD_LABEL_TAXON]: 'Taxon',
+  [STRING.FIELD_LABEL_THUMBNAIL]: 'Thumbnail',
   [STRING.FIELD_LABEL_TIME]: 'Time',
+  [STRING.FIELD_LABEL_TIMESTAMP]: 'Timestamp',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Training images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
+  [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
   [STRING.FIELD_LABEL_UPLOADED_CAPTURES]: 'Manually uploaded captures',
 
   /* ENTITY */
@@ -198,6 +212,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_TYPE_CAPTURE]: 'dapture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'deployment',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
+  [STRING.ENTITY_TYPE_JOB]: 'job',
   [STRING.ENTITY_TYPE_PROJECT]: 'project',
   [STRING.ENTITY_VIEW]: 'View {{type}}',
 
@@ -208,7 +223,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A maximum of {{numCaptures}} captures can be uploaded.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
     'To upload more than {{numCaptures}} images you must configure a data source.',
-
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
     'Deployment must be saved before uploading captures.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
@@ -222,11 +236,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'The image must smaller than {{value}} {{unit}}.',
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
-
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
   [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
+  [STRING.MESSAGE_RESULT_RANGE]:
+    'Showing {{start}}-{{end}} of {{total}} results',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
@@ -241,10 +256,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_SPECIES]: 'Species',
 
   /* TAB_ITEM */
+  [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
   [STRING.TAB_ITEM_TABLE]: 'Table',
+  [STRING.TAB_ITEM_SUMMARY]: 'Summary',
 
   /* OTHER */
   [STRING.CLOSE]: 'Close',

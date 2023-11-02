@@ -1,5 +1,4 @@
-import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
-import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 
@@ -28,11 +27,7 @@ export class Job {
       return
     }
 
-    const date = new Date(this._job.finished_at)
-    const dateString = getFormatedDateString({ date })
-    const timeString = getFormatedTimeString({ date })
-
-    return `${dateString} ${timeString}`
+    return getFormatedDateTimeString({ date: new Date(this._job.finished_at) })
   }
 
   get id(): string {
@@ -44,11 +39,7 @@ export class Job {
       return
     }
 
-    const date = new Date(this._job.started_at)
-    const dateString = getFormatedDateString({ date })
-    const timeString = getFormatedTimeString({ date })
-
-    return `${dateString} ${timeString}`
+    return getFormatedDateTimeString({ date: new Date(this._job.started_at) })
   }
 
   get name(): string {
