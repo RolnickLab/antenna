@@ -265,10 +265,12 @@ class Job(BaseModel):
         """
         Terminate the celery task.
         """
-        task_id = self.task_id
-        ami.tasks.run_job.AsyncResult(task_id).revoke(terminate=True)
-        self.status = "REVOKED"
-        self.save()
+        if self.task_id:
+            task = ami.tasks.run_job.AsyncResult(self.task_id)
+            if task:
+                task.revoke(terminate=True)
+                self.status = task.status
+                self.save()
 
     def duration(self) -> datetime.timedelta | None:
         if self.started_at and self.finished_at:
