@@ -4,7 +4,7 @@ import time
 from django.db import models
 
 import ami.tasks
-from ami.main.models import BaseModel, Deployment, Project, SourceImage, SourceImageCollection, as_choices
+from ami.main.models import BaseModel, Deployment, Pipeline, Project, SourceImage, SourceImageCollection, as_choices
 
 # These come directly from Celery
 _JOB_STATES = ["CREATED", "PENDING", "STARTED", "SUCCESS", "FAILURE", "RETRY", "REVOKED", "RECEIVED"]
@@ -211,6 +211,13 @@ class Job(BaseModel):
     )
     source_image_collection = models.ForeignKey(
         SourceImageCollection,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jobs",
+    )
+    pipeline = models.ForeignKey(
+        Pipeline,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

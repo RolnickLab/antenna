@@ -3,11 +3,12 @@ from rest_framework import serializers
 from ami.main.api.serializers import (
     DefaultSerializer,
     DeploymentNestedSerializer,
+    PipelineNestedSerializer,
     ProjectNestedSerializer,
     SourceImageCollectionSerializer,
     SourceImageNestedSerializer,
 )
-from ami.main.models import Project, SourceImageCollection
+from ami.main.models import Pipeline, Project, SourceImage, SourceImageCollection
 
 from .models import Job
 
@@ -15,21 +16,36 @@ from .models import Job
 class JobListSerializer(DefaultSerializer):
     project = ProjectNestedSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
+    pipeline = PipelineNestedSerializer(read_only=True)
     source_image_collection = SourceImageCollectionSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
-    source_image_collection_id = serializers.PrimaryKeyRelatedField(
+    source_image_single_id = serializers.PrimaryKeyRelatedField(
+        label="Source Image",
         write_only=True,
         required=False,
-        # @TODO should this be filtered by project
+        allow_null=True,
+        # @TODO should this be filtered by project (from URL for new job?)
+        queryset=SourceImage.objects.all(),
+        source="source_image_single",
+    )
+    source_image_collection_id = serializers.PrimaryKeyRelatedField(
+        label="Source Image Collection",
+        write_only=True,
+        required=False,
+        allow_null=True,
+        # @TODO should this be filtered by project (from URL for new job?)
         queryset=SourceImageCollection.objects.all(),
         source="source_image_collection",
     )
-    # source_image_single_id = serializers.PrimaryKeyRelatedField(
-    #     write_only=True,
-    #     # @TODO should this be filtered by project
-    #     queryset=SourceImage.objects.all(),
-    #     source="source_image_single",
-    # )
+    pipeline_id = serializers.PrimaryKeyRelatedField(
+        label="Pipeline",
+        write_only=True,
+        required=False,
+        allow_null=True,
+        # @TODO should this be filtered by project (from URL for new job?)
+        queryset=Pipeline.objects.all(),
+        source="pipeline",
+    )
 
     class Meta:
         model = Job
@@ -42,6 +58,9 @@ class JobListSerializer(DefaultSerializer):
             "source_image_collection",
             "source_image_collection_id",
             "source_image_single",
+            "source_image_single_id",
+            "pipeline",
+            "pipeline_id",
             "status",
             "progress",
             "started_at",

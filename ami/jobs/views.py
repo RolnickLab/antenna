@@ -18,8 +18,6 @@ class JobViewSet(DefaultViewSet):
         "status",
         "project",
         "deployment",
-        "source_image_collection",
-        # "source_image_single", # This is too slow for the DRF browsable API
     ]
     ordering_fields = [
         "created_at",
