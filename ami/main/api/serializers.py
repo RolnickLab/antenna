@@ -7,6 +7,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
 
+from ami.jobs.models import Job
 from ami.main.models import _create_source_image_from_upload
 from ami.users.models import User
 from ami.utils.dates import get_image_timestamp_from_filename
@@ -772,8 +773,21 @@ class SourceImageListSerializer(DefaultSerializer):
         ]
 
 
+class JobStatusSerializer(DefaultSerializer):
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "details",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class SourceImageSerializer(SourceImageListSerializer):
     uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    jobs = JobStatusSerializer(many=True, read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -781,6 +795,7 @@ class SourceImageSerializer(SourceImageListSerializer):
         fields = SourceImageListSerializer.Meta.fields + [
             "uploaded_by",
             "test_image",
+            "jobs",
         ]
 
 
@@ -839,6 +854,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
 class SourceImageCollectionSerializer(DefaultSerializer):
     source_images = serializers.SerializerMethodField()
     kwargs = serializers.JSONField(initial=dict, required=False)
+    jobs = JobStatusSerializer(many=True, read_only=True)
 
     class Meta:
         model = SourceImageCollection
@@ -851,6 +867,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "kwargs",
             "source_images",
             "source_image_count",
+            "jobs",
             "created_at",
             "updated_at",
         ]

@@ -24,6 +24,7 @@ from ..models import (
     Identification,
     Occurrence,
     Page,
+    Pipeline,
     Project,
     SourceImage,
     SourceImageCollection,
@@ -44,6 +45,7 @@ from .serializers import (
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
+    PipelineNestedSerializer,
     ProjectListSerializer,
     ProjectSerializer,
     SourceImageCollectionSerializer,
@@ -193,7 +195,7 @@ class SourceImageViewSet(DefaultViewSet):
 
     queryset = (
         SourceImage.objects.select_related("event", "deployment")
-        .prefetch_related("detections")
+        .prefetch_related("detections", "jobs")
         .order_by("timestamp")
         .all()
     )
@@ -240,7 +242,13 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     Endpoint for viewing collections or samples of source images.
     """
 
-    queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
+    queryset = (
+        SourceImageCollection.objects.annotate(
+            source_image_count=models.Count("images"),
+        )
+        .prefetch_related("jobs")
+        .all()
+    )
     serializer_class = SourceImageCollectionSerializer
 
     filterset_fields = ["project", "method"]
@@ -485,6 +493,20 @@ class AlgorithmViewSet(DefaultViewSet):
         "version",
     ]
     search_fields = ["name"]
+
+
+class PipelineViewSet(DefaultViewSet):
+    """
+    API endpoint that allows pipelines to be viewed or edited.
+    """
+
+    queryset = Pipeline.objects.all()
+    serializer_class = PipelineNestedSerializer
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+    ]
 
 
 class ClassificationViewSet(DefaultViewSet):
