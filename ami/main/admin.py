@@ -15,7 +15,6 @@ from .models import (
     Deployment,
     Device,
     Event,
-    Job,
     Occurrence,
     Project,
     S3StorageSource,
@@ -353,41 +352,3 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
-
-
-@admin.register(Job)
-class JobAdmin(admin.ModelAdmin[Job]):
-    """Admin panel example for ``Job`` model."""
-
-    list_display = (
-        "name",
-        "status",
-        "task_id",
-        "scheduled_at",
-        "started_at",
-        "finished_at",
-        "created_at",
-        "updated_at",
-    )
-
-    @admin.action()
-    def enqueue_jobs(self, request: HttpRequest, queryset: QuerySet[Job]) -> None:
-        for job in queryset:
-            job.enqueue()
-        self.message_user(request, f"Queued {queryset.count()} job(s).")
-
-    actions = [enqueue_jobs]
-
-    exclude = (
-        # This takes too long to load in the admin panel
-        "source_image_single",
-        # These are read-only fields
-        "task_id",
-        "scheduled_at",
-        "started_at",
-        "finished_at",
-        "created_at",
-        "updated_at",
-        "progress",
-        "result",
-    )

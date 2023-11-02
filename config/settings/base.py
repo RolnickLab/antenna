@@ -91,6 +91,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "ami.users",
     "ami.main",
+    "ami.jobs",
     "ami.labelstudio",
     # Your stuff: custom apps go here
 ]
