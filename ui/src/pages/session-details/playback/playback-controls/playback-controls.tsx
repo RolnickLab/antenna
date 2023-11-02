@@ -1,7 +1,6 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { Capture } from 'data-services/models/capture'
-import { JobStatus } from 'data-services/models/job'
 import { SessionDetails } from 'data-services/models/session-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -70,7 +69,6 @@ const CaptureJob = ({ activeCapture }: { activeCapture: Capture }) => {
           createJob({
             name: `Capture #${activeCapture.id}`,
             projectId: projectId as string,
-            status: JobStatus.Pending,
           })
         }}
       />
