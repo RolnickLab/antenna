@@ -49,6 +49,8 @@ export const JobDetails = ({
 const JobSummary = ({ job }: { job: Job }) => {
   const status = (() => {
     switch (job.status) {
+      case JobStatus.Created:
+        return Status.Neutral
       case JobStatus.Pending:
         return Status.Neutral
       case JobStatus.Started:
@@ -105,6 +107,8 @@ const JobStages = ({ job }: { job: Job }) => {
 
         const status = (() => {
           switch (stageInfo.status) {
+            case JobStatus.Created:
+              return Status.Neutral
             case JobStatus.Pending:
               return Status.Neutral
             case JobStatus.Started:
