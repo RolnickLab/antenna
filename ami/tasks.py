@@ -129,7 +129,7 @@ def save_model_instances(app_label: str, model_name: str, pks: list[int | str], 
 
 @celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60, bind=True)
 def run_job(self, job_id: int) -> None:
-    from ami.main.models import Job
+    from ami.jobs.models import Job
 
     job = Job.objects.get(id=job_id)
     job.run()
@@ -138,13 +138,13 @@ def run_job(self, job_id: int) -> None:
 @task_postrun.connect(sender=run_job)
 @task_prerun.connect(sender=run_job)
 def update_job_status(sender, task_id, task, *args, **kwargs):
-    from ami.main.models import Job
+    from ami.jobs.models import Job
 
     job_id = task.request.kwargs["job_id"]
     if job_id is None:
         logger.error(f"Job id is None for task {task_id}")
         return
-    job = Job.objects.get(job_id=job_id)
+    job = Job.objects.get(pk=job_id)
     task = AsyncResult(task_id)  # I'm not sure if this is reliable
     job.status = task.status
     job.save(update_fields=["status"])
@@ -152,7 +152,7 @@ def update_job_status(sender, task_id, task, *args, **kwargs):
 
 @task_failure.connect(sender=run_job)
 def update_job_failure(sender, task_id, task, *args, **kwargs):
-    from ami.main.models import Job
+    from ami.jobs.models import Job
 
     job = Job.objects.get(task_id=task_id)
     logger.error(f"Job {job} failed with exception {task.exception}")
