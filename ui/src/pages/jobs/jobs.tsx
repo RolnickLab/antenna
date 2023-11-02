@@ -8,6 +8,7 @@ import { TableSortSettings } from 'design-system/components/table/types'
 import _ from 'lodash'
 import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
+import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
@@ -47,7 +48,6 @@ export const Jobs = () => {
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
-      {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
       {jobs?.length ? (
         <PaginationBar
           pagination={pagination}
@@ -55,6 +55,7 @@ export const Jobs = () => {
           setPage={setPage}
         />
       ) : null}
+      {!isLoading && id ? <JobDetailsDialog id={id} /> : <NewJobDialog />}
     </>
   )
 }

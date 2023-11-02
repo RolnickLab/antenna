@@ -56,13 +56,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
         }
       })()
 
-      return (
-        <StatusTableCell
-          details={item.statusDetails}
-          label={item.statusLabel}
-          status={status}
-        />
-      )
+      return <StatusTableCell label={item.statusLabel} status={status} />
     },
   },
   {

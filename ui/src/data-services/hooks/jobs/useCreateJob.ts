@@ -1,20 +1,21 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_ROUTES, API_URL } from 'data-services/constants'
-import { JobStatus } from 'data-services/models/job'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 interface JobFieldValues {
+  delay?: number
   name: string
   projectId: string
-  status: JobStatus
+  sourceImages?: string
 }
 
 const convertToServerFieldValues = (fieldValues: JobFieldValues) => ({
+  delay: fieldValues.delay ?? 0,
   name: fieldValues.name,
-  project_id: fieldValues.projectId,
-  status: fieldValues.status,
+  project: `http://api.dev.insectai.org/api/v2/projects/${fieldValues.projectId}/`,
+  source_image_collection_id: fieldValues.sourceImages,
 })
 
 export const useCreateJob = (onSuccess?: (id: string) => void) => {

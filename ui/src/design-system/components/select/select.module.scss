@@ -58,7 +58,7 @@
 }
 
 .selectViewport {
-  padding: 10px;
+  padding: 8px;
 }
 
 .selectItem {
@@ -72,12 +72,13 @@
   color: $color-neutral-800;
   cursor: pointer;
 
+  &[data-highlighted],
   &:hover {
-    opacity: 0.7;
+    background-color: $color-primary-2-50;
   }
 
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
+  &[data-state='checked'] {
+    background-color: $color-primary-2-100;
   }
 }
 

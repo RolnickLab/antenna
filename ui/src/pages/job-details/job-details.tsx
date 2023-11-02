@@ -1,4 +1,5 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
+import { FormRow, FormSection } from 'components/form/layout/layout'
 import { JobStatus } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -32,16 +33,12 @@ export const JobDetails = ({
       </div>
     </Dialog.Header>
     <div className={styles.content}>
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Summary</h2>
-        <div className={styles.sectionContent}>
-          <JobSummary job={job} />
-        </div>
-      </div>
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Stages</h2>
+      <FormSection title="Summary">
+        <JobSummary job={job} />
+      </FormSection>
+      <FormSection title="Stages">
         <JobStages job={job} />
-      </div>
+      </FormSection>
     </div>
   </>
 )
@@ -62,8 +59,8 @@ const JobSummary = ({ job }: { job: Job }) => {
 
   return (
     <>
-      <div className={styles.sectionFields}>
-        <div className={styles.sectionStatus}>
+      <FormRow>
+        <div className={styles.status}>
           <InputContent label={translate(STRING.FIELD_LABEL_STATUS)}>
             <StatusBar
               status={status}
@@ -72,19 +69,18 @@ const JobSummary = ({ job }: { job: Job }) => {
             />
           </InputContent>
         </div>
-        <InputValue label={translate(STRING.FIELD_LABEL_ID)} value={job.id} />
+      </FormRow>
+      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_NAME)}
           value={job.name}
         />
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_PROJECT)}
-          value={job.project}
-        />
         <InputValue label={job.inputLabel} value={job.inputValue} />
+      </FormRow>
+      <FormRow>
         <InputValue label="Started at" value={job.startedAt} />
         <InputValue label="Finished at" value={job.finishedAt} />
-      </div>
+      </FormRow>
     </>
   )
 }
@@ -143,7 +139,7 @@ const JobStages = ({ job }: { job: Job }) => {
               )}
             </Wizard.Trigger>
             <Wizard.Content>
-              <div className={styles.sectionFields}>
+              <FormRow>
                 {stageInfo.fields.map((field) => (
                   <InputValue
                     key={field.key}
@@ -151,7 +147,7 @@ const JobStages = ({ job }: { job: Job }) => {
                     value={field.value}
                   />
                 ))}
-              </div>
+              </FormRow>
             </Wizard.Content>
           </Wizard.Item>
         )

@@ -19,6 +19,14 @@ export class JobDetails extends Job {
     return this._job.config.stages
   }
 
+  get statusDetails(): string {
+    return this._job.progress.summary.status_label
+  }
+
+  get statusValue(): number {
+    return this._job.progress.summary.progress
+  }
+
   getStageInfo(key: string) {
     const stage = this._job.config.stages.find(
       (stage: any) => stage.key === key

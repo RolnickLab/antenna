@@ -11,29 +11,7 @@
   max-width: 100%;
 }
 
-.section {
-  margin: 32px;
-}
-
-.sectionTitle {
-  @include paragraph-large();
-  color: $color-neutral-800;
-  margin: 0 0 16px;
-}
-
-.sectionContent {
-  border-radius: 4px;
-  border: 2px solid $color-neutral-100;
-  padding: 32px;
-}
-
-.sectionFields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-}
-
-.sectionStatus {
+.status {
   grid-column: span 2;
 }
 
@@ -45,16 +23,7 @@
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .section {
-    margin: 16px;
-  }
-
-  .sectionFields {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .sectionStatus {
+  .status {
     grid-column: auto;
   }
 }
