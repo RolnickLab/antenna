@@ -27,18 +27,30 @@ class JobViewSet(DefaultViewSet):
     Cancel a job (terminate the background task)
     """
 
-    queryset = Job.objects.all()
+    queryset = Job.objects.select_related(
+        "project",
+        "deployment",
+        "pipeline",
+        "source_image_collection",
+        "source_image_single",
+    )
     serializer_class = JobSerializer
     filterset_fields = [
         "status",
         "project",
         "deployment",
+        "source_image_collection",
+        "pipeline",
     ]
     ordering_fields = [
         "created_at",
         "updated_at",
         "status",
         "started_at",
+        "project",
+        "deployment",
+        "source_image_collection",
+        "pipeline",
     ]
 
     def get_serializer_class(self):
