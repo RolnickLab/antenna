@@ -1,8 +1,8 @@
-import { useCollections } from 'data-services/hooks/collections/useCollections'
+import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { Select } from 'design-system/components/select/select'
 import { useParams } from 'react-router-dom'
 
-export const CollectionsPicker = ({
+export const PipelinesPicker = ({
   value,
   onValueChange,
 }: {
@@ -10,16 +10,16 @@ export const CollectionsPicker = ({
   onValueChange: (value?: string) => void
 }) => {
   const { projectId } = useParams()
-  const { collections = [], isLoading } = useCollections({
+  const { pipelines = [], isLoading } = usePipelines({
     projectId: projectId as string,
   })
 
   return (
     <Select
       loading={isLoading}
-      options={collections.map((c) => ({
-        value: c.id,
-        label: c.name,
+      options={pipelines.map((p) => ({
+        value: p.id,
+        label: p.name,
       }))}
       value={value}
       onValueChange={onValueChange}

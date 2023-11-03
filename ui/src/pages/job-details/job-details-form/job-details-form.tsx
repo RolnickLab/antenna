@@ -8,26 +8,24 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { CollectionsPicker } from './collections-picker'
+import { PipelinesPicker } from './pipelines-picker'
 
 interface JobFormValues {
-  name: string
   delay: number
+  name: string
+  pipeline?: string
   sourceImages?: string
+  startNow?: boolean
 }
 
 const config: FormConfig = {
-  name: {
-    label: translate(STRING.FIELD_LABEL_NAME),
-    rules: {
-      required: true,
-    },
-  },
   delay: {
     label: translate(STRING.FIELD_LABEL_DELAY),
     rules: {
@@ -35,9 +33,20 @@ const config: FormConfig = {
       min: 0,
     },
   },
+  name: {
+    label: translate(STRING.FIELD_LABEL_NAME),
+    rules: {
+      required: true,
+    },
+  },
+  pipeline: {
+    label: 'Pipeline',
+  },
   sourceImages: {
     label: 'Source images',
-    rules: {},
+  },
+  startNow: {
+    label: 'Queue immediately',
   },
 }
 
@@ -108,6 +117,40 @@ export const JobDetailsForm = ({
               </InputContent>
             )}
           />
+          <FormController
+            name="pipeline"
+            control={control}
+            config={config.pipeline}
+            render={({ field, fieldState }) => (
+              <InputContent
+                description={config[field.name].description}
+                label={config[field.name].label}
+                error={fieldState.error?.message}
+              >
+                <PipelinesPicker
+                  value={field.value}
+                  onValueChange={field.onChange}
+                />
+              </InputContent>
+            )}
+          />
+        </FormRow>
+        <FormRow>
+          <InputContent label="Config">
+            <FormController
+              name="startNow"
+              control={control}
+              config={config.pipeline}
+              render={({ field }) => (
+                <Checkbox
+                  id={field.name}
+                  label={config[field.name].label}
+                  defaultChecked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              )}
+            />
+          </InputContent>
         </FormRow>
       </FormSection>
       <FormActions>

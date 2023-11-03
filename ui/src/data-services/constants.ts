@@ -12,6 +12,7 @@ export const API_ROUTES = {
   ME: 'users/me',
   OCCURRENCES: 'occurrences',
   PAGES: 'pages',
+  PIPELINES: 'ml/pipelines',
   PROJECTS: 'projects',
   SESSIONS: 'events',
   SPECIES: 'taxa',

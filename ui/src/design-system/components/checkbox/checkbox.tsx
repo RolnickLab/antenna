@@ -11,7 +11,7 @@ export enum CheckboxTheme {
 
 interface CheckboxProps {
   id: string
-  label: string
+  label?: string
   theme?: CheckboxTheme
   onCheckedChange?: (checked: boolean) => void
   defaultChecked?: boolean
