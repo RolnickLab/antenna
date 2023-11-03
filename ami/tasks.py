@@ -144,10 +144,18 @@ def update_job_status(sender, task_id, task, *args, **kwargs):
     if job_id is None:
         logger.error(f"Job id is None for task {task_id}")
         return
-    job = Job.objects.get(pk=job_id)
+    try:
+        job = Job.objects.get(pk=job_id)
+    except Job.DoesNotExist:
+        try:
+            job = Job.objects.get(task_id=task_id)
+        except Job.DoesNotExist:
+            logger.error(f"No job found for task {task_id} or job_id {job_id}")
+            return
+
     task = AsyncResult(task_id)  # I'm not sure if this is reliable
-    job.status = task.status
-    job.save(update_fields=["status"])
+    job.update_status(task.status, save=False)
+    job.save()
 
 
 @task_failure.connect(sender=run_job)
