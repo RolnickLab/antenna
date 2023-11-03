@@ -1,3 +1,4 @@
+from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
 from ami.main.api.serializers import (
@@ -9,7 +10,7 @@ from ami.main.api.serializers import (
 )
 from ami.main.models import Pipeline, Project, SourceImage, SourceImageCollection
 
-from .models import Job
+from .models import Job, JobProgress
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -29,6 +30,7 @@ class JobListSerializer(DefaultSerializer):
     pipeline = PipelineNestedSerializer(read_only=True)
     source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
+    progress = SchemaField(schema=JobProgress, read_only=True)
 
     project_id = serializers.PrimaryKeyRelatedField(
         label="Project",
@@ -85,9 +87,9 @@ class JobListSerializer(DefaultSerializer):
             "started_at",
             "finished_at",
             "duration",
+            "progress",
             # "duration",
             # "duration_label",
-            # "progress",
             # "progress_label",
             # "progress_percent",
             # "progress_percent_label",
@@ -95,21 +97,21 @@ class JobListSerializer(DefaultSerializer):
 
         read_only_fields = [
             "status",
-            # "progress", # Make writable during testing
+            "progress",  # Make writable during testing
             "result",
             "started_at",
             "finished_at",
             "duration",
+            "config",
         ]
 
 
 class JobSerializer(JobListSerializer):
-    config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
-    progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
+    # config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
+    # progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
 
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
             "config",
             "result",
-            "progress",
         ]

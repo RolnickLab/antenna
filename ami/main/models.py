@@ -39,26 +39,6 @@ class TaxonRank(OrderedEnum):
     GENUS = "Genus"
     SPECIES = "Species"
 
-    @classmethod
-    def choices(cls):
-        """For use in Django text fields with choices."""
-        return tuple((i.name, i.value) for i in cls)
-
-    @classmethod
-    def _missing_(cls, value: str):
-        """Allow case-insensitive lookups."""
-        for member in cls:
-            if member.value.upper() == value.upper():
-                return member
-        return None
-
-    def __eq__(self, other):
-        # @TODO this does not work
-        # But essentially we want to prevent accidental comparisons between TaxonRank and Django string field.
-        if not isinstance(other, TaxonRank):
-            raise TypeError(f"Cannot compare TaxonRank to {other.__class__}")
-        return super().__eq__(other)
-
 
 DEFAULT_RANKS = sorted(
     [
