@@ -7,18 +7,36 @@ from ami.main.api.serializers import (
     SourceImageCollectionNestedSerializer,
     SourceImageNestedSerializer,
 )
-from ami.main.models import Pipeline, SourceImage, SourceImageCollection
+from ami.main.models import Pipeline, Project, SourceImage, SourceImageCollection
 
 from .models import Job
 
 
+class JobProjectNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Project
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
 class JobListSerializer(DefaultSerializer):
     delay = serializers.IntegerField()
+    project = JobProjectNestedSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     pipeline = PipelineNestedSerializer(read_only=True)
     source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
 
+    project_id = serializers.PrimaryKeyRelatedField(
+        label="Project",
+        write_only=True,
+        # @TODO this should be filtered by projects belonging to current user
+        queryset=Project.objects.all(),
+        source="project",
+    )
     source_image_single_id = serializers.PrimaryKeyRelatedField(
         label="Source Image",
         write_only=True,
@@ -55,6 +73,7 @@ class JobListSerializer(DefaultSerializer):
             "name",
             "delay",
             "project",
+            "project_id",
             "deployment",
             "source_image_collection",
             "source_image_collection_id",
