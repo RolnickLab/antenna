@@ -50,11 +50,11 @@ export class Job {
   }
 
   get statusDetails(): string {
-    return this._job.progress.summary.status_label
+    return this._job.progress?.summary.status_label
   }
 
   get statusValue(): number {
-    return this._job.progress.summary.progress
+    return this._job.progress?.summary.progress ?? this._job.status
   }
 
   get statusLabel(): string {
@@ -64,6 +64,7 @@ export class Job {
   protected getStatus(status: string): JobStatus {
     switch (status) {
       case 'PENDING':
+      case 'CREATED':
         return JobStatus.Pending
       case 'STARTED':
         return JobStatus.Started

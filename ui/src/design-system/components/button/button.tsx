@@ -8,7 +8,7 @@ export enum ButtonTheme {
   Success = 'success',
   Plain = 'plain',
   Neutral = 'neutral',
-  Destructive = 'neutral',
+  Destructive = 'destructive',
   Error = 'error',
 }
 
