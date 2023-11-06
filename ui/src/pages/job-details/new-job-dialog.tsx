@@ -10,7 +10,7 @@ import styles from './job-details.module.scss'
 
 const CLOSE_TIMEOUT = 1000
 
-export const NewJobDialog = () => {
+export const NewJobDialog = ({ captureId }: { captureId?: string }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
   const { createJob, isLoading, isSuccess, error } = useCreateJob(() =>
@@ -29,13 +29,14 @@ export const NewJobDialog = () => {
         <Button
           label={label}
           icon={IconType.Plus}
-          theme={ButtonTheme.Default}
+          theme={captureId ? ButtonTheme.Neutral : ButtonTheme.Default}
         />
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         <Dialog.Header title={label} />
         <div className={styles.content}>
           <JobDetailsForm
+            captureId={captureId}
             error={error}
             isLoading={isLoading}
             isSuccess={isSuccess}
