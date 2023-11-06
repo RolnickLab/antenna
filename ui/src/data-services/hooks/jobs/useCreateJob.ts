@@ -22,7 +22,7 @@ const convertToServerFieldValues = (fieldValues: JobFieldValues) => ({
   project_id: fieldValues.projectId,
   pipeline_id: fieldValues.pipeline,
   source_image_collection_id: fieldValues.sourceImages,
-  source_image_single: fieldValues.sourceImage,
+  source_image_single_id: fieldValues.sourceImage,
 })
 
 export const useCreateJob = (onSuccess?: (id: string) => void) => {
