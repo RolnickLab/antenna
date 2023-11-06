@@ -33,7 +33,7 @@ export class Job {
   get canQueue(): boolean {
     return (
       this._job.user_permissions.includes(UserPermission.Update) &&
-      (this.status === JobStatus.Created || this.status === JobStatus.Pending)
+      this.status === JobStatus.Created
     )
   }
 
