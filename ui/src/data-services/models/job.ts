@@ -67,7 +67,6 @@ export class Job {
       case 'CREATED':
         return JobStatus.Created
       case 'PENDING':
-      case 'CREATED':
         return JobStatus.Pending
       case 'STARTED':
         return JobStatus.Started
