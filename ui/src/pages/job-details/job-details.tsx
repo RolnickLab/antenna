@@ -43,10 +43,10 @@ export const JobDetails = ({
       </div>
     </Dialog.Header>
     <div className={styles.content}>
-      <FormSection title="Summary">
+      <FormSection title={translate(STRING.SUMMARY)}>
         <JobSummary job={job} />
       </FormSection>
-      <FormSection title="Stages">
+      <FormSection title={translate(STRING.STAGES)}>
         <JobStages job={job} />
       </FormSection>
     </div>
@@ -90,8 +90,14 @@ const JobSummary = ({ job }: { job: Job }) => {
         <InputValue label={job.inputLabel} value={job.inputValue} />
       </FormRow>
       <FormRow>
-        <InputValue label="Started at" value={job.startedAt} />
-        <InputValue label="Finished at" value={job.finishedAt} />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_STARTED_AT)}
+          value={job.startedAt}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_FINISHED_AT)}
+          value={job.finishedAt}
+        />
       </FormRow>
     </>
   )
