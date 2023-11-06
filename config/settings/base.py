@@ -91,6 +91,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "ami.users",
     "ami.main",
+    "ami.jobs",
     "ami.labelstudio",
     # Your stuff: custom apps go here
 ]
@@ -317,6 +318,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "ami.main.api.pagination.LimitOffsetPaginationWithPermissions",
     "PAGE_SIZE": 10,
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
+    "HTML_SELECT_CUTOFF": 100,
 }
 
 # django-cors-headers - https://github.com/adamchainz/django-cors-headers#setup

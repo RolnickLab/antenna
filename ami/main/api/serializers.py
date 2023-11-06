@@ -2,11 +2,12 @@ import datetime
 import typing
 import urllib.parse
 
-from django.db.models import Count
+from django.db.models import Count, QuerySet
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
 
+from ami.jobs.models import Job
 from ami.main.models import _create_source_image_from_upload
 from ami.users.models import User
 from ami.utils.dates import get_image_timestamp_from_filename
@@ -18,9 +19,9 @@ from ..models import (
     Detection,
     Event,
     Identification,
-    Job,
     Occurrence,
     Page,
+    Pipeline,
     Project,
     SourceImage,
     SourceImageCollection,
@@ -79,6 +80,17 @@ class ProjectNestedSerializer(DefaultSerializer):
             "image",
             "details",
         ]
+
+
+class PrimaryKeyRelatedFieldWithOwner(serializers.PrimaryKeyRelatedField):
+    def __init__(self, **kwargs):
+        self.queryset: QuerySet
+
+        self.queryset = kwargs["queryset"]
+        super().__init__(**kwargs)
+
+    def get_queryset(self):
+        return self.queryset.filter(owner=self.context["request"].user)
 
 
 class UserNestedSerializer(DefaultSerializer):
@@ -626,6 +638,18 @@ class ClassificationSerializer(DefaultSerializer):
         ]
 
 
+class PipelineNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Pipeline
+        fields = [
+            "id",
+            "name",
+            "details",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class OccurrenceClassificationSerializer(ClassificationSerializer):
     pass
 
@@ -749,8 +773,21 @@ class SourceImageListSerializer(DefaultSerializer):
         ]
 
 
+class JobStatusSerializer(DefaultSerializer):
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "details",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class SourceImageSerializer(SourceImageListSerializer):
     uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    jobs = JobStatusSerializer(many=True, read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -758,6 +795,7 @@ class SourceImageSerializer(SourceImageListSerializer):
         fields = SourceImageListSerializer.Meta.fields + [
             "uploaded_by",
             "test_image",
+            "jobs",
         ]
 
 
@@ -813,9 +851,20 @@ class SourceImageUploadSerializer(DefaultSerializer):
         return value
 
 
+class SourceImageCollectionNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImageCollection
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
 class SourceImageCollectionSerializer(DefaultSerializer):
     source_images = serializers.SerializerMethodField()
     kwargs = serializers.JSONField(initial=dict, required=False)
+    jobs = JobStatusSerializer(many=True, read_only=True)
 
     class Meta:
         model = SourceImageCollection
@@ -828,6 +877,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "kwargs",
             "source_images",
             "source_image_count",
+            "jobs",
             "created_at",
             "updated_at",
         ]
@@ -1055,47 +1105,6 @@ class EventSerializer(DefaultSerializer):
             offset = request.query_params.get("offset", None)
 
         return offset
-
-
-class JobListSerializer(DefaultSerializer):
-    project = ProjectNestedSerializer(read_only=True)
-    deployment = DeploymentNestedSerializer(read_only=True)
-
-    class Meta:
-        model = Job
-        fields = [
-            "id",
-            "details",
-            "name",
-            "project",
-            "deployment",
-            "status",
-            "progress",
-            "started_at",
-            "finished_at",
-            # "duration",
-            # "duration_label",
-            # "progress",
-            # "progress_label",
-            # "progress_percent",
-            # "progress_percent_label",
-        ]
-
-
-class JobSerializer(DefaultSerializer):
-    project = ProjectNestedSerializer(read_only=True)
-    project_id = serializers.PrimaryKeyRelatedField(write_only=True, queryset=Project.objects.all(), source="project")
-    config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
-    progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
-
-    class Meta:
-        model = Job
-        fields = JobListSerializer.Meta.fields + [
-            "config",
-            "result",
-            "project",
-            "project_id",
-        ]
 
 
 class StorageStatusSerializer(serializers.Serializer):

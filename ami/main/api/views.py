@@ -22,9 +22,9 @@ from ..models import (
     Detection,
     Event,
     Identification,
-    Job,
     Occurrence,
     Page,
+    Pipeline,
     Project,
     SourceImage,
     SourceImageCollection,
@@ -41,12 +41,11 @@ from .serializers import (
     EventListSerializer,
     EventSerializer,
     IdentificationSerializer,
-    JobListSerializer,
-    JobSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
+    PipelineNestedSerializer,
     ProjectListSerializer,
     ProjectSerializer,
     SourceImageCollectionSerializer,
@@ -196,7 +195,7 @@ class SourceImageViewSet(DefaultViewSet):
 
     queryset = (
         SourceImage.objects.select_related("event", "deployment")
-        .prefetch_related("detections")
+        .prefetch_related("detections", "jobs")
         .order_by("timestamp")
         .all()
     )
@@ -243,7 +242,13 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     Endpoint for viewing collections or samples of source images.
     """
 
-    queryset = SourceImageCollection.objects.annotate(source_image_count=models.Count("images")).all()
+    queryset = (
+        SourceImageCollection.objects.annotate(
+            source_image_count=models.Count("images"),
+        )
+        .prefetch_related("jobs")
+        .all()
+    )
     serializer_class = SourceImageCollectionSerializer
 
     filterset_fields = ["project", "method"]
@@ -490,6 +495,20 @@ class AlgorithmViewSet(DefaultViewSet):
     search_fields = ["name"]
 
 
+class PipelineViewSet(DefaultViewSet):
+    """
+    API endpoint that allows pipelines to be viewed or edited.
+    """
+
+    queryset = Pipeline.objects.all()
+    serializer_class = PipelineNestedSerializer
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+    ]
+
+
 class ClassificationViewSet(DefaultViewSet):
     """
     API endpoint for viewing and adding classification results from a model.
@@ -588,42 +607,6 @@ class StorageStatus(APIView):
         }
 
         return Response(data)
-
-
-class JobViewSet(DefaultViewSet):
-    """
-    API endpoint that allows jobs to be viewed or edited.
-    """
-
-    queryset = Job.objects.all()
-    serializer_class = JobSerializer
-    filterset_fields = ["status", "project", "deployment"]
-    ordering_fields = [
-        "created_at",
-        "updated_at",
-        "status",
-        "started_at",
-    ]
-
-    def get_serializer_class(self):
-        """
-        Return different serializers for list and detail views.
-        """
-        if self.action == "list":
-            return JobListSerializer
-        else:
-            return JobSerializer
-
-    # The default schema is now returned if the progresr or config attrbutes are empty.
-    # def list(self, request, *args, **kwargs):
-    permission_classes = [permissions.AllowAny]
-    #     """
-    #     Return a list of jobs, with the most recent first.
-    #     """
-    #     response = super().list(request, *args, **kwargs)
-    #     response.data["default_config"] = Job.default_config()
-    #     response.data["default_progress"] = Job.default_progress()
-    #     return response
 
 
 class PageViewSet(DefaultViewSet):

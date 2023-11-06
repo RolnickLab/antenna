@@ -4,6 +4,7 @@ from django.urls.conf import include
 from djoser.views import UserViewSet
 from rest_framework.routers import DefaultRouter, SimpleRouter
 
+from ami.jobs.views import JobViewSet
 from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
 
@@ -22,10 +23,11 @@ router.register(r"captures", views.SourceImageViewSet)
 router.register(r"detections", views.DetectionViewSet)
 router.register(r"occurrences", views.OccurrenceViewSet)
 router.register(r"taxa", views.TaxonViewSet)
-router.register(r"models", views.AlgorithmViewSet)
+router.register(r"ml/algorithms", views.AlgorithmViewSet)
+router.register(r"ml/pipelines", views.PipelineViewSet)
 router.register(r"classifications", views.ClassificationViewSet)
 router.register(r"identifications", views.IdentificationViewSet)
-router.register(r"jobs", views.JobViewSet)
+router.register(r"jobs", JobViewSet)
 router.register(r"pages", views.PageViewSet)
 router.register(
     r"labelstudio/captures", labelstudio_views.LabelStudioSourceImageViewSet, basename="labelstudio-captures"

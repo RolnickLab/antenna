@@ -5,10 +5,11 @@ import { UserPermission } from 'utils/user/types'
 export type ServerJob = any // TODO: Update this type
 
 export enum JobStatus {
-  Pending = 'PENDING',
-  Started = 'STARTED',
-  Success = 'SUCCESS',
-  Unknown = 'UNKNOWN',
+  Created = 'created',
+  Pending = 'pending',
+  Started = 'started',
+  Success = 'success',
+  Unknown = 'unknown',
 }
 
 export class Job {
@@ -54,14 +55,23 @@ export class Job {
     return this.getStatus(this._job.status)
   }
 
+  get statusDetails(): string {
+    return this._job.progress?.summary.status_label
+  }
+
+  get statusValue(): number {
+    return this._job.progress?.summary.progress ?? this._job.status
+  }
+
   get statusLabel(): string {
     return this.getStatusLabel(this.status)
   }
 
   protected getStatus(status: string): JobStatus {
     switch (status) {
-      case 'PENDING':
       case 'CREATED':
+        return JobStatus.Created
+      case 'PENDING':
         return JobStatus.Pending
       case 'STARTED':
         return JobStatus.Started
@@ -74,6 +84,8 @@ export class Job {
 
   protected getStatusLabel(status: JobStatus): string {
     switch (status) {
+      case JobStatus.Created:
+        return translate(STRING.CREATED)
       case JobStatus.Pending:
         return translate(STRING.PENDING)
       case JobStatus.Started:
