@@ -4,6 +4,7 @@ import { STRING, translate } from 'utils/language'
 export type ServerJob = any // TODO: Update this type
 
 export enum JobStatus {
+  Created = 'created',
   Pending = 'pending',
   Started = 'started',
   Success = 'success',
@@ -63,8 +64,9 @@ export class Job {
 
   protected getStatus(status: string): JobStatus {
     switch (status) {
-      case 'PENDING':
       case 'CREATED':
+        return JobStatus.Created
+      case 'PENDING':
         return JobStatus.Pending
       case 'STARTED':
         return JobStatus.Started
@@ -77,6 +79,8 @@ export class Job {
 
   protected getStatusLabel(status: JobStatus): string {
     switch (status) {
+      case JobStatus.Created:
+        return translate(STRING.CREATED)
       case JobStatus.Pending:
         return translate(STRING.PENDING)
       case JobStatus.Started:

@@ -39,26 +39,6 @@ class TaxonRank(OrderedEnum):
     GENUS = "Genus"
     SPECIES = "Species"
 
-    @classmethod
-    def choices(cls):
-        """For use in Django text fields with choices."""
-        return tuple((i.name, i.value) for i in cls)
-
-    @classmethod
-    def _missing_(cls, value: str):
-        """Allow case-insensitive lookups."""
-        for member in cls:
-            if member.value.upper() == value.upper():
-                return member
-        return None
-
-    def __eq__(self, other):
-        # @TODO this does not work
-        # But essentially we want to prevent accidental comparisons between TaxonRank and Django string field.
-        if not isinstance(other, TaxonRank):
-            raise TypeError(f"Cannot compare TaxonRank to {other.__class__}")
-        return super().__eq__(other)
-
 
 DEFAULT_RANKS = sorted(
     [
@@ -831,7 +811,7 @@ def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployme
         width=image.width,
         height=image.height,
         test_image=True,
-        uploaded_by=request.user,
+        uploaded_by=request.user if request else None,
     )
     source_image.save()
     return source_image
@@ -1328,6 +1308,17 @@ class Algorithm(BaseModel):
     url = models.URLField(blank=True)
 
     classfications: models.QuerySet["Classification"]
+
+
+@final
+class Pipeline(BaseModel):
+    """A pipeline of algorithms"""
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    version = models.CharField(max_length=255, blank=True)
+    algorithms = models.ManyToManyField(Algorithm, related_name="pipelines")
+    stages = models.JSONField(null=True, blank=True)  # Order and parameters for each algorithm
 
 
 @final
@@ -1890,173 +1881,6 @@ class BlogPost(BaseModel):
     def __str__(self) -> str:
         """All django models should have this method."""
         return textwrap.wrap(self.title, _POST_TITLE_MAX_LENGTH // 4)[0]
-
-
-# These come directly from Celery
-_JOB_STATES = ["PENDING", "STARTED", "SUCCESS", "FAILURE", "RETRY", "REVOKED", "RECEIVED"]
-
-
-default_job_config = {
-    "input": {
-        "name": "Captures",
-        "size": 100,
-    },
-    "stages": [
-        {
-            "name": "Object Detection",
-            "key": "object_detection",
-            "params": [
-                {"key": "model", "name": "Localization Model", "value": "yolov5s"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                # {"key": "threshold", "name": "Threshold", "value": 0.5},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-                {"key": "output_size", "name": "Objects detected", "read_only": True},
-            ],
-        },
-        {
-            "name": "Objects of Interest Filter",
-            "key": "binary_classification",
-            "params": [
-                {"key": "algorithm", "name": "Binary classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                {"key": "input_size", "name": "Objects processed", "read_only": True},
-                {"key": "output_size", "name": "Objects of interest", "read_only": True},
-            ],
-        },
-        {
-            "name": "Species Classification",
-            "key": "species_classification",
-            "params": [
-                {"key": "algorithm", "name": "Species classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                {"key": "threshold", "name": "Confidence threshold", "value": 0.5},
-                {"key": "input_size", "name": "Species processed", "read_only": True},
-                {"key": "output_size", "name": "Species classified", "read_only": True},
-            ],
-        },
-        {
-            "name": "Occurrence Tracking",
-            "key": "tracking",
-            "params": [
-                {"key": "algorithm", "name": "Occurrence tracking algorithm", "value": "adityacombo"},
-                {"key": "input_size", "name": "Detections processed", "read_only": True},
-                {"key": "output_size", "name": "Occurrences identified", "read_only": True},
-            ],
-        },
-    ],
-}
-
-example_non_model_config = {
-    "input": {
-        "name": "Raw Captures",
-        "source": "s3://bucket/path/to/captures",
-        "size": 100,
-    },
-    "stages": [
-        {
-            "name": "Image indexing",
-            "key": "image_indexing",
-            "params": [
-                {"key": "input_size", "name": "Directories scanned", "read_only": True},
-                {"key": "output_size", "name": "Images indexed", "read_only": True},
-            ],
-        },
-        {
-            "name": "Image resizing",
-            "key": "image_resizing",
-            "params": [
-                {"key": "width", "name": "Width", "value": 640},
-                {"key": "height", "name": "Height", "value": 480},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-            ],
-        },
-        {
-            "name": "Feature extraction",
-            "key": "feature_extraction",
-            "params": [
-                {"key": "algorithm", "name": "Feature extractor", "value": "imagenet"},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-            ],
-        },
-    ],
-}
-
-default_job_progress = {
-    "summary": {"status": "PENDING", "progress": 0, "status_label": "0% completed."},
-    "stages": [
-        {
-            "key": "object_detection",
-            "status": "PENDING",
-            "progress": 0,
-            "status_label": "0% completed.",
-            "time_elapsed": 0,
-            "time_remaining": None,
-            "input_size": 0,
-            "output_size": 0,
-        },
-        {
-            "key": "binary_classification",
-            "status": "PENDING",
-            "progress": 0,
-            "status_label": "0% completed.",
-            "time_elapsed": 0,
-            "time_remaining": None,
-            "input_size": 0,
-            "output_size": 0,
-        },
-        {
-            "key": "species_classification",
-            "status": "PENDING",
-            "progress": 0,
-            "status_label": "0% completed.",
-            "time_elapsed": 0,
-            "time_remaining": None,
-            "input_size": 0,
-            "output_size": 0,
-        },
-        {
-            "key": "tracking",
-            "status": "PENDING",
-            "progress": 0,
-            "time_elapsed": 0,
-            "time_remaining": None,
-            "input_size": 0,
-            "output_size": 0,
-        },
-    ],
-}
-
-
-class Job(BaseModel):
-    """A job to be run by the scheduler
-
-    Example config:
-    """
-
-    name = models.CharField(max_length=255)
-    config = models.JSONField(default=default_job_config, null=True, blank=False)
-    queue = models.CharField(max_length=255, default="default")
-    scheduled_at = models.DateTimeField(null=True, blank=True)
-    started_at = models.DateTimeField(null=True, blank=True)
-    finished_at = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=255, default="PENDING", choices=as_choices(_JOB_STATES))
-    progress = models.JSONField(default=default_job_progress, null=True, blank=False)
-    result = models.JSONField(null=True, blank=True)
-
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="jobs")
-    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="jobs", null=True, blank=True)
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.status})"
-
-    @classmethod
-    def default_config(cls) -> dict:
-        return default_job_config
-
-    @classmethod
-    def default_progress(cls) -> dict:
-        """Return the progress of each stage of this job as a dictionary"""
-        return default_job_progress
 
 
 @final

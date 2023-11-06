@@ -12,6 +12,8 @@ rich==13.5.0
 markdown==3.4.4
 boto3==1.28
 rich==13.5
+pydantic<2.0  # Less than 2.0 because of django pydantic field
+django-pydantic-field==0.2.11
 
 # Django
 # ------------------------------------------------------------------------------
