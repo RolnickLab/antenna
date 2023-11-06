@@ -74,18 +74,16 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
     }
   }, [job])
 
+  const closeDialog = () =>
+    navigate(
+      getAppRoute({
+        to: APP_ROUTES.JOBS({ projectId: projectId as string }),
+        keepSearchParams: true,
+      })
+    )
+
   return (
-    <Dialog.Root
-      open={!!id}
-      onOpenChange={() =>
-        navigate(
-          getAppRoute({
-            to: APP_ROUTES.JOBS({ projectId: projectId as string }),
-            keepSearchParams: true,
-          })
-        )
-      }
-    >
+    <Dialog.Root open={!!id} onOpenChange={closeDialog}>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
@@ -97,6 +95,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
               type: _.capitalize(translate(STRING.ENTITY_TYPE_JOB)),
             })}
             isFetching={isFetching}
+            onDelete={closeDialog}
           />
         ) : null}
       </Dialog.Content>

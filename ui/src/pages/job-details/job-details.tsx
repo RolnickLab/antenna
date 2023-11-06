@@ -12,8 +12,11 @@ import {
   StatusBulletTheme,
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
+import { DeleteJobsDialog } from 'pages/jobs/delete-jobs-dialog'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
+import { CancelJob } from './job-actions/cancel-job'
+import { QueueJob } from './job-actions/queue-job'
 import styles from './job-details.module.scss'
 import { JobStageLabel } from './job-stage-label/job-stage-label'
 
@@ -21,15 +24,22 @@ export const JobDetails = ({
   job,
   title,
   isFetching,
+  onDelete,
 }: {
   job: Job
   title: string
   isFetching?: boolean
+  onDelete: () => void
 }) => (
   <>
     <Dialog.Header title={title}>
-      <div className={styles.fetchInfoWrapper}>
-        {isFetching ? <FetchInfo /> : null}
+      <div className={styles.headerContent}>
+        <div className={styles.fetchInfoWrapper}>
+          {isFetching ? <FetchInfo /> : null}
+        </div>
+        {job.canQueue && <QueueJob jobId={job.id} />}
+        {job.canCancel && <CancelJob jobId={job.id} />}
+        {job.canDelete && <DeleteJobsDialog id={job.id} onDelete={onDelete} />}
       </div>
     </Dialog.Header>
     <div className={styles.content}>

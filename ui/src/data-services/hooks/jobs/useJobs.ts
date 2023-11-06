@@ -5,6 +5,8 @@ import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
+const REFETCH_INTERVAL = 10000 // Refetch every 10 second
+
 const convertServerRecord = (record: ServerJob) => new Job(record)
 
 export const useJobs = (
@@ -24,6 +26,7 @@ export const useJobs = (
   }>({
     queryKey: [API_ROUTES.JOBS, params],
     url: fetchUrl,
+    refetchInterval: REFETCH_INTERVAL,
   })
 
   const jobs = useMemo(() => data?.results.map(convertServerRecord), [data])

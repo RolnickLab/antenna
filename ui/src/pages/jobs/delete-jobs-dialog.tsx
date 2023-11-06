@@ -8,9 +8,15 @@ import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './jobs.module.scss'
 
-export const DeleteJobsDialog = ({ id }: { id: string }) => {
+export const DeleteJobsDialog = ({
+  id,
+  onDelete,
+}: {
+  id: string
+  onDelete?: () => void
+}) => {
   const [isOpen, setIsOpen] = useState(false)
-  const { deleteJob, isLoading, isSuccess, error } = useDeleteJob()
+  const { deleteJob, isLoading, isSuccess, error } = useDeleteJob(onDelete)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>

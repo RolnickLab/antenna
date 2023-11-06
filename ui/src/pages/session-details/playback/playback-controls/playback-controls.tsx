@@ -91,7 +91,12 @@ export const JobDetailsDialog = ({ id }: { id: string }) => {
         isLoading={isLoading}
       >
         {job ? (
-          <JobDetails job={job} title="Job details" isFetching={isFetching} />
+          <JobDetails
+            job={job}
+            title="Job details"
+            isFetching={isFetching}
+            onDelete={() => setIsOpen(false)}
+          />
         ) : null}
       </Dialog.Content>
     </Dialog.Root>

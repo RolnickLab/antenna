@@ -19,8 +19,22 @@ export class Job {
     this._job = job
   }
 
+  get canCancel(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Update) &&
+      this.status === JobStatus.Started
+    )
+  }
+
   get canDelete(): boolean {
     return this._job.user_permissions.includes(UserPermission.Delete)
+  }
+
+  get canQueue(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Update) &&
+      (this.status === JobStatus.Created || this.status === JobStatus.Pending)
+    )
   }
 
   get createdAt(): string | undefined {
