@@ -87,5 +87,5 @@ class JobViewSet(DefaultViewSet):
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
         job = serializer.save()
-        if url_boolean_param(self.request, "start_now", default=True):
+        if url_boolean_param(self.request, "start_now", default=False):
             job.enqueue()  # type: ignore
