@@ -23,6 +23,13 @@ export class Job {
     return this._job.user_permissions.includes(UserPermission.Delete)
   }
 
+  get createdAt(): string | undefined {
+    if (!this._job.created_at) {
+      return
+    }
+
+    return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
+  }
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return

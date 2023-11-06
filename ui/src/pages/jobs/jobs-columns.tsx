@@ -16,6 +16,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'job',
     name: 'Job',
+    sortField: 'name',
     renderCell: (item: Job) => (
       <Link
         to={getAppRoute({
@@ -28,14 +29,21 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     ),
   },
   {
+    id: 'created-at',
+    name: 'Created at',
+    sortField: 'created_at',
+    renderCell: (item: Job) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
     id: 'started-at',
     name: 'Started at',
     sortField: 'started_at',
     renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
   },
   {
-    id: 'finsihed-at',
+    id: 'finished-at',
     name: 'Finished at',
+    sortField: 'finished_at',
     renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
   },
   {

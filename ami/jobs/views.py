@@ -43,10 +43,12 @@ class JobViewSet(DefaultViewSet):
         "pipeline",
     ]
     ordering_fields = [
+        "name",
         "created_at",
         "updated_at",
         "status",
         "started_at",
+        "finished_at",
         "project",
         "deployment",
         "source_image_collection",

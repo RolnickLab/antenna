@@ -84,6 +84,8 @@ class JobListSerializer(DefaultSerializer):
             "pipeline",
             "pipeline_id",
             "status",
+            "created_at",
+            "updated_at",
             "started_at",
             "finished_at",
             "duration",
