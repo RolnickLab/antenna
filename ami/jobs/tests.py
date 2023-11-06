@@ -1,4 +1,4 @@
-from unittest import TestCase
+from django.test import TestCase
 
 from ami.jobs.models import Job, JobProgress, JobState
 from ami.main.models import Project
