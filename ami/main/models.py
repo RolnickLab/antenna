@@ -1517,17 +1517,33 @@ class Occurrence(BaseModel):
     def best_identification(self):
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
-    def determination_score(self) -> float:
+    def get_determination_score(self) -> float:
+        logger.warning(
+            f"Calculating determination score for Occurrence #{self.pk} "
+            "(this should be come from a query annotation and be cached)"
+        )
         if not self.determination:
             return 0
         elif self.best_identification:
+            # If the occurrence has been verified by humans, then consider determination 100% certain
             return 1.0
         else:
-            return (
-                Classification.objects.filter(detection__occurrence=self)
-                .order_by("-created_at")
-                .aggregate(models.Max("score"))["score__max"]
-            )
+            return Classification.objects.filter(detection__occurrence=self).aggregate(models.Max("score"))[
+                "score__max"
+            ]
+
+    def determination_score(self) -> float:
+        """
+        Example, get best determination score for each occurrence if it has no identifications:
+
+        If score was populated by a query annotation, use that
+        otherwise call the get() method to calculate it.
+        """
+        if hasattr(self, "determination_score") and isinstance(self.determination_score, float):
+            score = self.determination_score
+        else:
+            score = self.get_determination_score()
+        return score
 
     def predictions(self):
         # Retrieve the classification with the max score for each algorithm

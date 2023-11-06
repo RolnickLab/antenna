@@ -3,8 +3,9 @@ import logging
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
+from django.db.models import Prefetch
 from django.db.models.query import QuerySet
-from django.forms import BooleanField, CharField, IntegerField
+from django.forms import BooleanField, CharField, FloatField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
@@ -194,8 +195,11 @@ class SourceImageViewSet(DefaultViewSet):
     """
 
     queryset = (
-        SourceImage.objects.select_related("event", "deployment")
-        .prefetch_related("detections", "jobs")
+        SourceImage.objects.select_related(
+            "event",
+            "deployment",
+        )
+        .prefetch_related("jobs")
         .order_by("timestamp")
         .all()
     )
@@ -203,6 +207,26 @@ class SourceImageViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         has_detections = self.request.query_params.get("has_detections")
+        classification_threshold = self.request.query_params.get("classification_threshold")
+
+        if classification_threshold is not None:
+            classification_threshold = FloatField(required=False).clean(classification_threshold)
+            prefetch_queryset = Detection.objects.filter(
+                occurrence__detections__classifications__score__gte=classification_threshold
+            )
+        else:
+            prefetch_queryset = Detection.objects.all()
+
+        related_detections = Prefetch(
+            "detections",
+            queryset=prefetch_queryset.select_related(
+                "occurrence",
+                "occurrence__determination",
+            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
+            to_attr="filtered_detections",
+        )
+
+        queryset = queryset.prefetch_related(related_detections)
 
         if has_detections is not None:
             has_detections = BooleanField(required=False).clean(has_detections)
@@ -211,9 +235,15 @@ class SourceImageViewSet(DefaultViewSet):
                     has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
                 )
                 .filter(has_detections=has_detections)
-                .order_by("?")
+                .order_by(
+                    "?"
+                )  # Random order is here for our demo ML backend to limit the same images from being proccessed
+                # @TODO remove this when we have a real queue for the ML backend
             )
         return queryset
+
+    def get_serializer_context(self):
+        return {"request": self.request}
 
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment", "deployment__project", "collections"]
