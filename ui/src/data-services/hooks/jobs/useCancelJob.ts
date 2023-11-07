@@ -18,6 +18,7 @@ export const useCancelJob = () => {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.JOBS])
+      queryClient.invalidateQueries([API_ROUTES.CAPTURES])
     },
   })
 

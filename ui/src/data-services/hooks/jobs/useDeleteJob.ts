@@ -15,6 +15,7 @@ export const useDeleteJob = (onSuccess?: () => void) => {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.JOBS])
+      queryClient.invalidateQueries([API_ROUTES.CAPTURES])
       onSuccess?.()
     },
   })

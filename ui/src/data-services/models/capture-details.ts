@@ -1,5 +1,5 @@
 import { Capture, ServerCapture } from './capture'
-import { Job } from './job'
+import { Job, JobStatus } from './job'
 
 export type ServerCaptureDetails = ServerCapture & any // TODO: Update this type
 
@@ -16,5 +16,14 @@ export class CaptureDetails extends Capture {
 
   get jobs(): Job[] {
     return this._jobs
+  }
+
+  get hasJobInProgress(): boolean {
+    return this._jobs.some(
+      (job) =>
+        job.status === JobStatus.Created ||
+        job.status === JobStatus.Pending ||
+        job.status === JobStatus.Started
+    )
   }
 }

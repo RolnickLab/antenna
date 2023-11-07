@@ -11,9 +11,11 @@ export enum STRING {
   DELETE,
   DELETED,
   EDIT,
-  NEXT,
+
   LOGIN,
   LOGOUT,
+  NEXT,
+  PROCESS_NOW,
   REFRESH,
   RESET,
   RETRY,
@@ -166,6 +168,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.LOGIN]: 'Login',
   [STRING.LOGOUT]: 'Logout',
   [STRING.NEXT]: 'Next',
+  [STRING.PROCESS_NOW]: 'Process now',
   [STRING.REFRESH]: 'Refresh',
   [STRING.RESET]: 'Reset',
   [STRING.RETRY]: 'Retry',
@@ -176,7 +179,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.START]: 'Start',
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
-
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */

@@ -1,13 +1,13 @@
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
-import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { CaptureJobDialog } from './capture-job-dialog'
+import { ProcessNow } from './process-now'
 
 export const CaptureJob = ({ captureId }: { captureId: string }) => {
   const { capture } = useCaptureDetails(captureId)
 
   return (
     <>
-      <NewJobDialog captureId={captureId} />
+      <ProcessNow capture={capture} captureId={captureId} />
       {capture?.jobs.length ? (
         <CaptureJobDialog id={capture.jobs[0].id} />
       ) : null}

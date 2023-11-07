@@ -10,7 +10,7 @@ import { FormConfig } from 'components/form/types'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { IconType } from 'design-system/components/icon/icon'
-import { InputContent, InputValue } from 'design-system/components/input/input'
+import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -52,13 +52,11 @@ const config: FormConfig = {
 }
 
 export const JobDetailsForm = ({
-  captureId,
   error,
   isLoading,
   isSuccess,
   onSubmit,
 }: {
-  captureId?: string
   error?: unknown
   isLoading?: boolean
   isSuccess?: boolean
@@ -70,9 +68,8 @@ export const JobDetailsForm = ({
     setError: setFieldError,
   } = useForm<JobFormValues>({
     defaultValues: {
-      name: captureId ? `Capture #${captureId}` : '',
+      name: '',
       delay: 0,
-      sourceImage: captureId,
     },
     mode: 'onChange',
   })
@@ -104,30 +101,23 @@ export const JobDetailsForm = ({
           />
         </FormRow>
         <FormRow>
-          {captureId ? (
-            <InputValue
-              label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
-              value={`Capture #${captureId}`}
-            />
-          ) : (
-            <FormController
-              name="sourceImages"
-              control={control}
-              config={config.sourceImages}
-              render={({ field, fieldState }) => (
-                <InputContent
-                  description={config[field.name].description}
-                  label={config[field.name].label}
-                  error={fieldState.error?.message}
-                >
-                  <CollectionsPicker
-                    value={field.value}
-                    onValueChange={field.onChange}
-                  />
-                </InputContent>
-              )}
-            />
-          )}
+          <FormController
+            name="sourceImages"
+            control={control}
+            config={config.sourceImages}
+            render={({ field, fieldState }) => (
+              <InputContent
+                description={config[field.name].description}
+                label={config[field.name].label}
+                error={fieldState.error?.message}
+              >
+                <CollectionsPicker
+                  value={field.value}
+                  onValueChange={field.onChange}
+                />
+              </InputContent>
+            )}
+          />
           <FormController
             name="pipeline"
             control={control}
