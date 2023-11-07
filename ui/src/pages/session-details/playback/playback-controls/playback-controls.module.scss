@@ -6,9 +6,16 @@
   align-items: center;
   justify-content: flex-start;
   padding: 16px;
-  gap: 16px;
   min-height: 28px;
   background-color: $color-neutral-700;
+}
+
+.captureJob {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 180px;
 }
 
 .slider {

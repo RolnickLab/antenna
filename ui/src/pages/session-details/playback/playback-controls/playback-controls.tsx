@@ -10,7 +10,7 @@ export const PlaybackControls = ({
   activeCapture,
   session,
 }: {
-  activeCapture: Capture
+  activeCapture?: Capture
   session: SessionDetails
 }) => {
   const { defaultThreshold, threshold, setThreshold } = useThreshold()
@@ -18,7 +18,9 @@ export const PlaybackControls = ({
 
   return (
     <div className={styles.controls}>
-      <CaptureJob captureId={activeCapture.id} />
+      <div className={styles.captureJob}>
+        {activeCapture && <CaptureJob captureId={activeCapture.id} />}
+      </div>
       <div className={styles.slider}>
         {session.numDetections && session.numDetections > 0 ? (
           <PlaybackSlider

@@ -41,9 +41,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             showOverlay={showOverlay}
           />
         </div>
-        {activeCapture && (
-          <PlaybackControls activeCapture={activeCapture} session={session} />
-        )}
+        <PlaybackControls activeCapture={activeCapture} session={session} />
       </div>
 
       <div className={styles.capturePicker}>
