@@ -142,16 +142,10 @@ const JobStages = ({ job }: { job: Job }) => {
   return (
     <Wizard.Root value={activeStage} onValueChange={setActiveStage}>
       {job.stages.map((stage, index) => {
-        const stageInfo = job.getStageInfo(stage.key)
-
-        if (!stageInfo) {
-          return null
-        }
-
         const isOpen = activeStage === stage.key
 
         const status = (() => {
-          switch (stageInfo.status) {
+          switch (stage.status) {
             case JobStatus.Created:
               return Status.Neutral
             case JobStatus.Pending:
@@ -169,12 +163,12 @@ const JobStages = ({ job }: { job: Job }) => {
           <Wizard.Item key={stage.key} value={stage.key}>
             <div className={styles.jobStageLabel}>
               <JobStageLabel
-                label={stageInfo.statusLabel}
+                label={stage.statusLabel}
                 status={status}
                 statusDetails={job.statusDetails}
               />
             </div>
-            <Wizard.Trigger title={stageInfo.name}>
+            <Wizard.Trigger title={stage.name}>
               {status === Status.Success ? (
                 <StatusBullet
                   icon={IconType.Checkmark}
@@ -193,7 +187,7 @@ const JobStages = ({ job }: { job: Job }) => {
             </Wizard.Trigger>
             <Wizard.Content>
               <FormRow>
-                {stageInfo.fields.map((field) => (
+                {stage.fields.map((field) => (
                   <InputValue
                     key={field.key}
                     label={field.label}
