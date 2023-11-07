@@ -58,7 +58,6 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
           case JobStatus.Created:
             return Status.Neutral
           case JobStatus.Pending:
-            return Status.Neutral
           case JobStatus.Started:
             return Status.Warning
           case JobStatus.Success:

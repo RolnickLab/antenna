@@ -1,4 +1,5 @@
 import { Job, ServerJob } from './job'
+import { Pipeline } from './pipeline'
 
 export type ServerJobDetails = ServerJob & any // TODO: Update this type
 
@@ -7,16 +8,30 @@ export class JobDetails extends Job {
     super(job)
   }
 
-  get inputLabel(): string {
-    return this._job.config.input.name
+  get delay(): number {
+    return this._job.delay
   }
 
-  get inputValue(): string | number {
-    return this._job.config.input.size
+  get pipeline(): Pipeline | undefined {
+    return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
   }
 
   get stages(): { key: string }[] {
     return this._job.config.stages
+  }
+
+  get sourceImages(): { id: string; name: string } | undefined {
+    const collection = this._job.source_image_collection
+
+    return collection
+      ? { id: `${collection.id}`, name: collection.name }
+      : undefined
+  }
+
+  get sourceImage(): { id: string } | undefined {
+    const capture = this._job.source_image_single
+
+    return capture ? { id: `${capture.id}` } : undefined
   }
 
   get statusDetails(): string {

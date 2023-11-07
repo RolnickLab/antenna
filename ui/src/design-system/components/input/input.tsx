@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import _ from 'lodash'
 import { ChangeEvent, FocusEvent, forwardRef, ReactNode, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
 import { IconType } from '../icon/icon'
 import { Tooltip } from '../tooltip/tooltip'
@@ -98,9 +99,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 export const InputValue = ({
   label,
   value: _value,
+  to,
 }: {
   label: string
   value?: string | number
+  to?: string
 }) => {
   const value =
     _value === undefined
@@ -111,7 +114,13 @@ export const InputValue = ({
 
   return (
     <InputContent label={label}>
-      <span className={styles.value}>{value}</span>
+      {to ? (
+        <Link to={to} className={classNames(styles.value, styles.link)}>
+          {value}
+        </Link>
+      ) : (
+        <span className={styles.value}>{value}</span>
+      )}
     </InputContent>
   )
 }

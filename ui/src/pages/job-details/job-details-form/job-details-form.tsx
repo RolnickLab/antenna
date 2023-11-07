@@ -41,13 +41,13 @@ const config: FormConfig = {
     },
   },
   pipeline: {
-    label: 'Pipeline',
+    label: translate(STRING.FIELD_LABEL_PIPELINE),
   },
   sourceImages: {
-    label: 'Source images',
+    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
   },
   startNow: {
-    label: 'Queue immediately',
+    label: 'Start immediately',
   },
 }
 

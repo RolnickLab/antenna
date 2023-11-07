@@ -9,7 +9,7 @@ export const QueueJob = ({ jobId }: { jobId: string }) => {
   if (isSuccess) {
     return (
       <Button
-        label={translate(STRING.QUEUE)}
+        label={translate(STRING.START)}
         icon={IconType.RadixCheck}
         theme={ButtonTheme.Success}
       />
@@ -18,7 +18,7 @@ export const QueueJob = ({ jobId }: { jobId: string }) => {
 
   return (
     <Button
-      label={translate(STRING.QUEUE)}
+      label={translate(STRING.START)}
       loading={isLoading}
       theme={ButtonTheme.Success}
       onClick={() => queueJob(jobId)}

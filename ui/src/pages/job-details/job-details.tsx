@@ -14,6 +14,8 @@ import {
 import * as Wizard from 'design-system/components/wizard/wizard'
 import { DeleteJobsDialog } from 'pages/jobs/delete-jobs-dialog'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { CancelJob } from './job-actions/cancel-job'
 import { QueueJob } from './job-actions/queue-job'
@@ -54,6 +56,8 @@ export const JobDetails = ({
 )
 
 const JobSummary = ({ job }: { job: Job }) => {
+  const { projectId } = useParams()
+
   const status = (() => {
     switch (job.status) {
       case JobStatus.Created:
@@ -91,7 +95,32 @@ const JobSummary = ({ job }: { job: Job }) => {
           label={translate(STRING.FIELD_LABEL_NAME)}
           value={job.name}
         />
-        <InputValue label={job.inputLabel} value={job.inputValue} />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_DELAY)}
+          value={job.delay}
+        />
+      </FormRow>
+      <FormRow>
+        {job.sourceImages ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
+            to={APP_ROUTES.COLLECTION_DETAILS({
+              projectId: projectId as string,
+              collectionId: job.sourceImages.id,
+            })}
+            value={job.sourceImages.name}
+          />
+        ) : job.sourceImage ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
+            value={`Capture #${job.sourceImage.id}`}
+          />
+        ) : null}
+
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_PIPELINE)}
+          value={job.pipeline?.name}
+        />
       </FormRow>
       <FormRow>
         <InputValue
