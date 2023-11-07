@@ -8,9 +8,9 @@ export const CaptureJob = ({ captureId }: { captureId: string }) => {
   return (
     <>
       <NewJobDialog captureId={captureId} />
-      {capture?.jobs.map((job) => (
-        <CaptureJobDialog id={job.id} />
-      ))}
+      {capture?.jobs.length ? (
+        <CaptureJobDialog id={capture.jobs[0].id} />
+      ) : null}
     </>
   )
 }
