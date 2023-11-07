@@ -9,6 +9,8 @@ export enum JobStatus {
   Pending = 'pending',
   Started = 'started',
   Success = 'success',
+  Canceling = 'canceling',
+  Revoked = 'revoked',
   Unknown = 'unknown',
 }
 
@@ -98,6 +100,10 @@ export class Job {
         return JobStatus.Started
       case 'SUCCESS':
         return JobStatus.Success
+      case 'CANCELING':
+        return JobStatus.Canceling
+      case 'REVOKED':
+        return JobStatus.Revoked
       default:
         return JobStatus.Unknown
     }
@@ -113,6 +119,10 @@ export class Job {
         return translate(STRING.RUNNING)
       case JobStatus.Success:
         return translate(STRING.DONE)
+      case JobStatus.Canceling:
+        return translate(STRING.CANCELING)
+      case JobStatus.Revoked:
+        return translate(STRING.REVOKED)
       default:
         return translate(STRING.UNKNOWN)
     }

@@ -59,11 +59,15 @@ const JobSummary = ({ job }: { job: Job }) => {
       case JobStatus.Created:
         return Status.Neutral
       case JobStatus.Pending:
-        return Status.Neutral
+        return Status.Warning
       case JobStatus.Started:
         return Status.Warning
       case JobStatus.Success:
         return Status.Success
+      case JobStatus.Canceling:
+        return Status.Warning
+      case JobStatus.Revoked:
+        return Status.Error
       default:
         return Status.Error
     }

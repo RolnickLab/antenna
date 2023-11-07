@@ -120,11 +120,18 @@ export enum STRING {
   TAB_ITEM_SUMMARY,
   TAB_ITEM_TABLE,
 
+  /* JOB STATUS */
+  CREATED,
+  PENDING,
+  RUNNING,
+  CANCELING,
+  REVOKED,
+  DONE,
+
   /* OTHER */
   CLOSE,
   CONNECTED,
   CONNECTING,
-  DONE,
   ID_APPLIED,
   LAST_UPDATED,
   LOADING_DATA,
@@ -133,9 +140,6 @@ export enum STRING {
   NEW_ID,
   NOT_CONNECTED,
   OR,
-  CREATED,
-  PENDING,
-  RUNNING,
   SELECT_COLUMNS,
   STAGES,
   SUMMARY,
@@ -277,11 +281,18 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TAB_ITEM_TABLE]: 'Table',
   [STRING.TAB_ITEM_SUMMARY]: 'Summary',
 
+  /* JOB STATUS */
+  [STRING.CREATED]: 'Created',
+  [STRING.PENDING]: 'Pending',
+  [STRING.RUNNING]: 'Running',
+  [STRING.CANCELING]: 'Canceling',
+  [STRING.REVOKED]: 'Canceled',
+  [STRING.DONE]: 'Done',
+
   /* OTHER */
   [STRING.CLOSE]: 'Close',
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting',
-  [STRING.DONE]: 'Done',
   [STRING.ID_APPLIED]: 'ID applied',
   [STRING.LAST_UPDATED]: 'Last updated',
   [STRING.LOADING_DATA]: 'Loading data',
@@ -290,9 +301,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.OR]: 'Or',
-  [STRING.CREATED]: 'Created',
-  [STRING.PENDING]: 'Pending',
-  [STRING.RUNNING]: 'Running',
   [STRING.SELECT_COLUMNS]: 'Select columns',
   [STRING.STAGES]: 'Stages',
   [STRING.SUMMARY]: 'Summary',

@@ -35,6 +35,7 @@ class JobState(str, OrderedEnum):
     SUCCESS = "SUCCESS"
     FAILURE = "FAILURE"
     RETRY = "RETRY"
+    CANCELING = "CANCELING"
     REVOKED = "REVOKED"
     RECEIVED = "RECEIVED"
 
@@ -381,12 +382,17 @@ class Job(BaseModel):
         """
         Terminate the celery task.
         """
+        self.status = JobState.CANCELING
+        self.save()
         if self.task_id:
             task = ami.tasks.run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
                 self.status = task.status
                 self.save()
+        else:
+            self.status = JobState.REVOKED
+            self.save()
 
     def update_status(self, status=None, save=True):
         """
