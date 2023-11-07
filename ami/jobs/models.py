@@ -450,3 +450,10 @@ class Job(BaseModel):
     def default_progress(cls) -> JobProgress:
         """Return the progress of each stage of this job as a dictionary"""
         return default_job_progress
+
+    class Meta:
+        ordering = ["-created_at"]
+        # permissions = [
+        #     ("run_job", "Can run a job"),
+        #     ("cancel_job", "Can cancel a job"),
+        # ]
