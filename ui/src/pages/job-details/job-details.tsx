@@ -101,21 +101,25 @@ const JobSummary = ({ job }: { job: Job }) => {
         />
       </FormRow>
       <FormRow>
-        {job.sourceImages ? (
-          <InputValue
-            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
-            to={APP_ROUTES.COLLECTION_DETAILS({
-              projectId: projectId as string,
-              collectionId: job.sourceImages.id,
-            })}
-            value={job.sourceImages.name}
-          />
-        ) : job.sourceImage ? (
+        {job.sourceImage ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
             value={`Capture #${job.sourceImage.id}`}
           />
-        ) : null}
+        ) : (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
+            to={
+              job.sourceImages
+                ? APP_ROUTES.COLLECTION_DETAILS({
+                    projectId: projectId as string,
+                    collectionId: job.sourceImages.id,
+                  })
+                : undefined
+            }
+            value={job.sourceImages?.name}
+          />
+        )}
 
         <InputValue
           label={translate(STRING.FIELD_LABEL_PIPELINE)}
