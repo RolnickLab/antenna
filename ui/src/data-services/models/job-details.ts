@@ -46,10 +46,16 @@ export class JobDetails extends Job {
       : undefined
   }
 
-  get sourceImage(): { id: string } | undefined {
+  get sourceImage() {
     const capture = this._job.source_image_single
 
-    return capture ? { id: `${capture.id}` } : undefined
+    return capture
+      ? {
+          id: `${capture.id}`,
+          label: `Capture #${capture.id.id}`,
+          sessionId: capture.event_id ? `${capture.event_id}` : undefined,
+        }
+      : undefined
   }
 
   get statusDetails(): string {

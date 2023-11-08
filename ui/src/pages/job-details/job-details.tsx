@@ -16,6 +16,7 @@ import { DeleteJobsDialog } from 'pages/jobs/delete-jobs-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { CancelJob } from './job-actions/cancel-job'
 import { QueueJob } from './job-actions/queue-job'
@@ -106,7 +107,20 @@ const JobSummary = ({ job }: { job: Job }) => {
         {job.sourceImage ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
-            value={`Capture #${job.sourceImage.id}`}
+            value={job.sourceImage.label}
+            to={
+              job.sourceImage.sessionId
+                ? getAppRoute({
+                    to: APP_ROUTES.SESSION_DETAILS({
+                      projectId: projectId as string,
+                      sessionId: job.sourceImage.sessionId,
+                    }),
+                    filters: {
+                      capture: job.sourceImage.id,
+                    },
+                  })
+                : undefined
+            }
           />
         ) : (
           <InputValue
@@ -114,9 +128,9 @@ const JobSummary = ({ job }: { job: Job }) => {
             to={
               job.sourceImages
                 ? APP_ROUTES.COLLECTION_DETAILS({
-                  projectId: projectId as string,
-                  collectionId: job.sourceImages.id,
-                })
+                    projectId: projectId as string,
+                    collectionId: job.sourceImages.id,
+                  })
                 : undefined
             }
             value={job.sourceImages?.name}
