@@ -65,12 +65,4 @@ export class JobDetails extends Job {
         }
       : undefined
   }
-
-  get statusDetails(): string {
-    return this._job.progress.summary.status_label
-  }
-
-  get statusValue(): number {
-    return this._job.progress.summary.progress
-  }
 }
