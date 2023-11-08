@@ -12,8 +12,16 @@ export class JobDetails extends Job {
     return this._job.delay
   }
 
+  get errors(): string[] {
+    return this._job.progress.errors ?? []
+  }
+
   get pipeline(): Pipeline | undefined {
     return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
+  }
+
+  get logs(): string[] {
+    return this._job.progress.logs ?? []
   }
 
   get stages(): {

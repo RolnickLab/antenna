@@ -2,6 +2,10 @@ import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { JobStatus } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
+import {
+  CodeBlock,
+  CodeBlockTheme,
+} from 'design-system/components/code-block/code-block'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
@@ -49,9 +53,11 @@ export const JobDetails = ({
       <FormSection title={translate(STRING.SUMMARY)}>
         <JobSummary job={job} />
       </FormSection>
-      <FormSection title={translate(STRING.STAGES)}>
-        <JobStages job={job} />
-      </FormSection>
+      {job.stages.length > 0 && (
+        <FormSection title={translate(STRING.STAGES)}>
+          <JobStages job={job} />
+        </FormSection>
+      )}
     </div>
   </>
 )
@@ -152,6 +158,20 @@ const JobSummary = ({ job }: { job: Job }) => {
           value={job.finishedAt}
         />
       </FormRow>
+      {job.logs.length > 0 && (
+        <FormRow>
+          <InputContent label="Logs" style={{ gridColumn: 'span 2' }}>
+            <CodeBlock lines={job.logs} />
+          </InputContent>
+        </FormRow>
+      )}
+      {job.errors.length > 0 && (
+        <FormRow>
+          <InputContent label="Errors" style={{ gridColumn: 'span 2' }}>
+            <CodeBlock lines={job.errors} theme={CodeBlockTheme.Error} />
+          </InputContent>
+        </FormRow>
+      )}
     </>
   )
 }

@@ -1,6 +1,13 @@
 import classNames from 'classnames'
 import _ from 'lodash'
-import { ChangeEvent, FocusEvent, forwardRef, ReactNode, useState } from 'react'
+import {
+  ChangeEvent,
+  CSSProperties,
+  FocusEvent,
+  forwardRef,
+  ReactNode,
+  useState,
+} from 'react'
 import { Link } from 'react-router-dom'
 import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
 import { IconType } from '../icon/icon'
@@ -129,18 +136,20 @@ export const InputContent = ({
   description,
   error,
   label,
+  style,
   children,
 }: {
   description?: string
   error?: string
   label: string
+  style?: CSSProperties
   children?: ReactNode
 }) => {
   const hasError = !!error?.length
   const hasDescription = !!description?.length
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} style={style}>
       <div className={styles.labelRow}>
         <span className={styles.label}>{label}</span>
         {hasError ? <span className={styles.error}>{error}</span> : undefined}
