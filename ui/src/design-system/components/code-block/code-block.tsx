@@ -1,5 +1,6 @@
 import classNames from 'classnames'
 import { useRef, useState } from 'react'
+import { STRING, translate } from 'utils/language'
 import { Button } from '../button/button'
 import styles from './code-block.module.scss'
 import { useExpander } from './useExpander'
@@ -52,7 +53,9 @@ export const CodeBlock = ({
       {(showExpander || expanded) && (
         <div className={styles.buttonContainer}>
           <Button
-            label={expanded ? 'Collapse' : 'Expand'}
+            label={
+              expanded ? translate(STRING.COLLAPSE) : translate(STRING.EXPAND)
+            }
             onClick={() => setExpanded(!expanded)}
           />
         </div>

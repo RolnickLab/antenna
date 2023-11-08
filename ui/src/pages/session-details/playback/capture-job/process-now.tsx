@@ -31,7 +31,7 @@ export const ProcessNow = ({
   }
 
   return (
-    <Tooltip content="Process this single image with presets">
+    <Tooltip content={translate(STRING.PROCESS_NOW)}>
       <Button
         icon={icon}
         label={translate(STRING.PROCESS_NOW)}

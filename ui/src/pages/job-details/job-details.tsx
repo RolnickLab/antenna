@@ -160,14 +160,20 @@ const JobSummary = ({ job }: { job: Job }) => {
       </FormRow>
       {job.logs.length > 0 && (
         <FormRow>
-          <InputContent label="Logs" style={{ gridColumn: 'span 2' }}>
+          <InputContent
+            label={translate(STRING.FIELD_LABEL_LOGS)}
+            style={{ gridColumn: 'span 2' }}
+          >
             <CodeBlock lines={job.logs} />
           </InputContent>
         </FormRow>
       )}
       {job.errors.length > 0 && (
         <FormRow>
-          <InputContent label="Errors" style={{ gridColumn: 'span 2' }}>
+          <InputContent
+            label={translate(STRING.FIELD_LABEL_ERRORS)}
+            style={{ gridColumn: 'span 2' }}
+          >
             <CodeBlock lines={job.errors} theme={CodeBlockTheme.Error} />
           </InputContent>
         </FormRow>
