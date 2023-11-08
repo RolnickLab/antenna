@@ -172,6 +172,7 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
 
     job = Job.objects.get(task_id=task_id)
     job.update_status(JobState.FAILURE, save=False)
+
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
-    job.progress.errors.append(str(exception))
+
     job.save()

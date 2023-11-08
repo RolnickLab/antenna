@@ -293,9 +293,12 @@ class JobLogHandler(logging.Handler):
         msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
         if msg not in self.job.progress.logs:
             self.job.progress.logs.insert(0, msg)
+
+        # Write a simpler copy of any errors to the errors field
         if record.levelno >= logging.ERROR:
             if record.message not in self.job.progress.errors:
                 self.job.progress.errors.insert(0, record.message)
+
         if len(self.job.progress.logs) > self.max_log_length:
             self.job.progress.logs = self.job.progress.logs[: self.max_log_length]
         self.job.save()
@@ -410,6 +413,7 @@ class Job(BaseModel):
                     )
                     self.save()
                     last_update = time.time()
+
             self.progress.update_stage("delay", status=JobState.SUCCESS, progress=1)
             self.save()
 
