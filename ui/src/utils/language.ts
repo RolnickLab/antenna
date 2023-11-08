@@ -129,6 +129,7 @@ export enum STRING {
   RUNNING,
   CANCELING,
   REVOKED,
+  FAILED,
   DONE,
 
   /* OTHER */
@@ -291,6 +292,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.RUNNING]: 'Running',
   [STRING.CANCELING]: 'Canceling',
   [STRING.REVOKED]: 'Canceled',
+  [STRING.FAILED]: 'Failed',
   [STRING.DONE]: 'Done',
 
   /* OTHER */

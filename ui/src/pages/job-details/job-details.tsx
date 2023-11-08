@@ -72,6 +72,8 @@ const JobSummary = ({ job }: { job: Job }) => {
         return Status.Warning
       case JobStatus.Revoked:
         return Status.Error
+      case JobStatus.Failed:
+        return Status.Error
       default:
         return Status.Error
     }
@@ -112,9 +114,9 @@ const JobSummary = ({ job }: { job: Job }) => {
             to={
               job.sourceImages
                 ? APP_ROUTES.COLLECTION_DETAILS({
-                    projectId: projectId as string,
-                    collectionId: job.sourceImages.id,
-                  })
+                  projectId: projectId as string,
+                  collectionId: job.sourceImages.id,
+                })
                 : undefined
             }
             value={job.sourceImages?.name}

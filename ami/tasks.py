@@ -131,8 +131,16 @@ def save_model_instances(app_label: str, model_name: str, pks: list[int | str], 
 def run_job(self, job_id: int) -> None:
     from ami.jobs.models import Job
 
-    job = Job.objects.get(id=job_id)
-    job.run()
+    job = Job.objects.get(pk=job_id)
+    job.logger.info(f"Running job {job}")
+    try:
+        job.run()
+    except Exception as e:
+        job.logger.error(f'Job #{job.pk} "{job.name}" failed: {e}')
+        raise
+    else:
+        job.refresh_from_db()
+        job.logger.info(f"Finished job {job}")
 
 
 @task_postrun.connect(sender=run_job)
@@ -159,10 +167,11 @@ def update_job_status(sender, task_id, task, *args, **kwargs):
 
 
 @task_failure.connect(sender=run_job)
-def update_job_failure(sender, task_id, task, *args, **kwargs):
-    from ami.jobs.models import Job
+def update_job_failure(sender, task_id, exception, *args, **kwargs):
+    from ami.jobs.models import Job, JobState
 
     job = Job.objects.get(task_id=task_id)
-    logger.error(f"Job {job} failed with exception {task.exception}")
-    job.status = "FAILED"
-    job.save(update_fields=["status"])
+    job.update_status(JobState.FAILURE, save=False)
+    job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
+    job.progress.errors.append(str(exception))
+    job.save()
