@@ -107,6 +107,8 @@ class UserNestedSerializer(DefaultSerializer):
 
 
 class SourceImageNestedSerializer(DefaultSerializer):
+    event_id = serializers.PrimaryKeyRelatedField(source="event", read_only=True)
+
     class Meta:
         model = SourceImage
         fields = [
@@ -116,6 +118,7 @@ class SourceImageNestedSerializer(DefaultSerializer):
             "width",
             "height",
             "timestamp",
+            "event_id",
             # "detections_count",
             # "detections",
         ]
