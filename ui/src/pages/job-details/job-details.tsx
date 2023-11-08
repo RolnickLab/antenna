@@ -205,7 +205,7 @@ const JobStages = ({ job }: { job: Job }) => {
               <JobStageLabel
                 label={stage.statusLabel}
                 status={status}
-                statusDetails={job.statusDetails}
+                statusDetails={stage.statusDetails}
               />
             </div>
             <Wizard.Trigger title={stage.name}>
