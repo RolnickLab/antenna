@@ -8,6 +8,10 @@ export class JobDetails extends Job {
     super(job)
   }
 
+  get description(): string {
+    return `Job ${this.id} "${this.name}"`
+  }
+
   get delay(): number {
     return this._job.delay
   }
@@ -60,7 +64,7 @@ export class JobDetails extends Job {
     return capture
       ? {
           id: `${capture.id}`,
-          label: `Capture #${capture.id.id}`,
+          label: `Capture #${capture.id}`,
           sessionId: capture.event_id ? `${capture.event_id}` : undefined,
         }
       : undefined

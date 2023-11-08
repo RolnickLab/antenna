@@ -5,6 +5,7 @@ import {
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { JobDetails } from 'pages/job-details/job-details'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -15,9 +16,16 @@ export const CaptureJobDialog = ({ id }: { id: string }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
-        <IconButton theme={IconButtonTheme.Neutral} icon={IconType.BatchId} />
-      </Dialog.Trigger>
+      <Tooltip content={job?.description ?? `Job ${id}`}>
+        <div>
+          <Dialog.Trigger>
+            <IconButton
+              theme={IconButtonTheme.Neutral}
+              icon={IconType.BatchId}
+            />
+          </Dialog.Trigger>
+        </div>
+      </Tooltip>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
