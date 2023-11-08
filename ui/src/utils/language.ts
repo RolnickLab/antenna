@@ -175,7 +175,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.LOGIN]: 'Login',
   [STRING.LOGOUT]: 'Logout',
   [STRING.NEXT]: 'Next',
-  [STRING.PROCESS_NOW]: 'Process now',
+  [STRING.PROCESS_NOW]: 'Process this single image with presets',
   [STRING.REFRESH]: 'Refresh',
   [STRING.RESET]: 'Reset',
   [STRING.RETRY]: 'Retry',
