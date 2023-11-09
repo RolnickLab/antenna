@@ -1,5 +1,6 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 
 export type ServerJob = any // TODO: Update this type
 
@@ -8,6 +9,9 @@ export enum JobStatus {
   Pending = 'pending',
   Started = 'started',
   Success = 'success',
+  Canceling = 'canceling',
+  Revoked = 'revoked',
+  Failed = 'failed',
   Unknown = 'unknown',
 }
 
@@ -18,6 +22,31 @@ export class Job {
     this._job = job
   }
 
+  get canCancel(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Update) &&
+      this.status === JobStatus.Started
+    )
+  }
+
+  get canDelete(): boolean {
+    return this._job.user_permissions.includes(UserPermission.Delete)
+  }
+
+  get canQueue(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Update) &&
+      this.status === JobStatus.Created
+    )
+  }
+
+  get createdAt(): string | undefined {
+    if (!this._job.created_at) {
+      return
+    }
+
+    return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
+  }
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return
@@ -72,6 +101,12 @@ export class Job {
         return JobStatus.Started
       case 'SUCCESS':
         return JobStatus.Success
+      case 'CANCELING':
+        return JobStatus.Canceling
+      case 'REVOKED':
+        return JobStatus.Revoked
+      case 'FAILURE':
+        return JobStatus.Failed
       default:
         return JobStatus.Unknown
     }
@@ -87,6 +122,12 @@ export class Job {
         return translate(STRING.RUNNING)
       case JobStatus.Success:
         return translate(STRING.DONE)
+      case JobStatus.Canceling:
+        return translate(STRING.CANCELING)
+      case JobStatus.Revoked:
+        return translate(STRING.REVOKED)
+      case JobStatus.Failed:
+        return translate(STRING.FAILED)
       default:
         return translate(STRING.UNKNOWN)
     }

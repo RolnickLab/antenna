@@ -107,6 +107,8 @@ class UserNestedSerializer(DefaultSerializer):
 
 
 class SourceImageNestedSerializer(DefaultSerializer):
+    event_id = serializers.PrimaryKeyRelatedField(source="event", read_only=True)
+
     class Meta:
         model = SourceImage
         fields = [
@@ -116,6 +118,7 @@ class SourceImageNestedSerializer(DefaultSerializer):
             "width",
             "height",
             "timestamp",
+            "event_id",
             # "detections_count",
             # "detections",
         ]
@@ -608,7 +611,7 @@ class TaxonSerializer(DefaultSerializer):
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):
-    determination = CaptureTaxonSerializer(read_only=True)
+    determination = TaxonNoParentNestedSerializer(read_only=True)
     determination_algorithm = AlgorithmSerializer(read_only=True)
 
     class Meta:
@@ -750,7 +753,7 @@ class DetectionSerializer(DefaultSerializer):
 
 class SourceImageListSerializer(DefaultSerializer):
     detections_count = serializers.IntegerField(read_only=True)
-    detections = CaptureDetectionsSerializer(many=True, read_only=True)
+    detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)

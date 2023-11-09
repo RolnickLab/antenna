@@ -15,6 +15,7 @@
   position: absolute;
   top: 0;
   left: 0;
+  transition: width 400ms ease, background-color 200ms ease;
 
   &.success {
     background-color: $color-success-500;

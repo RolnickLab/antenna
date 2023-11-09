@@ -36,6 +36,10 @@
   @include paragraph-small();
   color: $color-neutral-500;
   white-space: pre-wrap;
+
+  &.link {
+    color: $color-primary-1-600;
+  }
 }
 
 .description {

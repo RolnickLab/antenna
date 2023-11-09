@@ -1,6 +1,11 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
+import { FormRow, FormSection } from 'components/form/layout/layout'
 import { JobStatus } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
+import {
+  CodeBlock,
+  CodeBlockTheme,
+} from 'design-system/components/code-block/code-block'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
@@ -11,8 +16,14 @@ import {
   StatusBulletTheme,
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
+import { DeleteJobsDialog } from 'pages/jobs/delete-jobs-dialog'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { CancelJob } from './job-actions/cancel-job'
+import { QueueJob } from './job-actions/queue-job'
 import styles from './job-details.module.scss'
 import { JobStageLabel } from './job-stage-label/job-stage-label'
 
@@ -20,43 +31,56 @@ export const JobDetails = ({
   job,
   title,
   isFetching,
+  onDelete,
 }: {
   job: Job
   title: string
   isFetching?: boolean
+  onDelete: () => void
 }) => (
   <>
     <Dialog.Header title={title}>
-      <div className={styles.fetchInfoWrapper}>
-        {isFetching ? <FetchInfo /> : null}
+      <div className={styles.headerContent}>
+        <div className={styles.fetchInfoWrapper}>
+          {isFetching ? <FetchInfo /> : null}
+        </div>
+        {job.canQueue && <QueueJob jobId={job.id} />}
+        {job.canCancel && <CancelJob jobId={job.id} />}
+        {job.canDelete && <DeleteJobsDialog id={job.id} onDelete={onDelete} />}
       </div>
     </Dialog.Header>
     <div className={styles.content}>
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Summary</h2>
-        <div className={styles.sectionContent}>
-          <JobSummary job={job} />
-        </div>
-      </div>
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Stages</h2>
-        <JobStages job={job} />
-      </div>
+      <FormSection title={translate(STRING.SUMMARY)}>
+        <JobSummary job={job} />
+      </FormSection>
+      {job.stages.length > 0 && (
+        <FormSection title={translate(STRING.STAGES)}>
+          <JobStages job={job} />
+        </FormSection>
+      )}
     </div>
   </>
 )
 
 const JobSummary = ({ job }: { job: Job }) => {
+  const { projectId } = useParams()
+
   const status = (() => {
     switch (job.status) {
       case JobStatus.Created:
         return Status.Neutral
       case JobStatus.Pending:
-        return Status.Neutral
+        return Status.Warning
       case JobStatus.Started:
         return Status.Warning
       case JobStatus.Success:
         return Status.Success
+      case JobStatus.Canceling:
+        return Status.Warning
+      case JobStatus.Revoked:
+        return Status.Error
+      case JobStatus.Failed:
+        return Status.Error
       default:
         return Status.Error
     }
@@ -64,8 +88,8 @@ const JobSummary = ({ job }: { job: Job }) => {
 
   return (
     <>
-      <div className={styles.sectionFields}>
-        <div className={styles.sectionStatus}>
+      <FormRow>
+        <div className={styles.status}>
           <InputContent label={translate(STRING.FIELD_LABEL_STATUS)}>
             <StatusBar
               status={status}
@@ -74,19 +98,86 @@ const JobSummary = ({ job }: { job: Job }) => {
             />
           </InputContent>
         </div>
-        <InputValue label={translate(STRING.FIELD_LABEL_ID)} value={job.id} />
+      </FormRow>
+      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_NAME)}
           value={job.name}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_PROJECT)}
-          value={job.project}
+          label={translate(STRING.FIELD_LABEL_DELAY)}
+          value={job.delay}
         />
-        <InputValue label={job.inputLabel} value={job.inputValue} />
-        <InputValue label="Started at" value={job.startedAt} />
-        <InputValue label="Finished at" value={job.finishedAt} />
-      </div>
+      </FormRow>
+      <FormRow>
+        {job.sourceImage ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
+            value={job.sourceImage.label}
+            to={
+              job.sourceImage.sessionId
+                ? getAppRoute({
+                    to: APP_ROUTES.SESSION_DETAILS({
+                      projectId: projectId as string,
+                      sessionId: job.sourceImage.sessionId,
+                    }),
+                    filters: {
+                      capture: job.sourceImage.id,
+                    },
+                  })
+                : undefined
+            }
+          />
+        ) : (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
+            to={
+              job.sourceImages
+                ? APP_ROUTES.COLLECTION_DETAILS({
+                    projectId: projectId as string,
+                    collectionId: job.sourceImages.id,
+                  })
+                : undefined
+            }
+            value={job.sourceImages?.name}
+          />
+        )}
+
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_PIPELINE)}
+          value={job.pipeline?.name}
+        />
+      </FormRow>
+      <FormRow>
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_STARTED_AT)}
+          value={job.startedAt}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_FINISHED_AT)}
+          value={job.finishedAt}
+        />
+      </FormRow>
+      {job.logs.length > 0 && (
+        <FormRow>
+          <InputContent
+            label={translate(STRING.FIELD_LABEL_LOGS)}
+            style={{ gridColumn: 'span 2' }}
+          >
+            <CodeBlock lines={job.logs} />
+          </InputContent>
+        </FormRow>
+      )}
+      {job.errors.length > 0 && (
+        <FormRow>
+          <InputContent
+            label={translate(STRING.FIELD_LABEL_ERRORS)}
+            style={{ gridColumn: 'span 2' }}
+          >
+            <CodeBlock lines={job.errors} theme={CodeBlockTheme.Error} />
+          </InputContent>
+        </FormRow>
+      )}
     </>
   )
 }
@@ -97,16 +188,10 @@ const JobStages = ({ job }: { job: Job }) => {
   return (
     <Wizard.Root value={activeStage} onValueChange={setActiveStage}>
       {job.stages.map((stage, index) => {
-        const stageInfo = job.getStageInfo(stage.key)
-
-        if (!stageInfo) {
-          return null
-        }
-
         const isOpen = activeStage === stage.key
 
         const status = (() => {
-          switch (stageInfo.status) {
+          switch (stage.status) {
             case JobStatus.Created:
               return Status.Neutral
             case JobStatus.Pending:
@@ -124,12 +209,12 @@ const JobStages = ({ job }: { job: Job }) => {
           <Wizard.Item key={stage.key} value={stage.key}>
             <div className={styles.jobStageLabel}>
               <JobStageLabel
-                label={stageInfo.statusLabel}
+                label={stage.statusLabel}
                 status={status}
-                statusDetails={job.statusDetails}
+                statusDetails={stage.statusDetails}
               />
             </div>
-            <Wizard.Trigger title={stageInfo.name}>
+            <Wizard.Trigger title={stage.name}>
               {status === Status.Success ? (
                 <StatusBullet
                   icon={IconType.Checkmark}
@@ -147,15 +232,15 @@ const JobStages = ({ job }: { job: Job }) => {
               )}
             </Wizard.Trigger>
             <Wizard.Content>
-              <div className={styles.sectionFields}>
-                {stageInfo.fields.map((field) => (
+              <FormRow>
+                {stage.fields.map((field) => (
                   <InputValue
                     key={field.key}
                     label={field.label}
                     value={field.value}
                   />
                 ))}
-              </div>
+              </FormRow>
             </Wizard.Content>
           </Wizard.Item>
         )

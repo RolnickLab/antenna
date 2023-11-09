@@ -17,7 +17,7 @@ export const Default: Meta = {
       min: 0,
       max: 1,
       step: 0.01,
-      defaultValue: 0.5,
     },
+    value: 0.05,
   },
 }

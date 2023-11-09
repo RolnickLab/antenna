@@ -35,8 +35,10 @@ class JobState(str, OrderedEnum):
     SUCCESS = "SUCCESS"
     FAILURE = "FAILURE"
     RETRY = "RETRY"
+    CANCELING = "CANCELING"
     REVOKED = "REVOKED"
     RECEIVED = "RECEIVED"
+    UNKNOWN = "UNKNOWN"
 
 
 def get_status_label(status: JobState, progress: float) -> str:
@@ -62,6 +64,9 @@ class JobProgressSummary(pydantic.BaseModel):
 
     @pydantic.validator("status_label", always=True)
     def serialize_status_label(cls, value, values) -> str:
+        if "status" not in values or "progress" not in values:
+            # Does this happen if status label gets initialized before status and progress?
+            return ""
         return get_status_label(values["status"], values["progress"])
 
     class Config:
@@ -87,6 +92,8 @@ class JobProgress(pydantic.BaseModel):
 
     summary: JobProgressSummary
     stages: list[JobProgressStageDetail]
+    errors: list[str] = []
+    logs: list[str] = []
 
     def add_stage(self, name: str) -> JobProgressStageDetail:
         stage = JobProgressStageDetail(
@@ -266,6 +273,37 @@ example_non_model_config = {
 }
 
 
+class JobLogHandler(logging.Handler):
+    """
+    Class for handling logs from a job and writing them to the job instance.
+    """
+
+    max_log_length = 1000
+
+    def __init__(self, job: "Job", *args, **kwargs):
+        self.job = job
+        super().__init__(*args, **kwargs)
+
+    def emit(self, record):
+        # Log to the current app logger
+        logger.log(record.levelno, self.format(record))
+
+        # Write to the logs field on the job instance
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
+        if msg not in self.job.progress.logs:
+            self.job.progress.logs.insert(0, msg)
+
+        # Write a simpler copy of any errors to the errors field
+        if record.levelno >= logging.ERROR:
+            if record.message not in self.job.progress.errors:
+                self.job.progress.errors.insert(0, record.message)
+
+        if len(self.job.progress.logs) > self.max_log_length:
+            self.job.progress.logs = self.job.progress.logs[: self.max_log_length]
+        self.job.save()
+
+
 class Job(BaseModel):
     """A job to be run by the scheduler
 
@@ -320,7 +358,7 @@ class Job(BaseModel):
     )
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.status})"
+        return f'#{self.pk} "{self.name}" ({self.status})'
 
     def enqueue(self):
         """
@@ -361,15 +399,21 @@ class Job(BaseModel):
         self.save()
 
         if self.delay:
+            update_interval_seconds = 2
+            last_update = time.time()
             for i in range(self.delay):
-                logger.info(f"Delaying job {self.pk} for {i} out of {self.delay} seconds")
                 time.sleep(1)
-                self.progress.update_stage(
-                    "delay",
-                    status=JobState.STARTED,
-                    progress=i / self.delay,
-                )
-                self.save()
+                # Update periodically
+                if time.time() - last_update > update_interval_seconds:
+                    self.logger.info(f"Delaying job {self.pk} for the {i} out of {self.delay} seconds")
+                    self.progress.update_stage(
+                        "delay",
+                        status=JobState.STARTED,
+                        progress=i / self.delay,
+                    )
+                    self.save()
+                    last_update = time.time()
+
             self.progress.update_stage("delay", status=JobState.SUCCESS, progress=1)
             self.save()
 
@@ -381,12 +425,17 @@ class Job(BaseModel):
         """
         Terminate the celery task.
         """
+        self.status = JobState.CANCELING
+        self.save()
         if self.task_id:
             task = ami.tasks.run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
                 self.status = task.status
                 self.save()
+        else:
+            self.status = JobState.REVOKED
+            self.save()
 
     def update_status(self, status=None, save=True):
         """
@@ -398,10 +447,13 @@ class Job(BaseModel):
             status = task.status
 
         if not status:
-            logger.warn(f"Could not determine status of job {self.pk}")
+            self.logger.warn(f"Could not determine status of job {self.pk}")
             return
 
-        self.status = status
+        if status != self.status:
+            self.logger.info(f"Changing status of job {self.pk} to {status}")
+            self.status = status
+
         self.progress.summary.status = status
 
         if save:
@@ -444,3 +496,17 @@ class Job(BaseModel):
     def default_progress(cls) -> JobProgress:
         """Return the progress of each stage of this job as a dictionary"""
         return default_job_progress
+
+    @property
+    def logger(self) -> logging.Logger:
+        logger = logging.getLogger(f"ami.jobs.{self.pk}")
+        # Also log output to a field on thie model instance
+        logger.addHandler(JobLogHandler(self))
+        return logger
+
+    class Meta:
+        ordering = ["-created_at"]
+        # permissions = [
+        #     ("run_job", "Can run a job"),
+        #     ("cancel_job", "Can cancel a job"),
+        # ]

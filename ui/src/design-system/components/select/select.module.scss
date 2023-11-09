@@ -1,6 +1,10 @@
 @import 'design-system/variables/colors.scss';
 @import 'design-system/variables/typography.scss';
 
+.wrapper {
+  position: relative;
+}
+
 .label {
   display: block;
   @include paragraph-small();
@@ -9,11 +13,20 @@
   margin-bottom: 4px;
 }
 
-.description {
+.clear {
   display: block;
+  position: absolute;
+  left: 0;
+  bottom: -8px;
+  transform: translateY(100%);
   @include paragraph-small();
-  color: $color-neutral-500;
-  font-style: italic;
+  color: $color-primary-1-600();
+  font-weight: 600;
+
+  &:hover {
+    cursor: pointer;
+    opacity: 0.7;
+  }
 }
 
 .selectTrigger {
@@ -27,15 +40,22 @@
   color: $color-neutral-800;
   border: 1px solid $color-neutral-300;
   box-sizing: border-box;
-  cursor: pointer;
   margin-bottom: 8px;
 
   &[data-placeholder] {
     color: $color-neutral-500;
   }
 
-  &:hover:not(:focus) {
-    opacity: 0.7;
+  &:not(.disabled) {
+    cursor: pointer;
+
+    &:hover:not(:focus) {
+      opacity: 0.7;
+    }
+  }
+
+  &.disabled {
+    opacity: 0.5;
   }
 
   &:focus,
@@ -58,7 +78,7 @@
 }
 
 .selectViewport {
-  padding: 10px;
+  padding: 8px;
 }
 
 .selectItem {
@@ -72,12 +92,13 @@
   color: $color-neutral-800;
   cursor: pointer;
 
+  &[data-highlighted],
   &:hover {
-    opacity: 0.7;
+    background-color: $color-primary-2-50;
   }
 
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
+  &[data-state='checked'] {
+    background-color: $color-primary-2-100;
   }
 }
 

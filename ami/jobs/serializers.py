@@ -8,7 +8,7 @@ from ami.main.api.serializers import (
     SourceImageCollectionNestedSerializer,
     SourceImageNestedSerializer,
 )
-from ami.main.models import Pipeline, Project, SourceImage, SourceImageCollection
+from ami.main.models import Deployment, Pipeline, Project, SourceImage, SourceImageCollection
 
 from .models import Job, JobProgress
 
@@ -38,6 +38,15 @@ class JobListSerializer(DefaultSerializer):
         # @TODO this should be filtered by projects belonging to current user
         queryset=Project.objects.all(),
         source="project",
+    )
+    deployment_id = serializers.PrimaryKeyRelatedField(
+        label="Deployment",
+        write_only=True,
+        required=False,
+        allow_null=True,
+        # @TODO should this be filtered by project (from URL for new job?)
+        queryset=Deployment.objects.all(),
+        source="deployment",
     )
     source_image_single_id = serializers.PrimaryKeyRelatedField(
         label="Source Image",
@@ -77,6 +86,7 @@ class JobListSerializer(DefaultSerializer):
             "project",
             "project_id",
             "deployment",
+            "deployment_id",
             "source_image_collection",
             "source_image_collection_id",
             "source_image_single",
@@ -84,6 +94,8 @@ class JobListSerializer(DefaultSerializer):
             "pipeline",
             "pipeline_id",
             "status",
+            "created_at",
+            "updated_at",
             "started_at",
             "finished_at",
             "duration",
