@@ -64,7 +64,7 @@ export class JobDetails extends Job {
     return capture
       ? {
           id: `${capture.id}`,
-          label: `Capture #${capture.id}`,
+          label: `${capture.id}`,
           sessionId: capture.event_id ? `${capture.event_id}` : undefined,
         }
       : undefined

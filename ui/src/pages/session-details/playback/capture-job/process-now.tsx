@@ -15,7 +15,7 @@ export const ProcessNow = ({
 }) => {
   const { projectId } = useParams()
   const { createJob, isLoading, isSuccess } = useCreateJob()
-  const icon = isSuccess ? IconType.RadixCheck : IconType.BatchId
+  const icon = isSuccess ? IconType.RadixCheck : undefined
   const disabled = !capture || capture.hasJobInProgress
 
   if (disabled) {
@@ -31,7 +31,7 @@ export const ProcessNow = ({
   }
 
   return (
-    <Tooltip content={translate(STRING.PROCESS_NOW)}>
+    <Tooltip content={translate(STRING.MESSAGE_PROCESS_NOW_TOOLTIP)}>
       <Button
         icon={icon}
         label={translate(STRING.PROCESS_NOW)}
