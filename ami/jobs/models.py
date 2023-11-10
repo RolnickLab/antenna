@@ -1,7 +1,6 @@
 import datetime
 import logging
 import time
-import typing
 
 import pydantic
 from django.db import models
@@ -10,6 +9,7 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 from ami.base.models import BaseModel
+from ami.base.schemas import ConfigurableStage
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.utils.schemas import OrderedEnum
@@ -76,16 +76,10 @@ class JobProgressSummary(pydantic.BaseModel):
         use_enum_values = True
 
 
-class JobProgressStageDetail(JobProgressSummary):
+class JobProgressStageDetail(ConfigurableStage, JobProgressSummary):
     """A stage of a job"""
 
-    key: str
-    name: str
-    time_elapsed: datetime.timedelta = datetime.timedelta()
-    time_remaining: datetime.timedelta | None = None
-    input_size: int = 0
-    output_size: int = 0
-    params: dict[str, typing.Any] = {}
+    pass
 
 
 stage_parameters = JobProgressStageDetail.__fields__.keys()
@@ -123,54 +117,43 @@ class JobProgress(pydantic.BaseModel):
         as_dict = True
 
 
-default_job_progress = JobProgress(
-    summary=JobProgressSummary(status=JobState.CREATED, progress=0),
-    stages=[],
-)
+def default_job_progress() -> JobProgress:
+    return JobProgress(
+        summary=JobProgressSummary(status=JobState.CREATED, progress=0),
+        stages=[],
+    )
 
-default_ml_job_progress = JobProgress(
-    summary=JobProgressSummary(status=JobState.CREATED, progress=0),
-    stages=[
-        JobProgressStageDetail(
-            key="object_detection",
-            name="Object Detection",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-            input_size=0,
-            output_size=0,
-        ),
-        JobProgressStageDetail(
-            key="binary_classification",
-            name="Objects of Interest Filter",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-            input_size=0,
-            output_size=0,
-        ),
-        JobProgressStageDetail(
-            key="species_classification",
-            name="Species Classification",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-        ),
-        JobProgressStageDetail(
-            key="tracking",
-            name="Occurrence Tracking",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-            input_size=0,
-            output_size=0,
-        ),
-    ],
-)
+
+def default_ml_job_progress() -> JobProgress:
+    return JobProgress(
+        summary=JobProgressSummary(status=JobState.CREATED, progress=0),
+        stages=[
+            JobProgressStageDetail(
+                key="object_detection",
+                name="Object Detection",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+            JobProgressStageDetail(
+                key="binary_classification",
+                name="Objects of Interest Filter",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+            JobProgressStageDetail(
+                key="species_classification",
+                name="Species Classification",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+            JobProgressStageDetail(
+                key="tracking",
+                name="Occurrence Tracking",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+        ],
+    )
 
 
 default_job_config = {
@@ -320,7 +303,7 @@ class Job(BaseModel):
     finished_at = models.DateTimeField(null=True, blank=True)
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
-    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
+    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")

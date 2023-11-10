@@ -44,7 +44,6 @@ class PipelineSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
-            "key",
             "description",
             "version",
             "version_name",
@@ -62,7 +61,6 @@ class PipelineNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
-            "key",
             "version",
             "version_name",
         ]
