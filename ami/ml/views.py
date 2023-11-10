@@ -34,3 +34,4 @@ class PipelineViewSet(DefaultViewSet):
         "created_at",
         "updated_at",
     ]
+    filterset_fields = ["projects"]

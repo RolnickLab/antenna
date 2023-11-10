@@ -6,12 +6,12 @@ from rest_framework import serializers
 from ami.base.serializers import DefaultSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
 from ami.main.models import _create_source_image_from_upload
+from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
 from ami.utils.dates import get_image_timestamp_from_filename
 
 from ..models import (
-    Algorithm,
     Classification,
     Deployment,
     Detection,

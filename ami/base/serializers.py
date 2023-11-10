@@ -36,7 +36,7 @@ def get_current_user(request: Request | None):
 
 class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     url_field_name = "details"
-    id = serializers.IntegerField()
+    id = serializers.IntegerField(read_only=True)
 
     def get_permissions(self, instance_data):
         request = self.context.get("request")

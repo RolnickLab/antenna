@@ -30,11 +30,14 @@ class PipelineStage(pydantic.BaseModel):
         validate_assignment = False
 
 
-default_stage = PipelineStage(
-    key="default",
-    name="Default Stage",
-    params=[PipelineStageParam(name="Placeholder param", key="default", value=0)],
-)
+def default_stages() -> list[PipelineStage]:
+    return [
+        PipelineStage(
+            key="default",
+            name="Default Stage",
+            params=[PipelineStageParam(name="Placeholder param", key="default", value=0)],
+        )
+    ]
 
 
 @typing.final
@@ -45,4 +48,5 @@ class Pipeline(BaseModel):
     description = models.TextField(blank=True)
     version = models.CharField(max_length=255, blank=True)
     algorithms = models.ManyToManyField(Algorithm, related_name="pipelines")
-    stages: list[PipelineStage] = SchemaField(default=[default_stage])
+    stages: list[PipelineStage] = SchemaField(default=default_stages)
+    projects = models.ManyToManyField("main.Project", related_name="pipelines")
