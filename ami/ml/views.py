@@ -34,4 +34,6 @@ class PipelineViewSet(DefaultViewSet):
         "created_at",
         "updated_at",
     ]
-    filterset_fields = ["projects"]
+    # Don't enable projects filter until we can use the current users
+    # membership to filter the projects.
+    # filterset_fields = ["projects"]

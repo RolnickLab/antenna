@@ -17,6 +17,7 @@ class Algorithm(BaseModel):
     """A machine learning algorithm"""
 
     name = models.CharField(max_length=255)
+    key = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True)
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
