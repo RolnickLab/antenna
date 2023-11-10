@@ -1,8 +1,15 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ami.main.models import Classification
+
 import typing
 
 from django.db import models
 
-from ami.main.models import BaseModel, Classification
+from ami.base.models import BaseModel
 
 
 @typing.final
@@ -14,4 +21,4 @@ class Algorithm(BaseModel):
     version = models.CharField(max_length=255, blank=True)
     url = models.URLField(blank=True)
 
-    classfications: models.QuerySet["Classification"]
+    classfications: models.QuerySet[Classification]

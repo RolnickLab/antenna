@@ -1,6 +1,7 @@
 import datetime
 import logging
 import time
+import typing
 
 import pydantic
 from django.db import models
@@ -8,7 +9,9 @@ from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
 import ami.tasks
-from ami.main.models import BaseModel, Deployment, Pipeline, Project, SourceImage, SourceImageCollection
+from ami.base.models import BaseModel
+from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
+from ami.ml.models import Pipeline
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -82,6 +85,7 @@ class JobProgressStageDetail(JobProgressSummary):
     time_remaining: datetime.timedelta | None = None
     input_size: int = 0
     output_size: int = 0
+    params: dict[str, typing.Any] = {}
 
 
 stage_parameters = JobProgressStageDetail.__fields__.keys()
@@ -154,8 +158,6 @@ default_ml_job_progress = JobProgress(
             progress=0,
             time_elapsed=datetime.timedelta(),
             time_remaining=None,
-            input_size=0,
-            output_size=0,
         ),
         JobProgressStageDetail(
             key="tracking",
