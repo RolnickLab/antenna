@@ -13,6 +13,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
+            "key",
             "version",
             "version_name",
             "created_at",
@@ -27,6 +28,7 @@ class AlgorithmNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
+            "key",
             "version",
             "version_name",
         ]
@@ -42,6 +44,7 @@ class PipelineSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
+            "key",
             "description",
             "version",
             "version_name",
@@ -59,6 +62,7 @@ class PipelineNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
+            "key",
             "version",
             "version_name",
         ]
