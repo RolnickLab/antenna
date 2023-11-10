@@ -11,11 +11,13 @@ class AlgorithmAdmin(AdminBase):
     list_display = [
         "name",
         "version",
+        "version_name",
         "created_at",
+        "updated_at",
     ]
     search_fields = [
         "name",
-        "version",
+        "version_name",
     ]
     ordering = [
         "name",
@@ -31,11 +33,12 @@ class PipelineAdmin(AdminBase):
     list_display = [
         "name",
         "version",
+        "version_name",
         "created_at",
     ]
     search_fields = [
         "name",
-        "version",
+        "version_name",
     ]
     from django import forms
 

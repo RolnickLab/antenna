@@ -46,7 +46,15 @@ class Pipeline(BaseModel):
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    version = models.CharField(max_length=255, blank=True)
+    version = models.IntegerField(default=1)
+    version_name = models.CharField(max_length=255, blank=True)
     algorithms = models.ManyToManyField(Algorithm, related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(default=default_stages)
     projects = models.ManyToManyField("main.Project", related_name="pipelines")
+
+    class Meta:
+        ordering = ["name", "version"]
+
+        unique_together = [
+            ["name", "version"],
+        ]

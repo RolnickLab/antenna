@@ -18,7 +18,15 @@ class Algorithm(BaseModel):
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    version = models.CharField(max_length=255, blank=True)
+    version = models.IntegerField(default=1)
+    version_name = models.CharField(max_length=255, blank=True)
     url = models.URLField(blank=True)
 
     classfications: models.QuerySet[Classification]
+
+    class Meta:
+        ordering = ["name", "version"]
+
+        unique_together = [
+            ["name", "version"],
+        ]
