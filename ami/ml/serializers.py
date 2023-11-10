@@ -14,6 +14,8 @@ class AlgorithmSerializer(DefaultSerializer):
             "details",
             "name",
             "key",
+            "description",
+            "url",
             "version",
             "version_name",
             "created_at",
@@ -35,7 +37,7 @@ class AlgorithmNestedSerializer(DefaultSerializer):
 
 
 class PipelineSerializer(DefaultSerializer):
-    algorithms = AlgorithmNestedSerializer(many=True, read_only=True)
+    algorithms = AlgorithmSerializer(many=True, read_only=True)
     stages = SchemaField(schema=list[PipelineStage], read_only=True)
 
     class Meta:
@@ -61,6 +63,7 @@ class PipelineNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
+            "description",
             "version",
             "version_name",
         ]
