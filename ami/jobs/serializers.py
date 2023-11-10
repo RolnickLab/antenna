@@ -115,7 +115,6 @@ class JobListSerializer(DefaultSerializer):
             "started_at",
             "finished_at",
             "duration",
-            "config",
         ]
 
 
@@ -125,6 +124,5 @@ class JobSerializer(JobListSerializer):
 
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
-            "config",
             "result",
         ]

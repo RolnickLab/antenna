@@ -1,6 +1,7 @@
 import datetime
 import logging
 import time
+import typing
 
 import pydantic
 from django.db import models
@@ -9,7 +10,7 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 from ami.base.models import BaseModel
-from ami.base.schemas import ConfigurableStage
+from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.utils.schemas import OrderedEnum
@@ -101,16 +102,43 @@ class JobProgress(pydantic.BaseModel):
         self.stages.append(stage)
         return stage
 
-    def update_stage(self, stage_key: str, **stage_parameters) -> JobProgressStageDetail | None:
-        stage_keys = [stage.key for stage in self.stages]
-        if stage_key not in stage_keys:
-            raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
-
+    def get_stage(self, stage_key: str) -> JobProgressStageDetail:
         for stage in self.stages:
             if stage.key == stage_key:
-                for k, v in stage_parameters.items():
-                    setattr(stage, k, v)
                 return stage
+        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
+
+    def add_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+        stage = self.get_stage(stage_key)
+        param = ConfigurableStageParam(
+            name=name,
+            key=slugify(name),
+            value=value,
+        )
+        stage.params.append(param)
+        return param
+
+    def update_stage(self, stage_key: str, **stage_parameters) -> JobProgressStageDetail | None:
+        """ "
+        Update the parameters of a stage of the job.
+
+        Will update parameters that are direct attributes of the stage,
+        or parameters that are in the stage's params list.
+        """
+        stage = self.get_stage(stage_key)
+
+        if stage.key == stage_key:
+            for k, v in stage_parameters.items():
+                # Update matching attribute of the stage object
+                if hasattr(stage, k):
+                    setattr(stage, k, v)
+                else:
+                    # Update matching parameters within the stage's params list
+                    for param in stage.params:
+                        if param.key == k:
+                            param.value = v
+
+            return stage
 
     class Config:
         use_enum_values = True
@@ -156,108 +184,6 @@ def default_ml_job_progress() -> JobProgress:
     )
 
 
-default_job_config = {
-    "input": {
-        "name": "N/A",
-        "size": 0,
-    },
-    "stages": [
-        {
-            "name": "Delay",
-            "key": "delay",
-            "params": [
-                {"key": "delay_seconds", "name": "Delay seconds", "value": "N/A"},
-            ],
-        },
-    ],
-}
-
-default_ml_job_config = {
-    "input": {
-        "name": "Captures",
-        "size": 100,
-    },
-    "stages": [
-        {
-            "name": "Object Detection",
-            "key": "object_detection",
-            "params": [
-                {"key": "model", "name": "Localization Model", "value": "yolov5s"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                # {"key": "threshold", "name": "Threshold", "value": 0.5},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-                {"key": "output_size", "name": "Objects detected", "read_only": True},
-            ],
-        },
-        {
-            "name": "Objects of Interest Filter",
-            "key": "binary_classification",
-            "params": [
-                {"key": "algorithm", "name": "Binary classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                {"key": "input_size", "name": "Objects processed", "read_only": True},
-                {"key": "output_size", "name": "Objects of interest", "read_only": True},
-            ],
-        },
-        {
-            "name": "Species Classification",
-            "key": "species_classification",
-            "params": [
-                {"key": "algorithm", "name": "Species classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                {"key": "threshold", "name": "Confidence threshold", "value": 0.5},
-                {"key": "input_size", "name": "Species processed", "read_only": True},
-                {"key": "output_size", "name": "Species classified", "read_only": True},
-            ],
-        },
-        {
-            "name": "Occurrence Tracking",
-            "key": "tracking",
-            "params": [
-                {"key": "algorithm", "name": "Occurrence tracking algorithm", "value": "adityacombo"},
-                {"key": "input_size", "name": "Detections processed", "read_only": True},
-                {"key": "output_size", "name": "Occurrences identified", "read_only": True},
-            ],
-        },
-    ],
-}
-
-example_non_model_config = {
-    "input": {
-        "name": "Raw Captures",
-        "source": "s3://bucket/path/to/captures",
-        "size": 100,
-    },
-    "stages": [
-        {
-            "name": "Image indexing",
-            "key": "image_indexing",
-            "params": [
-                {"key": "input_size", "name": "Directories scanned", "read_only": True},
-                {"key": "output_size", "name": "Images indexed", "read_only": True},
-            ],
-        },
-        {
-            "name": "Image resizing",
-            "key": "image_resizing",
-            "params": [
-                {"key": "width", "name": "Width", "value": 640},
-                {"key": "height", "name": "Height", "value": 480},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-            ],
-        },
-        {
-            "name": "Feature extraction",
-            "key": "feature_extraction",
-            "params": [
-                {"key": "algorithm", "name": "Feature extractor", "value": "imagenet"},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-            ],
-        },
-    ],
-}
-
-
 class JobLogHandler(logging.Handler):
     """
     Class for handling logs from a job and writing them to the job instance.
@@ -290,13 +216,9 @@ class JobLogHandler(logging.Handler):
 
 
 class Job(BaseModel):
-    """A job to be run by the scheduler
-
-    Example config:
-    """
+    """A job to be run by the scheduler"""
 
     name = models.CharField(max_length=255)
-    config = models.JSONField(default=default_job_config, null=True, blank=False)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
@@ -367,6 +289,8 @@ class Job(BaseModel):
 
         if self.delay:
             self.progress.add_stage("Delay")
+            self.progress.add_stage_param("delay", "Delay", self.delay)
+            self.progress.add_stage_param("delay", "Mood", "😴")
 
         if save:
             self.save()
@@ -395,11 +319,17 @@ class Job(BaseModel):
                         "delay",
                         status=JobState.STARTED,
                         progress=i / self.delay,
+                        mood="😵‍💫",
                     )
                     self.save()
                     last_update = time.time()
 
-            self.progress.update_stage("delay", status=JobState.SUCCESS, progress=1)
+            self.progress.update_stage(
+                "delay",
+                status=JobState.SUCCESS,
+                progress=1,
+                mood="🥳",
+            )
             self.save()
 
         self.update_status(JobState.SUCCESS)
@@ -474,13 +404,9 @@ class Job(BaseModel):
         super().save(*args, **kwargs)
 
     @classmethod
-    def default_config(cls) -> dict:
-        return default_job_config
-
-    @classmethod
     def default_progress(cls) -> JobProgress:
         """Return the progress of each stage of this job as a dictionary"""
-        return default_job_progress
+        return default_job_progress()
 
     @property
     def logger(self) -> logging.Logger:

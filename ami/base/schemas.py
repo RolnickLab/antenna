@@ -8,7 +8,7 @@ class ConfigurableStageParam(pydantic.BaseModel):
 
     name: str
     key: str
-    category: str
+    category: str = "default"
     value: typing.Any
 
 
