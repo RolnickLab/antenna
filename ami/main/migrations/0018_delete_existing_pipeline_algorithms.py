@@ -12,7 +12,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            "DELETE FROM main_classification WHERE algorithm_id NOT IN (SELECT id FROM ml_algorithm)", ""
-        ),
+        migrations.RunSQL("", ""),
     ]
