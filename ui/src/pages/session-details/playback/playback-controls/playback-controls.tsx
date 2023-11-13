@@ -4,6 +4,7 @@ import { PlaybackSlider } from 'design-system/components/slider/playback-slider'
 import { useState } from 'react'
 import { useThreshold } from 'utils/threshold/thresholdContext'
 import { CaptureJob } from '../capture-job/capture-job'
+import { PipelinesPicker } from './pipelines-picker'
 import styles from './playback-controls.module.scss'
 
 export const PlaybackControls = ({
@@ -13,12 +14,17 @@ export const PlaybackControls = ({
   activeCapture?: Capture
   session: SessionDetails
 }) => {
+  const [selectedPipeline, setSelectedPipeline] = useState<string>()
   const { defaultThreshold, threshold, setThreshold } = useThreshold()
   const [displayThreshold, setDisplayThreshold] = useState(threshold)
 
   return (
     <div className={styles.controls}>
-      <div className={styles.captureJob}>
+      <div className={styles.controlsRow}>
+        <PipelinesPicker
+          value={selectedPipeline}
+          onValueChange={setSelectedPipeline}
+        />
         {activeCapture && <CaptureJob captureId={activeCapture.id} />}
       </div>
       <div className={styles.slider}>

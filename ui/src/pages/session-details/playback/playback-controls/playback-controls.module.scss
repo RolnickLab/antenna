@@ -2,24 +2,23 @@
 @import 'design-system/variables/variables.scss';
 
 .controls {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
   padding: 16px;
   min-height: 28px;
   background-color: $color-neutral-700;
 }
 
-.captureJob {
+.controlsRow {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  width: 180px;
 }
 
 .slider {
-  flex: 1;
+  flex: 0;
   height: 100%;
   display: flex;
   align-items: center;

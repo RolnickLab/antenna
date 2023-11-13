@@ -5,6 +5,11 @@ import { Icon, IconTheme, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './select.module.scss'
 
+export enum SelectTheme {
+  Default = 'default',
+  NeutralCompact = 'neutral-compact',
+}
+
 interface SelectProps {
   placeholderDisabled?: string
   label?: string
@@ -14,6 +19,7 @@ interface SelectProps {
     label: string
   }[]
   placeholder?: string
+  theme?: SelectTheme
   value?: string
   onValueChange: (value?: string) => void
 }
@@ -24,6 +30,7 @@ export const Select = ({
   loading,
   options = [],
   placeholder = 'Pick a value',
+  theme = SelectTheme.Default,
   value,
   onValueChange,
 }: SelectProps) => {
@@ -41,9 +48,11 @@ export const Select = ({
         <_Select.Trigger
           className={classNames(styles.selectTrigger, {
             [styles.disabled]: disabled,
+            [styles.neutralCompact]: theme === SelectTheme.NeutralCompact,
           })}
         >
           <_Select.Value
+            className={styles.value}
             placeholder={disabled ? placeholderDisabled : placeholder}
           />
           <_Select.Icon className={styles.selectIcon}>
