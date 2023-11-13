@@ -1,0 +1,27 @@
+@import 'design-system/variables/colors.scss';
+@import 'design-system/variables/typography.scss';
+
+.content {
+  width: 720px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dialogTrigger {
+  @include paragraph-medium();
+  color: $color-primary-1-600;
+
+  &:hover {
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+}
+
+.tableContainer {
+  max-width: 100%;
+  overflow: hidden;
+}

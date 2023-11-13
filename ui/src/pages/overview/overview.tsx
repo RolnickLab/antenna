@@ -8,6 +8,7 @@ import { STRING, translate } from 'utils/language'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import styles from './overview.module.scss'
+import { Pipelines } from './pipelines/pipelines'
 import { Summary } from './summary/summary'
 
 export const Overview = () => {
@@ -60,12 +61,19 @@ export const Overview = () => {
             value="collections"
             label={translate(STRING.TAB_ITEM_COLLECTIONS)}
           />
+          <Tabs.Trigger
+            value="pipelines"
+            label={translate(STRING.TAB_ITEM_PIPELINES)}
+          />
         </Tabs.List>
         <Tabs.Content value="summary">
           <Summary project={project} />
         </Tabs.Content>
         <Tabs.Content value="collections">
           <Collections />
+        </Tabs.Content>
+        <Tabs.Content value="pipelines">
+          <Pipelines />
         </Tabs.Content>
       </Tabs.Root>
     </>
