@@ -19,6 +19,7 @@ interface SelectProps {
     label: string
   }[]
   placeholder?: string
+  showClear?: boolean
   theme?: SelectTheme
   value?: string
   onValueChange: (value?: string) => void
@@ -30,6 +31,7 @@ export const Select = ({
   loading,
   options = [],
   placeholder = 'Pick a value',
+  showClear = true,
   theme = SelectTheme.Default,
   value,
   onValueChange,
@@ -62,7 +64,11 @@ export const Select = ({
               <Icon
                 type={IconType.ToggleLeft}
                 size={12}
-                theme={IconTheme.Neutral}
+                theme={
+                  theme === SelectTheme.NeutralCompact
+                    ? IconTheme.Light
+                    : IconTheme.Neutral
+                }
               />
             )}
           </_Select.Icon>
@@ -87,7 +93,7 @@ export const Select = ({
           </_Select.Content>
         </_Select.Portal>
       </_Select.Root>
-      {value && (
+      {value && showClear && (
         <span className={styles.clear} onClick={() => onValueChange(undefined)}>
           Clear
         </span>

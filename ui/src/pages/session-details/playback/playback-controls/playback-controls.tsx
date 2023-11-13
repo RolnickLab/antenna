@@ -20,13 +20,6 @@ export const PlaybackControls = ({
 
   return (
     <div className={styles.controls}>
-      <div className={styles.controlsRow}>
-        <PipelinesPicker
-          value={selectedPipeline}
-          onValueChange={setSelectedPipeline}
-        />
-        {activeCapture && <CaptureJob captureId={activeCapture.id} />}
-      </div>
       <div className={styles.slider}>
         {session.numDetections && session.numDetections > 0 ? (
           <PlaybackSlider
@@ -40,6 +33,13 @@ export const PlaybackControls = ({
             }}
           />
         ) : null}
+      </div>
+      <div className={styles.controlsRow}>
+        <PipelinesPicker
+          value={selectedPipeline}
+          onValueChange={setSelectedPipeline}
+        />
+        {activeCapture && <CaptureJob captureId={activeCapture.id} />}
       </div>
     </div>
   )

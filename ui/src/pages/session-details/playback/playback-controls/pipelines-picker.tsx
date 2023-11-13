@@ -22,6 +22,7 @@ export const PipelinesPicker = ({
         label: p.name,
       }))}
       placeholder="Pick a pipeline"
+      showClear={false}
       theme={SelectTheme.NeutralCompact}
       value={value}
       onValueChange={onValueChange}
