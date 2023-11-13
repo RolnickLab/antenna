@@ -39,8 +39,15 @@ export class JobDetails extends Job {
     return this._job.progress.stages.map((stage: any) => {
       const status = this.getStatus(stage.status)
 
+      const fields: { key: string; label: string; value?: string | number }[] =
+        stage.params.map((param: any) => ({
+          key: param.key,
+          label: param.name,
+          value: param.value,
+        }))
+
       return {
-        fields: [], // TODO: Update
+        fields,
         key: stage.key,
         name: stage.name,
         status,
