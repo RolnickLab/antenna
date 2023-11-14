@@ -1,5 +1,7 @@
 export const API_URL =
-  process.env.NODE_ENV === 'test' ? 'http://localhost:3000/api/v2' : '/api/v2'
+  import.meta.env.NODE_ENV === 'test'
+    ? 'http://localhost:3000/api/v2'
+    : '/api/v2'
 
 export const API_ROUTES = {
   CAPTURES: 'captures',
