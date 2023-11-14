@@ -102,6 +102,7 @@
     "prettier": "2.8.4",
     "prop-types": "^15.8.1",
     "sass": "^1.58.3",
+    "vite-plugin-svgr": "^4.1.0",
     "webpack": "^5.75.0"
   }
 }
