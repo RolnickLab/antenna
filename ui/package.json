@@ -21,6 +21,7 @@
     "@types/node": "^16.7.13",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^4.1.1",
     "axios": "^1.4.0",
     "classnames": "^2.3.2",
     "cmdk": "^0.2.0",
@@ -33,13 +34,14 @@
     "react-leaflet": "^4.2.1",
     "react-plotly.js": "^2.6.0",
     "react-router-dom": "^6.8.2",
-    "react-scripts": "5.0.1",
-    "typescript": "^4.4.2"
+    "typescript": "^4.4.2",
+    "vite": "^4.5.0",
+    "vite-tsconfig-paths": "^4.2.1"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test --testURL http://localhost:3000",
+    "start": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "storybook": "start-storybook -p 6006 -s public",
