@@ -10,7 +10,7 @@ export default defineConfig({
     react(),
     viteTsconfigPaths(),
     svgr({ include: '**/*.svg?react' }),
-    eslint(),
+    eslint({ exclude: ['/virtual:/**', 'node_modules/**'] }),
   ],
   server: {
     open: true,
