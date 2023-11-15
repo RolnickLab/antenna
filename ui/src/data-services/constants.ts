@@ -1,7 +1,4 @@
-export const API_URL =
-  import.meta.env.NODE_ENV === 'test'
-    ? 'http://localhost:3000/api/v2'
-    : '/api/v2'
+export const API_URL = 'http://localhost:3000/api/v2'
 
 export const API_ROUTES = {
   CAPTURES: 'captures',

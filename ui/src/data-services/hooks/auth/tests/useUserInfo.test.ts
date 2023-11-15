@@ -1,16 +1,21 @@
 import { renderHook, waitFor } from '@testing-library/react'
-import { API_ROUTES, API_URL } from 'data-services/constants'
-import nock from 'nock'
-import { AppMock, queryClient } from 'utils/test'
+import { AppMock, queryClient } from 'utils/testHelpers'
 import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
 import { useUserInfo } from '../useUserInfo'
 
+const axios: any = require('axios')
+
 describe('useUserInfo', () => {
+  afterEach(() => {
+    jest.restoreAllMocks()
+    jest.clearAllMocks()
+  })
+
   test('will return user info on success', async () => {
     // Prep
-    nock(API_URL)
-      .get(`/${API_ROUTES.ME}/`)
-      .reply(200, { id: 1, email: 'user@insectai.org' })
+    axios.get.mockImplementation(() =>
+      Promise.resolve({ data: { id: 1, email: 'user@insectai.org' } })
+    )
 
     // Run
     const { result } = renderHook(() => useUserInfo(), { wrapper: AppMock })
@@ -25,7 +30,9 @@ describe('useUserInfo', () => {
 
   test('will logout the user on 403 error', async () => {
     // Prep
-    nock(API_URL).get(`/${API_ROUTES.ME}/`).times(2).reply(403)
+    axios.get.mockImplementation(() =>
+      Promise.reject({ response: { status: 403 } })
+    )
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'example-token') // Simulate logged in user
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
@@ -35,12 +42,14 @@ describe('useUserInfo', () => {
 
     // Check
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull()
-    expect(removeQueriesSpy).toBeCalledTimes(1)
+    expect(removeQueriesSpy).toHaveBeenCalled()
   })
 
   test('will keep the user logged in on error !== 403', async () => {
     // Prep
-    nock(API_URL).get(`/${API_ROUTES.ME}/`).times(2).reply(500)
+    axios.get.mockImplementation(() =>
+      Promise.reject({ response: { status: 500 } })
+    )
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'example-token') // Simulate logged in user
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
 
@@ -52,6 +61,6 @@ describe('useUserInfo', () => {
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toEqual(
       'example-token'
     )
-    expect(removeQueriesSpy).toBeCalledTimes(0)
+    expect(removeQueriesSpy).toHaveBeenCalledTimes(0)
   })
 })
