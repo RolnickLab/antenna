@@ -7,20 +7,7 @@ import viteTsconfigPaths from 'vite-tsconfig-paths'
 export default defineConfig({
   base: '/',
   build: {
-    modulePreload: {
-      resolveDependencies: () => {
-        return []
-      },
-    },
     outDir: './build',
-    rollupOptions: {
-      output: {
-        sourcemap: false,
-        manualChunks: {
-          plotly: ['react-plotly.js'],
-        },
-      },
-    },
   },
   plugins: [
     react(),

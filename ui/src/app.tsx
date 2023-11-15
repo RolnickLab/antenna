@@ -11,13 +11,11 @@ import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
-import { Overview } from 'pages/overview/overview'
 import { Projects } from 'pages/projects/projects'
-import { SessionDetails } from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
-import { useContext, useEffect } from 'react'
+import React, { Suspense, useContext, useEffect } from 'react'
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   BreadcrumbContext,
@@ -28,6 +26,11 @@ import { STRING, translate } from 'utils/language'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import { UserContextProvider } from 'utils/user/userContext'
 import styles from './app.module.scss'
+
+const Overview = React.lazy(() => import('./pages/overview/overview'))
+const SessionDetails = React.lazy(
+  () => import('./pages/session-details/session-details')
+)
 
 const queryClient = new QueryClient()
 
@@ -58,11 +61,25 @@ export const App = () => {
               </Route>
               <Route path="projects" element={<ProjectsContainer />} />
               <Route path="projects/:projectId" element={<ProjectContainer />}>
-                <Route path="" element={<Overview />} />
+                <Route
+                  path=""
+                  element={
+                    <Suspense>
+                      <Overview />
+                    </Suspense>
+                  }
+                />
                 <Route path="jobs/:id?" element={<Jobs />} />
                 <Route path="deployments/:id?" element={<Deployments />} />
                 <Route path="sessions" element={<Sessions />} />
-                <Route path="sessions/:id" element={<SessionDetails />} />
+                <Route
+                  path="sessions/:id"
+                  element={
+                    <Suspense>
+                      <SessionDetails />
+                    </Suspense>
+                  }
+                />
                 <Route path="occurrences/:id?" element={<Occurrences />} />
                 <Route path="species/:id?" element={<Species />} />
                 <Route path="collections/:id" element={<CollectionDetails />} />
