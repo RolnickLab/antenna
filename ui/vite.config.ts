@@ -8,6 +8,13 @@ export default defineConfig({
   base: '/',
   build: {
     outDir: './build',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          plotly: ['react-plotly.js'],
+        },
+      },
+    },
   },
   plugins: [
     react(),
