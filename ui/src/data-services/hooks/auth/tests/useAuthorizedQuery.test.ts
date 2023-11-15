@@ -1,10 +1,11 @@
 import { renderHook, waitFor } from '@testing-library/react'
+import _axios from 'axios'
 import { API_URL } from 'data-services/constants'
 import { AppMock } from 'utils/testHelpers'
 import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
 import { useAuthorizedQuery } from '../useAuthorizedQuery'
 
-const axios: any = require('axios')
+const axios = _axios as any
 
 const EXAMPLE_URL = `${API_URL}/ping/`
 

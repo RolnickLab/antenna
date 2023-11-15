@@ -1,9 +1,10 @@
 import { renderHook, waitFor } from '@testing-library/react'
+import _axios from 'axios'
 import { AppMock, queryClient } from 'utils/testHelpers'
 import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
 import { useLogout } from '../useLogout'
 
-const axios: any = require('axios')
+const axios = _axios as any
 
 describe('useLogout', () => {
   afterEach(() => {
