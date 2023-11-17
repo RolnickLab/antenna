@@ -1,16 +1,21 @@
 import { renderHook, waitFor } from '@testing-library/react'
-import axios from 'axios'
+import _axios from 'axios'
 import { API_URL } from 'data-services/constants'
-import nock from 'nock'
-import { AppMock } from 'utils/test'
+import { AppMock } from 'utils/testHelpers'
 import { AUTH_TOKEN_STORAGE_KEY } from 'utils/user/constants'
 import { useAuthorizedQuery } from '../useAuthorizedQuery'
+
+const axios = _axios as any
 
 const EXAMPLE_URL = `${API_URL}/ping/`
 
 describe('useAuthorizedQuery', () => {
   beforeAll(() => {
-    nock(API_URL).get('/ping/').reply(200)
+    axios.get.mockImplementation(() => Promise.resolve({ data: 'pong' }))
+  })
+  afterAll(() => {
+    jest.restoreAllMocks()
+    jest.clearAllMocks()
   })
 
   test('will pass auth header if user is logged in', async () => {
@@ -26,7 +31,7 @@ describe('useAuthorizedQuery', () => {
     )
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(axiosGetSpy).toBeCalledWith(EXAMPLE_URL, {
+    expect(axiosGetSpy).toHaveBeenCalledWith(EXAMPLE_URL, {
       headers: { Authorization: 'Token example-token' },
     })
   })
@@ -44,6 +49,8 @@ describe('useAuthorizedQuery', () => {
     )
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(axiosGetSpy).toBeCalledWith(EXAMPLE_URL, { heders: undefined })
+    expect(axiosGetSpy).toHaveBeenCalledWith(EXAMPLE_URL, {
+      headers: undefined,
+    })
   })
 })
