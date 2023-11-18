@@ -61,7 +61,7 @@ services:
   celeryworker:
     <<: *django
     image: ami_local_celeryworker
-    scale: 3
+    scale: 1
     depends_on:
       - redis
       - postgres
