@@ -1,7 +1,7 @@
 import { Project } from 'data-services/models/project'
 import { Box } from 'design-system/components/box/box'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
-import { Plot } from 'design-system/components/plot/plot'
+import { Plot } from 'design-system/components/plot/lazy-plot'
 
 export const Summary = ({ project }: { project: Project }) => (
   <PlotGrid>

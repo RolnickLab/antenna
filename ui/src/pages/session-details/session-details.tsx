@@ -3,7 +3,7 @@ import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetail
 import { Box } from 'design-system/components/box/box'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
-import { Plot } from 'design-system/components/plot/plot'
+import { Plot } from 'design-system/components/plot/lazy-plot'
 import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
@@ -15,7 +15,7 @@ import { useActiveOccurrences } from './playback/useActiveOccurrences'
 import styles from './session-details.module.scss'
 import { SessionInfo } from './session-info/session-info'
 
-const SessionDetails = () => {
+export const SessionDetails = () => {
   const { id } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { activeOccurrences } = useActiveOccurrences()

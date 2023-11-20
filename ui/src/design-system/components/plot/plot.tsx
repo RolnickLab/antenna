@@ -1,5 +1,6 @@
 import _Plot from 'react-plotly.js'
 import styles from './plot.module.scss'
+import { PlotProps } from './types'
 
 const fontFamily = 'AzoSans, sans-serif'
 const borderColor = '#f0f0f0'
@@ -9,21 +10,7 @@ const titleColor = '#6f7172'
 const tooltipBgColor = '#ffffff'
 const tooltipBorderColor = '#222426'
 
-interface PlotProps {
-  title: string
-  orientation?: 'h' | 'v'
-  data: {
-    x: (string | number)[]
-    y: (string | number)[]
-    tickvals?: (string | number)[]
-    ticktext?: string[]
-  }
-  type?: 'bar' | 'scatter'
-  showRangeSlider?: boolean
-  categorical?: boolean
-}
-
-export const Plot = ({
+const Plot = ({
   title,
   data,
   orientation,
@@ -112,3 +99,5 @@ export const Plot = ({
     />
   </div>
 )
+
+export default Plot
