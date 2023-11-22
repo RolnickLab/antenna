@@ -90,6 +90,7 @@
     "vite-plugin-svgr": "^4.1.0"
   },
   "resolutions": {
-    "semver@npm:2 || 3 || 4 || 5": "6.3.1"
+    "semver@npm:2 || 3 || 4 || 5": "6.3.1",
+    "semver@npm:^5.6.0": "6.3.1"
   }
 }
