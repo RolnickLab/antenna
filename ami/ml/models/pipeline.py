@@ -1,6 +1,7 @@
 import typing
 
 from django.db import models
+from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 from rich import print
 
@@ -92,3 +93,9 @@ class Pipeline(BaseModel):
             *args,
             **kwargs,
         )
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            # @TODO slug may only need to be unique per project
+            self.slug = slugify(self.name)
+        return super().save(*args, **kwargs)
