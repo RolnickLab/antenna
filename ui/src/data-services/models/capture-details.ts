@@ -14,10 +14,6 @@ export class CaptureDetails extends Capture {
     }
   }
 
-  get jobs(): Job[] {
-    return this._jobs
-  }
-
   get hasJobInProgress(): boolean {
     return this._jobs.some(
       (job) =>
@@ -25,5 +21,17 @@ export class CaptureDetails extends Capture {
         job.status === JobStatus.Pending ||
         job.status === JobStatus.Started
     )
+  }
+
+  get jobs(): Job[] {
+    return this._jobs
+  }
+
+  get sizeLabel(): string {
+    return `${this._capture.size} B`
+  }
+
+  get url(): string {
+    return this._capture.url
   }
 }
