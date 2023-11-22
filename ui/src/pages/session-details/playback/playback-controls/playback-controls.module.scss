@@ -10,17 +10,18 @@
   background-color: $color-neutral-700;
 }
 
-.detailedControls {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-}
-
-.slider {
+.sliderControls {
   flex: 0;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 16px;
+}
+
+.detailedControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
 }

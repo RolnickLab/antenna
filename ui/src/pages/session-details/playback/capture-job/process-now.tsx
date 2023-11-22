@@ -16,7 +16,7 @@ export const ProcessNow = ({
   const { projectId } = useParams()
   const { createJob, isLoading, isSuccess } = useCreateJob()
   const icon = isSuccess ? IconType.RadixCheck : undefined
-  const disabled = !capture || capture.hasJobInProgress
+  const disabled = !capture || capture.hasJobInProgress || !pipelineId
 
   if (disabled) {
     return (

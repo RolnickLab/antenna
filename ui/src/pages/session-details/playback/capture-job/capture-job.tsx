@@ -6,7 +6,7 @@ export const CaptureJob = ({
   capture,
   pipelineId,
 }: {
-  capture: CaptureDetails
+  capture?: CaptureDetails
   pipelineId?: string
 }) => (
   <>
