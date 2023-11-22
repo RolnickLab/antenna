@@ -10,7 +10,7 @@ import { DeploymentsMap } from './deployments-map/deployments-map'
 import styles from './overview.module.scss'
 import { Summary } from './summary/summary'
 
-const Overview = () => {
+export const Overview = () => {
   const { project, isLoading, error } = useOutletContext<{
     project?: Project
     isLoading: boolean
