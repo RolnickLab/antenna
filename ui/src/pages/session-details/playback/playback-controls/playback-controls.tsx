@@ -14,7 +14,7 @@ export const PlaybackControls = ({
   activeCapture?: Capture
   session: SessionDetails
 }) => {
-  const [selectedPipeline, setSelectedPipeline] = useState<string>()
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>()
   const { defaultThreshold, threshold, setThreshold } = useThreshold()
   const [displayThreshold, setDisplayThreshold] = useState(threshold)
 
@@ -36,10 +36,15 @@ export const PlaybackControls = ({
       </div>
       <div className={styles.controlsRow}>
         <PipelinesPicker
-          value={selectedPipeline}
-          onValueChange={setSelectedPipeline}
+          value={selectedPipelineId}
+          onValueChange={setSelectedPipelineId}
         />
-        {activeCapture && <CaptureJob captureId={activeCapture.id} />}
+        {activeCapture && (
+          <CaptureJob
+            captureId={activeCapture.id}
+            pipelineId={selectedPipelineId}
+          />
+        )}
       </div>
     </div>
   )
