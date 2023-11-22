@@ -38,6 +38,7 @@ class TaxonRank(OrderedEnum):
     SUBTRIBE = "Subtribe"
     GENUS = "Genus"
     SPECIES = "Species"
+    UNKNOWN = "Unknown"
 
 
 DEFAULT_RANKS = sorted(
@@ -1286,6 +1287,7 @@ class Detection(BaseModel):
         related_name="detections",
     )
 
+    # @TODO use structured data for bbox
     bbox = models.JSONField(null=True, blank=True)
 
     timestamp = models.DateTimeField(null=True, blank=True)

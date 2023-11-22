@@ -2,12 +2,13 @@ import typing
 
 from django.db import models
 from django.utils.text import slugify
+from django.utils.timezone import now
 from django_pydantic_field import SchemaField
 from rich import print
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, default_stages
-from ami.main.models import SourceImage, SourceImageCollection
+from ami.main.models import Classification, Detection, SourceImage, SourceImageCollection, TaxaList, Taxon, TaxonRank
 
 from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from .algorithm import Algorithm
@@ -53,6 +54,95 @@ def process_images(
     return results
 
 
+def save_results(results: PipelineResponse, job_id: int | None = None) -> list[models.Model]:
+    """
+    Save results from ML pipeline API.
+
+    @TODO break into task chunks.
+    """
+    created_objects = []
+
+    # collection_name = f"Images processed by {results.pipeline} pipeline"
+    # if job_id:
+    #     from ami.jobs.models import Job
+
+    #     job = Job.objects.get(pk=job_id)
+    #     collection_name = f"Images processed by {results.pipeline} pipeline for job {job.name}"
+
+    # collection = SourceImageCollection.objects.create(name=collection_name)
+    # source_image_ids = [source_image.id for source_image in results.source_images]
+    # source_images = SourceImage.objects.filter(pk__in=source_image_ids)
+    # collection.images.set(source_images)
+
+    for detection in results.detections:
+        print(detection)
+        assert detection.algorithm
+        algo, _created = Algorithm.objects.get_or_create(
+            name=detection.algorithm,
+        )
+        # @TODO hmmmm what to do
+        source_image = SourceImage.objects.get(pk=detection.source_image_id)
+        existing_detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox=list(detection.bbox.dict().values()),
+        ).first()
+        if not existing_detection:
+            new_detection = Detection.objects.create(
+                source_image=source_image,
+                bbox=list(detection.bbox.dict().values()),
+            )
+            new_detection.detection_algorithm = algo
+            # new_detection.detection_time = detection.inference_time
+            new_detection.timestamp = now()  # @TODO get timestamp from API response
+            new_detection.save()
+            created_objects.append(new_detection)
+
+    for classification in results.classifications:
+        print(classification)
+        source_image = SourceImage.objects.get(pk=classification.source_image_id)
+
+        assert classification.algorithm
+        algo, _created = Algorithm.objects.get_or_create(
+            name=classification.algorithm,
+        )
+        if _created:
+            created_objects.append(algo)
+
+        taxa_list, _created = TaxaList.objects.get_or_create(
+            name=f"Taxa returned by {algo.name}",
+        )
+        if _created:
+            created_objects.append(taxa_list)
+
+        taxon, _created = Taxon.objects.get_or_create(
+            name=classification.classification,
+            defaults={"name": classification.classification, "rank": TaxonRank.UNKNOWN},
+        )
+        if _created:
+            created_objects.append(taxon)
+
+        taxa_list.taxa.add(taxon)
+
+        detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox=list(classification.bbox.dict().values()),
+        ).first()
+        assert detection
+
+        new_classification = Classification()
+        new_classification.detection = detection
+        new_classification.taxon = taxon
+        new_classification.algorithm = algo
+        new_classification.score = classification.scores[0]
+        new_classification.timestamp = now()  # @TODO get timestamp from API response
+        # @TODO add reference to job or pipeline?
+
+        new_classification.save()
+        created_objects.append(new_classification)
+
+    return created_objects
+
+
 class PipelineStage(ConfigurableStage):
     """A configurable stage of a pipeline."""
 
@@ -93,6 +183,9 @@ class Pipeline(BaseModel):
             *args,
             **kwargs,
         )
+
+    def save_results(self, *args, **kwargs):
+        return save_results(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         if not self.slug:

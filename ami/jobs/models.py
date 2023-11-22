@@ -389,6 +389,19 @@ class Job(BaseModel):
             self.logger.info(f"Found {len(detections)} detections")
             self.logger.info(f"Found {len(classifications)} classifications")
 
+            saving_stage = self.progress.add_stage("Saving results")
+            self.progress.update_stage(
+                saving_stage.key,
+                status=JobState.STARTED,
+                progress=0,
+            )
+            self.pipeline.save_results(results)
+            self.progress.update_stage(
+                saving_stage.key,
+                status=JobState.SUCCESS,
+                progress=1,
+            )
+
         self.update_status(JobState.SUCCESS)
         self.finished_at = datetime.datetime.now()
         self.save()

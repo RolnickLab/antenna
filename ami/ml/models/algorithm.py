@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 import typing
 
 from django.db import models
+from django.utils.text import slugify
 
 from ami.base.models import BaseModel
 
@@ -34,3 +35,8 @@ class Algorithm(BaseModel):
         unique_together = [
             ["name", "version"],
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.key:
+            self.key = slugify(self.name)
+        super().save(*args, **kwargs)
