@@ -1,11 +1,16 @@
 import { act, renderHook } from '@testing-library/react'
-import { AppMock, queryClient } from 'utils/test'
+import { AppMock, queryClient } from 'utils/testHelpers'
 import { AUTH_TOKEN_STORAGE_KEY } from './constants'
 import { useUser } from './userContext'
 
 describe('useUser', () => {
   beforeEach(() => {
     localStorage.clear()
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+    jest.clearAllMocks()
   })
 
   test('will start as logged out as default', () => {
@@ -64,7 +69,7 @@ describe('useUser', () => {
       result.current.setToken('example-token')
     })
 
-    expect(removeQueriesSpy).toBeCalledTimes(1)
+    expect(removeQueriesSpy).toHaveBeenCalledTimes(1)
   })
 
   test('will remove queries after token is cleared', () => {
@@ -75,6 +80,6 @@ describe('useUser', () => {
       result.current.clearToken()
     })
 
-    expect(removeQueriesSpy).toBeCalledTimes(1)
+    expect(removeQueriesSpy).toHaveBeenCalledTimes(1)
   })
 })
