@@ -61,7 +61,7 @@ class Pipeline(BaseModel):
     """A pipeline of algorithms"""
 
     name = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=255, unique=True, null=True)  # @TODO remove null=True
+    slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True)
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
@@ -86,8 +86,6 @@ class Pipeline(BaseModel):
     def process_images(self, *args, **kwargs):
         if not self.endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
-        if not self.slug:
-            raise ValueError("No slug configured for this pipeline")
         return process_images(
             endpoint_url=self.endpoint_url,
             pipeline_choice=self.slug,
