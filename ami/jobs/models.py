@@ -62,59 +62,6 @@ def get_status_label(status: JobState, progress: float) -> str:
 ML_API_ENDPOINT = "http://host.docker.internal:2000/pipeline/process/"
 
 
-def process_images(collection: SourceImageCollection):
-    """
-    Process images using ML pipeline API.
-
-    @TODO find a home for this function.
-    """
-    import requests
-
-    source_images = [
-        {
-            "id": str(source_image.pk),
-            "url": source_image.public_url(),
-        }
-        for source_image in collection.images.all()
-    ]
-    data = {
-        "pipeline": "panama-moths-2023",
-        "source_images": source_images,
-    }
-
-    resp = requests.post(ML_API_ENDPOINT, json=data)
-    resp.raise_for_status
-    results = resp.json()
-    print(results)
-    return results
-
-
-def process_image(source_image: SourceImage):
-    """
-    Process image using ML pipeline API.
-
-    @TODO find a home for this function.
-    """
-    import requests
-
-    source_images = [
-        {
-            "id": str(source_image.pk),
-            "url": source_image.public_url(),
-        }
-    ]
-    data = {
-        "pipeline": "panama-moths-2023",
-        "source_images": source_images,
-    }
-
-    resp = requests.post(ML_API_ENDPOINT, json=data)
-    resp.raise_for_status
-    results = resp.json()
-    print(results)
-    return results
-
-
 class JobProgressSummary(pydantic.BaseModel):
     """Summary of all stages of a job"""
 
@@ -164,6 +111,13 @@ class JobProgress(pydantic.BaseModel):
                 return stage
         raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
 
+    def get_stage_param(self, stage_key: str, param_key: str) -> ConfigurableStageParam:
+        stage = self.get_stage(stage_key)
+        for param in stage.params:
+            if param.key == param_key:
+                return param
+        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
+
     def add_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         param = ConfigurableStageParam(
@@ -173,6 +127,14 @@ class JobProgress(pydantic.BaseModel):
         )
         stage.params.append(param)
         return param
+
+    def add_or_update_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+        try:
+            param = self.get_stage_param(stage_key, slugify(name))
+            param.value = value
+            return param
+        except ValueError:
+            return self.add_stage_param(stage_key, name, value)
 
     def update_stage(self, stage_key: str, **stage_parameters) -> JobProgressStageDetail | None:
         """ "
@@ -185,15 +147,12 @@ class JobProgress(pydantic.BaseModel):
 
         if stage.key == stage_key:
             for k, v in stage_parameters.items():
-                # Update matching attribute of the stage object
+                # Update a matching attribute directly on the stage object first
                 if hasattr(stage, k):
                     setattr(stage, k, v)
                 else:
-                    # Update matching parameters within the stage's params list
-                    for param in stage.params:
-                        if param.key == k:
-                            param.value = v
-
+                    # Otherwise update or add matching parameter within the stage's params list
+                    self.add_or_update_stage_param(stage_key, k, v)
             return stage
 
     class Config:
@@ -388,46 +347,47 @@ class Job(BaseModel):
             )
             self.save()
 
-        print("HSDFSSFG")
-        self.pipeline = Pipeline.objects.get(pk=1)
         if self.pipeline:
             pipeline_stage = self.progress.add_stage("Pipeline")
-            # self.run_ml_pipeline()
+            self.progress.add_stage_param(pipeline_stage.key, "Detections", "N/A")
+            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "N/A")
+            results = None
+
+            image_count = 0
+            kwargs = {}
             if self.source_image_collection:
-                stage = self.progress.add_stage("Source Images")
-                self.progress.add_stage_param(
-                    stage.key, "Source Images", self.source_image_collection.source_image_count()
-                )
-                # @TODO break into chunks. See image importing methods.
-                self.logger.info(f"Sending {self.source_image_collection.source_image_count()} images to pipeline")
-                results = process_images(self.source_image_collection)
-                self.logger.info(f"Results: {results}")
+                image_count = self.source_image_collection.source_image_count()
+                kwargs["collection"] = self.source_image_collection
+
             elif self.source_image_single:
-                self.logger.info("Sending single image to pipeline")
-                self.progress.update_stage(
-                    pipeline_stage.key,
-                    status=JobState.STARTED,
-                    progress=0,
-                )
-                self.progress.add_stage_param(pipeline_stage.key, "Source Images", 1)
-                self.progress.add_stage_param(pipeline_stage.key, "Detections", "N/A")
-                self.progress.add_stage_param(pipeline_stage.key, "Classifications", "N/A")
-                results = process_image(self.source_image_single)
-                detections = results["detections"]
-                classifications = results["classifications"]
-                self.progress.update_stage(
-                    pipeline_stage.key,
-                    status=JobState.SUCCESS,
-                    progress=1,
-                    detections=len(detections),
-                    classifications=len(classifications),
-                )
-                self.logger.info(f"Results: {results}")
-                # Log num detections and classifications
-                self.logger.info(f"Found {len(detections)} detections")
-                self.logger.info(f"Found {len(classifications)} classifications")
-        else:
-            raise NotImplementedError("Only ML pipelines are supported at this time")
+                image_count = 1
+                kwargs["source_images"] = [self.source_image_single]
+
+            self.logger.info(f"Sending {image_count} images to pipeline")
+            self.progress.add_stage_param(pipeline_stage.key, "Source images", image_count)
+
+            self.progress.update_stage(
+                pipeline_stage.key,
+                status=JobState.STARTED,
+                progress=0,
+            )
+
+            results = self.pipeline.process_images(**kwargs)
+
+            self.logger.info(f"Results: {results}")
+            detections = results.detections
+            classifications = results.classifications
+
+            self.progress.update_stage(
+                pipeline_stage.key,
+                status=JobState.SUCCESS,
+                progress=1,
+                detections=len(detections),
+                classifications=len(classifications),
+            )
+            self.logger.info(f"Results: {results}")
+            self.logger.info(f"Found {len(detections)} detections")
+            self.logger.info(f"Found {len(classifications)} classifications")
 
         self.update_status(JobState.SUCCESS)
         self.finished_at = datetime.datetime.now()

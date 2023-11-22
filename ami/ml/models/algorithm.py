@@ -23,7 +23,10 @@ class Algorithm(BaseModel):
     version_name = models.CharField(max_length=255, blank=True)
     url = models.URLField(blank=True)
 
-    classfications: models.QuerySet[Classification]
+    # api_base_url = models.URLField(blank=True)
+    # api = models.CharField(max_length=255, blank=True)
+
+    classifications: models.QuerySet[Classification]
 
     class Meta:
         ordering = ["name", "version"]
