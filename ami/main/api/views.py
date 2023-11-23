@@ -21,12 +21,14 @@ from ..models import (
     Classification,
     Deployment,
     Detection,
+    Device,
     Event,
     Identification,
     Occurrence,
     Page,
     Pipeline,
     Project,
+    Site,
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
@@ -39,6 +41,7 @@ from .serializers import (
     DeploymentSerializer,
     DetectionListSerializer,
     DetectionSerializer,
+    DeviceSerializer,
     EventListSerializer,
     EventSerializer,
     IdentificationSerializer,
@@ -49,6 +52,7 @@ from .serializers import (
     PipelineNestedSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SiteSerializer,
     SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
@@ -688,3 +692,33 @@ class IdentificationViewSet(DefaultViewSet):
         Set the user to the current user.
         """
         serializer.save(user=self.request.user)
+
+
+class SiteViewSet(DefaultViewSet):
+    """
+    API endpoint that allows sites to be viewed or edited.
+    """
+
+    queryset = Site.objects.all()
+    serializer_class = SiteSerializer
+    filterset_fields = ["project", "deployments"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+    ]
+
+
+class DeviceViewSet(DefaultViewSet):
+    """
+    API endpoint that allows devices to be viewed or edited.
+    """
+
+    queryset = Device.objects.all()
+    serializer_class = DeviceSerializer
+    filterset_fields = ["project", "deployments"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+    ]

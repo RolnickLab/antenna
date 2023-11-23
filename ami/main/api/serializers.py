@@ -17,12 +17,14 @@ from ..models import (
     Classification,
     Deployment,
     Detection,
+    Device,
     Event,
     Identification,
     Occurrence,
     Page,
     Pipeline,
     Project,
+    Site,
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
@@ -1147,5 +1149,38 @@ class PageListSerializer(PageSerializer):
             "nav_order",
             "link_class",
             "published",
+            "updated_at",
+        ]
+
+
+class DeviceSerializer(DefaultSerializer):
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+
+    class Meta:
+        model = Device
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "project",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class SiteSerializer(DefaultSerializer):
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+
+    class Meta:
+        model = Site
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "project",
+            "boundary_rect",
+            "created_at",
             "updated_at",
         ]

@@ -125,10 +125,17 @@ class Project(BaseModel):
 
 @final
 class Device(BaseModel):
-    """Configuration of hardware used to capture images"""
+    """
+    Configuration of hardware used to capture images.
+
+    If project is null then this is a public device that can be used by any project.
+    """
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="devices")
+
+    deployments: models.QuerySet["Deployment"]
 
     class Meta:
         verbose_name = "Device Configuration"
@@ -140,6 +147,7 @@ class Site(BaseModel):
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="sites")
 
     deployments: models.QuerySet["Deployment"]
 
@@ -165,6 +173,9 @@ class Site(BaseModel):
             return None
         else:
             return bounds
+
+    class Meta:
+        verbose_name = "Research Site"
 
 
 @final
