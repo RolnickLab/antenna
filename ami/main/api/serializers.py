@@ -736,6 +736,7 @@ class SourceImageCollectionNestedSerializer(DefaultSerializer):
             "id",
             "name",
             "details",
+            "method",
         ]
 
 

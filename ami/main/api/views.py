@@ -277,6 +277,7 @@ class SourceImageViewSet(DefaultViewSet):
         collection, _created = SourceImageCollection.objects.get_or_create(
             project=project,
             name="Starred Images",  # @TODO i18n and store this in constants
+            defaults={"method": "starred"},
         )
         collection.images.add(source_image)
         return Response({"collection": collection.pk, "total_images": collection.images.count()})

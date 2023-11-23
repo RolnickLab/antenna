@@ -1903,6 +1903,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "stratified_random",
     "interval",
     "manual",
+    "starred",
     "random_from_each_event",
     "last_and_random_from_each_event",
     "greatest_file_size_from_each_event",
