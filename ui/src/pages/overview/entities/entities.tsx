@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './entities-columns'
-import styles from './entities.module.scss'
+import styles from './styles.module.scss'
 
 export const Entities = ({ collection }: { collection: string }) => {
   const { projectId } = useParams()
@@ -37,7 +37,7 @@ export const Entities = ({ collection }: { collection: string }) => {
       <Table
         items={entities}
         isLoading={isLoading}
-        columns={columns(projectId as string)}
+        columns={columns(collection)}
         sortable
         sortSettings={sort}
         onSortSettingsChange={setSort}

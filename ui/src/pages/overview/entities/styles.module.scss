@@ -1,0 +1,19 @@
+.fetchInfoWrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.entityActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px;
+}
+
+.deleteDialogContent {
+  width: 320px;
+  max-width: 100%;
+  box-sizing: border-box;
+}

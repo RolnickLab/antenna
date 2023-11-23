@@ -1,4 +1,5 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
+import { UserPermission } from 'utils/user/types'
 
 export type ServerEntity = any // TODO: Update this type
 
@@ -7,6 +8,10 @@ export class Entity {
 
   public constructor(entity: ServerEntity) {
     this._entity = entity
+  }
+
+  get canDelete(): boolean {
+    return this._entity.user_permissions.includes(UserPermission.Delete)
   }
 
   get createdAt(): string {
