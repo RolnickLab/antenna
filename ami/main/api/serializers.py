@@ -24,6 +24,7 @@ from ..models import (
     Page,
     Pipeline,
     Project,
+    S3StorageSource,
     Site,
     SourceImage,
     SourceImageCollection,
@@ -1183,4 +1184,37 @@ class SiteSerializer(DefaultSerializer):
             "boundary_rect",
             "created_at",
             "updated_at",
+        ]
+
+
+class StorageSourceSerializer(DefaultSerializer):
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+    access_key = serializers.CharField(write_only=True, required=False)
+    secret_key = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
+    endpoint_url = serializers.URLField()
+    public_base_url = serializers.URLField()
+
+    class Meta:
+        model = S3StorageSource
+        fields = [
+            "id",
+            "details",
+            "name",
+            "bucket",
+            "prefix",
+            "access_key",
+            "secret_key",
+            "endpoint_url",
+            "public_base_url",
+            "project",
+            "total_files",
+            "total_size",
+            "last_checked",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "total_files",
+            "total_size",
+            "last_checked",
         ]

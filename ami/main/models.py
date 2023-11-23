@@ -732,6 +732,7 @@ class S3StorageSource(BaseModel):
     last_checked = models.DateTimeField(null=True, blank=True)
     # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
 
     deployments: models.QuerySet["Deployment"]
 
@@ -783,10 +784,11 @@ class S3StorageSource(BaseModel):
 
     def save(self, *args, **kwargs):
         # If public_base_url has changed, update the urls for all source images
-        old = S3StorageSource.objects.get(pk=self.pk)
-        if old.public_base_url != self.public_base_url:
-            for deployment in self.deployments.all():
-                ami.tasks.update_public_urls.delay(deployment.pk, self.public_base_url)
+        if self.pk:
+            old = S3StorageSource.objects.get(pk=self.pk)
+            if old.public_base_url != self.public_base_url:
+                for deployment in self.deployments.all():
+                    ami.tasks.update_public_urls.delay(deployment.pk, self.public_base_url)
         super().save(*args, **kwargs)
 
 

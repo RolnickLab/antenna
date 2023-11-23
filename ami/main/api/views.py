@@ -28,6 +28,7 @@ from ..models import (
     Page,
     Pipeline,
     Project,
+    S3StorageSource,
     Site,
     SourceImage,
     SourceImageCollection,
@@ -57,6 +58,7 @@ from .serializers import (
     SourceImageListSerializer,
     SourceImageSerializer,
     SourceImageUploadSerializer,
+    StorageSourceSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
     TaxonNestedSerializer,
@@ -716,6 +718,21 @@ class DeviceViewSet(DefaultViewSet):
 
     queryset = Device.objects.all()
     serializer_class = DeviceSerializer
+    filterset_fields = ["project", "deployments"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+    ]
+
+
+class StorageSourceViewSet(DefaultViewSet):
+    """
+    API endpoint that allows storage sources to be viewed or edited.
+    """
+
+    queryset = S3StorageSource.objects.all()
+    serializer_class = StorageSourceSerializer
     filterset_fields = ["project", "deployments"]
     ordering_fields = [
         "created_at",
