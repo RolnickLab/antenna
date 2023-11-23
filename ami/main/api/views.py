@@ -17,7 +17,6 @@ from rest_framework.views import APIView
 from ami import tasks
 
 from ..models import (
-    Algorithm,
     Classification,
     Deployment,
     Detection,
@@ -26,7 +25,6 @@ from ..models import (
     Identification,
     Occurrence,
     Page,
-    Pipeline,
     Project,
     S3StorageSource,
     Site,
@@ -36,7 +34,6 @@ from ..models import (
     Taxon,
 )
 from .serializers import (
-    AlgorithmSerializer,
     ClassificationSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
@@ -50,7 +47,6 @@ from .serializers import (
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
-    PipelineNestedSerializer,
     ProjectListSerializer,
     ProjectSerializer,
     SiteSerializer,
@@ -525,37 +521,6 @@ class TaxonViewSet(DefaultViewSet):
             from rest_framework.exceptions import NotFound
 
             raise NotFound(detail=str(e))
-
-
-class AlgorithmViewSet(DefaultViewSet):
-    """
-    API endpoint that allows algorithm (ML models) to be viewed or edited.
-    """
-
-    queryset = Algorithm.objects.all()
-    serializer_class = AlgorithmSerializer
-    filterset_fields = ["name", "version"]
-    ordering_fields = [
-        "created_at",
-        "updated_at",
-        "name",
-        "version",
-    ]
-    search_fields = ["name"]
-
-
-class PipelineViewSet(DefaultViewSet):
-    """
-    API endpoint that allows pipelines to be viewed or edited.
-    """
-
-    queryset = Pipeline.objects.all()
-    serializer_class = PipelineNestedSerializer
-    ordering_fields = [
-        "name",
-        "created_at",
-        "updated_at",
-    ]
 
 
 class ClassificationViewSet(DefaultViewSet):

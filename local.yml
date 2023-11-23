@@ -10,6 +10,8 @@ services:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
     image: ami_local_django
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
       - redis
@@ -61,7 +63,7 @@ services:
   celeryworker:
     <<: *django
     image: ami_local_celeryworker
-    scale: 3
+    scale: 1
     depends_on:
       - redis
       - postgres

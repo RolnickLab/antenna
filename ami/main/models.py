@@ -20,13 +20,13 @@ from django.dispatch import receiver
 
 import ami.tasks
 import ami.utils
+from ami.base.models import BaseModel
 from ami.main import charts
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
-_CLASSIFICATION_TYPES = ("machine", "human", "ground_truth")
 
 
 class TaxonRank(OrderedEnum):
@@ -38,6 +38,7 @@ class TaxonRank(OrderedEnum):
     SUBTRIBE = "Subtribe"
     GENUS = "Genus"
     SPECIES = "Species"
+    UNKNOWN = "Unknown"
 
 
 DEFAULT_RANKS = sorted(
@@ -60,28 +61,6 @@ _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 logger = logging.getLogger(__name__)
-
-
-class BaseModel(models.Model):
-    """ """
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self) -> str:
-        """All django models should have this method."""
-        if hasattr(self, "name"):
-            name = getattr(self, "name") or "Untitled"
-            return name
-        else:
-            return f"{self.__class__.__name__} #{self.pk}"
-
-    def save_async(self, *args, **kwargs):
-        """Save the model in a background task."""
-        ami.tasks.model_task.delay(self.__class__.__name__, self.pk, "save", *args, **kwargs)
-
-    class Meta:
-        abstract = True
 
 
 @final
@@ -1301,7 +1280,7 @@ class Classification(BaseModel):
     raw_output = models.JSONField(null=True)  # raw output from the model
 
     algorithm = models.ForeignKey(
-        "Algorithm",
+        "ml.Algorithm",
         on_delete=models.SET_NULL,
         null=True,
     )
@@ -1309,29 +1288,6 @@ class Classification(BaseModel):
 
     class Meta:
         ordering = ["-created_at", "-score"]
-
-
-@final
-class Algorithm(BaseModel):
-    """A machine learning algorithm"""
-
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    version = models.CharField(max_length=255, blank=True)
-    url = models.URLField(blank=True)
-
-    classfications: models.QuerySet["Classification"]
-
-
-@final
-class Pipeline(BaseModel):
-    """A pipeline of algorithms"""
-
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    version = models.CharField(max_length=255, blank=True)
-    algorithms = models.ManyToManyField(Algorithm, related_name="pipelines")
-    stages = models.JSONField(null=True, blank=True)  # Order and parameters for each algorithm
 
 
 @final
@@ -1344,6 +1300,7 @@ class Detection(BaseModel):
         related_name="detections",
     )
 
+    # @TODO use structured data for bbox
     bbox = models.JSONField(null=True, blank=True)
 
     timestamp = models.DateTimeField(null=True, blank=True)
@@ -1367,7 +1324,7 @@ class Detection(BaseModel):
     frame_num = models.IntegerField(null=True, blank=True)
 
     detection_algorithm = models.ForeignKey(
-        "Algorithm",
+        "ml.Algorithm",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
