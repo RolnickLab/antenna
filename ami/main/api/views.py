@@ -205,9 +205,8 @@ class SourceImageViewSet(DefaultViewSet):
             "event",
             "deployment",
         )
-        .prefetch_related("jobs")
-        .order_by("timestamp")
-        .all()
+        # .prefetch_related("jobs", "collections") # These are only needed in the detail view
+        .order_by("timestamp").all()
     )
 
     def get_queryset(self) -> QuerySet:
@@ -271,6 +270,20 @@ class SourceImageViewSet(DefaultViewSet):
             return SourceImageListSerializer
         else:
             return SourceImageSerializer
+
+    @action(detail=True, methods=["post"], name="star")
+    def star(self, _request, pk=None) -> Response:
+        """
+        Add a source image to the project's starred images collection.
+        """
+        source_image = self.get_object()
+        project = source_image.deployment.project
+        collection, _created = SourceImageCollection.objects.get_or_create(
+            project=project,
+            name="Starred Images",  # @TODO i18n and store this in constants
+        )
+        collection.images.add(source_image)
+        return Response({"collection": collection.pk, "total_images": collection.images.count()})
 
 
 class SourceImageCollectionViewSet(DefaultViewSet):

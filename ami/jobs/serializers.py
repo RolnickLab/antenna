@@ -114,16 +114,13 @@ class JobListSerializer(DefaultSerializer):
             "started_at",
             "finished_at",
             "duration",
-            "config",
         ]
 
 
 class JobSerializer(JobListSerializer):
-    # config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
     # progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
 
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
-            "config",
             "result",
         ]

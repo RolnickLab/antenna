@@ -791,9 +791,20 @@ class JobStatusSerializer(DefaultSerializer):
         ]
 
 
+class SourceImageCollectionNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImageCollection
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
 class SourceImageSerializer(SourceImageListSerializer):
     uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
+    collections = SourceImageCollectionNestedSerializer(many=True, read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -802,6 +813,7 @@ class SourceImageSerializer(SourceImageListSerializer):
             "uploaded_by",
             "test_image",
             "jobs",
+            "collections",
         ]
 
 
@@ -855,16 +867,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
                 " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
             )
         return value
-
-
-class SourceImageCollectionNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = SourceImageCollection
-        fields = [
-            "id",
-            "name",
-            "details",
-        ]
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
