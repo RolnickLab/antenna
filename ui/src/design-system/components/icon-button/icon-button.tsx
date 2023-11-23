@@ -21,6 +21,7 @@ export enum IconButtonTheme {
 interface IconButtonProps {
   disabled?: boolean
   icon: IconType
+  iconTransform?: string
   shape?: IconButtonShape
   theme?: IconButtonTheme
   title?: string
@@ -32,6 +33,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     const {
       disabled,
       icon,
+      iconTransform,
       shape = IconButtonShape.Square,
       theme = IconButtonTheme.Default,
       title,
@@ -77,7 +79,12 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         type="button"
         {...rest}
       >
-        <Icon type={icon} theme={iconTheme} size={14} />
+        <Icon
+          size={14}
+          theme={iconTheme}
+          transform={iconTransform}
+          type={icon}
+        />
       </button>
     )
   }

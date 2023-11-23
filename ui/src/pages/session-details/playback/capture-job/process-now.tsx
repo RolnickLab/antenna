@@ -8,15 +8,15 @@ import { STRING, translate } from 'utils/language'
 
 export const ProcessNow = ({
   capture,
-  captureId,
+  pipelineId,
 }: {
   capture?: CaptureDetails
-  captureId: string
+  pipelineId?: string
 }) => {
   const { projectId } = useParams()
   const { createJob, isLoading, isSuccess } = useCreateJob()
   const icon = isSuccess ? IconType.RadixCheck : undefined
-  const disabled = !capture || capture.hasJobInProgress
+  const disabled = !capture || capture.hasJobInProgress || !pipelineId
 
   if (disabled) {
     return (
@@ -40,8 +40,9 @@ export const ProcessNow = ({
         onClick={() => {
           createJob({
             delay: 1,
-            name: `Capture #${captureId}`,
-            sourceImage: captureId,
+            name: `Capture #${capture.id}`,
+            sourceImage: capture.id,
+            pipeline: pipelineId,
             projectId: projectId as string,
             startNow: true,
           })

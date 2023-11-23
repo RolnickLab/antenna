@@ -7,7 +7,13 @@ import { TableColumn, TableSortSettings } from '../types'
 import styles from './table.module.scss'
 import { useScrollFader } from './useScrollFader'
 
+export enum TableBackgroundTheme {
+  Neutral = 'neutral',
+  White = 'white',
+}
+
 interface TableProps<T> {
+  backgroundTheme?: TableBackgroundTheme
   items?: T[]
   isLoading?: boolean
   columns: TableColumn<T>[]
@@ -17,6 +23,7 @@ interface TableProps<T> {
 }
 
 export const Table = <T extends { id: string }>({
+  backgroundTheme = TableBackgroundTheme.Neutral,
   items = [],
   isLoading,
   columns,
@@ -25,7 +32,11 @@ export const Table = <T extends { id: string }>({
   onSortSettingsChange,
 }: TableProps<T>) => {
   const tableWrapperRef = useRef<HTMLDivElement>(null)
-  const showScrollFader = useScrollFader(tableWrapperRef, [items, columns])
+  const showScrollFader = useScrollFader(tableWrapperRef, [
+    items,
+    columns,
+    tableWrapperRef.current,
+  ])
 
   const onSortClick = (column: TableColumn<T>) => {
     if (!column.sortField) {
@@ -43,7 +54,11 @@ export const Table = <T extends { id: string }>({
   }
 
   return (
-    <div className={styles.wrapper}>
+    <div
+      className={classNames(styles.wrapper, {
+        [styles.white]: backgroundTheme === TableBackgroundTheme.White,
+      })}
+    >
       <div ref={tableWrapperRef} className={styles.tableWrapper}>
         <table className={styles.table}>
           <thead>

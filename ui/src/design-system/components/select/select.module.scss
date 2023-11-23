@@ -33,6 +33,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   width: 100%;
   border-radius: 4px;
   padding: 8px 12px;
@@ -62,6 +63,23 @@
   &[data-state='open'] {
     border-color: $color-success-600;
     box-shadow: 0 0 0 4px $color-success-100;
+  }
+
+  &.neutralCompact {
+    height: 28px;
+    padding: 0 16px;
+    @include paragraph-x-small();
+    font-weight: 600;
+    background-color: $color-neutral-600;
+    color: $color-generic-white;
+    border-color: $color-neutral-600;
+    margin-bottom: 0;
+
+    &:focus,
+    &[data-state='open'] {
+      border-color: none;
+      box-shadow: none;
+    }
   }
 }
 
