@@ -313,7 +313,7 @@ class Job(BaseModel):
     name = models.CharField(max_length=255)
     # The config field is deprecated in favor of the stages field
     # @TODO remove this field
-    config = models.JSONField(default=default_job_config, null=True, blank=False)
+    # config = models.JSONField(default=default_job_config, null=True, blank=False)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
