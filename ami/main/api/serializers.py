@@ -15,11 +15,14 @@ from ..models import (
     Classification,
     Deployment,
     Detection,
+    Device,
     Event,
     Identification,
     Occurrence,
     Page,
     Project,
+    S3StorageSource,
+    Site,
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
@@ -726,9 +729,21 @@ class JobStatusSerializer(DefaultSerializer):
         ]
 
 
+class SourceImageCollectionNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImageCollection
+        fields = [
+            "id",
+            "name",
+            "details",
+            "method",
+        ]
+
+
 class SourceImageSerializer(SourceImageListSerializer):
     uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
+    collections = SourceImageCollectionNestedSerializer(many=True, read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -737,6 +752,7 @@ class SourceImageSerializer(SourceImageListSerializer):
             "uploaded_by",
             "test_image",
             "jobs",
+            "collections",
         ]
 
 
@@ -790,16 +806,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
                 " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
             )
         return value
-
-
-class SourceImageCollectionNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = SourceImageCollection
-        fields = [
-            "id",
-            "name",
-            "details",
-        ]
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
@@ -1086,4 +1092,70 @@ class PageListSerializer(PageSerializer):
             "link_class",
             "published",
             "updated_at",
+        ]
+
+
+class DeviceSerializer(DefaultSerializer):
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+
+    class Meta:
+        model = Device
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "project",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class SiteSerializer(DefaultSerializer):
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+
+    class Meta:
+        model = Site
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "project",
+            "boundary_rect",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class StorageSourceSerializer(DefaultSerializer):
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+    access_key = serializers.CharField(write_only=True, required=False)
+    secret_key = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
+    endpoint_url = serializers.URLField()
+    public_base_url = serializers.URLField()
+
+    class Meta:
+        model = S3StorageSource
+        fields = [
+            "id",
+            "details",
+            "name",
+            "bucket",
+            "prefix",
+            "access_key",
+            "secret_key",
+            "endpoint_url",
+            "public_base_url",
+            "project",
+            "total_files",
+            "total_size",
+            "last_checked",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "total_files",
+            "total_size",
+            "last_checked",
         ]

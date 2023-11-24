@@ -15,7 +15,10 @@ else:
     router = SimpleRouter()
 
 router.register(r"users", UserViewSet)
+router.register(r"storage", views.StorageSourceViewSet)
 router.register(r"projects", views.ProjectViewSet)
+router.register(r"deployments/devices", views.DeviceViewSet)
+router.register(r"deployments/sites", views.SiteViewSet)
 router.register(r"deployments", views.DeploymentViewSet)
 router.register(r"events", views.EventViewSet)
 router.register(r"captures/collections", views.SourceImageCollectionViewSet)

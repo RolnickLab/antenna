@@ -20,11 +20,14 @@ from ..models import (
     Classification,
     Deployment,
     Detection,
+    Device,
     Event,
     Identification,
     Occurrence,
     Page,
     Project,
+    S3StorageSource,
+    Site,
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
@@ -36,6 +39,7 @@ from .serializers import (
     DeploymentSerializer,
     DetectionListSerializer,
     DetectionSerializer,
+    DeviceSerializer,
     EventListSerializer,
     EventSerializer,
     IdentificationSerializer,
@@ -45,10 +49,12 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SiteSerializer,
     SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
     SourceImageUploadSerializer,
+    StorageSourceSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
     TaxonNestedSerializer,
@@ -195,9 +201,8 @@ class SourceImageViewSet(DefaultViewSet):
             "event",
             "deployment",
         )
-        .prefetch_related("jobs")
-        .order_by("timestamp")
-        .all()
+        # .prefetch_related("jobs", "collections") # These are only needed in the detail view
+        .order_by("timestamp").all()
     )
 
     def get_queryset(self) -> QuerySet:
@@ -261,6 +266,21 @@ class SourceImageViewSet(DefaultViewSet):
             return SourceImageListSerializer
         else:
             return SourceImageSerializer
+
+    @action(detail=True, methods=["post"], name="star")
+    def star(self, _request, pk=None) -> Response:
+        """
+        Add a source image to the project's starred images collection.
+        """
+        source_image = self.get_object()
+        project = source_image.deployment.project
+        collection, _created = SourceImageCollection.objects.get_or_create(
+            project=project,
+            name="Starred Images",  # @TODO i18n and store this in constants
+            defaults={"method": "starred"},
+        )
+        collection.images.add(source_image)
+        return Response({"collection": collection.pk, "total_images": collection.images.count()})
 
 
 class SourceImageCollectionViewSet(DefaultViewSet):
@@ -653,3 +673,48 @@ class IdentificationViewSet(DefaultViewSet):
         Set the user to the current user.
         """
         serializer.save(user=self.request.user)
+
+
+class SiteViewSet(DefaultViewSet):
+    """
+    API endpoint that allows sites to be viewed or edited.
+    """
+
+    queryset = Site.objects.all()
+    serializer_class = SiteSerializer
+    filterset_fields = ["project", "deployments"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+    ]
+
+
+class DeviceViewSet(DefaultViewSet):
+    """
+    API endpoint that allows devices to be viewed or edited.
+    """
+
+    queryset = Device.objects.all()
+    serializer_class = DeviceSerializer
+    filterset_fields = ["project", "deployments"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+    ]
+
+
+class StorageSourceViewSet(DefaultViewSet):
+    """
+    API endpoint that allows storage sources to be viewed or edited.
+    """
+
+    queryset = S3StorageSource.objects.all()
+    serializer_class = StorageSourceSerializer
+    filterset_fields = ["project", "deployments"]
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "name",
+    ]
