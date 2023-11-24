@@ -19,6 +19,7 @@ def process_images(
     endpoint_url: str,
     collection: SourceImageCollection | None = None,
     source_images: list[SourceImage] | None = None,
+    deployment: Deployment | None = None,
 ) -> PipelineResponse:
     """
     Process images using ML pipeline API.
@@ -32,8 +33,10 @@ def process_images(
         images = collection.images.all()
     elif source_images:
         images = source_images
+    elif deployment:
+        images = SourceImage.objects.filter(deployment=deployment)
     else:
-        raise ValueError("Must provide either a collection or a list of images")
+        raise ValueError("Must specify a collection, deployment or a list of images")
 
     request_data = PipelineRequest(
         pipeline=pipeline_choice,  # @TODO validate pipeline_choice # type: ignore

@@ -363,6 +363,10 @@ class Job(BaseModel):
                 image_count = 1
                 kwargs["source_images"] = [self.source_image_single]
 
+            elif self.deployment:
+                image_count = self.deployment.captures_count()
+                kwargs["deployment"] = self.deployment
+
             self.logger.info(f"Sending {image_count} images to pipeline")
             self.progress.add_stage_param(pipeline_stage.key, "Source images", image_count)
 
