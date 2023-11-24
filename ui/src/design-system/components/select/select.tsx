@@ -5,6 +5,11 @@ import { Icon, IconTheme, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './select.module.scss'
 
+export enum SelectTheme {
+  Default = 'default',
+  NeutralCompact = 'neutral-compact',
+}
+
 interface SelectProps {
   placeholderDisabled?: string
   label?: string
@@ -14,6 +19,8 @@ interface SelectProps {
     label: string
   }[]
   placeholder?: string
+  showClear?: boolean
+  theme?: SelectTheme
   value?: string
   onValueChange: (value?: string) => void
 }
@@ -24,6 +31,8 @@ export const Select = ({
   loading,
   options = [],
   placeholder = 'Pick a value',
+  showClear = true,
+  theme = SelectTheme.Default,
   value,
   onValueChange,
 }: SelectProps) => {
@@ -41,9 +50,11 @@ export const Select = ({
         <_Select.Trigger
           className={classNames(styles.selectTrigger, {
             [styles.disabled]: disabled,
+            [styles.neutralCompact]: theme === SelectTheme.NeutralCompact,
           })}
         >
           <_Select.Value
+            className={styles.value}
             placeholder={disabled ? placeholderDisabled : placeholder}
           />
           <_Select.Icon className={styles.selectIcon}>
@@ -53,7 +64,11 @@ export const Select = ({
               <Icon
                 type={IconType.ToggleLeft}
                 size={12}
-                theme={IconTheme.Neutral}
+                theme={
+                  theme === SelectTheme.NeutralCompact
+                    ? IconTheme.Light
+                    : IconTheme.Neutral
+                }
               />
             )}
           </_Select.Icon>
@@ -78,7 +93,7 @@ export const Select = ({
           </_Select.Content>
         </_Select.Portal>
       </_Select.Root>
-      {value && (
+      {value && showClear && (
         <span className={styles.clear} onClick={() => onValueChange(undefined)}>
           Clear
         </span>

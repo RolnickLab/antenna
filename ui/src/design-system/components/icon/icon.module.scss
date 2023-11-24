@@ -5,6 +5,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: transform 400ms ease;
 
   &.light {
     color: $color-generic-white;

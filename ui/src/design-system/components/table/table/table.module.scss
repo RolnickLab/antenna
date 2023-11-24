@@ -3,6 +3,24 @@
 
 .wrapper {
   position: relative;
+
+  &.white {
+    .overflowFader {
+      background-image: linear-gradient(
+        to right,
+        rgba($color: $color-generic-white, $alpha: 0),
+        rgba($color: $color-generic-white, $alpha: 1)
+      );
+    }
+
+    .table {
+      tbody {
+        tr:nth-child(odd) {
+          background-color: $color-neutral-50;
+        }
+      }
+    }
+  }
 }
 
 .tableWrapper {

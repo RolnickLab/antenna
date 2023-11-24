@@ -1,14 +1,15 @@
 import classNames from 'classnames'
 import _ from 'lodash'
+import { CSSProperties, ReactNode } from 'react'
 import { CellTheme, TextAlign } from '../types'
 import styles from './basic-table-cell.module.scss'
-import { ReactNode } from 'react'
 
 interface BasicTableCellProps {
   value?: string | number
   details?: string[]
   theme?: CellTheme
   children?: ReactNode
+  style?: CSSProperties
 }
 
 export const BasicTableCell = ({
@@ -16,6 +17,7 @@ export const BasicTableCell = ({
   details,
   theme = CellTheme.Default,
   children,
+  style = {},
 }: BasicTableCellProps) => {
   const textAlign = _.isNumber(value) ? TextAlign.Right : TextAlign.Left
   const label = _.isNumber(value) ? value.toLocaleString() : value
@@ -25,7 +27,7 @@ export const BasicTableCell = ({
       className={classNames(styles.tableCell, {
         [styles.primary]: theme === CellTheme.Primary,
       })}
-      style={{ textAlign }}
+      style={{ textAlign, ...style }}
     >
       {label && <span className={styles.label}>{label}</span>}
       {details &&

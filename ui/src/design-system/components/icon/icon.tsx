@@ -18,6 +18,7 @@ import PlayButton from './assets/play-button.svg?react'
 import RadixCheck from './assets/radix/check.svg?react'
 import Cross from './assets/radix/cross.svg?react'
 import Error from './assets/radix/error.svg?react'
+import ExternalLink from './assets/radix/external-link.svg?react'
 import Options from './assets/radix/options.svg?react'
 import Pencil from './assets/radix/pencil.svg?react'
 import Plus from './assets/radix/plus.svg?react'
@@ -46,6 +47,7 @@ export enum IconType {
   Detections = 'detections',
   Download = 'download',
   Error = 'error',
+  ExternalLink = 'external-link',
   Filters = 'filters',
   GalleryView = 'gallery-view',
   Images = 'images',
@@ -93,6 +95,7 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.Detections]: Detections,
   [IconType.Download]: Download,
   [IconType.Error]: Error,
+  [IconType.ExternalLink]: ExternalLink,
   [IconType.Filters]: Filters,
   [IconType.GalleryView]: GalleryView,
   [IconType.Images]: Images,
@@ -123,12 +126,18 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
 }
 
 interface IconProps {
-  type: IconType
-  theme?: IconTheme
   size?: number
+  theme?: IconTheme
+  transform?: string
+  type: IconType
 }
 
-export const Icon = ({ type, theme = IconTheme.Dark, size }: IconProps) => {
+export const Icon = ({
+  size,
+  theme = IconTheme.Dark,
+  transform,
+  type,
+}: IconProps) => {
   const Component = COMPONENT_MAP[type]
   const fixedSized = size !== undefined
 
@@ -143,14 +152,11 @@ export const Icon = ({ type, theme = IconTheme.Dark, size }: IconProps) => {
         [styles.error]: theme === IconTheme.Error,
         [styles.fixedSized]: fixedSized,
       })}
-      style={
-        fixedSized
-          ? {
-              width: `${size}px`,
-              height: `${size}px`,
-            }
-          : undefined
-      }
+      style={{
+        width: fixedSized ? `${size}px` : undefined,
+        height: fixedSized ? `${size}px` : undefined,
+        transform,
+      }}
     >
       <Component />
     </div>
