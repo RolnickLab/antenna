@@ -1,3 +1,4 @@
+import datetime
 import typing
 
 import pydantic
@@ -19,6 +20,7 @@ class DetectionResponse(pydantic.BaseModel):
     bbox: BoundingBox
     inference_time: float | None = None
     algorithm: str | None = None
+    timestamp: datetime.datetime
 
 
 class ClassificationResponse(pydantic.BaseModel):
@@ -29,6 +31,7 @@ class ClassificationResponse(pydantic.BaseModel):
     scores: list[float] = []
     inference_time: float | None = None
     algorithm: str | None = None
+    timestamp: datetime.datetime
 
 
 class SourceImageRequest(pydantic.BaseModel):
@@ -44,9 +47,9 @@ class SourceImageResponse(pydantic.BaseModel):
 
 
 PipelineChoice = typing.Literal[
-    "panama-moths-2023",
-    "quebec-vermont-moths-2023",
-    "uk-denmark-moths-2023",
+    "panama_moths_2023",
+    "quebec_vermont_moths_2023",
+    "uk_denmark_moths_2023",
 ]
 
 

@@ -1,3 +1,5 @@
+import datetime
+
 from django.test import TestCase
 
 from ami.main.models import SourceImage
@@ -18,7 +20,7 @@ class TestPipeline(TestCase):
     def test_save_results(self):
         source_image_id = str(self.test_images[0].pk)
         fake_results = PipelineResponse(
-            pipeline="panama-moths-2023",
+            pipeline="panama_moths_2023",
             total_time=0.0,
             source_images=[
                 SourceImageResponse(
@@ -32,6 +34,7 @@ class TestPipeline(TestCase):
                     bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
                     inference_time=0.4,
                     algorithm="Test Detector",
+                    timestamp=datetime.datetime.now(),
                 ),
             ],
             classifications=[
@@ -42,6 +45,7 @@ class TestPipeline(TestCase):
                     labels=["Test taxon"],
                     scores=[0.64333],
                     algorithm="Test Classifier",
+                    timestamp=datetime.datetime.now(),
                 ),
             ],
         )

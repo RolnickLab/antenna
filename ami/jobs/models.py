@@ -349,8 +349,8 @@ class Job(BaseModel):
 
         if self.pipeline:
             pipeline_stage = self.progress.add_stage("Pipeline")
-            self.progress.add_stage_param(pipeline_stage.key, "Detections", "N/A")
-            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "N/A")
+            self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
             results = None
 
             image_count = 0
@@ -399,7 +399,9 @@ class Job(BaseModel):
                 status=JobState.STARTED,
                 progress=0,
             )
-            self.pipeline.save_results(results)
+            objects_created = self.pipeline.save_results(results)
+            self.logger.info(f"Saved {len(objects_created)} objects")
+            self.progress.add_stage_param(saving_stage.key, "Objects created", len(objects_created))
             self.progress.update_stage(
                 saving_stage.key,
                 status=JobState.SUCCESS,
