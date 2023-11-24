@@ -60,7 +60,7 @@ def process_images(
     )
 
     resp = requests.post(endpoint_url, json=request_data.dict())
-    resp.raise_for_status
+    resp.raise_for_status()
     results = resp.json()
     results = PipelineResponse(**results)
     print("Processing results from ML endpoint", results)
@@ -72,6 +72,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     Save results from ML pipeline API.
 
     @TODO break into task chunks.
+    @TODO rewrite this
     """
     created_objects = []
 
@@ -86,6 +87,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     # source_image_ids = [source_image.id for source_image in results.source_images]
     # source_images = SourceImage.objects.filter(pk__in=source_image_ids)
     # collection.images.set(source_images)
+    source_images = set()
 
     for detection in results.detections:
         print(detection)
@@ -95,6 +97,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         )
         # @TODO hmmmm what to do
         source_image = SourceImage.objects.get(pk=detection.source_image_id)
+        source_images.add(source_image)
         existing_detection = Detection.objects.filter(
             source_image=source_image,
             bbox=list(detection.bbox.dict().values()),
@@ -113,6 +116,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     for classification in results.classifications:
         print(classification)
         source_image = SourceImage.objects.get(pk=classification.source_image_id)
+        source_images.add(source_image)
 
         assert classification.algorithm
         algo, _created = Algorithm.objects.get_or_create(
@@ -163,6 +167,10 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             )
             detection.occurrence = occurrence
             detection.save()
+
+    # Update precalculated counts on source images
+    for source_image in source_images:
+        source_image.save()
 
     return created_objects
 
