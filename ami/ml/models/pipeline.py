@@ -8,7 +8,17 @@ from rich import print
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, default_stages
-from ami.main.models import Classification, Detection, SourceImage, SourceImageCollection, TaxaList, Taxon, TaxonRank
+from ami.main.models import (
+    Classification,
+    Deployment,
+    Detection,
+    Occurrence,
+    SourceImage,
+    SourceImageCollection,
+    TaxaList,
+    Taxon,
+    TaxonRank,
+)
 
 from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from .algorithm import Algorithm
@@ -142,6 +152,17 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
 
         new_classification.save()
         created_objects.append(new_classification)
+
+        # Create a new occurrence for each detection (no tracking yet)
+        if not detection.occurrence:
+            occurrence = Occurrence.objects.create(
+                event=source_image.event,
+                deployment=source_image.deployment,
+                project=source_image.project,
+                determination=taxon,
+            )
+            detection.occurrence = occurrence
+            detection.save()
 
     return created_objects
 
