@@ -1,6 +1,6 @@
 from rest_framework.pagination import LimitOffsetPagination
 
-from ami.main.api.permissions import add_collection_level_permissions
+from .permissions import add_collection_level_permissions
 
 
 class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
