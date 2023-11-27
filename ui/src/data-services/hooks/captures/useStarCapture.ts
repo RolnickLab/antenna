@@ -8,13 +8,13 @@ export const useStarCapture = (id: string, onSuccess?: () => void) => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
-  const { mutateAsync, isLoading, isSuccess, error, reset } = useMutation({
+  const { mutateAsync, isLoading, isSuccess, error } = useMutation({
     mutationFn: () =>
       axios.post(`${API_URL}/${API_ROUTES.CAPTURES}/${id}/star/`, {
         headers: getAuthHeader(user),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries([API_ROUTES.CAPTURES, id])
+      queryClient.invalidateQueries([API_ROUTES.CAPTURES])
       onSuccess?.()
     },
   })
