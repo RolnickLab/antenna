@@ -23,6 +23,12 @@ export class CaptureDetails extends Capture {
     )
   }
 
+  get isStarred(): boolean {
+    return this._capture.collections?.some(
+      (collection: any) => collection.method === 'starred'
+    )
+  }
+
   get jobs(): Job[] {
     return this._jobs
   }

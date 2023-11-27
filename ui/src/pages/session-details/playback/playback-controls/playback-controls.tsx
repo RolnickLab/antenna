@@ -12,6 +12,7 @@ import { CaptureJob } from '../capture-job/capture-job'
 import { useActiveCaptureId } from '../useActiveCapture'
 import { PipelinesPicker } from './pipelines-picker'
 import styles from './playback-controls.module.scss'
+import { StarButton } from './star-button'
 
 export const PlaybackControls = () => {
   const { activeCaptureId } = useActiveCaptureId()
@@ -57,8 +58,8 @@ const DetailedControls = ({ captureId }: { captureId: string }) => {
         value={selectedPipelineId}
         onValueChange={setSelectedPipelineId}
       />
-
       <CaptureJob capture={capture} pipelineId={selectedPipelineId} />
+      <StarButton capture={capture} captureId={captureId} />
     </div>
   )
 }
