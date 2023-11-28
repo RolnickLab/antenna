@@ -873,6 +873,7 @@ class SourceImage(BaseModel):
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
 
     detections: models.QuerySet["Detection"]
+    collections: models.QuerySet["SourceImageCollection"]
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
@@ -2032,3 +2033,24 @@ class SourceImageCollection(BaseModel):
 
         qs = self.get_queryset()
         return qs.filter(detections__isnull=False).distinct()
+
+    @classmethod
+    def get_or_create_starred_collection(cls, project: Project) -> "SourceImageCollection":
+        """
+        Get or create a collection for starred images.
+        """
+        collection = (
+            SourceImageCollection.objects.filter(
+                project=project,
+                method="starred",
+            )
+            .order_by("created_at")
+            .first()
+        )  # Use the oldest match
+        if not collection:
+            collection = SourceImageCollection.objects.create(
+                project=project,
+                method="starred",
+                name="Starred Images",  # @TODO make this translatable
+            )
+        return collection
