@@ -102,7 +102,12 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             source_image=source_image,
             bbox=list(detection.bbox.dict().values()),
         ).first()
-        if not existing_detection:
+        if existing_detection:
+            if not existing_detection.path:
+                existing_detection.path = detection.crop_image_url or ""
+                existing_detection.save()
+                print("Updated existing detection", existing_detection)
+        else:
             new_detection = Detection.objects.create(
                 source_image=source_image,
                 bbox=list(detection.bbox.dict().values()),
@@ -111,7 +116,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             )
             new_detection.detection_algorithm = algo
             # new_detection.detection_time = detection.inference_time
-            new_detection.timestamp = now()  # @TODO get timestamp from API response
+            new_detection.timestamp = now()  # @TODO what is this field for
             new_detection.save()
             print("Created new detection", new_detection)
             created_objects.append(new_detection)
