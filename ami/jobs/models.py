@@ -288,6 +288,7 @@ class Job(BaseModel):
         """
         # ami.tasks.run_job.delay(self.pk)
         # task_id = ami.tasks.run_job.apply_async(args=[self.pk], queue=self.queue).id
+        assert self.pk is not None, "Job must be saved before it can be enqueued"
         task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
         self.task_id = task_id
         self.started_at = None

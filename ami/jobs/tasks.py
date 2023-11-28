@@ -9,20 +9,24 @@ from config import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
-def run_job(job_id: int) -> None:
+@celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
+def run_job(self, job_id: int) -> None:
     from ami.jobs.models import Job
 
-    job = Job.objects.get(pk=job_id)
-    job.logger.info(f"Running job {job}")
     try:
-        job.run()
-    except Exception as e:
-        job.logger.error(f'Job #{job.pk} "{job.name}" failed: {e}')
-        raise
+        job = Job.objects.get(pk=job_id)
+    except Job.DoesNotExist as e:
+        self.retry(exc=e, countdown=1)
     else:
-        job.refresh_from_db()
-        job.logger.info(f"Finished job {job}")
+        job.logger.info(f"Running job {job}")
+        try:
+            job.run()
+        except Exception as e:
+            job.logger.error(f'Job #{job.pk} "{job.name}" failed: {e}')
+            raise
+        else:
+            job.refresh_from_db()
+            job.logger.info(f"Finished job {job}")
 
 
 @task_postrun.connect(sender=run_job)
