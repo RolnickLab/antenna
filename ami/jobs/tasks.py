@@ -48,7 +48,7 @@ def update_job_status(sender, task_id, task, *args, **kwargs):
     job.save()
 
 
-@task_failure.connect(sender=run_job)
+@task_failure.connect(sender=run_job, retry=True)
 def update_job_failure(sender, task_id, exception, *args, **kwargs):
     from ami.jobs.models import Job, JobState
 
