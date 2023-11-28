@@ -1395,7 +1395,13 @@ class Detection(BaseModel):
     def url(self):
         # @TODO use settings
         # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-        url = urllib.parse.urljoin(_CROPS_URL_BASE, self.path)
+        logger.info(f"DETECTION URL: {self.path}")
+        print(f"DETECTION URL: {self.path}")
+        if self.path.startswith("http"):
+            url = self.path
+        else:
+            url = urllib.parse.urljoin(_CROPS_URL_BASE, self.path.lstrip("/"))
+        logger.info(f"DETECTION URL: {url}")
         return url
 
 
