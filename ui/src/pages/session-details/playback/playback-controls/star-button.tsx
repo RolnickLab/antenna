@@ -11,9 +11,9 @@ export const StarButton = ({
   captureId: string
   capture?: CaptureDetails
 }) => {
-  const { starCapture, isLoading, isSuccess } = useStarCapture(captureId)
-  const isStarred = isSuccess || capture?.isStarred
-  const disabled = isStarred || !capture
+  const isStarred = capture?.isStarred ?? false
+  const { starCapture, isLoading } = useStarCapture(captureId, isStarred)
+  const disabled = isLoading
 
   return (
     <Button
