@@ -1,4 +1,5 @@
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
+import { CaptureDetails } from 'data-services/models/capture-details'
 import {
   IconButton,
   IconButtonTheme,
@@ -16,6 +17,7 @@ import { StarButton } from './star-button'
 
 export const PlaybackControls = () => {
   const { activeCaptureId } = useActiveCaptureId()
+  const { capture, isFetching } = useCaptureDetails(activeCaptureId as string)
   const { defaultThreshold, threshold, setThreshold } = useThreshold()
   const [showDetails, setShowDetails] = useState(false)
   const [displayThreshold, setDisplayThreshold] = useState(threshold)
@@ -29,6 +31,11 @@ export const PlaybackControls = () => {
           theme={IconButtonTheme.Neutral}
           onClick={() => setShowDetails(!showDetails)}
         />
+        <StarButton
+          capture={capture}
+          captureFetching={isFetching}
+          captureId={activeCaptureId as string}
+        />
         <PlaybackSlider
           defaultValue={defaultThreshold}
           label="Score"
@@ -40,16 +47,13 @@ export const PlaybackControls = () => {
           }}
         />
       </div>
-      {activeCaptureId && showDetails && (
-        <DetailedControls captureId={activeCaptureId} />
-      )}
+      {showDetails && <DetailedControls capture={capture} />}
     </div>
   )
 }
 
-const DetailedControls = ({ captureId }: { captureId: string }) => {
+const DetailedControls = ({ capture }: { capture?: CaptureDetails }) => {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>()
-  const { capture, isFetching } = useCaptureDetails(captureId)
 
   return (
     <div className={styles.detailedControls}>
@@ -59,11 +63,6 @@ const DetailedControls = ({ captureId }: { captureId: string }) => {
         onValueChange={setSelectedPipelineId}
       />
       <CaptureJob capture={capture} pipelineId={selectedPipelineId} />
-      <StarButton
-        capture={capture}
-        captureFetching={isFetching}
-        captureId={captureId}
-      />
     </div>
   )
 }
