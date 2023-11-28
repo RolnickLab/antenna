@@ -1,5 +1,6 @@
 import typing
 
+import requests
 from django.db import models
 from django.utils.text import slugify
 from django.utils.timezone import now
@@ -24,21 +25,14 @@ from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from .algorithm import Algorithm
 
 
-def process_images(
-    pipeline_choice: str,
-    endpoint_url: str,
+def collect_images(
     collection: SourceImageCollection | None = None,
     source_images: list[SourceImage] | None = None,
     deployment: Deployment | None = None,
-) -> PipelineResponse:
+) -> typing.Iterable[SourceImage]:
     """
-    Process images using ML pipeline API.
-
-    @TODO find a home for this function.
-    @TODO break into task chunks.
+    Collect images from a collection, a list of images or a deployment.
     """
-    import requests
-
     if collection:
         images = collection.images.all()
     elif source_images:
@@ -48,8 +42,32 @@ def process_images(
     else:
         raise ValueError("Must specify a collection, deployment or a list of images")
 
+    return images
+
+
+def process_images(
+    pipeline_choice: str,
+    endpoint_url: str,
+    images: typing.Iterable[SourceImage],
+    job_id: int | None = None,
+) -> PipelineResponse:
+    """
+    Process images using ML pipeline API.
+
+    @TODO find a home for this function.
+    @TODO break into task chunks.
+    """
+    job = None
+    images = list(images)
+
+    if job_id:
+        from ami.jobs.models import Job
+
+        job = Job.objects.get(pk=job_id)
+        job.logger.info(f"Sending {len(images)} images chunk to pipeline {pipeline_choice}")
+
     request_data = PipelineRequest(
-        pipeline=pipeline_choice,  # @TODO validate pipeline_choice # type: ignore
+        pipeline=pipeline_choice,  # type: ignore
         source_images=[
             SourceImageRequest(
                 id=str(source_image.pk),
@@ -63,7 +81,14 @@ def process_images(
     resp.raise_for_status()
     results = resp.json()
     results = PipelineResponse(**results)
-    print("Processing results from ML endpoint", results)
+
+    if job:
+        job.logger.debug(f"Results: {results}")
+        detections = results.detections
+        classifications = results.classifications
+        job.logger.info(f"Found {len(detections)} detections")
+        job.logger.info(f"Found {len(classifications)} classifications")
+
     return results
 
 
@@ -75,6 +100,13 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     @TODO rewrite this
     """
     created_objects = []
+    job = None
+
+    if job_id:
+        from ami.jobs.models import Job
+
+        job = Job.objects.get(pk=job_id)
+        job.logger.info("Saving results chunk")
 
     # collection_name = f"Images processed by {results.pipeline} pipeline"
     # if job_id:
@@ -180,6 +212,9 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     for source_image in source_images:
         source_image.save()
 
+    if job:
+        job.logger.info(f"Saved {len(created_objects)} objects")
+
     return created_objects
 
 
@@ -214,14 +249,26 @@ class Pipeline(BaseModel):
             ["name", "version"],
         ]
 
-    def process_images(self, *args, **kwargs):
+    def collect_images(
+        self,
+        collection: SourceImageCollection | None = None,
+        source_images: list[SourceImage] | None = None,
+        deployment: Deployment | None = None,
+    ) -> typing.Iterable[SourceImage]:
+        return collect_images(
+            collection=collection,
+            source_images=source_images,
+            deployment=deployment,
+        )
+
+    def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
         if not self.endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
             endpoint_url=self.endpoint_url,
             pipeline_choice=self.slug,
-            *args,
-            **kwargs,
+            images=images,
+            job_id=job_id,
         )
 
     def save_results(self, *args, **kwargs):
