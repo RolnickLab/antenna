@@ -49,7 +49,7 @@ export const PlaybackControls = () => {
 
 const DetailedControls = ({ captureId }: { captureId: string }) => {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>()
-  const { capture } = useCaptureDetails(captureId)
+  const { capture, isFetching } = useCaptureDetails(captureId)
 
   return (
     <div className={styles.detailedControls}>
@@ -59,7 +59,11 @@ const DetailedControls = ({ captureId }: { captureId: string }) => {
         onValueChange={setSelectedPipelineId}
       />
       <CaptureJob capture={capture} pipelineId={selectedPipelineId} />
-      <StarButton capture={capture} captureId={captureId} />
+      <StarButton
+        capture={capture}
+        captureFetching={isFetching}
+        captureId={captureId}
+      />
     </div>
   )
 }
