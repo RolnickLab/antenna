@@ -8,9 +8,9 @@ from django.db import models
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
-import ami.tasks
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
+from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.utils.schemas import OrderedEnum
@@ -288,12 +288,12 @@ class Job(BaseModel):
         """
         # ami.tasks.run_job.delay(self.pk)
         # task_id = ami.tasks.run_job.apply_async(args=[self.pk], queue=self.queue).id
-        task_id = ami.tasks.run_job.apply_async(kwargs={"job_id": self.pk}).id
+        task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = ami.tasks.run_job.AsyncResult(task_id).status
+        self.status = run_job.AsyncResult(task_id).status
         self.save()
 
     def setup(self, save=True):
@@ -419,7 +419,7 @@ class Job(BaseModel):
         self.status = JobState.CANCELING
         self.save()
         if self.task_id:
-            task = ami.tasks.run_job.AsyncResult(self.task_id)
+            task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
                 self.status = task.status
@@ -434,7 +434,7 @@ class Job(BaseModel):
         Or if a status is provided, update the status of the job to that value.
         """
         if not status and self.task_id:
-            task = ami.tasks.run_job.AsyncResult(self.task_id)
+            task = run_job.AsyncResult(self.task_id)
             status = task.status
 
         if not status:
