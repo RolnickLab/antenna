@@ -19,6 +19,8 @@ import RadixCheck from './assets/radix/check.svg?react'
 import Cross from './assets/radix/cross.svg?react'
 import Error from './assets/radix/error.svg?react'
 import ExternalLink from './assets/radix/external-link.svg?react'
+import HeartFilled from './assets/radix/heart-filled.svg?react'
+import Heart from './assets/radix/heart.svg?react'
 import Options from './assets/radix/options.svg?react'
 import Pencil from './assets/radix/pencil.svg?react'
 import Plus from './assets/radix/plus.svg?react'
@@ -50,6 +52,8 @@ export enum IconType {
   ExternalLink = 'external-link',
   Filters = 'filters',
   GalleryView = 'gallery-view',
+  Heart = 'heart',
+  HeartFilled = 'heart-filled',
   Images = 'images',
   Info = 'info',
   Members = 'members',
@@ -98,6 +102,8 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.ExternalLink]: ExternalLink,
   [IconType.Filters]: Filters,
   [IconType.GalleryView]: GalleryView,
+  [IconType.Heart]: Heart,
+  [IconType.HeartFilled]: HeartFilled,
   [IconType.Images]: Images,
   [IconType.Info]: Info,
   [IconType.Members]: Members,
