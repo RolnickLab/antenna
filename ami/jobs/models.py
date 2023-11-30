@@ -320,10 +320,10 @@ class Job(BaseModel):
         if self.pipeline:
             collect_stage = self.progress.add_stage("Collect")
             self.progress.add_stage_param(collect_stage.key, "Total Images", "")
-            self.progress.add_stage_param(collect_stage.key, "Proccessed", "")
-            self.progress.add_stage_param(collect_stage.key, "Remaining", "")
 
             pipeline_stage = self.progress.add_stage("Process")
+            self.progress.add_stage_param(pipeline_stage.key, "Proccessed", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Remaining", "")
             self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
             self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
 
@@ -390,8 +390,8 @@ class Job(BaseModel):
                     # shuffle=self.shuffle,
                 )
             )
-            image_count = len(images)
-            image_count_label = f"{image_count}"
+            source_image_count = len(images)
+            self.progress.update_stage("collect", total_images=source_image_count)
 
             if self.shuffle:
                 self.logger.info("Shuffling images")
@@ -401,19 +401,18 @@ class Job(BaseModel):
             TEMPORARY_LIMIT = 200
             self.limit = self.limit or TEMPORARY_LIMIT
 
-            if self.limit and image_count > self.limit:
-                self.logger.warn(f"Limiting number of images to {self.limit} (out of {image_count})")
+            if self.limit and source_image_count > self.limit:
+                self.logger.warn(f"Limiting number of images to {self.limit} (out of {source_image_count})")
                 images = images[: self.limit]
                 image_count = len(images)
-                image_count_label = f"{image_count} (out of {len(images)})"
+                self.progress.add_stage_param("collect", "Limit", image_count)
+            else:
+                image_count = source_image_count
 
             self.progress.update_stage(
                 "collect",
                 status=JobState.SUCCESS,
                 progress=1,
-                total=image_count_label,
-                proccessed=0,
-                remaining=image_count,
             )
 
             total_detections = 0
@@ -433,6 +432,8 @@ class Job(BaseModel):
                     "process",
                     status=JobState.STARTED,
                     progress=(i + 1) / len(chunks),
+                    proccessed=(i + 1) * CHUNK_SIZE,
+                    remaining=image_count - (i + 1) * CHUNK_SIZE,
                     detections=total_detections,
                     classifications=total_classifications,
                 )
@@ -444,23 +445,16 @@ class Job(BaseModel):
                     progress=(i + 1) / len(chunks),
                     objects_created=len(objects),
                 )
-                self.progress.update_stage(
-                    "collect",
-                    proccessed=(i + 1) * CHUNK_SIZE,
-                    remaining=image_count - (i + 1) * CHUNK_SIZE,
-                )
                 self.update_progress()
                 self.save()
 
             self.progress.update_stage(
                 "process",
                 status=JobState.SUCCESS,
-                progress=1,
             )
             self.progress.update_stage(
                 "results",
                 status=JobState.SUCCESS,
-                progress=1,
             )
 
         self.update_status(JobState.SUCCESS)
