@@ -376,7 +376,6 @@ class TaxonListSerializer(DefaultSerializer):
             "parent",
             "details",
             "occurrences_count",
-            "detections_count",
             "occurrences",
             "occurrence_images",
             "last_detected",

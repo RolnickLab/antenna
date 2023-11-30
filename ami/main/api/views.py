@@ -478,17 +478,7 @@ class TaxonViewSet(DefaultViewSet):
     API endpoint that allows taxa to be viewed or edited.
     """
 
-    queryset = (
-        Taxon.objects.select_related("parent", "parent__parent")
-        .annotate(
-            occurrences_count=models.Count("occurrences", distinct=True),
-            detections_count=models.Count("classifications__detection", distinct=True),
-            events_count=models.Count("occurrences__event", distinct=True),
-            last_detected=models.Max("classifications__detection__timestamp"),
-        )
-        .all()
-        .distinct()
-    )
+    queryset = Taxon.objects.all()
     serializer_class = TaxonSerializer
     filterset_fields = [
         "name",
@@ -583,11 +573,20 @@ class TaxonViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
         try:
-            return self.filter_by_occurrence(qs)
+            qs = self.filter_by_occurrence(qs)
         except exceptions.ObjectDoesNotExist as e:
             from rest_framework.exceptions import NotFound
 
             raise NotFound(detail=str(e))
+        qs = qs.select_related("parent", "parent__parent")
+        qs = qs.prefetch_related("occurrences")
+        qs = qs.annotate(
+            occurrences_count=models.Count("occurrences", distinct=True),
+            events_count=models.Count("occurrences__event", distinct=True),
+            last_detected=models.Max("classifications__detection__timestamp"),
+        )
+
+        return qs
 
 
 class ClassificationViewSet(DefaultViewSet):
