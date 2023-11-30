@@ -515,7 +515,7 @@ class Event(BaseModel):
         If duration was populated by a query annotation, use that
         otherwise call the duration() method to calculate it.
         """
-        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        duration = self.duration() if callable(self.duration) else self.duration
         return ami.utils.dates.format_timedelta(duration)
 
     # These are now loaded with annotations in EventViewSet
@@ -1475,7 +1475,7 @@ class Occurrence(BaseModel):
         If duration has been calculated by a query annotation, use that value
         otherwise call the duration() method to calculate it.
         """
-        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        duration = self.duration() if callable(self.duration) else self.duration
         return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
