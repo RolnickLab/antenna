@@ -64,7 +64,7 @@ def process_images(
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info(f"Sending {len(images)} images chunk to pipeline {pipeline_choice}")
+        job.logger.info(f"Sending {len(images)} images to ML backend {pipeline_choice}")
 
     request_data = PipelineRequest(
         pipeline=pipeline_choice,  # type: ignore
@@ -86,8 +86,10 @@ def process_images(
         job.logger.debug(f"Results: {results}")
         detections = results.detections
         classifications = results.classifications
-        job.logger.info(f"Found {len(detections)} detections")
-        job.logger.info(f"Found {len(classifications)} classifications")
+        if len(detections):
+            job.logger.info(f"Found {len(detections)} detections")
+        if len(classifications):
+            job.logger.info(f"Found {len(classifications)} classifications")
 
     return results
 
@@ -106,7 +108,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info("Saving results chunk")
+        job.logger.info("Saving results")
 
     # collection_name = f"Images processed by {results.pipeline} pipeline"
     # if job_id:
@@ -213,7 +215,8 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         source_image.save()
 
     if job:
-        job.logger.info(f"Saved {len(created_objects)} objects")
+        if len(created_objects):
+            job.logger.info(f"Created {len(created_objects)} objects")
 
     return created_objects
 

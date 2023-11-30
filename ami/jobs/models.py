@@ -286,8 +286,6 @@ class Job(BaseModel):
         """
         Add the job to the queue so that it will run in the background.
         """
-        # ami.tasks.run_job.delay(self.pk)
-        # task_id = ami.tasks.run_job.apply_async(args=[self.pk], queue=self.queue).id
         assert self.pk is not None, "Job must be saved before it can be enqueued"
         task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
         self.task_id = task_id
@@ -352,81 +350,77 @@ class Job(BaseModel):
             pipeline_stage = self.progress.add_stage("Pipeline")
             self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
             self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
-            # results = None
 
-            image_count = 0
-            kwargs = {}
-            if self.source_image_collection:
-                image_count = self.source_image_collection.source_image_count()
-                kwargs["collection"] = self.source_image_collection
-
-            elif self.source_image_single:
-                image_count = 1
-                kwargs["source_images"] = [self.source_image_single]
-
-            elif self.deployment:
-                image_count = self.deployment.captures_count()
-                kwargs["deployment"] = self.deployment
-
-            self.logger.info(f"Sending {image_count} images to pipeline")
-            self.progress.add_stage_param(pipeline_stage.key, "Source images", image_count)
+            saving_stage = self.progress.add_stage("Saving results")
+            self.progress.add_stage_param(saving_stage.key, "objects_created", "")
 
             self.progress.update_stage(
                 pipeline_stage.key,
                 status=JobState.STARTED,
                 progress=0,
             )
+            self.save()
 
-            images = list(self.pipeline.collect_images(**kwargs))
+            TEMPORARY_MAX_IMAGES = 100
+            images = list(
+                # @TODO return generator plus image count
+                # @TODO pass to celery group chain?
+                self.pipeline.collect_images(
+                    collection=self.source_image_collection,
+                    deployment=self.deployment,
+                    source_images=[self.source_image_single] if self.source_image_single else None,
+                )
+            )
+            image_count = len(images)
 
-            from ami.ml.tasks import process_and_save_images
+            if image_count > TEMPORARY_MAX_IMAGES:
+                self.logger.warn(f"Limiting number of images to {TEMPORARY_MAX_IMAGES}")
+                images = images[:TEMPORARY_MAX_IMAGES]
 
-            max_tasks = 100
-            tasks = [(self.pipeline.slug, self.pipeline.endpoint_url, [image.pk], self.pk) for image in images][
-                :max_tasks
-            ]
-            tasks_per_chunk = 10
-            total_chunks = len(tasks) / tasks_per_chunk
-            self.logger.info(f"Running {len(tasks)} tasks in {total_chunks} chunks, {tasks_per_chunk} at a time")
-            task = process_and_save_images.chunks(
-                tasks,
-                tasks_per_chunk,
-            ).apply_async()
-            while not task.ready():
-                time.sleep(10)
-            # self.pipeline.process_images(images=images, job_id=self.pk)
+            self.progress.add_stage_param(pipeline_stage.key, "Source images", image_count)
 
-            # self.logger.info(f"Results: {results}")
-            # detections = results.detections
-            # classifications = results.classifications
+            total_detections = 0
+            total_classifications = 0
 
-            # self.progress.update_stage(
-            #     pipeline_stage.key,
-            #     status=JobState.SUCCESS,
-            #     progress=1,
-            #     detections=len(detections),
-            #     classifications=len(classifications),
-            # )
-            # self.logger.info(f"Results: {results}")
-            # self.logger.info(f"Found {len(detections)} detections")
-            # self.logger.info(f"Found {len(classifications)} classifications")
+            chunk_size = 10  # Define the chunk size
+            chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
 
-            # saving_stage = self.progress.add_stage("Saving results")
-            # self.progress.update_stage(
-            #     saving_stage.key,
-            #     status=JobState.STARTED,
-            #     progress=0,
-            # )
-            # objects_created = self.pipeline.save_results(results)
-            # self.logger.info(f"Saved {len(objects_created)} objects")
-            # self.progress.add_stage_param(saving_stage.key, "Objects created", len(objects_created))
-            # self.progress.update_stage(
-            #     saving_stage.key,
-            #     status=JobState.SUCCESS,
-            #     progress=1,
-            # )
+            for i, chunk in enumerate(chunks):
+                results = self.pipeline.process_images(
+                    images=chunk,
+                    job_id=self.pk,
+                )
+                total_detections += len(results.detections)
+                total_classifications += len(results.classifications)
+                self.progress.update_stage(
+                    pipeline_stage.key,
+                    status=JobState.STARTED,
+                    progress=(i + 1) / len(chunks),
+                    detections=total_detections,
+                    classifications=total_classifications,
+                )
+                self.save()
+                objects = self.pipeline.save_results(results=results, job_id=self.pk)
+                self.progress.update_stage(
+                    saving_stage.key,
+                    status=JobState.STARTED,
+                    progress=(i + 1) / len(chunks),
+                    objects_created=len(objects),
+                )
+                self.update_progress()
+                self.save()
+
+            self.progress.update_stage(
+                pipeline_stage.key,
+                status=JobState.SUCCESS,
+            )
+            self.progress.update_stage(
+                saving_stage.key,
+                status=JobState.SUCCESS,
+            )
 
         self.update_status(JobState.SUCCESS)
+        self.update_progress()
         self.finished_at = datetime.datetime.now()
         self.save()
 
