@@ -29,10 +29,12 @@ def collect_images(
     collection: SourceImageCollection | None = None,
     source_images: list[SourceImage] | None = None,
     deployment: Deployment | None = None,
+    job_id: int | None = None,
 ) -> typing.Iterable[SourceImage]:
     """
     Collect images from a collection, a list of images or a deployment.
     """
+    # Set source to first argument that is not None
     if collection:
         images = collection.images.all()
     elif source_images:
@@ -41,6 +43,12 @@ def collect_images(
         images = SourceImage.objects.filter(deployment=deployment)
     else:
         raise ValueError("Must specify a collection, deployment or a list of images")
+
+    if job_id:
+        from ami.jobs.models import Job
+
+        job = Job.objects.get(pk=job_id)
+        job.logger.info(f"Found {len(images)} images to process")
 
     return images
 
@@ -257,11 +265,13 @@ class Pipeline(BaseModel):
         collection: SourceImageCollection | None = None,
         source_images: list[SourceImage] | None = None,
         deployment: Deployment | None = None,
+        job_id: int | None = None,
     ) -> typing.Iterable[SourceImage]:
         return collect_images(
             collection=collection,
             source_images=source_images,
             deployment=deployment,
+            job_id=job_id,
         )
 
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
