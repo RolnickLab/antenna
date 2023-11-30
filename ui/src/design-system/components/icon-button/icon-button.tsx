@@ -1,6 +1,7 @@
 import classNames from 'classnames'
-import { forwardRef } from 'react'
+import { forwardRef, MouseEvent } from 'react'
 import { Icon, IconTheme, IconType } from '../icon/icon'
+import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './icon-button.module.scss'
 
 export enum IconButtonShape {
@@ -22,10 +23,11 @@ interface IconButtonProps {
   disabled?: boolean
   icon: IconType
   iconTransform?: string
+  loading?: boolean
   shape?: IconButtonShape
   theme?: IconButtonTheme
   title?: string
-  onClick?: () => void
+  onClick?: (e: MouseEvent) => void
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
@@ -34,6 +36,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       disabled,
       icon,
       iconTransform,
+      loading,
       shape = IconButtonShape.Square,
       theme = IconButtonTheme.Default,
       title,
@@ -74,17 +77,26 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
           [styles.disabled]: disabled,
         })}
         disabled={disabled}
-        onClick={onClick}
+        onClick={(e) => {
+          if (loading) {
+            return
+          }
+          onClick?.(e)
+        }}
         title={title}
         type="button"
         {...rest}
       >
-        <Icon
-          size={14}
-          theme={iconTheme}
-          transform={iconTransform}
-          type={icon}
-        />
+        {loading ? (
+          <LoadingSpinner size={12} />
+        ) : (
+          <Icon
+            size={14}
+            theme={iconTheme}
+            transform={iconTransform}
+            type={icon}
+          />
+        )}
       </button>
     )
   }

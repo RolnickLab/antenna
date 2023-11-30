@@ -1,4 +1,5 @@
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
+import { CaptureDetails } from 'data-services/models/capture-details'
 import {
   IconButton,
   IconButtonTheme,
@@ -12,9 +13,11 @@ import { CaptureJob } from '../capture-job/capture-job'
 import { useActiveCaptureId } from '../useActiveCapture'
 import { PipelinesPicker } from './pipelines-picker'
 import styles from './playback-controls.module.scss'
+import { StarButton } from './star-button'
 
 export const PlaybackControls = () => {
   const { activeCaptureId } = useActiveCaptureId()
+  const { capture, isFetching } = useCaptureDetails(activeCaptureId as string)
   const { defaultThreshold, threshold, setThreshold } = useThreshold()
   const [showDetails, setShowDetails] = useState(false)
   const [displayThreshold, setDisplayThreshold] = useState(threshold)
@@ -28,6 +31,11 @@ export const PlaybackControls = () => {
           theme={IconButtonTheme.Neutral}
           onClick={() => setShowDetails(!showDetails)}
         />
+        <StarButton
+          capture={capture}
+          captureFetching={isFetching}
+          captureId={activeCaptureId as string}
+        />
         <PlaybackSlider
           defaultValue={defaultThreshold}
           label="Score"
@@ -39,16 +47,13 @@ export const PlaybackControls = () => {
           }}
         />
       </div>
-      {activeCaptureId && showDetails && (
-        <DetailedControls captureId={activeCaptureId} />
-      )}
+      {showDetails && <DetailedControls capture={capture} />}
     </div>
   )
 }
 
-const DetailedControls = ({ captureId }: { captureId: string }) => {
+const DetailedControls = ({ capture }: { capture?: CaptureDetails }) => {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>()
-  const { capture } = useCaptureDetails(captureId)
 
   return (
     <div className={styles.detailedControls}>
@@ -57,7 +62,6 @@ const DetailedControls = ({ captureId }: { captureId: string }) => {
         value={selectedPipelineId}
         onValueChange={setSelectedPipelineId}
       />
-
       <CaptureJob capture={capture} pipelineId={selectedPipelineId} />
     </div>
   )
