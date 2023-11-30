@@ -382,8 +382,8 @@ class Job(BaseModel):
             total_detections = 0
             total_classifications = 0
 
-            chunk_size = 10  # Define the chunk size
-            chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
+            CHUNK_SIZE = 2  # Keep it low to see more progress updates
+            chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
 
             for i, chunk in enumerate(chunks):
                 results = self.pipeline.process_images(
