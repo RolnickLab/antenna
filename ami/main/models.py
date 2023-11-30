@@ -1831,6 +1831,10 @@ class Taxon(BaseModel):
         # constraints = [
         #     models.UniqueConstraint(fields=["name", "rank", "parent"], name="unique_name_and_placement"),
         # ]
+        indexes = [
+            # Add index for default ordering
+            models.Index(fields=["ordering", "name"]),
+        ]
 
     def save(self, *args, **kwargs):
         """Update the display name before saving."""
