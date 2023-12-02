@@ -904,7 +904,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             taxon=taxon,
             identification=identification,
             prediction=prediction,
-            score=obj.determination_score(),
+            score=obj.determination_score,
         )
 
 

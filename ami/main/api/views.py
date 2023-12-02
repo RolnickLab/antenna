@@ -11,11 +11,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami import tasks
+from ami.base.filters import NullsLastOrderingFilter
 
 from ..models import (
     Classification,
@@ -78,7 +79,7 @@ logger = logging.getLogger(__name__)
 class DefaultViewSetMixin:
     filter_backends = [
         DjangoFilterBackend,
-        OrderingFilter,
+        NullsLastOrderingFilter,
         SearchFilter,
     ]
     filterset_fields = []
@@ -438,6 +439,7 @@ class OccurrenceViewSet(DefaultViewSet):
             "event",
         )
         .prefetch_related("detections")
+        .order_by("-determination_score")
         .all()
     )
     serializer_class = OccurrenceSerializer
@@ -450,6 +452,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "duration",
         "deployment",
         "determination",
+        "determination_score",
         "event",
         "detections_count",
     ]

@@ -1171,6 +1171,7 @@ class Identification(BaseModel):
         blank=True,
         related_name="agreed_identifications",
     )
+    score = 1.0  # Always 1 for humans, at this time
 
     class Meta:
         ordering = [
@@ -1435,6 +1436,7 @@ class Occurrence(BaseModel):
     # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
     determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
+    determination_score = models.FloatField(null=True, blank=True)
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -1467,7 +1469,7 @@ class Occurrence(BaseModel):
     @functools.cached_property
     def last_appearance(self) -> SourceImage | None:
         # @TODO it appears we only need the last timestamp, that could be an annotated value
-        last = self.detections.order_by("-timestamp").select_related("source_image").first()
+        last = self.detections.order_by("timestamp").select_related("source_image").last()
         if last:
             return last.source_image
 
@@ -1511,32 +1513,17 @@ class Occurrence(BaseModel):
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
     def get_determination_score(self) -> float:
-        logger.warning(
-            f"Calculating determination score for Occurrence #{self.pk} "
-            "(this should be come from a query annotation and be cached)"
-        )
         if not self.determination:
             return 0
         elif self.best_identification:
-            # If the occurrence has been verified by humans, then consider determination 100% certain
-            return 1.0
+            return self.best_identification.score
         else:
-            return Classification.objects.filter(detection__occurrence=self).aggregate(models.Max("score"))[
-                "score__max"
-            ]
-
-    def determination_score(self) -> float:
-        """
-        Example, get best determination score for each occurrence if it has no identifications:
-
-        If score was populated by a query annotation, use that
-        otherwise call the get() method to calculate it.
-        """
-        if hasattr(self, "determination_score") and isinstance(self.determination_score, float):
-            score = self.determination_score
-        else:
-            score = self.get_determination_score()
-        return score
+            return Classification.objects.filter(
+                detection__occurrence=self,
+                taxon=self.determination,
+            ).aggregate(
+                models.Max("score")
+            )["score__max"]
 
     def predictions(self):
         # Retrieve the classification with the max score for each algorithm
@@ -1562,6 +1549,17 @@ class Occurrence(BaseModel):
         # @TODO this was a temporary hack. Use settings and reverse().
         return f"https://app.preview.insectai.org/occurrences/{self.pk}"
 
+    def update_calculated_fields(self, *args, **kwargs):
+        logger.info(f"Updating calculated fields for {self}")
+        if not self.determination:
+            self.determination = update_occurrence_determination(self)
+        if not self.determination_score:
+            self.determination_score = self.get_determination_score()
+        super().update_calculated_fields(*args, **kwargs)
+
+    class Meta:
+        ordering = ["-determination_score"]
+
 
 def update_occurrence_determination(occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None):
     """
@@ -1577,6 +1575,8 @@ def update_occurrence_determination(occurrence: Occurrence, current_determinatio
 
     @TODO Add tests for this important method!
     """
+    needs_update = False
+
     current_determination = (
         current_determination
         or Occurrence.objects.select_related("determination")
@@ -1584,18 +1584,29 @@ def update_occurrence_determination(occurrence: Occurrence, current_determinatio
         .get(pk=occurrence.pk)["determination"]
     )
     new_determination = None
+    new_score = None
 
     top_identification = occurrence.best_identification
     if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
         new_determination = top_identification.taxon
+        new_score = top_identification.score
     elif not top_identification:
         top_prediction = occurrence.best_prediction
         if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
             new_determination = top_prediction.taxon
+            new_score = top_prediction.score
 
     if new_determination and new_determination != current_determination:
-        logger.info(f"Changing determination of {occurrence} from {current_determination} to {new_determination}")
+        logger.info(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
         occurrence.determination = new_determination
+        needs_update = True
+
+    if new_score and new_score != occurrence.determination_score:
+        logger.info(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
+        occurrence.determination_score = new_score
+        needs_update = True
+
+    if needs_update:
         occurrence.save()
 
 
