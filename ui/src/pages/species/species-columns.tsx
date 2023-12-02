@@ -67,6 +67,17 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     ),
   },
   {
+    id: 'score',
+    sortField: 'best_determination_score',
+    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <BasicTableCell value={item.score.toFixed(2)} />
+    ),
+  },
+  {
     id: 'training-images',
     name: translate(STRING.FIELD_LABEL_TRAINING_IMAGES),
     styles: {

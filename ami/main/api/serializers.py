@@ -375,6 +375,7 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences",
             "occurrence_images",
             "last_detected",
+            "best_determination_score",
             "created_at",
             "updated_at",
         ]

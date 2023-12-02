@@ -25,6 +25,8 @@ from ami.main import charts
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
+logger = logging.getLogger(__name__)
+
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 
@@ -52,15 +54,29 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
+DEFAULT_CONFIDENCE_THRESHOLD = 0.29
+
 
 # @TODO move to settings & make configurable
 _SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
 _CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
 
 
-as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
+def get_media_url(path: str) -> str:
+    """
+    If path is a full URL, return it as-is.
+    Otherwise, join it with the MEDIA_URL setting.
+    """
+    # @TODO use settings
+    # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
+    if path.startswith("http"):
+        url = path
+    else:
+        url = urllib.parse.urljoin(_CROPS_URL_BASE, path.lstrip("/"))
+    return url
 
-logger = logging.getLogger(__name__)
+
+as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
 @final
@@ -1382,17 +1398,8 @@ class Detection(BaseModel):
         else:
             return (None, None)
 
-    def url(self):
-        # @TODO use settings
-        # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-        logger.info(f"DETECTION URL: {self.path}")
-        print(f"DETECTION URL: {self.path}")
-        if self.path.startswith("http"):
-            url = self.path
-        else:
-            url = urllib.parse.urljoin(_CROPS_URL_BASE, self.path.lstrip("/"))
-        logger.info(f"DETECTION URL: {url}")
-        return url
+    def url(self) -> str | None:
+        return get_media_url(self.path) if self.path else None
 
     def associate_new_occurrence(self):
         """
@@ -1815,17 +1822,28 @@ class Taxon(BaseModel):
         # This is handled by an annotation
         return None
 
-    def occurrence_images(self):
+    def best_determination_score(self) -> float | None:
+        # This is handled by an annotation if we are filtering by project, deployment or event
+        return None
+
+    def occurrence_images(self, limit: int | None = 10) -> list[str]:
         """
         Return one image from each occurrence of this Taxon.
         The image should be from the detection with the highest classification score.
+
+        This is used for image thumbnail previews in the species summary view.
         """
 
-        # @TODO Can we use a single query
-        for occurrence in self.occurrences.prefetch_related("detections__classifications").all():
-            detection = occurrence.detections.order_by("-classifications__score").first()
-            if detection:
-                yield detection.url()
+        # Retrieve the URLs using a single optimized query
+        detection_image_paths = (
+            self.occurrences.prefetch_related("detections__classifications")
+            .annotate(max_score=models.Max("detections__classifications__score"))
+            .filter(detections__classifications__score=models.F("max_score"))
+            .order_by("-max_score")
+            .values_list("detections__path", flat=True)[:limit]
+        )
+
+        return [get_media_url(path) for path in detection_image_paths if path]
 
     def list_names(self) -> str:
         return ", ".join(self.lists.values_list("name", flat=True))

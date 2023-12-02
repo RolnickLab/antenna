@@ -36,4 +36,8 @@ export class Species extends Taxon {
   get trainingImagesUrl(): string {
     return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
   }
+
+  get score(): number {
+    return this._species.best_determination_score
+  }
 }
