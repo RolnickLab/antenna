@@ -1276,6 +1276,9 @@ class Classification(BaseModel):
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
     timestamp = models.DateTimeField()
+    # terminal = models.BooleanField(
+    #     default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
+    # )
 
     softmax_output = models.JSONField(null=True)  # scores for all classes
     raw_output = models.JSONField(null=True)  # raw output from the model
@@ -1403,6 +1406,33 @@ class Detection(BaseModel):
             url = urllib.parse.urljoin(_CROPS_URL_BASE, self.path.lstrip("/"))
         logger.info(f"DETECTION URL: {url}")
         return url
+
+    def associate_new_occurrence(self):
+        """
+        Create and associate a new occurrence with this detection.
+        """
+        if self.occurrence:
+            return self.occurrence
+
+        classifications = self.classifications.first()
+        if classifications:
+            taxon = classifications.taxon
+        else:
+            taxon = None
+        occurrence = Occurrence(
+            event=self.source_image.event,
+            deployment=self.source_image.deployment,
+            project=self.source_image.project,
+            determination=taxon,
+        )
+        occurrence.save()
+        self.occurrence = occurrence
+        self.save()
+        # Update aggregate values on source image
+        # @TODO this should be done async in a task with an eta of a few seconds
+        # so it isn't done for every detection in a batch
+        self.source_image.save()
+        return occurrence
 
 
 @final
