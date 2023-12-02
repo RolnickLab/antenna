@@ -49,17 +49,6 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     ),
   },
   {
-    id: 'detections',
-    sortField: 'detections_count',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
     id: 'occurrences',
     sortField: 'occurrences_count',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
