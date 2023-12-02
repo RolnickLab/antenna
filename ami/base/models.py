@@ -21,14 +21,14 @@ class BaseModel(models.Model):
         """Save the model in a background task."""
         ami.tasks.model_task.delay(self.__class__.__name__, self.pk, "save", *args, **kwargs)
 
-    def update_calculated_fields(self, save=True):
+    def update_calculated_fields(self, *args, **kwargs):
         """Update calculated fields specific to each model."""
         pass
 
-    def save(self, update_calculated_fields=True, *args, **kwargs):
-        if update_calculated_fields:
-            self.update_calculated_fields(save=False)
+    def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
+        if kwargs.get("update_calculated_fields", False):
+            self.update_calculated_fields(save=True)
 
     class Meta:
         abstract = True

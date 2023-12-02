@@ -568,7 +568,7 @@ class Event(BaseModel):
 
         return plots
 
-    def update_calculated_fields(self):
+    def update_calculated_fields(self, save=False):
         if not self.group_by and self.start:
             # If no group_by is set, use the start "day"
             self.group_by = self.start.date()
@@ -585,8 +585,11 @@ class Event(BaseModel):
             if last:
                 self.end = last["timestamp"]
 
+        if save:
+            self.save(update_calculated_fields=False)
+
     def save(self, *args, **kwargs):
-        self.update_calculated_fields()
+        self.update_calculated_fields(save=False)
         super().save(*args, **kwargs)
 
 
@@ -937,7 +940,7 @@ class SourceImage(BaseModel):
                 return self.width, self.height
         return None, None
 
-    def update_calculated_fields(self):
+    def update_calculated_fields(self, save=False):
         if self.path and not self.timestamp:
             self.timestamp = self.extract_timestamp()
         if self.path and not self.public_base_url:
