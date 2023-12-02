@@ -515,7 +515,7 @@ class Event(BaseModel):
         If duration was populated by a query annotation, use that
         otherwise call the duration() method to calculate it.
         """
-        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        duration = self.duration() if callable(self.duration) else self.duration
         return ami.utils.dates.format_timedelta(duration)
 
     # These are now loaded with annotations in EventViewSet
@@ -873,6 +873,7 @@ class SourceImage(BaseModel):
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
 
     detections: models.QuerySet["Detection"]
+    collections: models.QuerySet["SourceImageCollection"]
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
@@ -1275,6 +1276,9 @@ class Classification(BaseModel):
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
     timestamp = models.DateTimeField()
+    # terminal = models.BooleanField(
+    #     default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
+    # )
 
     softmax_output = models.JSONField(null=True)  # scores for all classes
     raw_output = models.JSONField(null=True)  # raw output from the model
@@ -1394,8 +1398,41 @@ class Detection(BaseModel):
     def url(self):
         # @TODO use settings
         # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-        url = urllib.parse.urljoin(_CROPS_URL_BASE, self.path)
+        logger.info(f"DETECTION URL: {self.path}")
+        print(f"DETECTION URL: {self.path}")
+        if self.path.startswith("http"):
+            url = self.path
+        else:
+            url = urllib.parse.urljoin(_CROPS_URL_BASE, self.path.lstrip("/"))
+        logger.info(f"DETECTION URL: {url}")
         return url
+
+    def associate_new_occurrence(self):
+        """
+        Create and associate a new occurrence with this detection.
+        """
+        if self.occurrence:
+            return self.occurrence
+
+        classifications = self.classifications.first()
+        if classifications:
+            taxon = classifications.taxon
+        else:
+            taxon = None
+        occurrence = Occurrence(
+            event=self.source_image.event,
+            deployment=self.source_image.deployment,
+            project=self.source_image.project,
+            determination=taxon,
+        )
+        occurrence.save()
+        self.occurrence = occurrence
+        self.save()
+        # Update aggregate values on source image
+        # @TODO this should be done async in a task with an eta of a few seconds
+        # so it isn't done for every detection in a batch
+        self.source_image.save()
+        return occurrence
 
 
 @final
@@ -1468,7 +1505,7 @@ class Occurrence(BaseModel):
         If duration has been calculated by a query annotation, use that value
         otherwise call the duration() method to calculate it.
         """
-        duration = self.duration if isinstance(self.duration, datetime.timedelta) else self.duration()
+        duration = self.duration() if callable(self.duration) else self.duration
         return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
@@ -1824,6 +1861,10 @@ class Taxon(BaseModel):
         # constraints = [
         #     models.UniqueConstraint(fields=["name", "rank", "parent"], name="unique_name_and_placement"),
         # ]
+        indexes = [
+            # Add index for default ordering
+            models.Index(fields=["ordering", "name"]),
+        ]
 
     def save(self, *args, **kwargs):
         """Update the display name before saving."""
@@ -2032,3 +2073,24 @@ class SourceImageCollection(BaseModel):
 
         qs = self.get_queryset()
         return qs.filter(detections__isnull=False).distinct()
+
+    @classmethod
+    def get_or_create_starred_collection(cls, project: Project) -> "SourceImageCollection":
+        """
+        Get or create a collection for starred images.
+        """
+        collection = (
+            SourceImageCollection.objects.filter(
+                project=project,
+                method="starred",
+            )
+            .order_by("created_at")
+            .first()
+        )  # Use the oldest match
+        if not collection:
+            collection = SourceImageCollection.objects.create(
+                project=project,
+                method="starred",
+                name="Starred Images",  # @TODO make this translatable
+            )
+        return collection

@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 from django.db import connection
 from django.test import TestCase
@@ -17,9 +18,14 @@ from ami.main.models import (
 )
 
 
-def setup_test_project() -> tuple[Project, Deployment]:
-    project, _ = Project.objects.get_or_create(name="Test Project")
-    deployment, _ = Deployment.objects.get_or_create(project=project, name="Test Deployment")
+def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
+    if reuse:
+        project, _ = Project.objects.get_or_create(name="Test Project")
+        deployment, _ = Deployment.objects.get_or_create(project=project, name="Test Deployment")
+    else:
+        short_id = uuid.uuid4().hex[:8]
+        project = Project.objects.create(name=f"Test Project {short_id}")
+        deployment = Deployment.objects.create(project=project, name=f"Test Deployment {short_id}")
     return project, deployment
 
 
@@ -45,11 +51,21 @@ def create_captures(
 def create_taxa(project: Project) -> TaxaList:
     taxa_list = TaxaList.objects.create(name="Test Taxa List")
     taxa_list.projects.add(project)
-    root = Taxon.objects.create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
-    family_taxon = Taxon.objects.create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
-    genus_taxon = Taxon.objects.create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
+    root, _created = Taxon.objects.get_or_create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
+    root.projects.add(project)
+    family_taxon, _ = Taxon.objects.get_or_create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
+    family_taxon.projects.add(project)
+    genus_taxon, _ = Taxon.objects.get_or_create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
+    genus_taxon.projects.add(project)
     for species in ["Vanessa itea", "Vanessa cardui", "Vanessa atalanta"]:
-        Taxon.objects.create(name=species, parent=genus_taxon, rank=TaxonRank.SPECIES.name)
+        taxon, _ = Taxon.objects.get_or_create(
+            name=species,
+            defaults=dict(
+                parent=genus_taxon,
+                rank=TaxonRank.SPECIES.name,
+            ),
+        )
+        taxon.projects.add(project)
     taxa_list.taxa.set([root, family_taxon, genus_taxon])
     return taxa_list
 
@@ -432,3 +448,64 @@ class TestTaxonomy(TestCase):
         filter_ranks = [rank for rank in TaxonRank if rank != root.get_rank()]
         with self.assertRaises(ValueError):
             self._test_filtered_tree(filter_ranks)
+
+
+class TestTaxonomyViews(TestCase):
+    def setUp(self) -> None:
+        project_one, deployment_one = setup_test_project(reuse=False)
+        project_two, deployment_two = setup_test_project(reuse=False)
+        create_taxa(project=project_one)
+        create_taxa(project=project_two)
+        # Show project & deployment IDs
+        print(f"Project One: {project_one}")
+        print(f"Project Two: {project_two}")
+        print(f"Deployment One: {deployment_one.pk}")
+        print(f"Deployment Two: {deployment_two.pk}")
+        create_captures(deployment=deployment_one)
+        create_captures(deployment=deployment_two)
+        group_images_into_events(deployment=deployment_one)
+        group_images_into_events(deployment=deployment_two)
+        create_occurrences(deployment=deployment_one, num=100)
+        create_occurrences(deployment=deployment_two, num=100)
+        self.project_one = project_one
+        self.project_two = project_two
+        return super().setUp()
+
+    def test_taxa_list(self):
+        from ami.main.models import Taxon
+
+        response = self.client.get("/api/v2/taxa/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], Taxon.objects.count())
+
+    def _test_taxa_for_project(self, project: Project):
+        """
+        Ensure the annotation counts are specific to each project, not global counts
+        of occurrences and detections.
+        """
+        from ami.main.models import Taxon
+
+        response = self.client.get(f"/api/v2/taxa/?project={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], Taxon.objects.filter(projects=project).count())
+
+        # Check counts for each taxon
+        results = response.json()["results"]
+        for taxon_result in results:
+            taxon: Taxon = Taxon.objects.get(pk=taxon_result["id"])
+            project_occurrences = taxon.occurrences.filter(project=project).count()
+            # project_detections = taxon.detections.filter(project=project).count()
+            self.assertEqual(taxon_result["occurrences_count"], project_occurrences)
+
+    def test_taxa_for_project(self):
+        for project in [self.project_one, self.project_two]:
+            self._test_taxa_for_project(project)
+
+    def test_taxon_detail(self):
+        from ami.main.models import Taxon
+
+        taxon = Taxon.objects.first()
+        assert taxon is not None
+        response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], taxon.name)

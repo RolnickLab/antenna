@@ -1,5 +1,6 @@
 import datetime
 import logging
+import random
 import time
 import typing
 
@@ -8,9 +9,9 @@ from django.db import models
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
-import ami.tasks
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
+from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.utils.schemas import OrderedEnum
@@ -59,6 +60,11 @@ def get_status_label(status: JobState, progress: float) -> str:
         return f"{status.name}"
 
 
+def python_slugify(value: str) -> str:
+    # Use underscore instead of dash so we can use them as python property names
+    return slugify(value, allow_unicode=False).replace("-", "_")
+
+
 ML_API_ENDPOINT = "http://host.docker.internal:2000/pipeline/process/"
 
 
@@ -99,7 +105,7 @@ class JobProgress(pydantic.BaseModel):
 
     def add_stage(self, name: str) -> JobProgressStageDetail:
         stage = JobProgressStageDetail(
-            key=slugify(name),
+            key=python_slugify(name),
             name=name,
         )
         self.stages.append(stage)
@@ -122,7 +128,7 @@ class JobProgress(pydantic.BaseModel):
         stage = self.get_stage(stage_key)
         param = ConfigurableStageParam(
             name=name,
-            key=slugify(name),
+            key=python_slugify(name),
             value=value,
         )
         stage.params.append(param)
@@ -130,7 +136,7 @@ class JobProgress(pydantic.BaseModel):
 
     def add_or_update_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
         try:
-            param = self.get_stage_param(stage_key, slugify(name))
+            param = self.get_stage_param(stage_key, python_slugify(name))
             param.value = value
             return param
         except ValueError:
@@ -143,6 +149,7 @@ class JobProgress(pydantic.BaseModel):
         Will update parameters that are direct attributes of the stage,
         or parameters that are in the stage's params list.
         """
+        stage_key = python_slugify(stage_key)  # Allow both title or key to be used for lookup
         stage = self.get_stage(stage_key)
 
         if stage.key == stage_key:
@@ -244,6 +251,10 @@ class Job(BaseModel):
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
+    limit = models.IntegerField(
+        "Limit", null=True, blank=True, default=100, help_text="Limit the number of images to process"
+    )
+    shuffle = models.BooleanField("Shuffle", default=True, help_text="Process images in a random order")
 
     project = models.ForeignKey(
         Project,
@@ -286,14 +297,13 @@ class Job(BaseModel):
         """
         Add the job to the queue so that it will run in the background.
         """
-        # ami.tasks.run_job.delay(self.pk)
-        # task_id = ami.tasks.run_job.apply_async(args=[self.pk], queue=self.queue).id
-        task_id = ami.tasks.run_job.apply_async(kwargs={"job_id": self.pk}).id
+        assert self.pk is not None, "Job must be saved before it can be enqueued"
+        task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = ami.tasks.run_job.AsyncResult(task_id).status
+        self.status = run_job.AsyncResult(task_id).status
         self.save()
 
     def setup(self, save=True):
@@ -303,9 +313,24 @@ class Job(BaseModel):
         self.progress = self.progress or default_job_progress
 
         if self.delay:
-            self.progress.add_stage("Delay")
-            self.progress.add_stage_param("delay", "Delay", self.delay)
-            self.progress.add_stage_param("delay", "Mood", "😴")
+            delay_stage = self.progress.add_stage("Delay")
+            self.progress.add_stage_param(delay_stage.key, "Delay", self.delay)
+            self.progress.add_stage_param(delay_stage.key, "Mood", "😴")
+
+        if self.pipeline:
+            collect_stage = self.progress.add_stage("Collect")
+            self.progress.add_stage_param(collect_stage.key, "Total Images", "")
+
+            pipeline_stage = self.progress.add_stage("Process")
+            self.progress.add_stage_param(pipeline_stage.key, "Proccessed", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Remaining", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
+
+            saving_stage = self.progress.add_stage("Results")
+            self.progress.add_stage_param(saving_stage.key, "Objects created", "")
+
+            self.save()
 
         if save:
             self.save()
@@ -348,61 +373,92 @@ class Job(BaseModel):
             self.save()
 
         if self.pipeline:
-            pipeline_stage = self.progress.add_stage("Pipeline")
-            self.progress.add_stage_param(pipeline_stage.key, "Detections", "N/A")
-            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "N/A")
-            results = None
-
-            image_count = 0
-            kwargs = {}
-            if self.source_image_collection:
-                image_count = self.source_image_collection.source_image_count()
-                kwargs["collection"] = self.source_image_collection
-
-            elif self.source_image_single:
-                image_count = 1
-                kwargs["source_images"] = [self.source_image_single]
-
-            self.logger.info(f"Sending {image_count} images to pipeline")
-            self.progress.add_stage_param(pipeline_stage.key, "Source images", image_count)
-
             self.progress.update_stage(
-                pipeline_stage.key,
+                "collect",
                 status=JobState.STARTED,
                 progress=0,
             )
 
-            results = self.pipeline.process_images(**kwargs)
+            images = list(
+                # @TODO return generator plus image count
+                # @TODO pass to celery group chain?
+                self.pipeline.collect_images(
+                    collection=self.source_image_collection,
+                    deployment=self.deployment,
+                    source_images=[self.source_image_single] if self.source_image_single else None,
+                    job_id=self.pk,
+                    # shuffle=self.shuffle,
+                )
+            )
+            source_image_count = len(images)
+            self.progress.update_stage("collect", total_images=source_image_count)
 
-            self.logger.info(f"Results: {results}")
-            detections = results.detections
-            classifications = results.classifications
+            if self.shuffle:
+                self.logger.info("Shuffling images")
+                random.shuffle(images)
+
+            # @TODO remove this temporary limit
+            TEMPORARY_LIMIT = 200
+            self.limit = self.limit or TEMPORARY_LIMIT
+
+            if self.limit and source_image_count > self.limit:
+                self.logger.warn(f"Limiting number of images to {self.limit} (out of {source_image_count})")
+                images = images[: self.limit]
+                image_count = len(images)
+                self.progress.add_stage_param("collect", "Limit", image_count)
+            else:
+                image_count = source_image_count
 
             self.progress.update_stage(
-                pipeline_stage.key,
+                "collect",
                 status=JobState.SUCCESS,
                 progress=1,
-                detections=len(detections),
-                classifications=len(classifications),
             )
-            self.logger.info(f"Results: {results}")
-            self.logger.info(f"Found {len(detections)} detections")
-            self.logger.info(f"Found {len(classifications)} classifications")
 
-            saving_stage = self.progress.add_stage("Saving results")
+            total_detections = 0
+            total_classifications = 0
+
+            CHUNK_SIZE = 2  # Keep it low to see more progress updates
+            chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
+
+            for i, chunk in enumerate(chunks):
+                results = self.pipeline.process_images(
+                    images=chunk,
+                    job_id=self.pk,
+                )
+                total_detections += len(results.detections)
+                total_classifications += len(results.classifications)
+                self.progress.update_stage(
+                    "process",
+                    status=JobState.STARTED,
+                    progress=(i + 1) / len(chunks),
+                    proccessed=(i + 1) * CHUNK_SIZE,
+                    remaining=image_count - (i + 1) * CHUNK_SIZE,
+                    detections=total_detections,
+                    classifications=total_classifications,
+                )
+                self.save()
+                objects = self.pipeline.save_results(results=results, job_id=self.pk)
+                self.progress.update_stage(
+                    "results",
+                    status=JobState.STARTED,
+                    progress=(i + 1) / len(chunks),
+                    objects_created=len(objects),
+                )
+                self.update_progress()
+                self.save()
+
             self.progress.update_stage(
-                saving_stage.key,
-                status=JobState.STARTED,
-                progress=0,
-            )
-            self.pipeline.save_results(results)
-            self.progress.update_stage(
-                saving_stage.key,
+                "process",
                 status=JobState.SUCCESS,
-                progress=1,
+            )
+            self.progress.update_stage(
+                "results",
+                status=JobState.SUCCESS,
             )
 
         self.update_status(JobState.SUCCESS)
+        self.update_progress()
         self.finished_at = datetime.datetime.now()
         self.save()
 
@@ -413,7 +469,7 @@ class Job(BaseModel):
         self.status = JobState.CANCELING
         self.save()
         if self.task_id:
-            task = ami.tasks.run_job.AsyncResult(self.task_id)
+            task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
                 self.status = task.status
@@ -428,7 +484,7 @@ class Job(BaseModel):
         Or if a status is provided, update the status of the job to that value.
         """
         if not status and self.task_id:
-            task = ami.tasks.run_job.AsyncResult(self.task_id)
+            task = run_job.AsyncResult(self.task_id)
             status = task.status
 
         if not status:
@@ -451,6 +507,10 @@ class Job(BaseModel):
         if not len(self.progress.stages):
             total_progress = 0
         else:
+            for stage in self.progress.stages:
+                if stage.status == JobState.SUCCESS and stage.progress < 1:
+                    # Update any stages that are complete but have a progress less than 1
+                    stage.progress = 1
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
 
         self.progress.summary.progress = total_progress

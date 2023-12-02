@@ -8,6 +8,7 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, FloatField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import exceptions as api_exceptions
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -273,14 +274,25 @@ class SourceImageViewSet(DefaultViewSet):
         Add a source image to the project's starred images collection.
         """
         source_image = self.get_object()
-        project = source_image.deployment.project
-        collection, _created = SourceImageCollection.objects.get_or_create(
-            project=project,
-            name="Starred Images",  # @TODO i18n and store this in constants
-            defaults={"method": "starred"},
-        )
-        collection.images.add(source_image)
-        return Response({"collection": collection.pk, "total_images": collection.images.count()})
+        if source_image and source_image.deployment and source_image.deployment.project:
+            collection = SourceImageCollection.get_or_create_starred_collection(source_image.deployment.project)
+            collection.images.add(source_image)
+            return Response({"collection": collection.pk, "total_images": collection.images.count()})
+        else:
+            raise api_exceptions.ValidationError(detail="Source image must be associated with a project")
+
+    @action(detail=True, methods=["post"], name="unstar")
+    def unstar(self, _request, pk=None) -> Response:
+        """
+        Remove a source image from the project's starred images collection.
+        """
+        source_image: SourceImage = self.get_object()
+        if source_image and source_image.deployment and source_image.deployment.project:
+            collection = SourceImageCollection.get_or_create_starred_collection(source_image.deployment.project)
+            collection.images.remove(source_image)
+            return Response({"collection": collection.pk, "total_images": collection.images.count()})
+        else:
+            raise api_exceptions.ValidationError(detail="Source image must be associated with a project")
 
 
 class SourceImageCollectionViewSet(DefaultViewSet):
@@ -314,6 +326,60 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         collection = self.get_object()
         task = tasks.populate_collection.apply_async([collection.pk])
         return Response({"task": task.id})
+
+    def _get_source_image(self):
+        """
+        Allow parameter to be passed as a GET query param or in the request body.
+        """
+        key = "source_image"
+        try:
+            source_image_id = IntegerField(required=True, min_value=0).clean(
+                self.request.data.get(key) or self.request.query_params.get(key)
+            )
+        except Exception as e:
+            raise api_exceptions.ValidationError from e
+
+        try:
+            return SourceImage.objects.get(id=source_image_id)
+        except SourceImage.DoesNotExist:
+            raise api_exceptions.NotFound(detail=f"SourceImage with id {source_image_id} not found")
+
+    def _serialize_source_image(self, source_image):
+        if source_image:
+            return SourceImageListSerializer(source_image, context={"request": self.request}).data
+        else:
+            return None
+
+    @action(detail=True, methods=["post"], name="add")
+    def add(self, request, pk=None):
+        """
+        Add a source image to a collection.
+        """
+        collection: SourceImageCollection = self.get_object()
+        source_image = self._get_source_image()
+        collection.images.add(source_image)
+
+        return Response(
+            {
+                "collection": collection.pk,
+                "total_images": collection.images.count(),
+            }
+        )
+
+    @action(detail=True, methods=["post"], name="remove")
+    def remove(self, request, pk=None):
+        """
+        Remove a source image from a collection.
+        """
+        collection = self.get_object()
+        source_image = self._get_source_image()
+        collection.images.remove(source_image)
+        return Response(
+            {
+                "collection": collection.pk,
+                "total_images": collection.images.count(),
+            }
+        )
 
 
 class SourceImageUploadViewSet(DefaultViewSet):
@@ -412,17 +478,7 @@ class TaxonViewSet(DefaultViewSet):
     API endpoint that allows taxa to be viewed or edited.
     """
 
-    queryset = (
-        Taxon.objects.select_related("parent", "parent__parent")
-        .annotate(
-            occurrences_count=models.Count("occurrences", distinct=True),
-            detections_count=models.Count("classifications__detection", distinct=True),
-            events_count=models.Count("occurrences__event", distinct=True),
-            last_detected=models.Max("classifications__detection__timestamp"),
-        )
-        .all()
-        .distinct()
-    )
+    queryset = Taxon.objects.all()
     serializer_class = TaxonSerializer
     filterset_fields = [
         "name",
@@ -517,11 +573,20 @@ class TaxonViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
         try:
-            return self.filter_by_occurrence(qs)
+            qs = self.filter_by_occurrence(qs)
         except exceptions.ObjectDoesNotExist as e:
             from rest_framework.exceptions import NotFound
 
             raise NotFound(detail=str(e))
+        qs = qs.select_related("parent", "parent__parent")
+        qs = qs.prefetch_related("occurrences")
+        qs = qs.annotate(
+            occurrences_count=models.Count("occurrences", distinct=True),
+            events_count=models.Count("occurrences__event", distinct=True),
+            last_detected=models.Max("classifications__detection__timestamp"),
+        )
+
+        return qs
 
 
 class ClassificationViewSet(DefaultViewSet):
