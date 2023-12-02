@@ -165,15 +165,8 @@ class DeploymentManager(models.Manager):
 
     def get_queryset(self):
         return (
-            super()
-            .get_queryset()
-            .annotate(
-                events_count=models.Count("events"),
-                # These are very slow as the numbers increase (1M captures)
-                # occurrences_count=models.Count("occurrences"),
-                # captures_count=models.Count("captures"),
-                # detections_count=models.Count("captures__detections")
-            )
+            super().get_queryset()
+            # Add any common annotations or optimizations here
         )
 
 
@@ -248,11 +241,18 @@ class Deployment(BaseModel):
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    image = models.ImageField(upload_to="deployments", blank=True, null=True)
+
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
     # @TODO consider sharing only the "data source auth/config" then a one-to-one config for each deployment
     data_source = models.ForeignKey(
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
+
+    # Precalculated values from the data source
     data_source_total_files = models.IntegerField(blank=True, null=True)
     data_source_total_size = models.BigIntegerField(blank=True, null=True)
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
@@ -264,11 +264,14 @@ class Deployment(BaseModel):
     # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
 
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
-    image = models.ImageField(upload_to="deployments", blank=True, null=True)
-
-    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
+    # Precaclulated values
+    events_count = models.IntegerField(blank=True, null=True)
+    occurrences_count = models.IntegerField(blank=True, null=True)
+    captures_count = models.IntegerField(blank=True, null=True)
+    detections_count = models.IntegerField(blank=True, null=True)
+    taxa_count = models.IntegerField(blank=True, null=True)
+    first_capture_timestamp = models.DateTimeField(blank=True, null=True)
+    last_capture_timestamp = models.DateTimeField(blank=True, null=True)
 
     research_site = models.ForeignKey(
         Site,
@@ -288,28 +291,8 @@ class Deployment(BaseModel):
     class Meta:
         ordering = ["name"]
 
-    def events_count(self) -> int | None:
-        # return self.events.count()
-        # Uses the annotated value from the custom manager
-        return None
-
-    def captures_count(self) -> int:
-        return self.data_source_total_files or 0
-
-    def detections_count(self) -> int:
-        return Detection.objects.filter(Q(source_image__deployment=self)).count()
-        # return None
-
-    def occurrences_count(self) -> int:
-        return self.occurrences.count()
-        # return None
-
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
-
-    def taxa_count(self) -> int | None:
-        return self.taxa().count()
-        # return None
 
     def example_captures(self, num=10) -> models.QuerySet["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("-size")[:num]
@@ -321,10 +304,9 @@ class Deployment(BaseModel):
         return SourceImage.objects.filter(deployment=self).order_by("timestamp").first()
 
     def last_capture(self) -> typing.Optional["SourceImage"]:
-        return SourceImage.objects.filter(deployment=self).order_by("-timestamp").first()
+        return SourceImage.objects.filter(deployment=self).order_by("timestamp").last()
 
-    @functools.cached_property
-    def first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
+    def get_first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
         # Retrieve the timestamps of the first and last capture in a single query
         first, last = (
             SourceImage.objects.filter(deployment=self)
@@ -334,14 +316,10 @@ class Deployment(BaseModel):
         return (first, last)
 
     def first_date(self) -> datetime.date | None:
-        date, _ = self.first_and_last_timestamps
-        if date:
-            return date.date()
+        return self.first_capture_timestamp.date() if self.first_capture_timestamp else None
 
     def last_date(self) -> datetime.date | None:
-        _, date = self.first_and_last_timestamps
-        if date:
-            return date.date()
+        return self.last_capture_timestamp.date() if self.last_capture_timestamp else None
 
     def data_source_uri(self) -> str | None:
         if self.data_source:
@@ -408,7 +386,7 @@ class Deployment(BaseModel):
         ]
         for model_name in child_models:
             model = apps.get_model("main", model_name)
-            project_values = model.objects.filter(deployment=self).values_list("project", flat=True).distinct()
+            project_values = set(model.objects.filter(deployment=self).values_list("project", flat=True).distinct())
             if len(project_values) > 1:
                 logger.warning(
                     f"Deployment {self} has alternate projects set on {model_name} "
@@ -422,19 +400,27 @@ class Deployment(BaseModel):
         self.data_source_total_files = self.captures.count()
         self.data_source_total_size = self.captures.aggregate(total_size=models.Sum("size")).get("total_size")
 
-        if save:
-            self.save()
+        self.events_count = self.events.count()
+        self.captures_count = self.data_source_total_files or self.captures.count()
+        self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
+        self.occurrences_count = self.occurrences.count()
+        self.taxa_count = Taxon.objects.filter(Q(occurrences__deployment=self)).distinct().count()
 
-    def save(self, *args, update_calculated_fields=True, **kwargs):
+        self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
+
+        if save:
+            self.save(update_calculated_fields=False)
+
+    def save(self, update_calculated_fields=True, *args, **kwargs):
+        super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
-            self.update_calculated_fields()
+            self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
             # @TODO Use "dirty" flag strategy to only update when needed
             ami.tasks.regroup_events.delay(self.pk)
-        super().save(*args, **kwargs)
 
 
 @final

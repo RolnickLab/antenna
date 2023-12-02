@@ -119,16 +119,7 @@ class DeploymentViewSet(DefaultViewSet):
     for the list and detail views.
     """
 
-    queryset = Deployment.objects.annotate(
-        events_count=models.Count("events", distinct=True),
-        occurrences_count=models.Count("occurrences", distinct=True),
-        taxa_count=models.Count("occurrences__determination", distinct=True),
-        captures_count=models.Count("events__captures", distinct=True),
-        # The first and last date should come from the captures,
-        # but it may be much slower to query.
-        first_date=models.Min("events__start__date"),
-        last_date=models.Max("events__end__date"),
-    ).select_related("project")
+    queryset = Deployment.objects.select_related("project")
     filterset_fields = ["project"]
     ordering_fields = [
         "created_at",

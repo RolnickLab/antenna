@@ -1,6 +1,6 @@
 import datetime
 
-from django.db.models import Count, QuerySet
+from django.db.models import QuerySet
 from rest_framework import serializers
 
 from ami.base.serializers import DefaultSerializer, get_current_user, reverse_with_params
@@ -90,10 +90,6 @@ class DeploymentListSerializer(DefaultSerializer):
 
     class Meta:
         model = Deployment
-        queryset = Deployment.objects.annotate(
-            events_count=Count("events"),
-            occurrences_count=Count("occurrences"),
-        )
         fields = [
             "id",
             "name",
