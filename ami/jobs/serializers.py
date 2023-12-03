@@ -84,6 +84,8 @@ class JobListSerializer(DefaultSerializer):
             "details",
             "name",
             "delay",
+            "limit",
+            "shuffle",
             "project",
             "project_id",
             "deployment",
