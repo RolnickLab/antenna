@@ -21,7 +21,7 @@ export const PipelinesPicker = ({
         value: p.id,
         label: p.name,
       }))}
-      placeholder="Pick a pipeline"
+      placeholder="Pipeline"
       showClear={false}
       theme={SelectTheme.NeutralCompact}
       value={value}
