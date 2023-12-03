@@ -39,7 +39,7 @@ export const ProcessNow = ({
         theme={ButtonTheme.Neutral}
         onClick={() => {
           createJob({
-            delay: 1,
+            delay: 0,
             name: `Capture #${capture.id}`,
             sourceImage: capture.id,
             pipeline: pipelineId,
