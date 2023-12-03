@@ -304,7 +304,7 @@ class Job(BaseModel):
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
         self.status = run_job.AsyncResult(task_id).status
-        self.save()
+        self.save(force_update=True)
 
     def setup(self, save=True):
         """

@@ -1,6 +1,6 @@
 import datetime
 
-from django.db.models import Count, QuerySet
+from django.db.models import QuerySet
 from rest_framework import serializers
 
 from ami.base.serializers import DefaultSerializer, get_current_user, reverse_with_params
@@ -90,10 +90,6 @@ class DeploymentListSerializer(DefaultSerializer):
 
     class Meta:
         model = Deployment
-        queryset = Deployment.objects.annotate(
-            events_count=Count("events"),
-            occurrences_count=Count("occurrences"),
-        )
         fields = [
             "id",
             "name",
@@ -379,6 +375,7 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences",
             "occurrence_images",
             "last_detected",
+            "best_determination_score",
             "created_at",
             "updated_at",
         ]
@@ -908,15 +905,12 @@ class OccurrenceListSerializer(DefaultSerializer):
             taxon=taxon,
             identification=identification,
             prediction=prediction,
-            score=obj.determination_score(),
+            score=obj.determination_score,
         )
 
 
 class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
-    determination_id = serializers.PrimaryKeyRelatedField(
-        write_only=True, queryset=Taxon.objects.all(), source="determination"
-    )
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
     predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
@@ -931,6 +925,9 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "detections",
             "identifications",
             "predictions",
+        ]
+        read_only_fields = [
+            "determination_score",
         ]
 
 

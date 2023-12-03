@@ -100,9 +100,13 @@ export class OccurrenceDetails extends Occurrence {
     )
 
     const classification = detection?.classifications?.[0]
+    let label = 'No classification'
 
-    if (!classification) {
-      return
+    if (classification) {
+      label = `${classification.taxon.name} (${_.round(
+        classification.score,
+        4
+      )})`
     }
 
     return {
@@ -116,10 +120,7 @@ export class OccurrenceDetails extends Occurrence {
         width: detection.width,
         height: detection.height,
       },
-      label: `${classification.taxon.name} (${_.round(
-        classification.score,
-        4
-      )})`,
+      label: label,
       timeLabel: getFormatedTimeString({
         date: new Date(detection.timestamp),
       }),

@@ -200,7 +200,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         new_classification.detection = detection
         new_classification.taxon = taxon
         new_classification.algorithm = algo
-        new_classification.score = classification.scores[0]
+        new_classification.score = max(classification.scores)
         new_classification.timestamp = now()  # @TODO get timestamp from API response
         # @TODO add reference to job or pipeline?
 
@@ -214,9 +214,11 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
                 deployment=source_image.deployment,
                 project=source_image.project,
                 determination=taxon,
+                determination_score=new_classification.score,
             )
             detection.occurrence = occurrence
             detection.save()
+        detection.occurrence.save()
 
     # Update precalculated counts on source images
     for source_image in source_images:

@@ -11,13 +11,15 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami import tasks
+from ami.base.filters import NullsLastOrderingFilter
 
 from ..models import (
+    DEFAULT_CONFIDENCE_THRESHOLD,
     Classification,
     Deployment,
     Detection,
@@ -78,7 +80,7 @@ logger = logging.getLogger(__name__)
 class DefaultViewSetMixin:
     filter_backends = [
         DjangoFilterBackend,
-        OrderingFilter,
+        NullsLastOrderingFilter,
         SearchFilter,
     ]
     filterset_fields = []
@@ -119,16 +121,7 @@ class DeploymentViewSet(DefaultViewSet):
     for the list and detail views.
     """
 
-    queryset = Deployment.objects.annotate(
-        events_count=models.Count("events", distinct=True),
-        occurrences_count=models.Count("occurrences", distinct=True),
-        taxa_count=models.Count("occurrences__determination", distinct=True),
-        captures_count=models.Count("events__captures", distinct=True),
-        # The first and last date should come from the captures,
-        # but it may be much slower to query.
-        first_date=models.Min("events__start__date"),
-        last_date=models.Max("events__end__date"),
-    ).select_related("project")
+    queryset = Deployment.objects.select_related("project")
     filterset_fields = ["project"]
     ordering_fields = [
         "created_at",
@@ -447,6 +440,7 @@ class OccurrenceViewSet(DefaultViewSet):
             "event",
         )
         .prefetch_related("detections")
+        .order_by("-determination_score")
         .all()
     )
     serializer_class = OccurrenceSerializer
@@ -459,6 +453,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "duration",
         "deployment",
         "determination",
+        "determination_score",
         "event",
         "detections_count",
     ]
@@ -495,6 +490,7 @@ class TaxonViewSet(DefaultViewSet):
         "occurrences_count",
         "detections_count",
         "last_detected",
+        "best_determination_score",
         "name",
     ]
     search_fields = ["name", "parent__name"]
@@ -557,18 +553,29 @@ class TaxonViewSet(DefaultViewSet):
 
         if occurrence_id:
             occurrence = Occurrence.objects.get(id=occurrence_id)
+            # This query does not need the same filtering as the others
             return queryset.filter(occurrences=occurrence).distinct()
         elif project_id:
             project = Project.objects.get(id=project_id)
-            return super().get_queryset().filter(occurrences__project=project).distinct()
+            queryset = super().get_queryset().filter(occurrences__project=project)
         elif deployment_id:
             deployment = Deployment.objects.get(id=deployment_id)
-            return super().get_queryset().filter(occurrences__deployment=deployment).distinct()
+            queryset = super().get_queryset().filter(occurrences__deployment=deployment)
         elif event_id:
             event = Event.objects.get(id=event_id)
-            return super().get_queryset().filter(occurrences__event=event).distinct()
-        else:
-            return queryset
+            queryset = super().get_queryset().filter(occurrences__event=event)
+
+        queryset = (
+            queryset.annotate(best_determination_score=models.Max("occurrences__determination_score"))
+            .filter(best_determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD)
+            .distinct()
+        )
+
+        # If ordering is not specified, order by best determination score
+        if not self.request.query_params.get("ordering"):
+            queryset = queryset.order_by("-best_determination_score")
+
+        return queryset
 
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
@@ -621,10 +628,16 @@ class SummaryView(APIView):
                 "events_count": Event.objects.filter(deployment__project=project).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
                 "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter(project=project).count(),
+                "occurrences_count": Occurrence.objects.filter(
+                    project=project,
+                    determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                ).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
-                .filter(occurrences_count__gt=0)
-                .filter(occurrences__project=project)
+                .filter(
+                    occurrences_count__gt=0,
+                    occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                    occurrences__project=project,
+                )
                 .distinct()
                 .count(),
             }

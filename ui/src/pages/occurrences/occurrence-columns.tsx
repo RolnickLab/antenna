@@ -9,7 +9,7 @@ import { ImageTableCell } from 'design-system/components/table/image-table-cell/
 import {
   CellTheme,
   ImageCellTheme,
-  TableColumn,
+  TableColumn
 } from 'design-system/components/table/types'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Agree } from 'pages/occurrence-details/agree/agree'
@@ -81,14 +81,22 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     {
       id: 'date',
       name: translate(STRING.FIELD_LABEL_DATE),
-      sortField: 'event__start',
-      renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
+      sortField: 'first_appearance_time',
+      renderCell: (item: Occurrence) => (
+        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+          <BasicTableCell value={item.dateLabel} />
+        </Link>
+      ),
     },
     {
       id: 'time',
       sortField: 'first_appearance_time',
       name: translate(STRING.FIELD_LABEL_TIME),
-      renderCell: (item: Occurrence) => <BasicTableCell value={item.timeLabel} />,
+      renderCell: (item: Occurrence) => (
+        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+          <BasicTableCell value={item.timeLabel} />
+        </Link>
+      )
     },
     {
       id: 'duration',
@@ -104,6 +112,15 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       sortField: 'detections_count',
       renderCell: (item: Occurrence) => (
         <BasicTableCell value={item.numDetections} />
+      ),
+    },
+    {
+      id: 'score',
+      name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+      sortField: 'determination_score',
+      renderCell: (item: Occurrence) => (
+        // This should always appear as a float with 2 decimal places, even if 1.00
+        <BasicTableCell value={item.determinationScore.toFixed(2)} style={{ textAlign: 'right' }} />
       ),
     },
   ]
