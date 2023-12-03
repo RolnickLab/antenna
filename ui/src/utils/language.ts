@@ -164,6 +164,7 @@ export enum STRING {
   UPDATING_DATA,
   USER_INFO,
   VERIFIED_BY,
+  VALUE_NOT_AVAILABLE,
 }
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
@@ -242,7 +243,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_THUMBNAIL]: 'Thumbnail',
   [STRING.FIELD_LABEL_TIME]: 'Time',
   [STRING.FIELD_LABEL_TIMESTAMP]: 'Timestamp',
-  [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Training images',
+  [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
@@ -342,6 +343,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.UPDATING_DATA]: 'Updating data',
   [STRING.USER_INFO]: 'User info',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
+  [STRING.VALUE_NOT_AVAILABLE]: 'n/a',
 }
 
 // When we have more translations available, this function could return a value based on current language settings.

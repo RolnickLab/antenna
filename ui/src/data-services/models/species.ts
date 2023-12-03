@@ -22,11 +22,11 @@ export class Species extends Taxon {
   }
 
   get numDetections(): number {
-    return this._species.detections_count
+    return this._species.detections_count || null
   }
 
   get numOccurrences(): number {
-    return this._species.occurrences_count
+    return this._species.occurrences_count || null
   }
 
   get trainingImagesLabel(): string {
