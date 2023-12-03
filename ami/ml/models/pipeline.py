@@ -217,6 +217,9 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             )
             detection.occurrence = occurrence
             detection.save()
+        else:
+            # Update existing occurrence with new determination
+            detection.occurrence.update_calculated_fields(save=True)
 
     # Update precalculated counts on source images
     for source_image in source_images:

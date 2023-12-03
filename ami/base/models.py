@@ -25,10 +25,5 @@ class BaseModel(models.Model):
         """Update calculated fields specific to each model."""
         pass
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        if kwargs.get("update_calculated_fields", False):
-            self.update_calculated_fields(save=True)
-
     class Meta:
         abstract = True

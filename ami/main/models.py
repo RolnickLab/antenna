@@ -588,9 +588,10 @@ class Event(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
-    def save(self, *args, **kwargs):
-        self.update_calculated_fields(save=False)
+    def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
+        if update_calculated_fields:
+            self.update_calculated_fields(save=False)
 
 
 def group_images_into_events(
@@ -949,10 +950,13 @@ class SourceImage(BaseModel):
             self.project = self.deployment.project
         if self.pk is not None:
             self.detections_count = self.get_detections_count()
+        if save:
+            self.save(update_calculated_fields=False)
 
-    def save(self, *args, **kwargs):
-        self.update_calculated_fields()
+    def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
+        if update_calculated_fields:
+            self.update_calculated_fields(save=True)
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")
@@ -1559,13 +1563,19 @@ class Occurrence(BaseModel):
         # @TODO this was a temporary hack. Use settings and reverse().
         return f"https://app.preview.insectai.org/occurrences/{self.pk}"
 
-    def update_calculated_fields(self, *args, **kwargs):
+    def update_calculated_fields(self, save=True):
         logger.info(f"Updating calculated fields for {self}")
         if not self.determination:
             self.determination = update_occurrence_determination(self)
         if not self.determination_score:
             self.determination_score = self.get_determination_score()
-        super().update_calculated_fields(*args, **kwargs)
+        if save:
+            self.save(update_calculated_fields=False)
+
+    def save(self, update_calculated_fields=True, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if update_calculated_fields:
+            self.update_calculated_fields(save=False)
 
     class Meta:
         ordering = ["-determination_score"]
