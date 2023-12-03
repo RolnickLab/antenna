@@ -591,7 +591,7 @@ class Event(BaseModel):
     def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if update_calculated_fields:
-            self.update_calculated_fields(save=False)
+            self.update_calculated_fields(save=True)
 
 
 def group_images_into_events(
@@ -1408,27 +1408,21 @@ class Detection(BaseModel):
     def url(self) -> str | None:
         return get_media_url(self.path) if self.path else None
 
-    def associate_new_occurrence(self):
+    def associate_new_occurrence(self) -> "Occurrence":
         """
         Create and associate a new occurrence with this detection.
         """
         if self.occurrence:
             return self.occurrence
 
-        classifications = self.classifications.first()
-        if classifications:
-            taxon = classifications.taxon
-        else:
-            taxon = None
-        occurrence = Occurrence(
+        occurrence = Occurrence.objects.create(
             event=self.source_image.event,
             deployment=self.source_image.deployment,
             project=self.source_image.project,
-            determination=taxon,
         )
-        occurrence.save()
         self.occurrence = occurrence
         self.save()
+        occurrence.save()  # Need to save again to update the aggregate values
         # Update aggregate values on source image
         # @TODO this should be done async in a task with an eta of a few seconds
         # so it isn't done for every detection in a batch
@@ -1526,28 +1520,29 @@ class Occurrence(BaseModel):
     def best_identification(self):
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
-    def get_determination_score(self) -> float:
+    def get_determination_score(self) -> float | None:
         if not self.determination:
-            return 0
+            return None
         elif self.best_identification:
             return self.best_identification.score
+        elif self.best_prediction:
+            return self.best_prediction.score
         else:
-            return Classification.objects.filter(
-                detection__occurrence=self,
-                taxon=self.determination,
-            ).aggregate(
-                models.Max("score")
-            )["score__max"]
+            return None
 
     def predictions(self):
         # Retrieve the classification with the max score for each algorithm
-        classifications = Classification.objects.filter(detection__occurrence=self).filter(
-            score__in=models.Subquery(
-                Classification.objects.filter(detection__occurrence=self)
-                .values("algorithm")
-                .annotate(max_score=models.Max("score"))
-                .values("max_score")
+        classifications = (
+            Classification.objects.filter(detection__occurrence=self)
+            .filter(
+                score__in=models.Subquery(
+                    Classification.objects.filter(detection__occurrence=self)
+                    .values("algorithm")
+                    .annotate(max_score=models.Max("score"))
+                    .values("max_score")
+                )
             )
+            .order_by("-created_at")
         )
         return classifications
 
@@ -1563,25 +1558,22 @@ class Occurrence(BaseModel):
         # @TODO this was a temporary hack. Use settings and reverse().
         return f"https://app.preview.insectai.org/occurrences/{self.pk}"
 
-    def update_calculated_fields(self, save=True):
-        logger.info(f"Updating calculated fields for {self}")
-        if not self.determination:
-            self.determination = update_occurrence_determination(self)
-        if not self.determination_score:
-            self.determination_score = self.get_determination_score()
-        if save:
-            self.save(update_calculated_fields=False)
-
-    def save(self, update_calculated_fields=True, *args, **kwargs):
+    def save(self, update_determination=True, *args, **kwargs):
         super().save(*args, **kwargs)
-        if update_calculated_fields:
-            self.update_calculated_fields(save=False)
+        if update_determination:
+            update_occurrence_determination(
+                self,
+                current_determination=self.determination,
+                save=True,
+            )
 
     class Meta:
         ordering = ["-determination_score"]
 
 
-def update_occurrence_determination(occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None):
+def update_occurrence_determination(
+    occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
+):
     """
     Update the determination of the occurrence based on the identifications & predictions.
 
@@ -1626,8 +1618,8 @@ def update_occurrence_determination(occurrence: Occurrence, current_determinatio
         occurrence.determination_score = new_score
         needs_update = True
 
-    if needs_update:
-        occurrence.save()
+    if save and needs_update:
+        occurrence.save(update_determination=False)
 
 
 @final

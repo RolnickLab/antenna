@@ -911,9 +911,6 @@ class OccurrenceListSerializer(DefaultSerializer):
 
 class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
-    determination_id = serializers.PrimaryKeyRelatedField(
-        write_only=True, queryset=Taxon.objects.all(), source="determination"
-    )
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
     predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
@@ -928,6 +925,9 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "detections",
             "identifications",
             "predictions",
+        ]
+        read_only_fields = [
+            "determination_score",
         ]
 
 
