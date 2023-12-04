@@ -102,7 +102,7 @@ class ProjectViewSet(DefaultViewSet):
     API endpoint that allows projects to be viewed or edited.
     """
 
-    queryset = Project.objects.prefetch_related("deployments").all()
+    queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
 
     def get_serializer_class(self):

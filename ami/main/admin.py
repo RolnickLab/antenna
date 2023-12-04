@@ -55,6 +55,8 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
 
+    list_display = ("name", "priority", "active", "created_at", "updated_at")
+
 
 @admin.register(Deployment)
 class DeploymentAdmin(admin.ModelAdmin[Deployment]):
