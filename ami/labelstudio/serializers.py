@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ami.main.api.serializers import add_format_to_url, reverse_with_params
+from ami.base.serializers import add_format_to_url, reverse_with_params
 from ami.main.models import Detection, Occurrence, SourceImage
 
 
@@ -30,7 +30,7 @@ class LabelStudioSourceImageSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html#Example-JSON-format
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 
@@ -73,7 +73,7 @@ class LabelStudioDetectionSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 
@@ -138,7 +138,7 @@ class LabelStudioOccurrenceSerializer(serializers.ModelSerializer):
     https://labelstud.io/guide/tasks.html
     """
 
-    data = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()  # type: ignore
     annotations = serializers.SerializerMethodField()
     predictions = serializers.SerializerMethodField()
 

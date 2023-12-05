@@ -24,6 +24,8 @@ export enum STRING {
   SAVED,
   SEARCH_MAP,
   SIGN_UP,
+  STAR,
+  STARRED,
   START,
   SUBMIT,
   SUGGEST_ID,
@@ -44,6 +46,7 @@ export enum STRING {
 
   /* FIELD_LABEL */
   FIELD_LABEL_AVG_TEMP,
+  FIELD_LABEL_BEST_SCORE,
   FIELD_LABEL_CAPTURES,
   FIELD_LABEL_COMMENT,
   FIELD_LABEL_CONNECTION_STATUS,
@@ -164,6 +167,7 @@ export enum STRING {
   UPDATING_DATA,
   USER_INFO,
   VERIFIED_BY,
+  VALUE_NOT_AVAILABLE,
 }
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
@@ -192,6 +196,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SAVED]: 'Saved',
   [STRING.SEARCH_MAP]: 'Search on the map',
   [STRING.SIGN_UP]: 'Sign up',
+  [STRING.STAR]: 'Add to starred collection',
+  [STRING.STARRED]: 'Remove from starred collection',
   [STRING.START]: 'Start',
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
@@ -199,6 +205,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
+  [STRING.FIELD_LABEL_BEST_SCORE]: 'Score',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
@@ -239,7 +246,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_THUMBNAIL]: 'Thumbnail',
   [STRING.FIELD_LABEL_TIME]: 'Time',
   [STRING.FIELD_LABEL_TIMESTAMP]: 'Timestamp',
-  [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Training images',
+  [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
@@ -342,6 +349,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.UPDATING_DATA]: 'Updating data',
   [STRING.USER_INFO]: 'User info',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
+  [STRING.VALUE_NOT_AVAILABLE]: 'n/a',
 }
 
 // When we have more translations available, this function could return a value based on current language settings.

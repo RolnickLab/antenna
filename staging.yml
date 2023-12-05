@@ -1,0 +1,92 @@
+version: "3"
+
+volumes:
+  ami_local_postgres_data: {}
+  ami_local_postgres_data_backups: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: ami_local_django
+    extra_hosts:
+      # - "host.docker.internal:host-gateway"
+      - "gpu-4.local:192.168.123.251"
+    depends_on:
+      - postgres
+      - redis
+      - mailhog
+    volumes:
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    ports:
+      - '8080:8000'
+    command: /start
+    restart: always
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: ami_production_postgres
+    volumes:
+      - ami_local_postgres_data:/var/lib/postgresql/data
+      - ami_local_postgres_data_backups:/backups
+    env_file:
+      - ./.envs/.local/.postgres
+    restart: always
+
+  docs:
+    image: ami_local_docs
+    build:
+      context: .
+      dockerfile: ./compose/local/docs/Dockerfile
+    env_file:
+      - ./.envs/.local/.django
+    volumes:
+      - ./docs:/docs:z
+      - ./config:/app/config:z
+      - ./ami:/app/ami:z
+    ports:
+      - "9000:9000"
+    command: /start-docs
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.0
+    ports:
+      - "8025:8025"
+
+  redis:
+    image: redis:6
+    container_name: ami_local_redis
+
+  celeryworker:
+    <<: *django
+    image: ami_local_celeryworker
+    scale: 1
+    depends_on:
+      - redis
+      - postgres
+      - mailhog
+    ports: []
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: ami_local_celerybeat
+    depends_on:
+      - redis
+      - postgres
+      - mailhog
+    ports: []
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: ami_local_flower
+    ports:
+      - "5555:5555"
+    command: /start-flower

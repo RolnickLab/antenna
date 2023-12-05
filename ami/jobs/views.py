@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -6,6 +8,8 @@ from ami.utils.fields import url_boolean_param
 
 from .models import Job
 from .serializers import JobListSerializer, JobSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class JobViewSet(DefaultViewSet):
@@ -69,7 +73,8 @@ class JobViewSet(DefaultViewSet):
         """
         Run a job (add it to the queue).
         """
-        job = self.get_object()
+        job: Job = self.get_object()
+        # job.run()
         job.enqueue()
         job.refresh_from_db()
         return Response(self.get_serializer(job).data)
@@ -79,7 +84,7 @@ class JobViewSet(DefaultViewSet):
         """
         Cancel a job (terminate the background task)
         """
-        job = self.get_object()
+        job: Job = self.get_object()
         job.cancel()
         job.refresh_from_db()
         return Response(self.get_serializer(job).data)
@@ -88,6 +93,8 @@ class JobViewSet(DefaultViewSet):
         """
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
-        job = serializer.save()
+
+        job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):
-            job.enqueue()  # type: ignore
+            # job.run()
+            job.enqueue()

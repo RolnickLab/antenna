@@ -89,11 +89,12 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
+    # Your stuff: custom apps go here
     "ami.users",
     "ami.main",
     "ami.jobs",
+    "ami.ml",
     "ami.labelstudio",
-    # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -315,7 +316,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticatedOrReadOnly",),
     # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PAGINATION_CLASS": "ami.main.api.pagination.LimitOffsetPaginationWithPermissions",
+    "DEFAULT_PAGINATION_CLASS": "ami.base.pagination.LimitOffsetPaginationWithPermissions",
     "PAGE_SIZE": 10,
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
     "HTML_SELECT_CUTOFF": 100,

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import classNames from 'classnames'
+import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
 import { Menu } from 'components/menu/menu'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
@@ -79,7 +80,9 @@ export const App = () => {
 const AuthContainer = () => (
   <main className={classNames(styles.main, styles.fullscreen)}>
     <Auth>
-      <Outlet />
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
     </Auth>
   </main>
 )
@@ -93,7 +96,9 @@ const ProjectsContainer = () => {
   return (
     <main className={styles.main}>
       <div className={styles.content}>
-        <Projects />
+        <ErrorBoundary>
+          <Projects />
+        </ErrorBoundary>
       </div>
     </main>
   )
@@ -141,7 +146,9 @@ const ProjectContainer = () => {
       <Menu />
       <main className={styles.main}>
         <div className={styles.content}>
-          <Outlet context={projectDetails} />
+          <ErrorBoundary>
+            <Outlet context={projectDetails} />
+          </ErrorBoundary>
         </div>
       </main>
     </>

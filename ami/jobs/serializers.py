@@ -4,11 +4,12 @@ from rest_framework import serializers
 from ami.main.api.serializers import (
     DefaultSerializer,
     DeploymentNestedSerializer,
-    PipelineNestedSerializer,
     SourceImageCollectionNestedSerializer,
     SourceImageNestedSerializer,
 )
-from ami.main.models import Deployment, Pipeline, Project, SourceImage, SourceImageCollection
+from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
+from ami.ml.models import Pipeline
+from ami.ml.serializers import PipelineNestedSerializer
 
 from .models import Job, JobProgress
 
@@ -83,6 +84,8 @@ class JobListSerializer(DefaultSerializer):
             "details",
             "name",
             "delay",
+            "limit",
+            "shuffle",
             "project",
             "project_id",
             "deployment",
@@ -114,16 +117,13 @@ class JobListSerializer(DefaultSerializer):
             "started_at",
             "finished_at",
             "duration",
-            "config",
         ]
 
 
 class JobSerializer(JobListSerializer):
-    # config = serializers.JSONField(initial=Job.default_config(), allow_null=False, required=False)
     # progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
 
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
-            "config",
             "result",
         ]

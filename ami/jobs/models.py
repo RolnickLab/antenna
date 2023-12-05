@@ -1,14 +1,19 @@
 import datetime
 import logging
+import random
 import time
+import typing
 
 import pydantic
 from django.db import models
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
-import ami.tasks
-from ami.main.models import BaseModel, Deployment, Pipeline, Project, SourceImage, SourceImageCollection
+from ami.base.models import BaseModel
+from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
+from ami.jobs.tasks import run_job
+from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
+from ami.ml.models import Pipeline
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -55,6 +60,14 @@ def get_status_label(status: JobState, progress: float) -> str:
         return f"{status.name}"
 
 
+def python_slugify(value: str) -> str:
+    # Use underscore instead of dash so we can use them as python property names
+    return slugify(value, allow_unicode=False).replace("-", "_")
+
+
+ML_API_ENDPOINT = "http://host.docker.internal:2000/pipeline/process/"
+
+
 class JobProgressSummary(pydantic.BaseModel):
     """Summary of all stages of a job"""
 
@@ -73,15 +86,10 @@ class JobProgressSummary(pydantic.BaseModel):
         use_enum_values = True
 
 
-class JobProgressStageDetail(JobProgressSummary):
+class JobProgressStageDetail(ConfigurableStage, JobProgressSummary):
     """A stage of a job"""
 
-    key: str
-    name: str
-    time_elapsed: datetime.timedelta = datetime.timedelta()
-    time_remaining: datetime.timedelta | None = None
-    input_size: int = 0
-    output_size: int = 0
+    pass
 
 
 stage_parameters = JobProgressStageDetail.__fields__.keys()
@@ -97,180 +105,105 @@ class JobProgress(pydantic.BaseModel):
 
     def add_stage(self, name: str) -> JobProgressStageDetail:
         stage = JobProgressStageDetail(
-            key=slugify(name),
+            key=python_slugify(name),
             name=name,
         )
         self.stages.append(stage)
         return stage
 
-    def update_stage(self, stage_key: str, **stage_parameters) -> JobProgressStageDetail | None:
-        stage_keys = [stage.key for stage in self.stages]
-        if stage_key not in stage_keys:
-            raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
-
+    def get_stage(self, stage_key: str) -> JobProgressStageDetail:
         for stage in self.stages:
             if stage.key == stage_key:
-                for k, v in stage_parameters.items():
-                    setattr(stage, k, v)
                 return stage
+        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
+
+    def get_stage_param(self, stage_key: str, param_key: str) -> ConfigurableStageParam:
+        stage = self.get_stage(stage_key)
+        for param in stage.params:
+            if param.key == param_key:
+                return param
+        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
+
+    def add_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+        stage = self.get_stage(stage_key)
+        param = ConfigurableStageParam(
+            name=name,
+            key=python_slugify(name),
+            value=value,
+        )
+        stage.params.append(param)
+        return param
+
+    def add_or_update_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+        try:
+            param = self.get_stage_param(stage_key, python_slugify(name))
+            param.value = value
+            return param
+        except ValueError:
+            return self.add_stage_param(stage_key, name, value)
+
+    def update_stage(self, stage_key: str, **stage_parameters) -> JobProgressStageDetail | None:
+        """ "
+        Update the parameters of a stage of the job.
+
+        Will update parameters that are direct attributes of the stage,
+        or parameters that are in the stage's params list.
+        """
+        stage_key = python_slugify(stage_key)  # Allow both title or key to be used for lookup
+        stage = self.get_stage(stage_key)
+
+        if stage.key == stage_key:
+            for k, v in stage_parameters.items():
+                # Update a matching attribute directly on the stage object first
+                if hasattr(stage, k):
+                    setattr(stage, k, v)
+                else:
+                    # Otherwise update or add matching parameter within the stage's params list
+                    self.add_or_update_stage_param(stage_key, k, v)
+            return stage
 
     class Config:
         use_enum_values = True
         as_dict = True
 
 
-default_job_progress = JobProgress(
-    summary=JobProgressSummary(status=JobState.CREATED, progress=0),
-    stages=[],
-)
-
-default_ml_job_progress = JobProgress(
-    summary=JobProgressSummary(status=JobState.CREATED, progress=0),
-    stages=[
-        JobProgressStageDetail(
-            key="object_detection",
-            name="Object Detection",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-            input_size=0,
-            output_size=0,
-        ),
-        JobProgressStageDetail(
-            key="binary_classification",
-            name="Objects of Interest Filter",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-            input_size=0,
-            output_size=0,
-        ),
-        JobProgressStageDetail(
-            key="species_classification",
-            name="Species Classification",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-            input_size=0,
-            output_size=0,
-        ),
-        JobProgressStageDetail(
-            key="tracking",
-            name="Occurrence Tracking",
-            status=JobState.CREATED,
-            progress=0,
-            time_elapsed=datetime.timedelta(),
-            time_remaining=None,
-            input_size=0,
-            output_size=0,
-        ),
-    ],
-)
+def default_job_progress() -> JobProgress:
+    return JobProgress(
+        summary=JobProgressSummary(status=JobState.CREATED, progress=0),
+        stages=[],
+    )
 
 
-default_job_config = {
-    "input": {
-        "name": "N/A",
-        "size": 0,
-    },
-    "stages": [
-        {
-            "name": "Delay",
-            "key": "delay",
-            "params": [
-                {"key": "delay_seconds", "name": "Delay seconds", "value": "N/A"},
-            ],
-        },
-    ],
-}
-
-default_ml_job_config = {
-    "input": {
-        "name": "Captures",
-        "size": 100,
-    },
-    "stages": [
-        {
-            "name": "Object Detection",
-            "key": "object_detection",
-            "params": [
-                {"key": "model", "name": "Localization Model", "value": "yolov5s"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                # {"key": "threshold", "name": "Threshold", "value": 0.5},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-                {"key": "output_size", "name": "Objects detected", "read_only": True},
-            ],
-        },
-        {
-            "name": "Objects of Interest Filter",
-            "key": "binary_classification",
-            "params": [
-                {"key": "algorithm", "name": "Binary classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                {"key": "input_size", "name": "Objects processed", "read_only": True},
-                {"key": "output_size", "name": "Objects of interest", "read_only": True},
-            ],
-        },
-        {
-            "name": "Species Classification",
-            "key": "species_classification",
-            "params": [
-                {"key": "algorithm", "name": "Species classification model", "value": "resnet18"},
-                {"key": "batch_size", "name": "Batch size", "value": 8},
-                {"key": "threshold", "name": "Confidence threshold", "value": 0.5},
-                {"key": "input_size", "name": "Species processed", "read_only": True},
-                {"key": "output_size", "name": "Species classified", "read_only": True},
-            ],
-        },
-        {
-            "name": "Occurrence Tracking",
-            "key": "tracking",
-            "params": [
-                {"key": "algorithm", "name": "Occurrence tracking algorithm", "value": "adityacombo"},
-                {"key": "input_size", "name": "Detections processed", "read_only": True},
-                {"key": "output_size", "name": "Occurrences identified", "read_only": True},
-            ],
-        },
-    ],
-}
-
-example_non_model_config = {
-    "input": {
-        "name": "Raw Captures",
-        "source": "s3://bucket/path/to/captures",
-        "size": 100,
-    },
-    "stages": [
-        {
-            "name": "Image indexing",
-            "key": "image_indexing",
-            "params": [
-                {"key": "input_size", "name": "Directories scanned", "read_only": True},
-                {"key": "output_size", "name": "Images indexed", "read_only": True},
-            ],
-        },
-        {
-            "name": "Image resizing",
-            "key": "image_resizing",
-            "params": [
-                {"key": "width", "name": "Width", "value": 640},
-                {"key": "height", "name": "Height", "value": 480},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-            ],
-        },
-        {
-            "name": "Feature extraction",
-            "key": "feature_extraction",
-            "params": [
-                {"key": "algorithm", "name": "Feature extractor", "value": "imagenet"},
-                {"key": "input_size", "name": "Images processed", "read_only": True},
-            ],
-        },
-    ],
-}
+def default_ml_job_progress() -> JobProgress:
+    return JobProgress(
+        summary=JobProgressSummary(status=JobState.CREATED, progress=0),
+        stages=[
+            JobProgressStageDetail(
+                key="object_detection",
+                name="Object Detection",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+            JobProgressStageDetail(
+                key="binary_classification",
+                name="Objects of Interest Filter",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+            JobProgressStageDetail(
+                key="species_classification",
+                name="Species Classification",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+            JobProgressStageDetail(
+                key="tracking",
+                name="Occurrence Tracking",
+                status=JobState.CREATED,
+                progress=0,
+            ),
+        ],
+    )
 
 
 class JobLogHandler(logging.Handler):
@@ -305,23 +238,23 @@ class JobLogHandler(logging.Handler):
 
 
 class Job(BaseModel):
-    """A job to be run by the scheduler
-
-    Example config:
-    """
+    """A job to be run by the scheduler"""
 
     name = models.CharField(max_length=255)
-    config = models.JSONField(default=default_job_config, null=True, blank=False)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
-    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
+    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
+    limit = models.IntegerField(
+        "Limit", null=True, blank=True, default=100, help_text="Limit the number of images to process"
+    )
+    shuffle = models.BooleanField("Shuffle", default=True, help_text="Process images in a random order")
 
     project = models.ForeignKey(
         Project,
@@ -364,15 +297,14 @@ class Job(BaseModel):
         """
         Add the job to the queue so that it will run in the background.
         """
-        # ami.tasks.run_job.delay(self.pk)
-        # task_id = ami.tasks.run_job.apply_async(args=[self.pk], queue=self.queue).id
-        task_id = ami.tasks.run_job.apply_async(kwargs={"job_id": self.pk}).id
+        assert self.pk is not None, "Job must be saved before it can be enqueued"
+        task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = ami.tasks.run_job.AsyncResult(task_id).status
-        self.save()
+        self.status = run_job.AsyncResult(task_id).status
+        self.save(force_update=True)
 
     def setup(self, save=True):
         """
@@ -381,7 +313,24 @@ class Job(BaseModel):
         self.progress = self.progress or default_job_progress
 
         if self.delay:
-            self.progress.add_stage("Delay")
+            delay_stage = self.progress.add_stage("Delay")
+            self.progress.add_stage_param(delay_stage.key, "Delay", self.delay)
+            self.progress.add_stage_param(delay_stage.key, "Mood", "😴")
+
+        if self.pipeline:
+            collect_stage = self.progress.add_stage("Collect")
+            self.progress.add_stage_param(collect_stage.key, "Total Images", "")
+
+            pipeline_stage = self.progress.add_stage("Process")
+            self.progress.add_stage_param(pipeline_stage.key, "Proccessed", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Remaining", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
+
+            saving_stage = self.progress.add_stage("Results")
+            self.progress.add_stage_param(saving_stage.key, "Objects created", "")
+
+            self.save()
 
         if save:
             self.save()
@@ -410,14 +359,106 @@ class Job(BaseModel):
                         "delay",
                         status=JobState.STARTED,
                         progress=i / self.delay,
+                        mood="😵‍💫",
                     )
                     self.save()
                     last_update = time.time()
 
-            self.progress.update_stage("delay", status=JobState.SUCCESS, progress=1)
+            self.progress.update_stage(
+                "delay",
+                status=JobState.SUCCESS,
+                progress=1,
+                mood="🥳",
+            )
             self.save()
 
+        if self.pipeline:
+            self.progress.update_stage(
+                "collect",
+                status=JobState.STARTED,
+                progress=0,
+            )
+
+            images = list(
+                # @TODO return generator plus image count
+                # @TODO pass to celery group chain?
+                self.pipeline.collect_images(
+                    collection=self.source_image_collection,
+                    deployment=self.deployment,
+                    source_images=[self.source_image_single] if self.source_image_single else None,
+                    job_id=self.pk,
+                    # shuffle=self.shuffle,
+                )
+            )
+            source_image_count = len(images)
+            self.progress.update_stage("collect", total_images=source_image_count)
+
+            if self.shuffle:
+                self.logger.info("Shuffling images")
+                random.shuffle(images)
+
+            # @TODO remove this temporary limit
+            TEMPORARY_LIMIT = 200
+            self.limit = self.limit or TEMPORARY_LIMIT
+
+            if self.limit and source_image_count > self.limit:
+                self.logger.warn(f"Limiting number of images to {self.limit} (out of {source_image_count})")
+                images = images[: self.limit]
+                image_count = len(images)
+                self.progress.add_stage_param("collect", "Limit", image_count)
+            else:
+                image_count = source_image_count
+
+            self.progress.update_stage(
+                "collect",
+                status=JobState.SUCCESS,
+                progress=1,
+            )
+
+            total_detections = 0
+            total_classifications = 0
+
+            CHUNK_SIZE = 2  # Keep it low to see more progress updates
+            chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
+
+            for i, chunk in enumerate(chunks):
+                results = self.pipeline.process_images(
+                    images=chunk,
+                    job_id=self.pk,
+                )
+                total_detections += len(results.detections)
+                total_classifications += len(results.classifications)
+                self.progress.update_stage(
+                    "process",
+                    status=JobState.STARTED,
+                    progress=(i + 1) / len(chunks),
+                    proccessed=(i + 1) * CHUNK_SIZE,
+                    remaining=image_count - (i + 1) * CHUNK_SIZE,
+                    detections=total_detections,
+                    classifications=total_classifications,
+                )
+                self.save()
+                objects = self.pipeline.save_results(results=results, job_id=self.pk)
+                self.progress.update_stage(
+                    "results",
+                    status=JobState.STARTED,
+                    progress=(i + 1) / len(chunks),
+                    objects_created=len(objects),
+                )
+                self.update_progress()
+                self.save()
+
+            self.progress.update_stage(
+                "process",
+                status=JobState.SUCCESS,
+            )
+            self.progress.update_stage(
+                "results",
+                status=JobState.SUCCESS,
+            )
+
         self.update_status(JobState.SUCCESS)
+        self.update_progress()
         self.finished_at = datetime.datetime.now()
         self.save()
 
@@ -428,7 +469,7 @@ class Job(BaseModel):
         self.status = JobState.CANCELING
         self.save()
         if self.task_id:
-            task = ami.tasks.run_job.AsyncResult(self.task_id)
+            task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
                 self.status = task.status
@@ -443,7 +484,7 @@ class Job(BaseModel):
         Or if a status is provided, update the status of the job to that value.
         """
         if not status and self.task_id:
-            task = ami.tasks.run_job.AsyncResult(self.task_id)
+            task = run_job.AsyncResult(self.task_id)
             status = task.status
 
         if not status:
@@ -466,6 +507,10 @@ class Job(BaseModel):
         if not len(self.progress.stages):
             total_progress = 0
         else:
+            for stage in self.progress.stages:
+                if stage.status == JobState.SUCCESS and stage.progress < 1:
+                    # Update any stages that are complete but have a progress less than 1
+                    stage.progress = 1
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
 
         self.progress.summary.progress = total_progress
@@ -489,13 +534,9 @@ class Job(BaseModel):
         super().save(*args, **kwargs)
 
     @classmethod
-    def default_config(cls) -> dict:
-        return default_job_config
-
-    @classmethod
     def default_progress(cls) -> JobProgress:
         """Return the progress of each stage of this job as a dictionary"""
-        return default_job_progress
+        return default_job_progress()
 
     @property
     def logger(self) -> logging.Logger:

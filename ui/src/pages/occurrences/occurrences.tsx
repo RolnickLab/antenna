@@ -30,10 +30,11 @@ export const Occurrences = () => {
   }>({
     snapshots: true,
     id: true,
-    deployment: true,
-    session: true,
+    date: true,
+    time: true,
     duration: true,
     detections: true,
+    score: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()

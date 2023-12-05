@@ -36,8 +36,12 @@ def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.d
     # Extract date from a filename using regex in the format %Y%m%d%H%M%S
     matches = re.search(r"(\d{14})", name)
     if matches:
-        date = datetime.datetime.strptime(matches.group(), "%Y%m%d%H%M%S")
-    else:
+        try:
+            date = datetime.datetime.strptime(matches.group(), "%Y%m%d%H%M%S")
+        except ValueError:
+            pass
+
+    if not date:
         try:
             date = dateutil.parser.parse(name, fuzzy=False)  # Fuzzy will interpret "DSC_1974" as 1974-01-01
         except dateutil.parser.ParserError:
