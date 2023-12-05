@@ -20,6 +20,10 @@ export class Entity {
     })
   }
 
+  get description(): string {
+    return this._entity.description
+  }
+
   get id(): string {
     return `${this._entity.id}`
   }

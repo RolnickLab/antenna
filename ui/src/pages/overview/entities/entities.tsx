@@ -8,9 +8,16 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './entities-columns'
+import { NewEntityDialog } from './new-entity-dialog'
 import styles from './styles.module.scss'
 
-export const Entities = ({ collection }: { collection: string }) => {
+export const Entities = ({
+  collection,
+  type,
+}: {
+  collection: string
+  type: string
+}) => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()
@@ -37,7 +44,7 @@ export const Entities = ({ collection }: { collection: string }) => {
       <Table
         items={entities}
         isLoading={isLoading}
-        columns={columns(collection)}
+        columns={columns(collection, type)}
         sortable
         sortSettings={sort}
         onSortSettingsChange={setSort}
@@ -49,6 +56,7 @@ export const Entities = ({ collection }: { collection: string }) => {
           setPage={setPage}
         />
       ) : null}
+      <NewEntityDialog collection={collection} type={type} />
     </>
   )
 }

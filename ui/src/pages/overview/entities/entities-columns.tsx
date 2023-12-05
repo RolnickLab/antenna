@@ -3,16 +3,31 @@ import { BasicTableCell } from 'design-system/components/table/basic-table-cell/
 import { TableColumn } from 'design-system/components/table/types'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
+import { EntityDetailsDialog } from './entity-details-dialog'
 import styles from './styles.module.scss'
 
-export const columns: (collection: string) => TableColumn<Entity>[] = (
-  collection: string
-) => [
+export const columns: (
+  collection: string,
+  type: string
+) => TableColumn<Entity>[] = (collection: string, type: string) => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
-    renderCell: (item: Entity) => <BasicTableCell value={item.name} />,
+    renderCell: (item: Entity) => (
+      <BasicTableCell>
+        <EntityDetailsDialog
+          collection={collection}
+          entity={item}
+          type={type}
+        />
+      </BasicTableCell>
+    ),
+  },
+  {
+    id: 'description',
+    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
+    renderCell: (item: Entity) => <BasicTableCell value={item.description} />,
   },
   {
     id: 'created-at',
@@ -36,7 +51,11 @@ export const columns: (collection: string) => TableColumn<Entity>[] = (
     renderCell: (item: Entity) => (
       <div className={styles.entityActions}>
         {item.canDelete && (
-          <DeleteEntityDialog collection={collection} id={item.id} />
+          <DeleteEntityDialog
+            collection={collection}
+            id={item.id}
+            type={type}
+          />
         )}
       </div>
     ),

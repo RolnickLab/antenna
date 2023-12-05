@@ -90,13 +90,13 @@ export const Overview = () => {
           <Pipelines />
         </Tabs.Content>
         <Tabs.Content value="storage">
-          <Entities collection={API_ROUTES.STORAGE} />
+          <Entities collection={API_ROUTES.STORAGE} type="storage" />
         </Tabs.Content>
         <Tabs.Content value="sites">
-          <Entities collection={API_ROUTES.SITES} />
+          <Entities collection={API_ROUTES.SITES} type="site" />
         </Tabs.Content>
         <Tabs.Content value="devices">
-          <Entities collection={API_ROUTES.DEVICES} />
+          <Entities collection={API_ROUTES.DEVICES} type="device" />
         </Tabs.Content>
       </Tabs.Root>
     </>
