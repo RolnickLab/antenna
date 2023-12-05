@@ -67,10 +67,10 @@ export const Overview = () => {
             value="pipelines"
             label={translate(STRING.TAB_ITEM_PIPELINES)}
           />
-          <Tabs.Trigger
+          {/* <Tabs.Trigger
             value="storage"
             label={translate(STRING.TAB_ITEM_STORAGE)}
-          />
+          /> */}
           <Tabs.Trigger
             value="sites"
             label={translate(STRING.TAB_ITEM_SITES)}
@@ -89,9 +89,9 @@ export const Overview = () => {
         <Tabs.Content value="pipelines">
           <Pipelines />
         </Tabs.Content>
-        <Tabs.Content value="storage">
+        {/* <Tabs.Content value="storage">
           <Entities collection={API_ROUTES.STORAGE} type="storage" />
-        </Tabs.Content>
+        </Tabs.Content> */}
         <Tabs.Content value="sites">
           <Entities collection={API_ROUTES.SITES} type="site" />
         </Tabs.Content>
