@@ -8,6 +8,12 @@ import { STRING, translate } from 'utils/language'
 import styles from './error-boundary.module.scss'
 
 const logErrorToService = (error: Error, errorInfo: any) => {
+  const sentryEnabled = !!Sentry.getCurrentHub().getClient()
+
+  if (!sentryEnabled) {
+    return
+  }
+
   Sentry.withScope((scope) => {
     scope.setExtras(errorInfo)
     Sentry.captureException(error)
