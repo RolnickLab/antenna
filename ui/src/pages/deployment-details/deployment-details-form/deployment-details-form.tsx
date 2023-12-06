@@ -40,6 +40,8 @@ export const DeploymentDetailsForm = ({
         values: {
           name: deployment.name,
           description: deployment.description,
+          deviceId: deployment.device?.id,
+          siteId: deployment.site?.id,
         },
         isValid: startValid,
       },

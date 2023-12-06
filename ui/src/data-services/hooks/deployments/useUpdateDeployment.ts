@@ -8,9 +8,11 @@ import { useUser } from 'utils/user/userContext'
 const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
   data_source: fieldValues.path,
   description: fieldValues.description,
+  device_id: fieldValues.deviceId,
   name: fieldValues.name,
   latitude: fieldValues.latitude,
   longitude: fieldValues.longitude,
+  site_id: fieldValues.siteId,
 })
 
 export const useUpdateDeployment = (id: string) => {

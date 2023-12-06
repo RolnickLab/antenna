@@ -55,6 +55,16 @@ export const DeploymentDetailsInfo = ({
               value={deployment.description}
             />
           </FormRow>
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_SITE)}
+              value={deployment.site?.name}
+            />
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_DEVICE)}
+              value={deployment.device?.name}
+            />
+          </FormRow>
         </FormSection>
 
         <FormSection title={translate(STRING.FIELD_LABEL_LOCATION)}>
