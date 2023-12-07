@@ -149,17 +149,7 @@ class EventViewSet(DefaultViewSet):
     API endpoint that allows events to be viewed or edited.
     """
 
-    queryset = (
-        Event.objects.select_related("deployment")
-        .annotate(
-            captures_count=models.Count("captures", distinct=True),
-            detections_count=models.Count("captures__detections", distinct=True),
-            occurrences_count=models.Count("occurrences", distinct=True),
-            taxa_count=models.Count("occurrences__determination", distinct=True),
-            duration=models.F("end") - models.F("start"),
-        )
-        .select_related("deployment", "project")
-    )  # .prefetch_related("captures").all()
+    queryset = Event.objects.all()
     serializer_class = EventSerializer
     filterset_fields = ["deployment", "project"]
     ordering_fields = [
@@ -183,6 +173,21 @@ class EventViewSet(DefaultViewSet):
             return EventListSerializer
         else:
             return EventSerializer
+
+    def get_queryset(self) -> QuerySet:
+        qs: QuerySet = super().get_queryset()
+        qs = qs.annotate(
+            captures_count=models.Count("captures", distinct=True),
+            duration=models.F("end") - models.F("start"),
+        ).select_related("deployment", "project")
+
+        if self.action != "list":
+            qs = qs.annotate(
+                detections_count=models.Count("captures__detections", distinct=True),
+                occurrences_count=models.Count("occurrences", distinct=True),
+                taxa_count=models.Count("occurrences__determination", distinct=True),
+            )
+        return qs
 
 
 class SourceImageViewSet(DefaultViewSet):
