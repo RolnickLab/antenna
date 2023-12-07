@@ -598,7 +598,7 @@ class TaxonViewSet(DefaultViewSet):
             qs = qs.prefetch_related("occurrences")
             qs = qs.annotate(
                 occurrences_count=models.Count("occurrences", distinct=True),
-                events_count=models.Count("occurrences__event", distinct=True),
+                # events_count=models.Count("occurrences__event", distinct=True),
                 last_detected=models.Max("classifications__detection__timestamp"),
             )
         elif self.action == "list":
