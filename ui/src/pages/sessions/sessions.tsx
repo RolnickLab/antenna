@@ -27,7 +27,8 @@ export const Sessions = () => {
     session: true,
     images: true,
     duration: true,
-    occurrences: true,
+    captures: true,
+    occurrences: false,
     species: true,
   })
   const [sort, setSort] = useState<TableSortSettings>()

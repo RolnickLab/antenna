@@ -126,7 +126,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     {
       id: 'species',
       name: translate(STRING.FIELD_LABEL_SPECIES),
-      sortField: 'taxa_count',
+      // sortField: 'taxa_count',
       styles: {
         textAlign: TextAlign.Right,
       },
