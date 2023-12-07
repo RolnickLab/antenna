@@ -429,7 +429,8 @@ class OccurrenceViewSet(DefaultViewSet):
     """
 
     queryset = (
-        Occurrence.objects.annotate(
+        Occurrence.objects.filter(detections=None)
+        .annotate(
             detections_count=models.Count("detections", distinct=True),
             duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
             first_appearance_time=models.Min("detections__timestamp__time"),

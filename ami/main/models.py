@@ -1567,6 +1567,12 @@ class Occurrence(BaseModel):
                 save=True,
             )
 
+        if self.determination and not self.determination_score:
+            # This may happen for legacy occurrences that were created
+            # before the determination_score field was added
+            self.determination_score = self.get_determination_score()
+            self.save(update_determination=False)
+
     class Meta:
         ordering = ["-determination_score"]
 
