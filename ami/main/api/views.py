@@ -183,7 +183,7 @@ class EventViewSet(DefaultViewSet):
 
         if self.action != "list":
             qs = qs.annotate(
-                detections_count=models.Count("captures__detections", distinct=True),
+                # detections_count=models.Count("captures__detections", distinct=True),
                 occurrences_count=models.Count("occurrences", distinct=True),
                 taxa_count=models.Count("occurrences__determination", distinct=True),
             )
