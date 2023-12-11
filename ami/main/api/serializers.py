@@ -118,7 +118,7 @@ class DeploymentListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     project = ProjectNestedSerializer(read_only=True)
     device = DeviceNestedSerializer(read_only=True)
-    site = SiteNestedSerializer(read_only=True)
+    research_site = SiteNestedSerializer(read_only=True)
 
     class Meta:
         model = Deployment
@@ -141,7 +141,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "first_date",
             "last_date",
             "device",
-            "site",
+            "research_site",
         ]
 
     def get_events(self, obj):
@@ -329,10 +329,10 @@ class DeploymentSerializer(DeploymentListSerializer):
         queryset=Device.objects.all(),
         source="device",
     )
-    site_id = serializers.PrimaryKeyRelatedField(
+    research_site_id = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Site.objects.all(),
-        source="site",
+        source="research_site",
     )
     data_source = serializers.SerializerMethodField()
     data_source_id = serializers.PrimaryKeyRelatedField(
@@ -345,7 +345,7 @@ class DeploymentSerializer(DeploymentListSerializer):
         fields = DeploymentListSerializer.Meta.fields + [
             "project_id",
             "device_id",
-            "site_id",
+            "research_site_id",
             "data_source",
             "data_source_id",
             "description",
