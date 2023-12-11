@@ -186,7 +186,7 @@ class EventViewSet(DefaultViewSet):
                 # detections_count=models.Count("captures__detections", distinct=True),
                 occurrences_count=models.Count("occurrences", distinct=True),
                 taxa_count=models.Count("occurrences__determination", distinct=True),
-            )
+            ).prefetch_related("occurrences", "occurrences__determination")
         return qs
 
 
@@ -608,7 +608,7 @@ class TaxonViewSet(DefaultViewSet):
             qs = qs.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.none()))
             qs = qs.annotate(
                 occurrences_count=models.Value(0),
-                events_count=models.Value(0),
+                # events_count=models.Value(0),
                 last_detected=models.Value(None, output_field=models.DateTimeField()),
             )
 
