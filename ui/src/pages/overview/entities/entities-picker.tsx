@@ -23,6 +23,7 @@ export const EntitiesPicker = ({
         value: e.id,
         label: e.name,
       }))}
+      showClear={false}
       value={value}
       onValueChange={onValueChange}
     />

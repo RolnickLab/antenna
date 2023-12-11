@@ -6,14 +6,15 @@ import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
-  data_source: fieldValues.path,
-  description: fieldValues.description,
+  data_source_id: fieldValues.dataSourceId,
+  device_id: fieldValues.deviceId,
   events: [],
   name: fieldValues.name,
   latitude: fieldValues.latitude,
   longitude: fieldValues.longitude,
   occurrences: [],
   project_id: fieldValues.projectId,
+  research_site_id: fieldValues.siteId,
 })
 
 export const useCreateDeployment = () => {

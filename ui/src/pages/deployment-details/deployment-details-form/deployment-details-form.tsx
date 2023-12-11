@@ -54,7 +54,7 @@ export const DeploymentDetailsForm = ({
       },
       [Section.SourceImages]: {
         values: {
-          path: deployment.path,
+          dataSourceId: deployment.dataSource?.id,
         },
         isValid: startValid,
       },

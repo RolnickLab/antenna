@@ -1,10 +1,17 @@
 import { Entity, ServerEntity } from 'data-services/models/entity'
+import { Storage } from 'data-services/models/storage'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
-const convertServerRecord = (record: ServerEntity) => new Entity(record)
+const convertServerRecord = (collection: string, record: ServerEntity) => {
+  if (collection === 'storage') {
+    return new Storage(record)
+  }
+
+  return new Entity(record)
+}
 
 export const useEntities = (
   collection: string,
@@ -26,7 +33,11 @@ export const useEntities = (
     url: fetchUrl,
   })
 
-  const entities = useMemo(() => data?.results.map(convertServerRecord), [data])
+  const entities = useMemo(
+    () =>
+      data?.results.map((record) => convertServerRecord(collection, record)),
+    [data]
+  )
 
   return {
     entities,

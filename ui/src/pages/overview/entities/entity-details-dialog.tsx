@@ -4,7 +4,8 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
-import { EntityDetailsForm } from './entity-details-form'
+import { customFormMap } from './details-form/constants'
+import { EntityDetailsForm } from './details-form/entity-details-form'
 import styles from './styles.module.scss'
 
 const CLOSE_TIMEOUT = 1000
@@ -33,6 +34,8 @@ export const EntityDetailsDialog = ({
     type,
   })
 
+  const DetailsForm = customFormMap[type] ?? EntityDetailsForm
+
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
@@ -43,7 +46,7 @@ export const EntityDetailsDialog = ({
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         <Dialog.Header title={label} />
         <div className={styles.dialogContent}>
-          <EntityDetailsForm
+          <DetailsForm
             entity={entity}
             error={error}
             isLoading={isLoading}
