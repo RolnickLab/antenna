@@ -94,6 +94,9 @@ class Project(BaseModel):
     taxa: models.QuerySet["Taxon"]
     taxa_lists: models.QuerySet["TaxaList"]
 
+    active = models.BooleanField(default=True)
+    priority = models.IntegerField(default=1)
+
     def deployments_count(self) -> int:
         return self.deployments.count()
 
@@ -116,6 +119,9 @@ class Project(BaseModel):
             # plots.append(charts.captures_per_month(project_pk=self.pk))
 
         return plots
+
+    class Meta:
+        ordering = ["-priority", "created_at"]
 
 
 @final

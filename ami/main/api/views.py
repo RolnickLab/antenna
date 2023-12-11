@@ -102,7 +102,7 @@ class ProjectViewSet(DefaultViewSet):
     API endpoint that allows projects to be viewed or edited.
     """
 
-    queryset = Project.objects.prefetch_related("deployments").all()
+    queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
 
     def get_serializer_class(self):
@@ -149,17 +149,7 @@ class EventViewSet(DefaultViewSet):
     API endpoint that allows events to be viewed or edited.
     """
 
-    queryset = (
-        Event.objects.select_related("deployment")
-        .annotate(
-            captures_count=models.Count("captures", distinct=True),
-            detections_count=models.Count("captures__detections", distinct=True),
-            occurrences_count=models.Count("occurrences", distinct=True),
-            taxa_count=models.Count("occurrences__determination", distinct=True),
-            duration=models.F("end") - models.F("start"),
-        )
-        .select_related("deployment", "project")
-    )  # .prefetch_related("captures").all()
+    queryset = Event.objects.all()
     serializer_class = EventSerializer
     filterset_fields = ["deployment", "project"]
     ordering_fields = [
@@ -183,6 +173,21 @@ class EventViewSet(DefaultViewSet):
             return EventListSerializer
         else:
             return EventSerializer
+
+    def get_queryset(self) -> QuerySet:
+        qs: QuerySet = super().get_queryset()
+        qs = qs.annotate(
+            captures_count=models.Count("captures", distinct=True),
+            duration=models.F("end") - models.F("start"),
+        ).select_related("deployment", "project")
+
+        if self.action != "list":
+            qs = qs.annotate(
+                # detections_count=models.Count("captures__detections", distinct=True),
+                occurrences_count=models.Count("occurrences", distinct=True),
+                taxa_count=models.Count("occurrences__determination", distinct=True),
+            ).prefetch_related("occurrences", "occurrences__determination")
+        return qs
 
 
 class SourceImageViewSet(DefaultViewSet):
@@ -538,7 +543,7 @@ class TaxonViewSet(DefaultViewSet):
         else:
             return TaxonSerializer
 
-    def filter_by_occurrence(self, queryset: QuerySet) -> QuerySet:
+    def filter_by_occurrence(self, queryset: QuerySet) -> tuple[QuerySet, bool]:
         """
         Filter taxa by when/where it has occurred.
 
@@ -552,10 +557,12 @@ class TaxonViewSet(DefaultViewSet):
         deployment_id = self.request.query_params.get("deployment")
         event_id = self.request.query_params.get("event")
 
+        filter_active = any([occurrence_id, project_id, deployment_id, event_id])
+
         if occurrence_id:
             occurrence = Occurrence.objects.get(id=occurrence_id)
             # This query does not need the same filtering as the others
-            return queryset.filter(occurrences=occurrence).distinct()
+            return queryset.filter(occurrences=occurrence).distinct(), True
         elif project_id:
             project = Project.objects.get(id=project_id)
             queryset = super().get_queryset().filter(occurrences__project=project)
@@ -576,23 +583,35 @@ class TaxonViewSet(DefaultViewSet):
         if not self.request.query_params.get("ordering"):
             queryset = queryset.order_by("-best_determination_score")
 
-        return queryset
+        return queryset, filter_active
 
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
         try:
-            qs = self.filter_by_occurrence(qs)
+            qs, filter_active = self.filter_by_occurrence(qs)
         except exceptions.ObjectDoesNotExist as e:
             from rest_framework.exceptions import NotFound
 
             raise NotFound(detail=str(e))
         qs = qs.select_related("parent", "parent__parent")
-        qs = qs.prefetch_related("occurrences")
-        qs = qs.annotate(
-            occurrences_count=models.Count("occurrences", distinct=True),
-            events_count=models.Count("occurrences__event", distinct=True),
-            last_detected=models.Max("classifications__detection__timestamp"),
-        )
+
+        if filter_active:
+            qs = qs.prefetch_related("occurrences")
+            qs = qs.annotate(
+                occurrences_count=models.Count("occurrences", distinct=True),
+                # events_count=models.Count("occurrences__event", distinct=True),
+                last_detected=models.Max("classifications__detection__timestamp"),
+            )
+        elif self.action == "list":
+            # If no filter don't return anything related to occurrences
+            # @TODO add a project_id filter to all request from the frontend
+            # event detail views should be filtered by project
+            qs = qs.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.none()))
+            qs = qs.annotate(
+                occurrences_count=models.Value(0),
+                # events_count=models.Value(0),
+                last_detected=models.Value(None, output_field=models.DateTimeField()),
+            )
 
         return qs
 
