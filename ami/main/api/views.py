@@ -121,7 +121,7 @@ class DeploymentViewSet(DefaultViewSet):
     for the list and detail views.
     """
 
-    queryset = Deployment.objects.select_related("project")
+    queryset = Deployment.objects.select_related("project", "device", "research_site")
     filterset_fields = ["project"]
     ordering_fields = [
         "created_at",
