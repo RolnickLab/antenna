@@ -4,6 +4,7 @@ export const API_ROUTES = {
   CAPTURES: 'captures',
   COLLECTIONS: 'captures/collections',
   DEPLOYMENTS: 'deployments',
+  DEVICES: 'deployments/devices',
   IDENTIFICATIONS: 'identifications',
   JOBS: 'jobs',
   LOGIN: 'auth/token/login',
@@ -14,7 +15,9 @@ export const API_ROUTES = {
   PIPELINES: 'ml/pipelines',
   PROJECTS: 'projects',
   SESSIONS: 'events',
+  SITES: 'deployments/sites',
   SPECIES: 'taxa',
+  STORAGE: 'storage',
   SUMMARY: 'status/summary',
   USERS: 'users',
 }

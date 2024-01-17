@@ -8,8 +8,6 @@ import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-
 import { MarkerPosition } from 'design-system/map/types'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
-import { ConnectionStatus } from './connection-status/connection-status'
-import { useConnectionStatus } from './connection-status/useConnectionStatus'
 import styles from './styles.module.scss'
 
 export const DeploymentDetailsInfo = ({
@@ -21,10 +19,6 @@ export const DeploymentDetailsInfo = ({
   title: string
   onEditClick: () => void
 }) => {
-  const { status, refreshStatus, lastUpdated } = useConnectionStatus(
-    deployment.path
-  )
-
   const markers = useMemo(
     () => [
       {
@@ -55,6 +49,16 @@ export const DeploymentDetailsInfo = ({
               value={deployment.description}
             />
           </FormRow>
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_SITE)}
+              value={deployment.site?.name}
+            />
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_DEVICE)}
+              value={deployment.device?.name}
+            />
+          </FormRow>
         </FormSection>
 
         <FormSection title={translate(STRING.FIELD_LABEL_LOCATION)}>
@@ -74,16 +78,9 @@ export const DeploymentDetailsInfo = ({
         <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
           <FormRow>
             <InputValue
-              label={translate(STRING.FIELD_LABEL_PATH)}
-              value={deployment.path}
+              label="Data source"
+              value={deployment.dataSource?.name}
             />
-            <ConnectionStatus
-              status={status}
-              onRefreshClick={refreshStatus}
-              lastUpdated={lastUpdated}
-            />
-          </FormRow>
-          <FormRow>
             <InputValue
               label={translate(STRING.FIELD_LABEL_CAPTURES)}
               value={deployment.numImages}

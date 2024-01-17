@@ -9,6 +9,15 @@ export const config: FormConfig = {
   description: {
     label: translate(STRING.FIELD_LABEL_DESCRIPTION),
   },
+  siteId: {
+    label: translate(STRING.FIELD_LABEL_SITE),
+  },
+  deviceId: {
+    label: translate(STRING.FIELD_LABEL_DEVICE),
+  },
+  dataSourceId: {
+    label: 'Data source',
+  },
   latitude: {
     label: translate(STRING.FIELD_LABEL_LATITUDE),
     rules: { min: -90, max: 90 },
