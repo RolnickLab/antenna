@@ -2046,10 +2046,14 @@ class SourceImageCollection(BaseModel):
         qs = self.get_queryset()
         return qs.filter(id__in=image_ids)
 
-    def sample_interval(self, minute_interval: int = 10, exclude_events: list[int] = []):
+    def sample_interval(
+        self, minute_interval: int = 10, exclude_events: list[int] = [], deployment_id: int | None = None
+    ):
         """Create a sample of source images based on a time interval"""
 
         qs = self.get_queryset()
+        if deployment_id:
+            qs = qs.filter(deployment=deployment_id)
         if exclude_events:
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
