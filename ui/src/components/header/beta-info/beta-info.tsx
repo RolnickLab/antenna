@@ -2,8 +2,8 @@ import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import styles from './beta-info.module.scss'
 
 const COPY = {
-  LABEL: 'Beta',
-  INFO: 'More info about beta status goes here?',
+  LABEL: 'Preview release',
+  INFO: 'All data is considered test data and may change or be deleted at any time. Use with caution.',
   VERSION: `Build ${__COMMIT_HASH__}`,
 }
 
