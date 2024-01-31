@@ -4,7 +4,7 @@ import styles from './beta-info.module.scss'
 const COPY = {
   LABEL: 'Beta',
   INFO: 'More info about beta status goes here?',
-  VERSION: import.meta.env.PACKAGE_VERSION, // Read version from package.json
+  VERSION: `Build ${__COMMIT_HASH__}`,
 }
 
 export const BetaInfo = () => {
@@ -13,7 +13,7 @@ export const BetaInfo = () => {
       <Tooltip content={COPY.INFO}>
         <div className={styles.badge}>{COPY.LABEL}</div>
       </Tooltip>
-      <span className={styles.version}>Version {COPY.VERSION}</span>
+      <span className={styles.version}>{COPY.VERSION}</span>
     </div>
   )
 }

@@ -1,9 +1,13 @@
 import react from '@vitejs/plugin-react'
+import childProcees from 'child_process'
 import { defineConfig } from 'vite'
 import eslint from 'vite-plugin-eslint'
-import version from 'vite-plugin-package-version'
 import svgr from 'vite-plugin-svgr'
 import viteTsconfigPaths from 'vite-tsconfig-paths'
+
+const commitHash = childProcees
+  .execSync('git rev-parse --short HEAD')
+  .toString()
 
 export default defineConfig({
   base: '/',
@@ -15,8 +19,10 @@ export default defineConfig({
     viteTsconfigPaths(),
     svgr({ include: '**/*.svg?react' }),
     eslint({ exclude: ['/virtual:/**', 'node_modules/**'] }),
-    version(),
   ],
+  define: {
+    __COMMIT_HASH__: JSON.stringify(commitHash),
+  },
   server: {
     open: true,
     port: 3000,

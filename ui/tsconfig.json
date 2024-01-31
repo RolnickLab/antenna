@@ -18,5 +18,5 @@
     "baseUrl": "src",
     "types": ["vite/client", "vite-plugin-svgr/client"]
   },
-  "include": ["src"]
+  "include": ["src", "vite-env.d.ts"]
 }

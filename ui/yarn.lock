@@ -6583,7 +6583,6 @@ __metadata:
     typescript: "npm:^4.4.2"
     vite: "npm:^4.5.0"
     vite-plugin-eslint: "npm:^1.8.1"
-    vite-plugin-package-version: "npm:^1.1.0"
     vite-plugin-svgr: "npm:^4.1.0"
     vite-tsconfig-paths: "npm:^4.2.1"
   languageName: unknown
@@ -15892,15 +15891,6 @@ __metadata:
     eslint: ">=7"
     vite: ">=2"
   checksum: 123c3dcf8229fe2104f139877e866c1a7fc21903dc09f80bebb319a29929667074b9db6d89b3c48eea4740567a07c875d13c4c863ccf7a30a6c9621c74a5c37a
-  languageName: node
-  linkType: hard
-
-"vite-plugin-package-version@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "vite-plugin-package-version@npm:1.1.0"
-  peerDependencies:
-    vite: ">=2.0.0-beta.69"
-  checksum: fb646bcc666746579cdb96dd81bc91c989f99176071d43b66588ed554f3d3c492b10a3b27ef715a2d6a5a2a52d2f776dd7365ccc6034dc65f2c65208236af38a
   languageName: node
   linkType: hard
 
