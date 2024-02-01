@@ -1,0 +1,24 @@
+@import 'src/design-system/variables/variables.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.badge {
+  padding: 4px 16px;
+  border-radius: 4px;
+  background-color: $color-success-100;
+  color: $color-success-700;
+  text-align: center;
+  @include label();
+}
+
+.version {
+  @include paragraph-x-small();
+  white-space: nowrap;
+}

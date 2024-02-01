@@ -8,6 +8,7 @@ import { STRING, translate } from 'utils/language'
 import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
 import ami from './ami.png'
+import { BetaInfo } from './beta-info/beta-info'
 import styles from './header.module.scss'
 import { UserInfoDialog } from './user-info-dialog/user-info-dialog'
 
@@ -31,10 +32,13 @@ export const Header = () => {
           className={styles.logo}
         />
       </Link>
-      <div className={styles.infoPages}>
-        {pages.map((page) => (
-          <InfoDialog key={page.id} name={page.name} slug={page.slug} />
-        ))}
+      <BetaInfo />
+      <div className={styles.rightContent}>
+        <div className={styles.infoPages}>
+          {pages.map((page) => (
+            <InfoDialog key={page.id} name={page.name} slug={page.slug} />
+          ))}
+        </div>
         <Button
           label={translate(STRING.SIGN_UP)}
           theme={ButtonTheme.Plain}
