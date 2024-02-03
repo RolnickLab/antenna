@@ -47,7 +47,7 @@ jobs:
         run: docker-compose -f local.yml run --rm django python manage.py migrate
 
       - name: Run Django Tests
-        run: docker-compose -f local.yml run django pytest
+        run: docker-compose -f local.yml run --rm django python manage.py test
 
       - name: Tear down the Stack
         run: docker-compose -f local.yml down
