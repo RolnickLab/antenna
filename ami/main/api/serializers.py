@@ -507,7 +507,10 @@ class TaxonSourceImageNestedSerializer(DefaultSerializer):
         # @TODO this may not be correct. Test or remove if unnecessary.
         # the Occurrence to Session navigation in the UI will be using
         # another method.
-        return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
+        if not obj or not obj.event:
+            return 0
+        else:
+            return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
 
 
 class TaxonOccurrenceNestedSerializer(DefaultSerializer):

@@ -434,7 +434,7 @@ class OccurrenceViewSet(DefaultViewSet):
     """
 
     queryset = (
-        Occurrence.objects.exclude(detections=None)
+        Occurrence.objects.exclude(detections=None)  # This must come before annotations
         .annotate(
             detections_count=models.Count("detections", distinct=True),
             duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
@@ -447,7 +447,7 @@ class OccurrenceViewSet(DefaultViewSet):
         )
         .prefetch_related("detections")
         .order_by("-determination_score")
-        .all()
+        .exclude(event=None, first_appearance_time=None)  # These must come after annotations
     )
     serializer_class = OccurrenceSerializer
     filterset_fields = ["event", "deployment", "determination", "project"]
