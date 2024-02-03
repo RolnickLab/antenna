@@ -8,7 +8,8 @@
   height: 64px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 32px;
   padding: 0 100px;
   background-color: $color-generic-white;
   border-bottom: 1px solid $color-neutral-100;
@@ -22,10 +23,16 @@
   vertical-align: middle;
 }
 
-.infoPages {
+.rightContent {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 1;
   gap: 4px;
+}
+
+.infoPages {
+  display: contents;
 }
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
@@ -37,5 +44,10 @@
 @media only screen and (max-width: $small-screen-breakpoint) {
   .header {
     padding: 0 16px;
+    gap: 16px;
+  }
+
+  .infoPages {
+    display: none;
   }
 }

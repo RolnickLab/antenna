@@ -175,6 +175,7 @@ def detections_per_hour(project_pk: int):
         .values("source_image__timestamp__hour")
         .annotate(num_detections=models.Count("id"))
         .order_by("source_image__timestamp__hour")
+        .exclude(source_image__timestamp=None)
     )
 
     # hours, counts = list(zip(*detections_per_hour))
@@ -204,6 +205,7 @@ def occurrences_accumulated(project_pk: int):
     occurrences_per_day = (
         Occurrence.objects.filter(project=project_pk)
         .values_list("event__start")
+        .exclude(event__start=None)
         .annotate(num_occurrences=models.Count("id"))
         .order_by("event__start")
     )
@@ -213,8 +215,8 @@ def occurrences_accumulated(project_pk: int):
         # Accumulate the counts
         counts = list(itertools.accumulate(counts))
         # tickvals = [f"{d:%b %d}" for d in days]
-        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
-        days = [f"{d:%b %d}" for d in days]
+        tickvals = [f"{days[0]:%b %d, %Y}", f"{days[-1]:%b %d, %Y}"]
+        days = [f"{d:%b %d, %Y}" for d in days]
     else:
         days, counts = [], []
         tickvals = []
@@ -234,6 +236,7 @@ def event_detections_per_hour(event_pk: int):
         .values("source_image__timestamp__hour")
         .annotate(num_detections=models.Count("id"))
         .order_by("source_image__timestamp__hour")
+        .exclude(source_image__timestamp=None)
     )
 
     # hours, counts = list(zip(*detections_per_hour))
