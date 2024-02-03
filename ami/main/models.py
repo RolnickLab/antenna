@@ -217,6 +217,7 @@ def _insert_or_update_batch_for_sync(
     total_files: int,
     total_size: int,
     sql_batch_size=500,
+    regroup_events_per_batch=False,
 ):
     logger.info(f"Bulk inserting or updating batch of {len(source_images)} SourceImages")
     try:
@@ -236,9 +237,10 @@ def _insert_or_update_batch_for_sync(
         deployment.data_source_total_size = total_size
     deployment.data_source_last_checked = datetime.datetime.now()
 
-    events = group_images_into_events(deployment)
-    for event in events:
-        set_dimensions_for_collection(event)
+    if regroup_events_per_batch:
+        events = group_images_into_events(deployment)
+        for event in events:
+            set_dimensions_for_collection(event)
 
     deployment.save(update_calculated_fields=False)
 
@@ -354,7 +356,7 @@ class Deployment(BaseModel):
             uri = None
         return uri
 
-    def sync_captures(self, batch_size=1000) -> int:
+    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False) -> int:
         """Import images from the deployment's data source"""
 
         deployment = self
@@ -379,17 +381,22 @@ class Deployment(BaseModel):
                 source_images.append(source_image)
 
             if len(source_images) >= django_batch_size:
-                _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
+                _insert_or_update_batch_for_sync(
+                    deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
+                )
                 source_images = []
 
         if source_images:
             # Insert/update the last batch
-            _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
+            _insert_or_update_batch_for_sync(
+                deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
+            )
 
         _compare_totals_for_sync(deployment, total_files)
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
         self.save()
+
         return total_files
 
     def update_children(self):
