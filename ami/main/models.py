@@ -1323,6 +1323,7 @@ class Detection(BaseModel):
     # @TODO use structured data for bbox
     bbox = models.JSONField(null=True, blank=True)
 
+    # @TODO shouldn't this be automatically set by the source image?
     timestamp = models.DateTimeField(null=True, blank=True)
 
     # file = (
@@ -1577,7 +1578,10 @@ class Occurrence(BaseModel):
             # This may happen for legacy occurrences that were created
             # before the determination_score field was added
             self.determination_score = self.get_determination_score()
-            self.save(update_determination=False)
+            if not self.determination_score:
+                logger.warning(f"Could not determine score for {self}")
+            else:
+                self.save(update_determination=False)
 
     class Meta:
         ordering = ["-determination_score"]
@@ -1600,6 +1604,12 @@ def update_occurrence_determination(
     @TODO Add tests for this important method!
     """
     needs_update = False
+
+    # Invalidate the cached properties so they will be re-calculated
+    if hasattr(occurrence, "best_identification"):
+        del occurrence.best_identification
+    if hasattr(occurrence, "best_prediction"):
+        del occurrence.best_prediction
 
     current_determination = (
         current_determination
