@@ -205,7 +205,9 @@ def occurrences_accumulated(project_pk: int):
     occurrences_per_day = (
         Occurrence.objects.filter(project=project_pk)
         .values_list("event__start")
+        .exclude(event=None)
         .exclude(event__start=None)
+        .exclude(detections=None)
         .annotate(num_occurrences=models.Count("id"))
         .order_by("event__start")
     )
