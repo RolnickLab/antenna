@@ -40,6 +40,8 @@ export const DeploymentDetailsForm = ({
         values: {
           name: deployment.name,
           description: deployment.description,
+          deviceId: deployment.device?.id,
+          siteId: deployment.site?.id,
         },
         isValid: startValid,
       },
@@ -52,7 +54,7 @@ export const DeploymentDetailsForm = ({
       },
       [Section.SourceImages]: {
         values: {
-          path: deployment.path,
+          dataSourceId: deployment.dataSource?.id,
         },
         isValid: startValid,
       },

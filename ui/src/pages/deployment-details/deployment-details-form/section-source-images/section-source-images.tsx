@@ -1,32 +1,32 @@
-import { FormField } from 'components/form/form-field'
+import { FormController } from 'components/form/form-controller'
 import {
   FormActions,
   FormRow,
   FormSection,
 } from 'components/form/layout/layout'
+import { API_ROUTES } from 'data-services/constants'
 import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
+import { InputContent } from 'design-system/components/input/input'
 import _ from 'lodash'
+import { EntitiesPicker } from 'pages/overview/entities/entities-picker'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
 import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
-import { ConnectionStatus } from '../../connection-status/connection-status'
-import { useConnectionStatus } from '../../connection-status/useConnectionStatus'
 import { config } from '../config'
 import { SectionExampleCaptures } from '../section-example-captures/section-example-captures'
 import { Section } from '../types'
 
-type SectionSourceImagesFieldValues = Pick<DeploymentFieldValues, 'path'>
-
-const DEFAULT_VALUES: SectionSourceImagesFieldValues = {
-  path: '',
-}
+type SectionSourceImagesFieldValues = Pick<
+  DeploymentFieldValues,
+  'dataSourceId'
+>
 
 export const SectionSourceImages = ({
   deployment,
@@ -40,17 +40,12 @@ export const SectionSourceImages = ({
 
   const { control, handleSubmit } = useForm<SectionSourceImagesFieldValues>({
     defaultValues: {
-      ...DEFAULT_VALUES,
       ..._.omitBy(formState[Section.SourceImages].values, isEmpty),
     },
     mode: 'onBlur',
   })
 
   useSyncSectionStatus(Section.SourceImages, control)
-
-  const { status, refreshStatus, lastUpdated } = useConnectionStatus(
-    deployment?.path
-  )
 
   return (
     <form
@@ -61,11 +56,23 @@ export const SectionSourceImages = ({
     >
       <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
         <FormRow>
-          <FormField name="path" control={control} config={config} />
-          <ConnectionStatus
-            status={status}
-            onRefreshClick={refreshStatus}
-            lastUpdated={lastUpdated}
+          <FormController
+            name="dataSourceId"
+            control={control}
+            config={config.deviceId}
+            render={({ field, fieldState }) => (
+              <InputContent
+                description={config[field.name].description}
+                label={config[field.name].label}
+                error={fieldState.error?.message}
+              >
+                <EntitiesPicker
+                  collection={API_ROUTES.STORAGE}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                />
+              </InputContent>
+            )}
           />
         </FormRow>
         <SectionExampleCaptures deployment={deployment} />

@@ -7,6 +7,7 @@ from rich import print
 
 from ami.main.models import (
     Deployment,
+    Detection,
     Event,
     Occurrence,
     Project,
@@ -72,19 +73,42 @@ def create_taxa(project: Project) -> TaxaList:
 
 def create_occurrences(
     deployment: Deployment,
-    num: int = 12,
+    num: int = 6,
 ):
     event = Event.objects.filter(deployment=deployment).first()
     if not event:
         raise ValueError("No events found for deployment")
 
     for i in range(num):
-        Occurrence.objects.create(
-            project=deployment.project,
-            deployment=deployment,
-            determination=Taxon.objects.order_by("?").first(),
-            event=event,
+        # Every Occurrence requires a Detection
+        source_image = SourceImage.objects.filter(event=event).order_by("?").first()
+        if not source_image:
+            raise ValueError("No source images found for event")
+        taxon = Taxon.objects.filter(projects=deployment.project).order_by("?").first()
+        if not taxon:
+            raise ValueError("No taxa found for project")
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,  # @TODO this should be automatically set to the source image timestamp
         )
+        # Could speed this up by creating an Occurrence with a determined taxon directly
+        # but this tests more of the code.
+        detection.classifications.create(
+            taxon=taxon,
+            score=0.9,
+            timestamp=datetime.datetime.now(),
+        )
+        occurrence = detection.associate_new_occurrence()
+
+        # Assert that the occurrence was created and has a detection, event, first_appearance,
+        # and species determination
+        assert detection.occurrence is not None
+        assert detection.occurrence.event is not None
+        assert detection.occurrence.first_appearance is not None
+        assert occurrence.best_detection is not None
+        assert occurrence.best_prediction is not None
+        assert occurrence.determination is not None
+        assert occurrence.determination_score is not None
 
 
 class TestImageGrouping(TestCase):
@@ -181,7 +205,9 @@ class TestDuplicateFieldsOnChildren(TestCase):
 
         create_captures(deployment=self.deployment)
         group_images_into_events(deployment=self.deployment)
-        create_occurrences(deployment=self.deployment)
+        create_taxa(project=self.project_one)
+        create_taxa(project=self.project_two)
+        create_occurrences(deployment=self.deployment, num=1)
 
         return super().setUp()
 
@@ -190,6 +216,7 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.captures.first().project == self.project_one
         assert self.deployment.events.first().project == self.project_one
         assert self.deployment.occurrences.first().project == self.project_one
+        assert self.deployment.occurrences.first().detections.first().source_image.project == self.project_one
 
     def test_change_project(self):
         self.deployment.project = self.project_two
@@ -465,11 +492,18 @@ class TestTaxonomyViews(TestCase):
         create_captures(deployment=deployment_two)
         group_images_into_events(deployment=deployment_one)
         group_images_into_events(deployment=deployment_two)
-        create_occurrences(deployment=deployment_one, num=100)
-        create_occurrences(deployment=deployment_two, num=100)
+        create_occurrences(deployment=deployment_one, num=5)
+        create_occurrences(deployment=deployment_two, num=5)
         self.project_one = project_one
         self.project_two = project_two
         return super().setUp()
+
+    def test_occurrences_for_project(self):
+        # Test that occurrences are specific to each project
+        for project in [self.project_one, self.project_two]:
+            response = self.client.get(f"/api/v2/occurrences/?project={project.pk}")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
     def test_taxa_list(self):
         from ami.main.models import Taxon
@@ -487,7 +521,10 @@ class TestTaxonomyViews(TestCase):
 
         response = self.client.get(f"/api/v2/taxa/?project={project.pk}")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["count"], Taxon.objects.filter(projects=project).count())
+        project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
+        # project_any_taxa = Taxon.objects.filter(projects=project)
+        self.assertGreater(project_occurred_taxa.count(), 0)
+        self.assertEqual(response.json()["count"], project_occurred_taxa.count())
 
         # Check counts for each taxon
         results = response.json()["results"]
@@ -504,8 +541,9 @@ class TestTaxonomyViews(TestCase):
     def test_taxon_detail(self):
         from ami.main.models import Taxon
 
-        taxon = Taxon.objects.first()
+        taxon = Taxon.objects.last()
         assert taxon is not None
+        print("Testing taxon", taxon, taxon.pk)
         response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], taxon.name)

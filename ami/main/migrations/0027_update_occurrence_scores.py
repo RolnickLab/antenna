@@ -5,8 +5,8 @@ from django.db import migrations
 
 # Call save on all occurrences to update their scores
 def update_occurrence_scores(apps, schema_editor):
-    # Occurrence = apps.get_model("main", "Occurrence")
-    from ami.main.models import Occurrence
+    Occurrence = apps.get_model("main", "Occurrence")
+    # from ami.main.models import Occurrence
 
     for occurrence in Occurrence.objects.all():
         occurrence.save()

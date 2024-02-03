@@ -2,7 +2,12 @@ version: "3"
 
 volumes:
   ami_local_postgres_data: {}
-  ami_local_postgres_data_backups: {}
+  ami_local_postgres_data_backups:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./backups/postgres
+      o: bind
 
 services:
   django: &django
@@ -20,7 +25,7 @@ services:
     volumes:
       - .:/app:z
     env_file:
-      - ./.envs/.local/.django
+      - ./.envs/.production/.django
       - ./.envs/.local/.postgres
     ports:
       - '8080:8000'

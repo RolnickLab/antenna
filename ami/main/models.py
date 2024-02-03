@@ -217,6 +217,7 @@ def _insert_or_update_batch_for_sync(
     total_files: int,
     total_size: int,
     sql_batch_size=500,
+    regroup_events_per_batch=False,
 ):
     logger.info(f"Bulk inserting or updating batch of {len(source_images)} SourceImages")
     try:
@@ -236,9 +237,10 @@ def _insert_or_update_batch_for_sync(
         deployment.data_source_total_size = total_size
     deployment.data_source_last_checked = datetime.datetime.now()
 
-    events = group_images_into_events(deployment)
-    for event in events:
-        set_dimensions_for_collection(event)
+    if regroup_events_per_batch:
+        events = group_images_into_events(deployment)
+        for event in events:
+            set_dimensions_for_collection(event)
 
     deployment.save(update_calculated_fields=False)
 
@@ -354,7 +356,7 @@ class Deployment(BaseModel):
             uri = None
         return uri
 
-    def sync_captures(self, batch_size=1000) -> int:
+    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False) -> int:
         """Import images from the deployment's data source"""
 
         deployment = self
@@ -379,17 +381,22 @@ class Deployment(BaseModel):
                 source_images.append(source_image)
 
             if len(source_images) >= django_batch_size:
-                _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
+                _insert_or_update_batch_for_sync(
+                    deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
+                )
                 source_images = []
 
         if source_images:
             # Insert/update the last batch
-            _insert_or_update_batch_for_sync(deployment, source_images, total_files, total_size, sql_batch_size)
+            _insert_or_update_batch_for_sync(
+                deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
+            )
 
         _compare_totals_for_sync(deployment, total_files)
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
         self.save()
+
         return total_files
 
     def update_children(self):
@@ -1323,6 +1330,7 @@ class Detection(BaseModel):
     # @TODO use structured data for bbox
     bbox = models.JSONField(null=True, blank=True)
 
+    # @TODO shouldn't this be automatically set by the source image?
     timestamp = models.DateTimeField(null=True, blank=True)
 
     # file = (
@@ -1577,7 +1585,10 @@ class Occurrence(BaseModel):
             # This may happen for legacy occurrences that were created
             # before the determination_score field was added
             self.determination_score = self.get_determination_score()
-            self.save(update_determination=False)
+            if not self.determination_score:
+                logger.warning(f"Could not determine score for {self}")
+            else:
+                self.save(update_determination=False)
 
     class Meta:
         ordering = ["-determination_score"]
@@ -1600,6 +1611,12 @@ def update_occurrence_determination(
     @TODO Add tests for this important method!
     """
     needs_update = False
+
+    # Invalidate the cached properties so they will be re-calculated
+    if hasattr(occurrence, "best_identification"):
+        del occurrence.best_identification
+    if hasattr(occurrence, "best_prediction"):
+        del occurrence.best_prediction
 
     current_determination = (
         current_determination
@@ -2046,10 +2063,14 @@ class SourceImageCollection(BaseModel):
         qs = self.get_queryset()
         return qs.filter(id__in=image_ids)
 
-    def sample_interval(self, minute_interval: int = 10, exclude_events: list[int] = []):
+    def sample_interval(
+        self, minute_interval: int = 10, exclude_events: list[int] = [], deployment_id: int | None = None
+    ):
         """Create a sample of source images based on a time interval"""
 
         qs = self.get_queryset()
+        if deployment_id:
+            qs = qs.filter(deployment=deployment_id)
         if exclude_events:
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
