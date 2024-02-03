@@ -8,12 +8,13 @@ logger = logging.getLogger(__name__)
 
 # Save all Deployment objects to update their calculated fields.
 def update_deployment_aggregates(apps, schema_editor):
-    # Deployment = apps.get_model("main", "Deployment")
-    from ami.main.models import Deployment
+    Deployment = apps.get_model("main", "Deployment")
+    # from ami.main.models import Deployment
 
     for deployment in Deployment.objects.all():
         logger.info(f"Updating deployment {deployment}")
-        deployment.save(update_calculated_fields=True)
+        # deployment.save(update_calculated_fields=True)
+        deployment.save()
 
 
 class Migration(migrations.Migration):
