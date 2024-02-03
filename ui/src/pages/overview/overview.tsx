@@ -1,3 +1,4 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Project } from 'data-services/models/project'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
@@ -7,6 +8,7 @@ import { useOutletContext } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
+import { Entities } from './entities/entities'
 import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
 import { Summary } from './summary/summary'
@@ -65,6 +67,18 @@ export const Overview = () => {
             value="pipelines"
             label={translate(STRING.TAB_ITEM_PIPELINES)}
           />
+          <Tabs.Trigger
+            value="storage"
+            label={translate(STRING.TAB_ITEM_STORAGE)}
+          />
+          <Tabs.Trigger
+            value="sites"
+            label={translate(STRING.TAB_ITEM_SITES)}
+          />
+          <Tabs.Trigger
+            value="devices"
+            label={translate(STRING.TAB_ITEM_DEVICES)}
+          />
         </Tabs.List>
         <Tabs.Content value="summary">
           <Summary project={project} />
@@ -74,6 +88,15 @@ export const Overview = () => {
         </Tabs.Content>
         <Tabs.Content value="pipelines">
           <Pipelines />
+        </Tabs.Content>
+        <Tabs.Content value="storage">
+          <Entities collection={API_ROUTES.STORAGE} type="storage" />
+        </Tabs.Content>
+        <Tabs.Content value="sites">
+          <Entities collection={API_ROUTES.SITES} type="site" />
+        </Tabs.Content>
+        <Tabs.Content value="devices">
+          <Entities collection={API_ROUTES.DEVICES} type="device" />
         </Tabs.Content>
       </Tabs.Root>
     </>
