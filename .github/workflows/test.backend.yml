@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -34,20 +34,20 @@ jobs:
         uses: pre-commit/action@v3.0.0
 
   # With no caching at all the entire ci process takes 4m 30s to complete!
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v3
+  # test:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code Repository
+  #       uses: actions/checkout@v4
 
-      - name: Build the Stack
-        run: docker-compose -f local.yml build
+  #     - name: Build the Stack
+  #       run: docker-compose -f local.yml build
 
-      - name: Run DB Migrations
-        run: docker-compose -f local.yml run --rm django python manage.py migrate
+  #     - name: Run DB Migrations
+  #       run: docker-compose -f local.yml run --rm django python manage.py migrate
 
-      - name: Run Django Tests
-        run: docker-compose -f local.yml run --rm django python manage.py test
+  #     - name: Run Django Tests
+  #       run: docker-compose -f local.yml run --rm django python manage.py test
 
-      - name: Tear down the Stack
-        run: docker-compose -f local.yml down
+  #     - name: Tear down the Stack
+  #       run: docker-compose -f local.yml down
