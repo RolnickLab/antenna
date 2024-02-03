@@ -83,10 +83,42 @@ class SourceImageNestedSerializer(DefaultSerializer):
         ]
 
 
+class DeviceNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Device
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
+class SiteNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Site
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
+class StorageSourceNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = S3StorageSource
+        fields = [
+            "id",
+            "name",
+            "details",
+        ]
+
+
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
     project = ProjectNestedSerializer(read_only=True)
+    device = DeviceNestedSerializer(read_only=True)
+    research_site = SiteNestedSerializer(read_only=True)
 
     class Meta:
         model = Deployment
@@ -108,6 +140,8 @@ class DeploymentListSerializer(DefaultSerializer):
             "longitude",
             "first_date",
             "last_date",
+            "device",
+            "research_site",
         ]
 
     def get_events(self, obj):
@@ -285,24 +319,51 @@ class DeploymentSerializer(DeploymentListSerializer):
     events = DeploymentEventNestedSerializer(many=True, read_only=True)
     occurrences = serializers.SerializerMethodField()
     example_captures = DeploymentCaptureNestedSerializer(many=True, read_only=True)
-    data_source = serializers.SerializerMethodField(read_only=True)
     project_id = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Project.objects.all(),
         source="project",
     )
+    device_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Device.objects.all(),
+        source="device",
+    )
+    research_site_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Site.objects.all(),
+        source="research_site",
+    )
+    data_source = serializers.SerializerMethodField()
+    data_source_id = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=S3StorageSource.objects.all(),
+        source="data_source",
+    )
 
     class Meta(DeploymentListSerializer.Meta):
         fields = DeploymentListSerializer.Meta.fields + [
             "project_id",
-            "description",
+            "device_id",
+            "research_site_id",
             "data_source",
+            "data_source_id",
+            "description",
             "example_captures",
             # "capture_images",
         ]
 
     def get_data_source(self, obj):
-        return obj.data_source_uri()
+        """
+        Add uri to nested serializer of the data source
+
+        The data source is defined by both the StorageSource model
+        and the extra configuration in the Deployment model.
+        """
+
+        data = StorageSourceNestedSerializer(obj.data_source, context=self.context).data
+        data["uri"] = obj.data_source_uri()
+        return data
 
     def get_occurrences(self, obj):
         """
@@ -507,7 +568,10 @@ class TaxonSourceImageNestedSerializer(DefaultSerializer):
         # @TODO this may not be correct. Test or remove if unnecessary.
         # the Occurrence to Session navigation in the UI will be using
         # another method.
-        return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
+        if not obj or not obj.event:
+            return 0
+        else:
+            return obj.event.captures.filter(timestamp__lt=obj.timestamp).count()
 
 
 class TaxonOccurrenceNestedSerializer(DefaultSerializer):
