@@ -574,9 +574,25 @@ class TaxonViewSet(DefaultViewSet):
             event = Event.objects.get(id=event_id)
             queryset = super().get_queryset().filter(occurrences__event=event)
 
+        return queryset, filter_active
+
+    def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter taxa by their best determination score in occurrences.
+
+        This is only applicable to list queries that are not filtered by occurrence, project, deployment, or event.
+        """
+        # Look for a query param to filter by score
+        classification_threshold = self.request.query_params.get("classification_threshold")
+
+        if classification_threshold is not None:
+            classification_threshold = FloatField(required=False).clean(classification_threshold)
+        else:
+            classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
+
         queryset = (
             queryset.annotate(best_determination_score=models.Max("occurrences__determination_score"))
-            .filter(best_determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD)
+            .filter(best_determination_score__gte=classification_threshold)
             .distinct()
         )
 
@@ -584,7 +600,7 @@ class TaxonViewSet(DefaultViewSet):
         if not self.request.query_params.get("ordering"):
             queryset = queryset.order_by("-best_determination_score")
 
-        return queryset, filter_active
+        return queryset
 
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
@@ -594,9 +610,12 @@ class TaxonViewSet(DefaultViewSet):
             from rest_framework.exceptions import NotFound
 
             raise NotFound(detail=str(e))
+
         qs = qs.select_related("parent", "parent__parent")
 
         if filter_active:
+            qs = self.filter_by_classification_threshold(qs)
+
             qs = qs.prefetch_related("occurrences")
             qs = qs.annotate(
                 occurrences_count=models.Count("occurrences", distinct=True),
