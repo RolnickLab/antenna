@@ -159,9 +159,8 @@ typings/
 !.vscode/extensions.json
 *.code-workspace
 
-# Local History for Visual Studio Code
-.history/
-
+# Local History for devcontainer
+.devcontainer/bash_history
 
 
 

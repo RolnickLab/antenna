@@ -1,6 +1,6 @@
 {
   "template": "https://github.com/cookiecutter/cookiecutter-django",
-  "commit": "4ef180edb118ddf650261db8889c2b4704cab3a5",
+  "commit": "bb6d176235f07ae5209e155f4041a9c2534026a5",
   "checkout": null,
   "context": {
     "cookiecutter": {
@@ -15,7 +15,7 @@
       "username_type": "email",
       "timezone": "UTC",
       "windows": "n",
-      "use_pycharm": "n",
+      "editor": "None",
       "use_docker": "y",
       "postgresql_version": "14",
       "cloud_provider": "AWS",
@@ -24,7 +24,7 @@
       "use_drf": "y",
       "frontend_pipeline": "None",
       "use_celery": "y",
-      "use_mailhog": "y",
+      "use_mailpit": "n",
       "use_sentry": "y",
       "use_whitenoise": "y",
       "use_heroku": "n",

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models import CharField, EmailField
@@ -25,7 +27,7 @@ class User(AbstractUser):
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
-    objects = UserManager()
+    objects: ClassVar[UserManager] = UserManager()
 
     def get_absolute_url(self) -> str:
         """Get URL for user's detail view.

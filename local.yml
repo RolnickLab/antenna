@@ -15,7 +15,6 @@ services:
     depends_on:
       - postgres
       - redis
-      - mailhog
     volumes:
       - .:/app:z
     env_file:
@@ -67,7 +66,6 @@ services:
     depends_on:
       - redis
       - postgres
-      - mailhog
     ports: []
     command: /start-celeryworker
 
@@ -77,7 +75,6 @@ services:
     depends_on:
       - redis
       - postgres
-      - mailhog
     ports: []
     command: /start-celerybeat
 
