@@ -1,9 +1,11 @@
+# This is a transitional production configuration.
+# Redis and celery will be external services in the final production configuration.
+# Traffic or NGINX may or may not be used in the final production configuration
+# but the Django container will not expose its port to the host (there will be more than one container).
 version: "3"
 
 volumes:
-  production_postgres_data: {}
   production_postgres_data_backups: {}
-  production_traefik: {}
 
 services:
   django: &django
@@ -13,38 +15,13 @@ services:
 
     image: ami_production_django
     depends_on:
-      - postgres
       - redis
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
     command: /start
-
-  postgres:
-    build:
-      context: .
-      dockerfile: ./compose/production/postgres/Dockerfile
-    image: ami_production_postgres
-    volumes:
-      - production_postgres_data:/var/lib/postgresql/data
-      - production_postgres_data_backups:/backups
-      - ./compose/production/postgres/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
-    env_file:
-      - ./.envs/.production/.postgres
-
-  traefik:
-    build:
-      context: .
-      dockerfile: ./compose/production/traefik/Dockerfile
-    image: ami_production_traefik
-    depends_on:
-      - django
-    volumes:
-      - production_traefik:/etc/traefik/acme
     ports:
-      - "0.0.0.0:80:80"
-      - "0.0.0.0:443:443"
-      - "0.0.0.0:5555:5555"
+      - "5000:5000"
 
   redis:
     image: redis:6
