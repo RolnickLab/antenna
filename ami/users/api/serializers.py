@@ -3,11 +3,12 @@ from django.contrib.auth.models import Group
 from rest_framework import serializers
 
 from ami.main.api.serializers import DefaultSerializer
+from ami.users.models import User as UserType
 
 User = get_user_model()
 
 
-class UserListSerializer(DefaultSerializer):
+class UserListSerializer(DefaultSerializer[UserType]):
     class Meta:
         model = User
         fields = ["id", "name", "details", "image"]

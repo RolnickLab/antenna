@@ -8,8 +8,8 @@ Documentation can be written as rst files in `ami/docs`.
 
 
 To build and serve docs, use the commands::
-    
-    docker-compose -f local.yml up docs
+
+    docker compose -f local.yml up docs
 
 
 
@@ -28,11 +28,11 @@ For an in-use example, see the `page source <_sources/users.rst.txt>`_ for :ref:
 
 To compile all docstrings automatically into documentation source files, use the command:
     ::
-    
+
         make apidocs
 
 
 This can be done in the docker container:
-    :: 
-        
+    ::
+
         docker run --rm docs make apidocs
