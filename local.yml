@@ -2,7 +2,13 @@ version: "3"
 
 volumes:
   ami_local_postgres_data: {}
-  ami_local_postgres_data_backups: {}
+  ami_local_postgres_data_backups:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./backups/local/postgres
+      o: bind
+
 
 services:
   django: &django
@@ -28,8 +34,7 @@ services:
   postgres:
     build:
       context: .
-      dockerfile: ./compose/production/postgres/Dockerfile
-    image: ami_production_postgres
+      dockerfile: ./compose/local/postgres/Dockerfile
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
       - ami_local_postgres_data_backups:/backups

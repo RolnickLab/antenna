@@ -13,7 +13,7 @@ volumes:
     driver: local
     driver_opts:
       type: none
-      device: ./backups/postgres
+      device: ./backups/local/postgres
       o: bind
 
 services:
@@ -40,7 +40,7 @@ services:
     build:
       context: .
       # There is not a local/staging version of the Postgres Dockerfile.
-      dockerfile: ./compose/production/postgres/Dockerfile
+      dockerfile: ./compose/local/postgres/Dockerfile
     # Share the local Postgres image with the staging configuration.
     # Production uses an external Postgres service.
     volumes:
@@ -55,17 +55,20 @@ services:
 
   celeryworker:
     <<: *django
+    container_name: ami_staging_celeryworker
     scale: 1
     ports: []
     command: /start-celeryworker
 
   celerybeat:
     <<: *django
+    container_name: ami_staging_celerybeat
     ports: []
     command: /start-celerybeat
 
   flower:
     <<: *django
+    container_name: ami_staging_flower
     ports:
       - "5550:5555"
     command: /start-flower

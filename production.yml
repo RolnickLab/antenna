@@ -5,40 +5,53 @@
 version: "3"
 
 volumes:
-  production_postgres_data_backups: {}
+  ami_postgres_backups:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./backups/production/postgres
+      o: bind
 
 services:
   django: &django
     build:
       context: .
+      # This is the most important setting to test the production configuration of Django.
       dockerfile: ./compose/production/django/Dockerfile
-
-    image: ami_production_django
+    image: insectai/ami_backend
     depends_on:
       - redis
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
-    command: /start
+    volumes:
+      - ./config:/app/config
     ports:
-      - "5000:5000"
+      - "5001:5000"
+    command: /start
 
   redis:
     image: redis:6
+    container_name: ami_redis
 
   celeryworker:
     <<: *django
-    image: ami_production_celeryworker
+    container_name: ami_celeryworker
+    scale: 1
+    ports: []
     command: /start-celeryworker
 
   celerybeat:
     <<: *django
-    image: ami_production_celerybeat
+    container_name: ami_celerybeat
+    ports: []
     command: /start-celerybeat
 
   flower:
     <<: *django
-    image: ami_production_flower
+    container_name: ami_flower
+    ports:
+      - "5550:5555"
     command: /start-flower
 
   awscli:
@@ -48,4 +61,4 @@ services:
     env_file:
       - ./.envs/.production/.django
     volumes:
-      - production_postgres_data_backups:/backups:z
+      - ami_postgres_backups:/backups:z
