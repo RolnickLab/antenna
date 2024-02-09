@@ -93,7 +93,7 @@ STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3.S3Storage",
         "OPTIONS": {
-            "location": "media",
+            "location": "uploads",
             "file_overwrite": False,
         },
     },
@@ -107,8 +107,8 @@ STORAGES = {
 }
 # MEDIA
 # ------------------------------------------------------------------------------
-MEDIA_URL = f"https://{aws_s3_domain}/media/"
-STATIC_URL = f"https://{aws_s3_domain}/static/"
+MEDIA_URL = f"https://{aws_s3_domain}/uploads/"  # noqa
+STATIC_URL = f"https://{aws_s3_domain}/static/"  # noqa
 
 COLLECTFAST_STRATEGY = "collectfast.strategies.boto3.Boto3Strategy"
 
