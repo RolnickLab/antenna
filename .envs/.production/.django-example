@@ -1,5 +1,7 @@
 # General
 # ------------------------------------------------------------------------------
+# DJANGO_READ_DOT_ENV_FILE=True
+
 DJANGO_SECURE_SSL_REDIRECT=True
 USE_DOCKER="yes"
 DJANGO_SETTINGS_MODULE="config.settings.production"
@@ -39,3 +41,12 @@ DJANGO_AWS_STORAGE_BUCKET_NAME=
 # Sentry
 SENTRY_DSN=
 # DJANGO_SENTRY_LOG_LEVEL=1
+
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=True
+# django-allauth
+# ------------------------------------------------------------------------------
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=True
+
+# Gunicorn
+# ------------------------------------------------------------------------------
+WEB_CONCURRENCY=4
