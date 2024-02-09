@@ -89,5 +89,6 @@ pytest-django==4.5.2  # https://github.com/pytest-dev/pytest-django
 # @TODO move to Python Poetry or pyproject.toml for dependencies
 # ------------------------------------------------------------------------------
 
+newrelic==9.6.0
 gunicorn==20.1.0  # https://github.com/benoitc/gunicorn
 # psycopg[c]==3.1.9  # https://github.com/psycopg/psycopg
