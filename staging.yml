@@ -43,7 +43,6 @@ services:
       dockerfile: ./compose/production/postgres/Dockerfile
     # Share the local Postgres image with the staging configuration.
     # Production uses an external Postgres service.
-    image: ami_local_postgres
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
       - ami_local_postgres_data_backups:/backups
@@ -56,20 +55,17 @@ services:
 
   celeryworker:
     <<: *django
-    image: ami_staging_celeryworker
     scale: 1
     ports: []
     command: /start-celeryworker
 
   celerybeat:
     <<: *django
-    image: ami_staging_celerybeat
     ports: []
     command: /start-celerybeat
 
   flower:
     <<: *django
-    image: ami_staging_flower
     ports:
       - "5550:5555"
     command: /start-flower
