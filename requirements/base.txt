@@ -1,5 +1,5 @@
 python-slugify==8.0.1  # https://github.com/un33k/python-slugify
-Pillow==9.5.0  # https://github.com/python-pillow/Pillow
+Pillow==10.2.0  # https://github.com/python-pillow/Pillow
 argon2-cffi==21.3.0  # https://github.com/hynek/argon2_cffi
 whitenoise==6.5.0  # https://github.com/evansd/whitenoise
 redis==4.6.0  # https://github.com/redis/redis-py
@@ -18,7 +18,7 @@ sentry-sdk==1.40.0  # https://github.com/getsentry/sentry-python
 
 # Django
 # ------------------------------------------------------------------------------
-django==4.2.2  # pyup: < 5.0  # https://www.djangoproject.com/
+django==4.2.10  # pyup: < 5.0  # https://www.djangoproject.com/
 django-environ==0.10.0  # https://github.com/joke2k/django-environ
 django-model-utils==4.3.1  # https://github.com/jazzband/django-model-utils
 # django-allauth==0.54.0  # https://github.com/pennersr/django-allauth
