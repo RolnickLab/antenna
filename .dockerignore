@@ -10,6 +10,7 @@
 venv
 .git
 ui
+backups
 .env
 .envs
 .envs/*

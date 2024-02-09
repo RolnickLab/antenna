@@ -23,7 +23,7 @@ services:
       # This is the most important setting to test the production configuration of Django.
       dockerfile: ./compose/production/django/Dockerfile
 
-    image: insectai/ami_api
+    image: insectai/ami_backend
     depends_on:
       - postgres
       - redis
