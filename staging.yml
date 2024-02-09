@@ -4,7 +4,7 @@
 #
 # 1. The database is a service in the Docker Compose configuration rather than external as in production.
 # 2. Redis is a service in the Docker Compose configuration rather than external as in production.
-# 3. Port 8000 is exposed for the Django application.
+# 3. Port 5001 is exposed for the Django application.
 version: "3"
 
 volumes:
@@ -23,7 +23,7 @@ services:
       # This is the most important setting to test the production configuration of Django.
       dockerfile: ./compose/production/django/Dockerfile
 
-    image: ami_staging_django
+    image: insectai/ami_api
     depends_on:
       - postgres
       - redis
@@ -33,7 +33,7 @@ services:
     volumes:
       - ./config:/app/config
     ports:
-      - "5000:5000"
+      - "5001:5000"
     command: /start
 
   postgres:
@@ -49,7 +49,6 @@ services:
       - ami_local_postgres_data_backups:/backups
     env_file:
       - ./.envs/.local/.postgres
-    restart: always
 
   redis:
     image: redis:6
