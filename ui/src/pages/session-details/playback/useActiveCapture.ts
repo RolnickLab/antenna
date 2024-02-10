@@ -13,7 +13,7 @@ export const useActiveCaptureId = () => {
   const setActiveCaptureId = (captureId: string) => {
     searchParams.delete(SEARCH_PARAM_KEY)
     searchParams.set(SEARCH_PARAM_KEY, captureId)
-    setSearchParams(searchParams)
+    setSearchParams(searchParams, { replace: true })
   }
 
   return { activeCaptureId, setActiveCaptureId }
