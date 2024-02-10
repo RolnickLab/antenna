@@ -18,16 +18,19 @@ import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './jobs-columns'
 import styles from './jobs.module.scss'
+import { UserPermission } from 'utils/user/types'
 
 export const Jobs = () => {
   const { projectId, id } = useParams()
   const { pagination, setPage } = usePagination()
   const [sort, setSort] = useState<TableSortSettings>()
-  const { jobs, total, isLoading, isFetching, error } = useJobs({
-    projectId,
-    pagination,
-    sort,
-  })
+  const { jobs, userPermissions, total, isLoading, isFetching, error } =
+    useJobs({
+      projectId,
+      pagination,
+      sort,
+    })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
     return <Error />
@@ -55,7 +58,11 @@ export const Jobs = () => {
           setPage={setPage}
         />
       ) : null}
-      {!isLoading && id ? <JobDetailsDialog id={id} /> : <NewJobDialog />}
+      {!isLoading && id ? (
+        <JobDetailsDialog id={id} />
+      ) : canCreate ? (
+        <NewJobDialog />
+      ) : null}
     </>
   )
 }
