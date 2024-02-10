@@ -29,10 +29,12 @@ services:
     ports:
       - "5001:5000"
     command: /start
+    restart: always
 
   redis:
     image: redis:6
     container_name: ami_redis
+    restart: always
 
   celeryworker:
     <<: *django
@@ -40,12 +42,14 @@ services:
     scale: 1
     ports: []
     command: /start-celeryworker
+    restart: always
 
   celerybeat:
     <<: *django
     container_name: ami_celerybeat
     ports: []
     command: /start-celerybeat
+    restart: always
 
   flower:
     <<: *django
@@ -53,6 +57,7 @@ services:
     ports:
       - "5550:5555"
     command: /start-flower
+    restart: always
 
   awscli:
     build:
