@@ -30,9 +30,14 @@ export const ProcessNow = ({
     )
   }
 
+  const tooltipContent = capture.canUpdate
+    ? translate(STRING.MESSAGE_PROCESS_NOW_TOOLTIP)
+    : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
+
   return (
-    <Tooltip content={translate(STRING.MESSAGE_PROCESS_NOW_TOOLTIP)}>
+    <Tooltip content={tooltipContent}>
       <Button
+        disabled={!capture.canUpdate}
         icon={icon}
         label={translate(STRING.PROCESS_NOW)}
         loading={isLoading}

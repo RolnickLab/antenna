@@ -1,3 +1,4 @@
+import { UserPermission } from 'utils/user/types'
 import { Capture, ServerCapture } from './capture'
 import { Job, JobStatus } from './job'
 
@@ -12,6 +13,10 @@ export class CaptureDetails extends Capture {
     if (this._capture.jobs) {
       this._jobs = this._capture.jobs.map((job: any) => new Job(job))
     }
+  }
+
+  get canUpdate(): boolean {
+    return this._capture.user_permissions.includes(UserPermission.Update)
   }
 
   get hasJobInProgress(): boolean {
