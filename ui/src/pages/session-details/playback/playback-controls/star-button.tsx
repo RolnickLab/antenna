@@ -20,12 +20,17 @@ export const StarButton = ({
   const isStarred = capture?.isStarred ?? false
   const { starCapture, isLoading } = useStarCapture(captureId, isStarred)
 
+  const tooltipContent = capture?.canUpdate
+    ? isStarred
+      ? translate(STRING.STARRED)
+      : translate(STRING.STAR)
+    : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
+
   return (
-    <Tooltip
-      content={isStarred ? translate(STRING.STARRED) : translate(STRING.STAR)}
-    >
+    <Tooltip content={tooltipContent}>
       <IconButton
         icon={isStarred ? IconType.HeartFilled : IconType.Heart}
+        disabled={!capture?.canUpdate}
         loading={isLoading || captureFetching}
         theme={IconButtonTheme.Neutral}
         onClick={() => starCapture()}
