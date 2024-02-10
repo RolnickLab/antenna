@@ -33,11 +33,19 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       },
       renderCell: (item: Occurrence, rowIndex: number) => {
         const isOddRow = rowIndex % 2 == 0
+        const detailsRoute = getAppRoute({
+          to: APP_ROUTES.OCCURRENCE_DETAILS({
+            projectId,
+            occurrenceId: item.id,
+          }),
+          keepSearchParams: true,
+        })
 
         return (
           <ImageTableCell
             images={item.images}
             theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+            to={detailsRoute}
           />
         )
       },

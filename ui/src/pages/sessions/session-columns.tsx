@@ -24,10 +24,12 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
       },
       renderCell: (item: Session, rowIndex: number) => {
         const isOddRow = rowIndex % 2 == 0
+        const detailsRoute = APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })
 
         return (
           <ImageTableCell
             images={item.exampleCaptures}
+            to={detailsRoute}
             theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
           />
         )
