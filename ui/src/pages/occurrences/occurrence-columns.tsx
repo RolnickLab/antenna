@@ -81,7 +81,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       name: translate(STRING.FIELD_LABEL_SESSION),
       sortField: 'event',
       renderCell: (item: Occurrence) => (
-        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.sessionId })}>
           <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
         </Link>
       ),
