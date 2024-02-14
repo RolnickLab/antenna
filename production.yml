@@ -4,14 +4,6 @@
 # but the Django container will not expose its port to the host (there will be more than one container).
 version: "3"
 
-volumes:
-  ami_postgres_backups:
-    driver: local
-    driver_opts:
-      type: none
-      device: ./backups/production/postgres
-      o: bind
-
 services:
   django: &django
     build:
@@ -66,4 +58,4 @@ services:
     env_file:
       - ./.envs/.production/.django
     volumes:
-      - ami_postgres_backups:/backups:z
+      - ./backups/production/postgres:/backups:z

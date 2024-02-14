@@ -9,12 +9,6 @@ version: "3"
 
 volumes:
   ami_local_postgres_data: {}
-  ami_local_postgres_data_backups:
-    driver: local
-    driver_opts:
-      type: none
-      device: ./backups/local/postgres
-      o: bind
 
 services:
   django: &django
@@ -45,7 +39,7 @@ services:
     # Production uses an external Postgres service.
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
-      - ami_local_postgres_data_backups:/backups
+      - ./backups/local/postgres:/backups
     env_file:
       - ./.envs/.local/.postgres
 
