@@ -28,7 +28,7 @@ CELERY_FLOWER_PASSWORD=
 SENDGRID_API_KEY=
 
 # Newrelic
-NEW_RELIC_CONFIG_FILE=newrelic.ini
+NEW_RELIC_CONFIG_FILE=/app/config/newrelic.ini
 NEW_RELIC_ENVIRONMENT=development
 
 # Storage
