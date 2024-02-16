@@ -6,7 +6,7 @@ import { CapturePicker } from './capture-picker/capture-picker'
 import { Frame } from './frame/frame'
 import { PlaybackControls } from './playback-controls/playback-controls'
 import styles from './playback.module.scss'
-import { useActiveCapture } from './useActiveCapture'
+import { useActiveCapture, useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const { threshold } = useThreshold()
@@ -21,6 +21,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   } = useInfiniteCaptures(session.id, session.captureOffset, threshold)
   const { activeCapture, setActiveCapture } = useActiveCapture(captures)
   const [showOverlay, setShowOverlay] = useState(false)
+  const { activeCaptureId } = useActiveCaptureId()
 
   if (!session.firstCapture) {
     return null
@@ -41,7 +42,9 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             showOverlay={showOverlay}
           />
         </div>
-        <PlaybackControls />
+        {activeCaptureId && (
+          <PlaybackControls activeCaptureId={activeCaptureId} />
+        )}
       </div>
 
       <div className={styles.capturePicker}>

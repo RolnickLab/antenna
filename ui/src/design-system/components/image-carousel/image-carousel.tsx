@@ -5,58 +5,66 @@ import {
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { useEffect, useRef, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
 import { getImageBoxStyles, getPlaceholderStyles } from './utils'
+import { Link } from 'react-router-dom'
 
 interface ImageCarouselProps {
+  autoPlay?: boolean
   images: {
     src: string
     alt?: string
   }[]
-  theme?: CarouselTheme
-  autoPlay?: boolean
   size?: {
     width: string | number
     ratio: number
   }
+  theme?: CarouselTheme
+  to?: string
 }
 
 export const ImageCarousel = ({
-  images,
-  theme = CarouselTheme.Default,
   autoPlay,
+  images,
   size,
+  theme = CarouselTheme.Default,
+  to,
 }: ImageCarouselProps) => {
   if (images.length <= 1) {
-    return <BasicImageCarousel image={images[0]} theme={theme} size={size} />
+    return (
+      <BasicImageCarousel image={images[0]} size={size} theme={theme} to={to} />
+    )
   }
 
   return (
     <MultiImageCarousel
-      images={images}
-      theme={theme}
       autoPlay={autoPlay}
+      images={images}
       size={size}
+      theme={theme}
+      to={to}
     />
   )
 }
 
 const BasicImageCarousel = ({
   image,
-  theme,
   size,
+  theme,
+  to,
 }: {
   image?: {
     src: string
     alt?: string
   }
-  theme: CarouselTheme
   size?: {
     width: string | number
     ratio: number
   }
+  theme: CarouselTheme
+  to?: string
 }) => (
   <div className={styles.container}>
     <div
@@ -66,17 +74,19 @@ const BasicImageCarousel = ({
       style={getImageBoxStyles(size?.width)}
     >
       <div style={getPlaceholderStyles(size?.ratio)} />
-      <div className={classNames(styles.slide, styles.visible)}>
-        {image ? (
-          <img src={image.src} alt={image.alt} className={styles.image} />
-        ) : (
-          <Icon
-            type={IconType.Photograph}
-            theme={IconTheme.Neutral}
-            size={16}
-          />
-        )}
-      </div>
+      <ConditionalLink to={to}>
+        <div className={classNames(styles.slide, styles.visible)}>
+          {image ? (
+            <img src={image.src} alt={image.alt} className={styles.image} />
+          ) : (
+            <Icon
+              type={IconType.Photograph}
+              theme={IconTheme.Neutral}
+              size={16}
+            />
+          )}
+        </div>
+      </ConditionalLink>
     </div>
   </div>
 )
@@ -84,10 +94,11 @@ const BasicImageCarousel = ({
 const DURATION = 10000 // Change image every 10 second
 
 const MultiImageCarousel = ({
-  images,
-  theme,
   autoPlay,
+  images,
   size,
+  theme,
+  to,
 }: ImageCarouselProps) => {
   const [paused, setPaused] = useState(false)
   const [slideIndex, setSlideIndex] = useState(0)
@@ -154,35 +165,41 @@ const MultiImageCarousel = ({
             onClick={() => showPrev(slideIndex)}
           />
         </div>
-        <div
-          className={classNames(styles.imageBox, {
-            [styles.light]: theme === CarouselTheme.Light,
-          })}
-          style={getImageBoxStyles(size?.width)}
-        >
-          <div style={getPlaceholderStyles(size?.ratio)} />
-          {images.map((image, index) => {
-            const render =
-              index === 0 || // Always render first slide
-              index === images.length - 1 || // Always render last image
-              Math.abs(index - slideIndex) <= 1 // Render nearby slides
+        <ConditionalLink to={to}>
+          <div
+            className={classNames(styles.imageBox, {
+              [styles.light]: theme === CarouselTheme.Light,
+            })}
+            style={getImageBoxStyles(size?.width)}
+          >
+            <div style={getPlaceholderStyles(size?.ratio)} />
+            {images.map((image, index) => {
+              const render =
+                index === 0 || // Always render first slide
+                index === images.length - 1 || // Always render last image
+                Math.abs(index - slideIndex) <= 1 // Render nearby slides
 
-            if (!render) {
-              return
-            }
+              if (!render) {
+                return
+              }
 
-            return (
-              <div
-                key={index}
-                className={classNames(styles.slide, {
-                  [styles.visible]: index === slideIndex,
-                })}
-              >
-                <img src={image.src} alt={image.alt} className={styles.image} />
-              </div>
-            )
-          })}
-        </div>
+              return (
+                <div
+                  key={index}
+                  className={classNames(styles.slide, {
+                    [styles.visible]: index === slideIndex,
+                  })}
+                >
+                  <img
+                    src={image.src}
+                    alt={image.alt}
+                    className={styles.image}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </ConditionalLink>
         <div
           className={classNames(styles.control, {
             [styles.visible]: paused,
@@ -210,4 +227,18 @@ const MultiImageCarousel = ({
       </span>
     </div>
   )
+}
+
+const ConditionalLink = ({
+  to,
+  children,
+}: {
+  to?: string
+  children: ReactNode
+}) => {
+  if (!to) {
+    return <>{children}</>
+  }
+
+  return <Link to={to}>{children}</Link>
 }
