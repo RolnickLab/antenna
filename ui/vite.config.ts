@@ -30,7 +30,7 @@ export default defineConfig({
       '/api': {
         // target: 'https://api.dev.insectai.org',
         // target: 'http://localhost:5001',
-        target: 'https://api-staging.dev.insectai.org',
+        target: 'https://api.beluga.insectai.org',
         changeOrigin: true,
       },
     },
