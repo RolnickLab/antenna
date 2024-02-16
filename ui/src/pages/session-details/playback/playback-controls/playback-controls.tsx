@@ -10,13 +10,15 @@ import { useState } from 'react'
 import { useThreshold } from 'utils/threshold/thresholdContext'
 import { CaptureInfo } from '../capture-info/capture-info'
 import { CaptureJob } from '../capture-job/capture-job'
-import { useActiveCaptureId } from '../useActiveCapture'
 import { PipelinesPicker } from './pipelines-picker'
 import styles from './playback-controls.module.scss'
 import { StarButton } from './star-button'
 
-export const PlaybackControls = () => {
-  const { activeCaptureId } = useActiveCaptureId()
+export const PlaybackControls = ({
+  activeCaptureId,
+}: {
+  activeCaptureId: string
+}) => {
   const { capture, isFetching } = useCaptureDetails(activeCaptureId as string)
   const { defaultThreshold, threshold, setThreshold } = useThreshold()
   const [showDetails, setShowDetails] = useState(false)

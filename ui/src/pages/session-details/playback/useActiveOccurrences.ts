@@ -12,7 +12,7 @@ export const useActiveOccurrences = () => {
     (occurrences: string[]) => {
       searchParams.delete(SEARCH_PARAM_KEY)
       occurrences.forEach((o) => searchParams.append(SEARCH_PARAM_KEY, o))
-      setSearchParams(searchParams)
+      setSearchParams(searchParams, { replace: true })
     },
     [searchParams, setSearchParams]
   )
