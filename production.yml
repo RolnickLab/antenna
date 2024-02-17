@@ -20,6 +20,9 @@ services:
       - ./config:/app/config
     ports:
       - "5001:5000"
+    extra_hosts:
+      - "db.host.internal:172.16.104.50"
+      # - "host.docker.internal:host-gateway"
     command: /start
     restart: always
 
