@@ -1,7 +1,7 @@
 FROM garland/aws-cli-docker:1.16.140
 
 COPY ./compose/production/aws/maintenance /usr/local/bin/maintenance
-COPY ./compose/production/postgres/maintenance/_sourced /usr/local/bin/maintenance/_sourced
+COPY ./compose/local/postgres/maintenance/_sourced /usr/local/bin/maintenance/_sourced
 
 RUN chmod +x /usr/local/bin/maintenance/*
 
