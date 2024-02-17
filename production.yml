@@ -24,31 +24,28 @@ services:
       - "db.host.internal:172.16.104.50"
       # - "host.docker.internal:host-gateway"
     command: /start
+    scale: 1  # Can't scale until the load balancer is within the compose config
     restart: always
 
   redis:
     image: redis:6
-    container_name: ami_redis
     restart: always
 
   celeryworker:
     <<: *django
-    container_name: ami_celeryworker
-    scale: 1
+    scale: 2
     ports: []
     command: /start-celeryworker
     restart: always
 
   celerybeat:
     <<: *django
-    container_name: ami_celerybeat
     ports: []
     command: /start-celerybeat
     restart: always
 
   flower:
     <<: *django
-    container_name: ami_flower
     ports:
       - "5550:5555"
     command: /start-flower
