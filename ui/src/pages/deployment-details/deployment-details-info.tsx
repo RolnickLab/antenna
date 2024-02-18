@@ -59,6 +59,11 @@ export const DeploymentDetailsInfo = ({
               value={deployment.device?.name}
             />
           </FormRow>
+          {deployment.image && (
+            <div className={styles.image}>
+              <img src={deployment.image} alt="" />
+            </div>
+          )}
         </FormSection>
 
         <FormSection title={translate(STRING.FIELD_LABEL_LOCATION)}>
@@ -86,12 +91,14 @@ export const DeploymentDetailsInfo = ({
               value={deployment.numImages}
             />
           </FormRow>
-          <div className={styles.section}>
-            <ImageCarousel
-              images={deployment.exampleCaptures}
-              size={{ width: '100%', ratio: 16 / 9 }}
-            />
-          </div>
+          {deployment.exampleCaptures.length > 0 && (
+            <div className={styles.section}>
+              <ImageCarousel
+                images={deployment.exampleCaptures}
+                size={{ width: '100%', ratio: 16 / 9 }}
+              />
+            </div>
+          )}
         </FormSection>
       </div>
     </>
