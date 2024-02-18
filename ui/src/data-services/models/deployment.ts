@@ -27,6 +27,10 @@ export class Deployment {
     return `${this._deployment.id}`
   }
 
+  get image(): string | undefined {
+    return this._deployment.image ? `${this._deployment.image}` : undefined
+  }
+
   get latitude(): number {
     return this._deployment.latitude
   }

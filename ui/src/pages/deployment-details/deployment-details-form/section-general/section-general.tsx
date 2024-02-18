@@ -6,8 +6,12 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { API_ROUTES } from 'data-services/constants'
-import { DeploymentFieldValues } from 'data-services/models/deployment-details'
+import {
+  DeploymentDetails,
+  DeploymentFieldValues,
+} from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { ImageUpload } from 'design-system/components/image-upload/image-upload'
 import { InputContent } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { EntitiesPicker } from 'pages/overview/entities/entities-picker'
@@ -22,7 +26,7 @@ import { Section } from '../types'
 
 type SectionGeneralFieldValues = Pick<
   DeploymentFieldValues,
-  'name' | 'description' | 'siteId' | 'deviceId'
+  'name' | 'description' | 'siteId' | 'deviceId' | 'image'
 >
 
 const DEFAULT_VALUES: SectionGeneralFieldValues = {
@@ -30,7 +34,13 @@ const DEFAULT_VALUES: SectionGeneralFieldValues = {
   name: '',
 }
 
-export const SectionGeneral = ({ onNext }: { onNext: () => void }) => {
+export const SectionGeneral = ({
+  deployment,
+  onNext,
+}: {
+  deployment: DeploymentDetails
+  onNext: () => void
+}) => {
   const { formSectionRef, formState, setFormSectionValues } =
     useContext(FormContext)
 
@@ -89,6 +99,27 @@ export const SectionGeneral = ({ onNext }: { onNext: () => void }) => {
                   collection={API_ROUTES.DEVICES}
                   value={field.value}
                   onValueChange={field.onChange}
+                />
+              </InputContent>
+            )}
+          />
+        </FormRow>
+        <FormRow>
+          <FormController
+            name="image"
+            control={control}
+            config={config.image}
+            render={({ field, fieldState }) => (
+              <InputContent
+                description={config[field.name].description}
+                label={config[field.name].label}
+                error={fieldState.error?.message}
+              >
+                <ImageUpload
+                  currentImage={deployment.image}
+                  file={field.value}
+                  name="image"
+                  onChange={field.onChange}
                 />
               </InputContent>
             )}

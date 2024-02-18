@@ -170,7 +170,10 @@ const FormContent = ({ deployment }: { deployment: DeploymentDetails }) => {
   switch (currentSection) {
     case Section.General:
       return (
-        <SectionGeneral onNext={() => setCurrentSection(Section.Location)} />
+        <SectionGeneral
+          deployment={deployment}
+          onNext={() => setCurrentSection(Section.Location)}
+        />
       )
     case Section.Location:
       return (

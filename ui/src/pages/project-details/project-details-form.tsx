@@ -10,12 +10,12 @@ import { FormConfig } from 'components/form/types'
 import { Project } from 'data-services/models/project'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { ImageUpload } from 'design-system/components/image-upload/image-upload'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { bytesToMB } from 'utils/bytesToMB'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
-import { ProjectImageUpload } from './project-image-upload/project-image-upload'
 
 const IMAGE_MAX_SIZE = 1024 * 1024 // 1MB
 
@@ -118,9 +118,10 @@ export const ProjectDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <ProjectImageUpload
+                <ImageUpload
+                  currentImage={project.image}
                   file={field.value}
-                  project={project}
+                  name="image"
                   onChange={field.onChange}
                 />
               </InputContent>
