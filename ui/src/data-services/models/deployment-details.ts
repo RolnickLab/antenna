@@ -7,12 +7,13 @@ export type ServerDeploymentDetails = ServerDeployment & any // TODO: Update thi
 export interface DeploymentFieldValues {
   dataSourceId?: string
   description: string
-  name: string
-  siteId?: string
   deviceId?: string
+  name: string
+  image?: File | null
   latitude: number
   longitude: number
   projectId?: string
+  siteId?: string
 }
 
 export class DeploymentDetails extends Deployment {

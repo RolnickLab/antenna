@@ -1,17 +1,18 @@
-import { Project } from 'data-services/models/project'
 import { Button } from 'design-system/components/button/button'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
 import { STRING, translate } from 'utils/language'
-import styles from './project-image-upload.module.scss'
+import styles from './image-upload.module.scss'
 
-export const ProjectImageUpload = ({
+export const ImageUpload = ({
+  currentImage,
   file,
-  project,
+  name,
   onChange,
 }: {
+  currentImage?: string
   file?: File | null
-  project: Project
+  name: string
   onChange: (file: File | null) => void
 }) => {
   const imageUrl = (() => {
@@ -21,7 +22,7 @@ export const ProjectImageUpload = ({
     if (file === null) {
       return undefined
     }
-    return project.image
+    return currentImage
   })()
 
   return (
@@ -37,7 +38,7 @@ export const ProjectImageUpload = ({
       </div>
       <FileInput
         accept={FileInputAccept.Images}
-        name="project-image"
+        name={name}
         renderInput={(props) => (
           <Button
             {...props}
