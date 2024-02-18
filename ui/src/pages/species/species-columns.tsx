@@ -24,11 +24,16 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     },
     renderCell: (item: Species, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
+      const detailsRoute = getAppRoute({
+        to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+        keepSearchParams: true,
+      })
 
       return (
         <ImageTableCell
           images={item.images}
           theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          to={detailsRoute}
         />
       )
     },

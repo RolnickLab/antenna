@@ -3,12 +3,13 @@ import { ImageCellTheme } from '../types'
 import styles from './image-table-cell.module.scss'
 
 interface ImageTableCellProps {
+  autoPlay?: boolean
   images: {
     src: string
     alt?: string
   }[]
   theme?: ImageCellTheme
-  autoPlay?: boolean
+  to?: string
 }
 
 export const ImageTableCell = (props: ImageTableCellProps) => (

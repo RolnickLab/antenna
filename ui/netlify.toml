@@ -1,7 +1,7 @@
 [[redirects]]
 # Serve the api docs from /api/
 from = "/api/"
-to = "https://api.dev.insectai.org/docs/"
+to = "https://api.beluga.insectai.org/docs/"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -9,7 +9,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external api endpints from /api/*
 from = "/api/*"
-to = "https://api.dev.insectai.org/api/:splat"
+to = "https://api.beluga.insectai.org/api/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -17,7 +17,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external images from from /static/images/*
 from = "/static/captures/*"
-to = "https://api.dev.insectai.org/static/captures/:splat"
+to = "https://api.beluga.insectai.org/static/captures/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -25,7 +25,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external images from from /static/images/*
 from = "/static/crops/*"
-to = "https://api.dev.insectai.org/static/crops/:splat"
+to = "https://api.beluga.insectai.org/static/crops/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }

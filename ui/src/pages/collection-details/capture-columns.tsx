@@ -20,24 +20,22 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     name: translate(STRING.FIELD_LABEL_THUMBNAIL),
     renderCell: (item: Capture, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
+      const detailsRoute = getAppRoute({
+        to: APP_ROUTES.SESSION_DETAILS({
+          projectId: projectId,
+          sessionId: item.sessionId,
+        }),
+        filters: {
+          capture: item.id,
+        },
+      })
 
       return (
-        <Link
-          to={getAppRoute({
-            to: APP_ROUTES.SESSION_DETAILS({
-              projectId: projectId,
-              sessionId: item.sessionId,
-            }),
-            filters: {
-              capture: item.id,
-            },
-          })}
-        >
-          <ImageTableCell
-            images={[{ src: item.src }]}
-            theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
-          />
-        </Link>
+        <ImageTableCell
+          images={[{ src: item.src }]}
+          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          to={detailsRoute}
+        />
       )
     },
   },
