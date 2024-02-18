@@ -1,0 +1,55 @@
+# General
+# ------------------------------------------------------------------------------
+# DJANGO_READ_DOT_ENV_FILE=True
+
+DJANGO_SECURE_SSL_REDIRECT=True
+USE_DOCKER="yes"
+DJANGO_SETTINGS_MODULE="config.settings.production"
+
+# Security
+# https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
+DJANGO_SECRET_KEY=
+# https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
+DJANGO_ALLOWED_HOSTS = "host.com,staging.host.com"
+DJANGO_ADMIN_URL="sdgfdahgdsdFjsf/"
+
+# Redis
+# ------------------------------------------------------------------------------
+REDIS_URL=redis://redis:6379/0
+
+# Celery
+# ------------------------------------------------------------------------------
+
+# Flower
+CELERY_FLOWER_USER=
+CELERY_FLOWER_PASSWORD=
+
+# Sendgrid
+SENDGRID_API_KEY=
+
+# Newrelic
+NEW_RELIC_CONFIG_FILE=/app/config/newrelic.ini
+NEW_RELIC_ENVIRONMENT=development
+
+# Storage
+DJANGO_AWS_S3_CUSTOM_DOMAIN=
+DJANGO_AWS_S3_ENDPOINT_URL=
+DJANGO_AWS_ACCESS_KEY_ID=
+DJANGO_AWS_SECRET_ACCESS_KEY=
+DJANGO_AWS_STORAGE_BUCKET_NAME=
+
+# Sentry
+SENTRY_DSN=
+# DJANGO_SENTRY_LOG_LEVEL=1
+SENTRY_ENVIRONMENT=development
+SENTRY_TRACES_SAMPLE_RATE=1.0  # Set to max for profiling
+SENTRY_PROFILES_SAMPLE_RATE=1.0  # Set to max for profiling
+
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=True
+# django-allauth
+# ------------------------------------------------------------------------------
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=True
+
+# Gunicorn
+# ------------------------------------------------------------------------------
+WEB_CONCURRENCY=4

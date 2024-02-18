@@ -1,68 +1,55 @@
+# This is a transitional production configuration.
+# Redis and celery will be external services in the final production configuration.
+# Traffic or NGINX may or may not be used in the final production configuration
+# but the Django container will not expose its port to the host (there will be more than one container).
 version: "3"
-
-volumes:
-  production_postgres_data: {}
-  production_postgres_data_backups: {}
-  production_traefik: {}
 
 services:
   django: &django
     build:
       context: .
+      # This is the most important setting to test the production configuration of Django.
       dockerfile: ./compose/production/django/Dockerfile
-
-    image: ami_production_django
+    image: insectai/ami_backend
     depends_on:
-      - postgres
       - redis
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
-    command: /start
-
-  postgres:
-    build:
-      context: .
-      dockerfile: ./compose/production/postgres/Dockerfile
-    image: ami_production_postgres
     volumes:
-      - production_postgres_data:/var/lib/postgresql/data
-      - production_postgres_data_backups:/backups
-      - ./compose/production/postgres/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
-    env_file:
-      - ./.envs/.production/.postgres
-
-  traefik:
-    build:
-      context: .
-      dockerfile: ./compose/production/traefik/Dockerfile
-    image: ami_production_traefik
-    depends_on:
-      - django
-    volumes:
-      - production_traefik:/etc/traefik/acme
+      - ./config:/app/config
     ports:
-      - "0.0.0.0:80:80"
-      - "0.0.0.0:443:443"
-      - "0.0.0.0:5555:5555"
+      - "5001:5000"
+    extra_hosts:
+      - "db.host.internal:172.16.104.50"
+      # - "host.docker.internal:host-gateway"
+    command: /start
+    scale: 1  # Can't scale until the load balancer is within the compose config
+    restart: always
 
   redis:
     image: redis:6
+    restart: always
 
   celeryworker:
     <<: *django
-    image: ami_production_celeryworker
+    scale: 2
+    ports: []
     command: /start-celeryworker
+    restart: always
 
   celerybeat:
     <<: *django
-    image: ami_production_celerybeat
+    ports: []
     command: /start-celerybeat
+    restart: always
 
   flower:
     <<: *django
-    image: ami_production_flower
+    ports:
+      - "5550:5555"
     command: /start-flower
+    restart: always
 
   awscli:
     build:
@@ -71,4 +58,4 @@ services:
     env_file:
       - ./.envs/.production/.django
     volumes:
-      - production_postgres_data_backups:/backups:z
+      - ./backups/production/postgres:/backups:z

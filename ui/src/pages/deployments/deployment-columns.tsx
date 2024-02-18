@@ -1,7 +1,9 @@
 import { Deployment } from 'data-services/models/deployment'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
+  ImageCellTheme,
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
@@ -15,6 +17,26 @@ import styles from './deployments.module.scss'
 export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   projectId: string
 ) => [
+  {
+    id: 'snapshot',
+    sortField: 'createdAt',
+    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    renderCell: (item: Deployment, rowIndex: number) => {
+      const isOddRow = rowIndex % 2 == 0
+      const detailsRoute = getAppRoute({
+        to: APP_ROUTES.DEPLOYMENT_DETAILS({ projectId, deploymentId: item.id }),
+        keepSearchParams: true,
+      })
+
+      return (
+        <ImageTableCell
+          images={item.image ? [{ src: item.image }] : []}
+          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          to={detailsRoute}
+        />
+      )
+    },
+  },
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),

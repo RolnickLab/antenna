@@ -4,18 +4,7 @@ import { API_ROUTES, API_URL } from 'data-services/constants'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
-
-const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
-  data_source_id: fieldValues.dataSourceId,
-  device_id: fieldValues.deviceId,
-  events: [],
-  name: fieldValues.name,
-  latitude: fieldValues.latitude,
-  longitude: fieldValues.longitude,
-  occurrences: [],
-  project_id: fieldValues.projectId,
-  research_site_id: fieldValues.siteId,
-})
+import { convertToFormData } from './utils'
 
 export const useCreateDeployment = () => {
   const { user } = useUser()
@@ -25,9 +14,12 @@ export const useCreateDeployment = () => {
     mutationFn: (fieldValues: DeploymentFieldValues) =>
       axios.post(
         `${API_URL}/${API_ROUTES.DEPLOYMENTS}/`,
-        convertToServerFieldValues(fieldValues),
+        convertToFormData(fieldValues),
         {
-          headers: getAuthHeader(user),
+          headers: {
+            ...getAuthHeader(user),
+            'Content-Type': 'multipart/form-data',
+          },
         }
       ),
     onSuccess: () => {

@@ -4,16 +4,7 @@ import { API_ROUTES, API_URL } from 'data-services/constants'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
-
-const convertToServerFieldValues = (fieldValues: DeploymentFieldValues) => ({
-  data_source_id: fieldValues.dataSourceId,
-  description: fieldValues.description,
-  device_id: fieldValues.deviceId,
-  name: fieldValues.name,
-  latitude: fieldValues.latitude,
-  longitude: fieldValues.longitude,
-  research_site_id: fieldValues.siteId,
-})
+import { convertToFormData } from './utils'
 
 export const useUpdateDeployment = (id: string) => {
   const { user } = useUser()
@@ -23,9 +14,12 @@ export const useUpdateDeployment = (id: string) => {
     mutationFn: (fieldValues: DeploymentFieldValues) =>
       axios.patch(
         `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}/`,
-        convertToServerFieldValues(fieldValues),
+        convertToFormData(fieldValues),
         {
-          headers: getAuthHeader(user),
+          headers: {
+            ...getAuthHeader(user),
+            'Content-Type': 'multipart/form-data',
+          },
         }
       ),
     onSuccess: () => {

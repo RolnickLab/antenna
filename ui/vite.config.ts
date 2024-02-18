@@ -28,7 +28,9 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'https://api.dev.insectai.org',
+        // target: 'https://api.dev.insectai.org',
+        // target: 'http://localhost:5001',
+        target: 'https://api.beluga.insectai.org',
         changeOrigin: true,
       },
     },

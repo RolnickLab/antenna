@@ -113,6 +113,7 @@ export enum STRING {
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS,
   MESSAGE_PASSWORD_FORMAT,
+  MESSAGE_PERMISSIONS_MISSING,
   MESSAGE_PROCESS_NOW_TOOLTIP,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
@@ -295,6 +296,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
+  [STRING.MESSAGE_PERMISSIONS_MISSING]:
+    'Permissions missing to perform the action',
   [STRING.MESSAGE_PROCESS_NOW_TOOLTIP]:
     'Process this single image with presets',
   [STRING.MESSAGE_RESULT_RANGE]:
