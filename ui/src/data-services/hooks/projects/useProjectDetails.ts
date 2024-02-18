@@ -6,7 +6,8 @@ import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 const convertServerRecord = (record: ServerProject) => new Project(record)
 
 export const useProjectDetails = (
-  projectId: string
+  projectId: string,
+  useInternalCache?: boolean
 ): {
   project?: Project
   isLoading: boolean
@@ -16,6 +17,7 @@ export const useProjectDetails = (
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<Project>({
     queryKey: [API_ROUTES.PROJECTS, projectId],
     url: `${API_URL}/${API_ROUTES.PROJECTS}/${projectId}/`,
+    staleTime: useInternalCache ? Infinity : undefined,
   })
 
   const project = useMemo(
