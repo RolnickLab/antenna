@@ -9,10 +9,10 @@
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
     "editor.codeActionsOnSave": {
-        "source.organizeImports": true,
-        "source.sortImports": true,
-        "source.fixAll.markdownlint": true,
-        "source.fixAll": true
+        "source.organizeImports": "explicit",
+        "source.sortImports": "explicit",
+        "source.fixAll.markdownlint": "explicit",
+        "source.fixAll": "explicit"
     },
     "files.trimTrailingWhitespace": true
 }

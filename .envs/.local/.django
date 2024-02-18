@@ -12,3 +12,7 @@ REDIS_URL=redis://redis:6379/0
 # Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
+
+# Monitoring
+NEW_RELIC_CONFIG_FILE=newrelic.ini
+NEW_RELIC_ENVIRONMENT=development

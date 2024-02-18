@@ -7,10 +7,11 @@
 .pre-commit-config.yaml
 .readthedocs.yml
 .travis.yml
-venv
 .git
 ui
+ami/media
 backups
+venv
 .env
 .envs
 .envs/*
