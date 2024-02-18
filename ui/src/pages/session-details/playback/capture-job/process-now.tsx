@@ -1,4 +1,5 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails } from 'data-services/models/capture-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
@@ -14,6 +15,7 @@ export const ProcessNow = ({
   pipelineId?: string
 }) => {
   const { projectId } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
   const { createJob, isLoading, isSuccess } = useCreateJob()
   const icon = isSuccess ? IconType.RadixCheck : undefined
   const disabled = !capture || capture.hasJobInProgress || !pipelineId
@@ -30,14 +32,14 @@ export const ProcessNow = ({
     )
   }
 
-  const tooltipContent = capture.canUpdate
+  const tooltipContent = project?.canUpdate
     ? translate(STRING.MESSAGE_PROCESS_NOW_TOOLTIP)
     : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
 
   return (
     <Tooltip content={tooltipContent}>
       <Button
-        disabled={!capture.canUpdate}
+        disabled={!project?.canUpdate}
         icon={icon}
         label={translate(STRING.PROCESS_NOW)}
         loading={isLoading}
