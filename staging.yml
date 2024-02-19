@@ -45,24 +45,20 @@ services:
 
   redis:
     image: redis:6
-    container_name: ami_staging_redis
 
   celeryworker:
     <<: *django
-    container_name: ami_staging_celeryworker
     scale: 1
     ports: []
     command: /start-celeryworker
 
   celerybeat:
     <<: *django
-    container_name: ami_staging_celerybeat
     ports: []
     command: /start-celerybeat
 
   flower:
     <<: *django
-    container_name: ami_staging_flower
     ports:
       - "5550:5555"
     command: /start-flower
