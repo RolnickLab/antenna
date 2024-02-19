@@ -89,7 +89,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     {
       id: 'date',
       name: translate(STRING.FIELD_LABEL_DATE),
-      sortField: 'first_appearance_time',
+      sortField: 'first_appearance_timestamp',
       renderCell: (item: Occurrence) => (
         <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
           <BasicTableCell value={item.dateLabel} />
@@ -129,6 +129,16 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       renderCell: (item: Occurrence) => (
         // This should always appear as a float with 2 decimal places, even if 1.00
         <BasicTableCell value={item.determinationScore.toFixed(2)} style={{ textAlign: 'right' }} />
+      ),
+    },
+    {
+      id: 'created_at',
+      name: translate(STRING.FIELD_LABEL_CREATED_AT),
+      sortField: 'created_at',
+      renderCell: (item: Occurrence) => (
+        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+          <BasicTableCell value={item.createdAtLabel} />
+        </Link>
       ),
     },
   ]

@@ -12,6 +12,7 @@ from rest_framework import exceptions as api_exceptions
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -75,6 +76,17 @@ logger = logging.getLogger(__name__)
 #     Typed with the help of ``django-stubs`` project.
 #     """
 #     return render(request, "main/index.html")
+
+
+def get_active_classification_threshold(request: Request) -> float:
+    # Look for a query param to filter by score
+    classification_threshold = request.query_params.get("classification_threshold")
+
+    if classification_threshold is not None:
+        classification_threshold = FloatField(required=False).clean(classification_threshold)
+    else:
+        classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
+    return classification_threshold
 
 
 class DefaultViewSetMixin:
@@ -434,29 +446,15 @@ class OccurrenceViewSet(DefaultViewSet):
     API endpoint that allows occurrences to be viewed or edited.
     """
 
-    queryset = (
-        Occurrence.objects.exclude(detections=None)
-        .exclude(event=None)  # These must be independent exclude calls
-        .annotate(
-            detections_count=models.Count("detections", distinct=True),
-            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
-            first_appearance_time=models.Min("detections__timestamp__time"),
-        )
-        .select_related(
-            "determination",
-            "deployment",
-            "event",
-        )
-        .prefetch_related("detections")
-        .order_by("-determination_score")
-        .exclude(first_appearance_time=None)  # This must come after annotations
-    )
+    queryset = Occurrence.objects.all()
+
     serializer_class = OccurrenceSerializer
     filterset_fields = ["event", "deployment", "determination", "project"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "event__start",
+        "first_appearance_timestamp",
         "first_appearance_time",
         "duration",
         "deployment",
@@ -464,6 +462,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "determination_score",
         "event",
         "detections_count",
+        "created_at",
     ]
 
     def get_serializer_class(self):
@@ -474,6 +473,33 @@ class OccurrenceViewSet(DefaultViewSet):
             return OccurrenceListSerializer
         else:
             return OccurrenceSerializer
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        qs = qs.select_related(
+            "determination",
+            "deployment",
+            "event",
+        )
+        if self.action == "list":
+            qs = (
+                qs.all()
+                .exclude(detections=None)
+                .exclude(event=None)
+                .filter(determination_score__gte=get_active_classification_threshold(self.request))
+                .annotate(
+                    detections_count=models.Count("detections", distinct=True),
+                    duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
+                    first_appearance_timestamp=models.Min("detections__timestamp"),
+                    first_appearance_time=models.Min("detections__timestamp__time"),
+                )
+                .exclude(first_appearance_timestamp=None)  # This must come after annotations
+                .order_by("-determination_score")
+            )
+        else:
+            qs = qs.prefetch_related("detections", "detections__source_image")
+
+        return qs
 
 
 class TaxonViewSet(DefaultViewSet):
@@ -577,16 +603,6 @@ class TaxonViewSet(DefaultViewSet):
 
         return queryset, filter_active
 
-    def get_active_classification_threshold(self):
-        # Look for a query param to filter by score
-        classification_threshold = self.request.query_params.get("classification_threshold")
-
-        if classification_threshold is not None:
-            classification_threshold = FloatField(required=False).clean(classification_threshold)
-        else:
-            classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
-        return classification_threshold
-
     def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
         """
         Filter taxa by their best determination score in occurrences.
@@ -596,7 +612,7 @@ class TaxonViewSet(DefaultViewSet):
 
         queryset = (
             queryset.annotate(best_determination_score=models.Max("occurrences__determination_score"))
-            .filter(best_determination_score__gte=self.get_active_classification_threshold())
+            .filter(best_determination_score__gte=get_active_classification_threshold(self.request))
             .distinct()
         )
 
@@ -622,7 +638,7 @@ class TaxonViewSet(DefaultViewSet):
                 Prefetch(
                     "occurrences",
                     queryset=Occurrence.objects.filter(
-                        determination_score__gte=self.get_active_classification_threshold(),
+                        determination_score__gte=get_active_classification_threshold(self.request),
                         event__isnull=False,
                     ),
                 )
@@ -631,8 +647,14 @@ class TaxonViewSet(DefaultViewSet):
             qs = self.filter_by_classification_threshold(qs)
 
             qs = qs.annotate(
-                occurrences_count=models.Count("occurrences", distinct=True),
-                # events_count=models.Count("occurrences__event", distinct=True),
+                occurrences_count=models.Count(
+                    "occurrences",
+                    filter=models.Q(
+                        occurrences__determination_score__gte=get_active_classification_threshold(self.request),
+                        occurrences__event__isnull=False,
+                    ),
+                    distinct=True,
+                ),
                 last_detected=models.Max("classifications__detection__timestamp"),
             )
         elif self.action == "list":

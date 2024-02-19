@@ -1495,6 +1495,13 @@ class Occurrence(BaseModel):
         if last:
             return last.source_image
 
+    def first_appearance_timestamp(self) -> datetime.datetime | None:
+        """
+        Return the timestamp of the first appearance.
+        ONLY if it has been added with a query annotation.
+        """
+        return None
+
     def first_appearance_time(self) -> datetime.time | None:
         """
         Return the time part only of the first appearance.
