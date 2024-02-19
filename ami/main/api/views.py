@@ -577,12 +577,7 @@ class TaxonViewSet(DefaultViewSet):
 
         return queryset, filter_active
 
-    def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
-        """
-        Filter taxa by their best determination score in occurrences.
-
-        This is only applicable to list queries that are not filtered by occurrence, project, deployment, or event.
-        """
+    def get_active_classification_threshold(self):
         # Look for a query param to filter by score
         classification_threshold = self.request.query_params.get("classification_threshold")
 
@@ -590,10 +585,18 @@ class TaxonViewSet(DefaultViewSet):
             classification_threshold = FloatField(required=False).clean(classification_threshold)
         else:
             classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
+        return classification_threshold
+
+    def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter taxa by their best determination score in occurrences.
+
+        This is only applicable to list queries that are not filtered by occurrence, project, deployment, or event.
+        """
 
         queryset = (
             queryset.annotate(best_determination_score=models.Max("occurrences__determination_score"))
-            .filter(best_determination_score__gte=classification_threshold)
+            .filter(best_determination_score__gte=self.get_active_classification_threshold())
             .distinct()
         )
 
@@ -614,10 +617,19 @@ class TaxonViewSet(DefaultViewSet):
 
         qs = qs.select_related("parent", "parent__parent")
 
+        if self.action == "retrieve":
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "occurrences",
+                    queryset=Occurrence.objects.filter(
+                        determination_score__gte=self.get_active_classification_threshold(),
+                        event__isnull=False,
+                    ),
+                )
+            )
         if filter_active:
             qs = self.filter_by_classification_threshold(qs)
 
-            qs = qs.prefetch_related("occurrences")
             qs = qs.annotate(
                 occurrences_count=models.Count("occurrences", distinct=True),
                 # events_count=models.Count("occurrences__event", distinct=True),
@@ -635,6 +647,12 @@ class TaxonViewSet(DefaultViewSet):
             )
 
         return qs
+
+    # Override the main detail view to include occurrences
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
 
 class ClassificationViewSet(DefaultViewSet):
