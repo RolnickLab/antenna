@@ -701,22 +701,24 @@ class SummaryView(APIView):
         Return counts of all models.
         """
         project_id = request.query_params.get("project")
+        confidence_threshold = get_active_classification_threshold(request)
         if project_id:
             project = Project.objects.get(id=project_id)
             data = {
                 "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
                 "deployments_count": Deployment.objects.filter(project=project).count(),
-                "events_count": Event.objects.filter(deployment__project=project).count(),
+                "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
-                "detections_count": Detection.objects.filter(occurrence__project=project).count(),
+                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
                 "occurrences_count": Occurrence.objects.filter(
                     project=project,
-                    determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                    determination_score__gte=confidence_threshold,
+                    event__isnull=False,
                 ).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
                 .filter(
                     occurrences_count__gt=0,
-                    occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                    occurrences__determination_score__gte=confidence_threshold,
                     occurrences__project=project,
                 )
                 .distinct()
@@ -726,12 +728,14 @@ class SummaryView(APIView):
             data = {
                 "projects_count": Project.objects.count(),
                 "deployments_count": Deployment.objects.count(),
-                "events_count": Event.objects.count(),
+                "events_count": Event.objects.filter(deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.count(),
-                "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.count(),
+                # "detections_count": Detection.objects.count(),
+                "occurrences_count": Occurrence.objects.filter(
+                    determination_score__gte=confidence_threshold, event__isnull=False
+                ).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
-                .filter(occurrences_count__gt=0)
+                .filter(occurrences_count__gt=0, occurrences__determination_score__gte=confidence_threshold)
                 .count(),
                 "last_updated": timezone.now(),
             }
