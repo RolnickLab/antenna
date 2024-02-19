@@ -176,6 +176,7 @@ class EventViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
+        qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             captures_count=models.Count("captures", distinct=True),
             duration=models.F("end") - models.F("start"),
