@@ -935,6 +935,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "event",
             "deployment",
             "first_appearance",
+            "first_appearance_timestamp",
             "first_appearance_time",
             "duration",
             "duration_label",
@@ -943,6 +944,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "created_at",
         ]
 
     def get_determination_details(self, obj: Occurrence):

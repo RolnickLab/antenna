@@ -12,6 +12,7 @@ from rest_framework import exceptions as api_exceptions
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -75,6 +76,17 @@ logger = logging.getLogger(__name__)
 #     Typed with the help of ``django-stubs`` project.
 #     """
 #     return render(request, "main/index.html")
+
+
+def get_active_classification_threshold(request: Request) -> float:
+    # Look for a query param to filter by score
+    classification_threshold = request.query_params.get("classification_threshold")
+
+    if classification_threshold is not None:
+        classification_threshold = FloatField(required=False).clean(classification_threshold)
+    else:
+        classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
+    return classification_threshold
 
 
 class DefaultViewSetMixin:
@@ -176,6 +188,7 @@ class EventViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
+        qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             captures_count=models.Count("captures", distinct=True),
             duration=models.F("end") - models.F("start"),
@@ -433,29 +446,15 @@ class OccurrenceViewSet(DefaultViewSet):
     API endpoint that allows occurrences to be viewed or edited.
     """
 
-    queryset = (
-        Occurrence.objects.exclude(detections=None)
-        .exclude(event=None)  # These must be independent exclude calls
-        .annotate(
-            detections_count=models.Count("detections", distinct=True),
-            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
-            first_appearance_time=models.Min("detections__timestamp__time"),
-        )
-        .select_related(
-            "determination",
-            "deployment",
-            "event",
-        )
-        .prefetch_related("detections")
-        .order_by("-determination_score")
-        .exclude(first_appearance_time=None)  # This must come after annotations
-    )
+    queryset = Occurrence.objects.all()
+
     serializer_class = OccurrenceSerializer
     filterset_fields = ["event", "deployment", "determination", "project"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "event__start",
+        "first_appearance_timestamp",
         "first_appearance_time",
         "duration",
         "deployment",
@@ -463,6 +462,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "determination_score",
         "event",
         "detections_count",
+        "created_at",
     ]
 
     def get_serializer_class(self):
@@ -473,6 +473,33 @@ class OccurrenceViewSet(DefaultViewSet):
             return OccurrenceListSerializer
         else:
             return OccurrenceSerializer
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        qs = qs.select_related(
+            "determination",
+            "deployment",
+            "event",
+        )
+        if self.action == "list":
+            qs = (
+                qs.all()
+                .exclude(detections=None)
+                .exclude(event=None)
+                .filter(determination_score__gte=get_active_classification_threshold(self.request))
+                .annotate(
+                    detections_count=models.Count("detections", distinct=True),
+                    duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
+                    first_appearance_timestamp=models.Min("detections__timestamp"),
+                    first_appearance_time=models.Min("detections__timestamp__time"),
+                )
+                .exclude(first_appearance_timestamp=None)  # This must come after annotations
+                .order_by("-determination_score")
+            )
+        else:
+            qs = qs.prefetch_related("detections", "detections__source_image")
+
+        return qs
 
 
 class TaxonViewSet(DefaultViewSet):
@@ -582,17 +609,10 @@ class TaxonViewSet(DefaultViewSet):
 
         This is only applicable to list queries that are not filtered by occurrence, project, deployment, or event.
         """
-        # Look for a query param to filter by score
-        classification_threshold = self.request.query_params.get("classification_threshold")
-
-        if classification_threshold is not None:
-            classification_threshold = FloatField(required=False).clean(classification_threshold)
-        else:
-            classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
 
         queryset = (
             queryset.annotate(best_determination_score=models.Max("occurrences__determination_score"))
-            .filter(best_determination_score__gte=classification_threshold)
+            .filter(best_determination_score__gte=get_active_classification_threshold(self.request))
             .distinct()
         )
 
@@ -613,13 +633,28 @@ class TaxonViewSet(DefaultViewSet):
 
         qs = qs.select_related("parent", "parent__parent")
 
+        if self.action == "retrieve":
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "occurrences",
+                    queryset=Occurrence.objects.filter(
+                        determination_score__gte=get_active_classification_threshold(self.request),
+                        event__isnull=False,
+                    ),
+                )
+            )
         if filter_active:
             qs = self.filter_by_classification_threshold(qs)
 
-            qs = qs.prefetch_related("occurrences")
             qs = qs.annotate(
-                occurrences_count=models.Count("occurrences", distinct=True),
-                # events_count=models.Count("occurrences__event", distinct=True),
+                occurrences_count=models.Count(
+                    "occurrences",
+                    filter=models.Q(
+                        occurrences__determination_score__gte=get_active_classification_threshold(self.request),
+                        occurrences__event__isnull=False,
+                    ),
+                    distinct=True,
+                ),
                 last_detected=models.Max("classifications__detection__timestamp"),
             )
         elif self.action == "list":
@@ -634,6 +669,12 @@ class TaxonViewSet(DefaultViewSet):
             )
 
         return qs
+
+    # Override the main detail view to include occurrences
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
 
 class ClassificationViewSet(DefaultViewSet):
@@ -660,22 +701,24 @@ class SummaryView(APIView):
         Return counts of all models.
         """
         project_id = request.query_params.get("project")
+        confidence_threshold = get_active_classification_threshold(request)
         if project_id:
             project = Project.objects.get(id=project_id)
             data = {
                 "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
                 "deployments_count": Deployment.objects.filter(project=project).count(),
-                "events_count": Event.objects.filter(deployment__project=project).count(),
+                "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
-                "detections_count": Detection.objects.filter(occurrence__project=project).count(),
+                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
                 "occurrences_count": Occurrence.objects.filter(
                     project=project,
-                    determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                    determination_score__gte=confidence_threshold,
+                    event__isnull=False,
                 ).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
                 .filter(
                     occurrences_count__gt=0,
-                    occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                    occurrences__determination_score__gte=confidence_threshold,
                     occurrences__project=project,
                 )
                 .distinct()
@@ -685,12 +728,14 @@ class SummaryView(APIView):
             data = {
                 "projects_count": Project.objects.count(),
                 "deployments_count": Deployment.objects.count(),
-                "events_count": Event.objects.count(),
+                "events_count": Event.objects.filter(deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.count(),
-                "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.count(),
+                # "detections_count": Detection.objects.count(),
+                "occurrences_count": Occurrence.objects.filter(
+                    determination_score__gte=confidence_threshold, event__isnull=False
+                ).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
-                .filter(occurrences_count__gt=0)
+                .filter(occurrences_count__gt=0, occurrences__determination_score__gte=confidence_threshold)
                 .count(),
                 "last_updated": timezone.now(),
             }

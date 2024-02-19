@@ -1,5 +1,6 @@
 import _ from 'lodash'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
@@ -22,8 +23,14 @@ export class Occurrence {
   }
 
   get dateLabel(): string {
-    const date = new Date(this._occurrence.first_appearance.timestamp)
+    const date = new Date(this._occurrence.first_appearance_timestamp)
     return getFormatedDateString({ date })
+  }
+
+  get createdAtLabel(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._occurrence.created_at),
+    })
   }
 
   get deploymentId(): string {
