@@ -22,6 +22,11 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
+  get firstAppearanceTimestamp(): string {
+    // Return the first appearance timestamp in ISO format
+    return this._occurrence.first_appearance_timestamp
+  }
+
   get dateLabel(): string {
     const date = new Date(this._occurrence.first_appearance_timestamp)
     return getFormatedDateString({ date })

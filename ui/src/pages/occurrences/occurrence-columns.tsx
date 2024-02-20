@@ -94,7 +94,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
         <Link to={getAppRoute({
           to: APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.sessionId }), filters: {
             occurrence: item.id,
-            // capture: item.firstAppearanceId,
+            timestamp: item.firstAppearanceTimestamp
           }
         })}>
           <BasicTableCell value={item.dateLabel} />
@@ -109,7 +109,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
         <Link to={getAppRoute({
           to: APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.sessionId }), filters: {
             occurrence: item.id,
-            // capture: item.firstAppearanceId,
+            timestamp: item.firstAppearanceTimestamp
           }
         })}>
           <BasicTableCell value={item.timeLabel} />
