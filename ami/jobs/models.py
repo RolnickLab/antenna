@@ -304,7 +304,8 @@ class Job(BaseModel):
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
         self.status = run_job.AsyncResult(task_id).status
-        self.save(force_update=True)
+        self.update_progress(save=False)
+        self.save()
 
     def setup(self, save=True):
         """
@@ -322,15 +323,13 @@ class Job(BaseModel):
             self.progress.add_stage_param(collect_stage.key, "Total Images", "")
 
             pipeline_stage = self.progress.add_stage("Process")
-            self.progress.add_stage_param(pipeline_stage.key, "Proccessed", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Processed", "")
             self.progress.add_stage_param(pipeline_stage.key, "Remaining", "")
             self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
             self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
 
             saving_stage = self.progress.add_stage("Results")
             self.progress.add_stage_param(saving_stage.key, "Objects created", "")
-
-            self.save()
 
         if save:
             self.save()
@@ -505,7 +504,7 @@ class Job(BaseModel):
         Update the total aggregate progress from the progress of each stage.
         """
         if not len(self.progress.stages):
-            total_progress = 0
+            total_progress = 1
         else:
             for stage in self.progress.stages:
                 if stage.status == JobState.SUCCESS and stage.progress < 1:

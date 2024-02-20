@@ -74,8 +74,11 @@ class JobViewSet(DefaultViewSet):
         Run a job (add it to the queue).
         """
         job: Job = self.get_object()
-        # job.run()
-        job.enqueue()
+        no_async = url_boolean_param(request, "no_async", default=False)
+        if no_async:
+            job.run()
+        else:
+            job.enqueue()
         job.refresh_from_db()
         return Response(self.get_serializer(job).data)
 
