@@ -392,7 +392,7 @@ class Job(BaseModel):
             source_image_count = len(images)
             self.progress.update_stage("collect", total_images=source_image_count)
 
-            if self.shuffle:
+            if self.shuffle and source_image_count > 1:
                 self.logger.info("Shuffling images")
                 random.shuffle(images)
 
