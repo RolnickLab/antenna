@@ -197,8 +197,20 @@ class EventViewSet(DefaultViewSet):
         if self.action != "list":
             qs = qs.annotate(
                 # detections_count=models.Count("captures__detections", distinct=True),
-                occurrences_count=models.Count("occurrences", distinct=True),
-                taxa_count=models.Count("occurrences__determination", distinct=True),
+                occurrences_count=models.Count(
+                    "occurrences",
+                    distinct=True,
+                    filter=models.Q(
+                        occurrences__determination_score__gte=get_active_classification_threshold(self.request)
+                    ),
+                ),
+                taxa_count=models.Count(
+                    "occurrences__determination",
+                    distinct=True,
+                    filter=models.Q(
+                        occurrences__determination_score__gte=get_active_classification_threshold(self.request)
+                    ),
+                ),
             ).prefetch_related("occurrences", "occurrences__determination")
         return qs
 
@@ -581,9 +593,11 @@ class TaxonViewSet(DefaultViewSet):
         """
 
         occurrence_id = self.request.query_params.get("occurrence")
-        project_id = self.request.query_params.get("project")
-        deployment_id = self.request.query_params.get("deployment")
-        event_id = self.request.query_params.get("event")
+        project_id = self.request.query_params.get("project") or self.request.query_params.get("occurrences__project")
+        deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
+            "occurrences__deployment"
+        )
+        event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
 
         filter_active = any([occurrence_id, project_id, deployment_id, event_id])
 
@@ -601,6 +615,7 @@ class TaxonViewSet(DefaultViewSet):
             event = Event.objects.get(id=event_id)
             queryset = super().get_queryset().filter(occurrences__event=event)
 
+        # @TODO need to return the models.Q filter used, so we can use it for counts and related occurrences.
         return queryset, filter_active
 
     def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
@@ -633,30 +648,34 @@ class TaxonViewSet(DefaultViewSet):
 
         qs = qs.select_related("parent", "parent__parent")
 
+        # @TODO this should check what the user has access to
+        project_id = self.request.query_params.get("project")
+        taxon_occurrences_query = Occurrence.objects.filter(
+            determination_score__gte=get_active_classification_threshold(self.request),
+            event__isnull=False,
+        ).distinct()
+        taxon_occurrences_count_filter = models.Q(
+            occurrences__determination_score__gte=get_active_classification_threshold(self.request),
+            occurrences__event__isnull=False,
+        )
+        if project_id:
+            taxon_occurrences_query = taxon_occurrences_query.filter(project=project_id)
+            taxon_occurrences_count_filter &= models.Q(occurrences__project=project_id)
+
         if self.action == "retrieve":
-            qs = qs.prefetch_related(
-                Prefetch(
-                    "occurrences",
-                    queryset=Occurrence.objects.filter(
-                        determination_score__gte=get_active_classification_threshold(self.request),
-                        event__isnull=False,
-                    ),
-                )
-            )
+            qs = qs.prefetch_related(Prefetch("occurrences", queryset=taxon_occurrences_query))
+
         if filter_active:
             qs = self.filter_by_classification_threshold(qs)
-
             qs = qs.annotate(
                 occurrences_count=models.Count(
                     "occurrences",
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_active_classification_threshold(self.request),
-                        occurrences__event__isnull=False,
-                    ),
+                    filter=taxon_occurrences_count_filter,
                     distinct=True,
                 ),
                 last_detected=models.Max("classifications__detection__timestamp"),
             )
+
         elif self.action == "list":
             # If no filter don't return anything related to occurrences
             # @TODO add a project_id filter to all request from the frontend

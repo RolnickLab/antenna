@@ -432,8 +432,23 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        self.occurrences_count = self.occurrences.count()
-        self.taxa_count = Taxon.objects.filter(Q(occurrences__deployment=self)).distinct().count()
+        self.occurrences_count = (
+            self.occurrences.filter(
+                determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                event__isnull=False,
+            )
+            .distinct()
+            .count()
+        )
+        self.taxa_count = (
+            Taxon.objects.filter(
+                occurrences__deployment=self,
+                occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                occurrences__event__isnull=False,
+            )
+            .distinct()
+            .count()
+        )
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
@@ -1358,6 +1373,8 @@ class Detection(BaseModel):
         blank=True,
     )
     detection_time = models.DateTimeField(null=True, blank=True)
+    # @TODO not sure if this detection score is ever used
+    # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
     # detection_job = models.ForeignKey(
     #     "Job",
@@ -1867,23 +1884,46 @@ class Taxon(BaseModel):
         # This is handled by an annotation if we are filtering by project, deployment or event
         return None
 
-    def occurrence_images(self, limit: int | None = 10) -> list[str]:
+    def occurrence_images(
+        self,
+        limit: int | None = 10,
+        project_id: int | None = None,
+        classification_threshold: float | None = None,
+    ) -> list[str]:
         """
         Return one image from each occurrence of this Taxon.
         The image should be from the detection with the highest classification score.
 
         This is used for image thumbnail previews in the species summary view.
+
+        The project ID is an optional filter however
+        @TODO important, this should always filter by what the current user has access to.
+        Use the request.user to filter by the user's access.
+        Use the request to generate the full media URLs.
         """
 
+        classification_threshold = classification_threshold or DEFAULT_CONFIDENCE_THRESHOLD
+
         # Retrieve the URLs using a single optimized query
-        detection_image_paths = (
-            self.occurrences.prefetch_related("detections__classifications")
+        qs = (
+            self.occurrences.prefetch_related(
+                models.Prefetch(
+                    "detections__classifications",
+                    queryset=Classification.objects.filter(score__gte=classification_threshold).order_by("-score"),
+                )
+            )
             .annotate(max_score=models.Max("detections__classifications__score"))
             .filter(detections__classifications__score=models.F("max_score"))
             .order_by("-max_score")
-            .values_list("detections__path", flat=True)[:limit]
         )
+        if project_id is not None:
+            # @TODO this should check the user's access instead
+            qs = qs.filter(project=project_id)
 
+        detection_image_paths = qs.values_list("detections__path", flat=True)[:limit]
+
+        # @TODO should this be done in the serializer?
+        # @TODO better way to get distinct values from an annotated queryset?
         return [get_media_url(path) for path in detection_image_paths if path]
 
     def list_names(self) -> str:
@@ -1913,7 +1953,7 @@ class Taxon(BaseModel):
         ]
         verbose_name_plural = "Taxa"
 
-        # Set unique contstraints on name & rank
+        # Set unique constraints on name & rank
         # constraints = [
         #     models.UniqueConstraint(fields=["name", "rank", "parent"], name="unique_name_and_placement"),
         # ]
