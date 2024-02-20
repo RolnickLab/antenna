@@ -98,7 +98,7 @@ class DefaultViewSetMixin:
     filterset_fields = []
     ordering_fields = ["created_at", "updated_at"]
     search_fields = []
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
 class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
@@ -693,7 +693,7 @@ class ClassificationViewSet(DefaultViewSet):
 
 
 class SummaryView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filterset_fields = ["project"]
 
     def get(self, request):
@@ -770,7 +770,7 @@ class StorageStatus(APIView):
     Return the status of the storage connection.
     """
 
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = StorageStatusSerializer
 
     def post(self, request):

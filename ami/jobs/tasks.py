@@ -16,7 +16,8 @@ def run_job(self, job_id: int) -> None:
     try:
         job = Job.objects.get(pk=job_id)
     except Job.DoesNotExist as e:
-        self.retry(exc=e, countdown=1, max_retries=1)
+        raise e
+        # self.retry(exc=e, countdown=1, max_retries=1)
     else:
         job.logger.info(f"Running job {job}")
         try:
