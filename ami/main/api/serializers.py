@@ -422,6 +422,7 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
+    occurrence_images = serializers.SerializerMethodField()
     parent = TaxonParentNestedSerializer(read_only=True)
 
     class Meta:
@@ -446,10 +447,32 @@ class TaxonListSerializer(DefaultSerializer):
         Return URL to the occurrences endpoint filtered by this taxon.
         """
 
+        params = {"determination": obj.pk}
+        project_id = self.context.get("request", {}).query_params.get("project")
+        if project_id:
+            params["project"] = project_id
+
         return reverse_with_params(
             "occurrence-list",
             request=self.context.get("request"),
-            params={"determination": obj.pk},
+            params=params,
+        )
+
+    def get_occurrence_images(self, obj):
+        """
+        Call the occurrence_images method on the Taxon model, with arguments.
+        """
+
+        # request = self.context.get("request")
+        # project_id = request.query_params.get("project") if request else None
+        project_id = self.context["request"].query_params["project"]
+        classification_threshold = self.context["request"].query_params.get("threshold", None)
+
+        return obj.occurrence_images(
+            # @TODO pass the request to generate media url & filter by current user's access
+            # request=self.context.get("request"),
+            project_id=project_id,
+            classification_threshold=classification_threshold,
         )
 
 

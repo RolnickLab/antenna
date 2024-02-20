@@ -91,7 +91,12 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       name: translate(STRING.FIELD_LABEL_DATE),
       sortField: 'first_appearance_timestamp',
       renderCell: (item: Occurrence) => (
-        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+        <Link to={getAppRoute({
+          to: APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.sessionId }), filters: {
+            occurrence: item.id,
+            timestamp: item.firstAppearanceTimestamp
+          }
+        })}>
           <BasicTableCell value={item.dateLabel} />
         </Link>
       ),
@@ -101,7 +106,12 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       sortField: 'first_appearance_time',
       name: translate(STRING.FIELD_LABEL_TIME),
       renderCell: (item: Occurrence) => (
-        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+        <Link to={getAppRoute({
+          to: APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.sessionId }), filters: {
+            occurrence: item.id,
+            timestamp: item.firstAppearanceTimestamp
+          }
+        })}>
           <BasicTableCell value={item.timeLabel} />
         </Link>
       )
