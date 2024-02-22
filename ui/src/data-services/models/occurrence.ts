@@ -23,13 +23,20 @@ export class Occurrence {
   }
 
   get firstAppearanceTimestamp(): string {
-    // Return the first appearance timestamp in ISO format
+    // Return the timestamp of the first image where this occurrence appeared, in ISO format
     return this._occurrence.first_appearance_timestamp
   }
 
   get dateLabel(): string {
-    const date = new Date(this._occurrence.first_appearance_timestamp)
-    return getFormatedDateString({ date })
+    return getFormatedDateString({
+      date: new Date(this.firstAppearanceTimestamp),
+    })
+  }
+
+  get timeLabel(): string {
+    return getFormatedTimeString({
+      date: new Date(this.firstAppearanceTimestamp),
+    })
   }
 
   get createdAtLabel(): string {
@@ -114,11 +121,6 @@ export class Occurrence {
 
   get sessionLabel(): string {
     return this._occurrence.event.name
-  }
-
-  get timeLabel(): string {
-    const date = new Date(this._occurrence.first_appearance.timestamp)
-    return getFormatedTimeString({ date })
   }
 
   get userPermissions(): UserPermission[] {

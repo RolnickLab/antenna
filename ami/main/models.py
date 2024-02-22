@@ -1372,6 +1372,7 @@ class Detection(BaseModel):
         null=True,
         blank=True,
     )
+    # Time that the detection was created by the algorithm in the ML backend
     detection_time = models.DateTimeField(null=True, blank=True)
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
@@ -1460,6 +1461,21 @@ class Detection(BaseModel):
         self.source_image.save()
         return occurrence
 
+    def update_calculated_fields(self, save=True):
+        needs_update = False
+        if not self.timestamp:
+            self.timestamp = self.source_image.timestamp
+            needs_update = True
+        if save and needs_update:
+            self.save(update_calculated_fields=False)
+
+    def save(self, update_calculated_fields=True, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.pk and update_calculated_fields:
+            self.update_calculated_fields(save=True)
+        # if not self.occurrence:
+        #     self.associate_new_occurrence()
+
 
 @final
 class OccurrenceManager(models.Manager):
@@ -1495,7 +1511,7 @@ class Occurrence(BaseModel):
         return name
 
     def detections_count(self) -> int | None:
-        # Annotaions don't seem to work with nested serializers
+        # Annotations don't seem to work with nested serializers
         return self.detections.count()
 
     @functools.cached_property

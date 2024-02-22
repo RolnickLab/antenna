@@ -492,6 +492,11 @@ class OccurrenceViewSet(DefaultViewSet):
             "determination",
             "deployment",
             "event",
+        ).annotate(
+            detections_count=models.Count("detections", distinct=True),
+            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
+            first_appearance_timestamp=models.Min("detections__timestamp"),
+            first_appearance_time=models.Min("detections__timestamp__time"),
         )
         if self.action == "list":
             qs = (
@@ -499,12 +504,6 @@ class OccurrenceViewSet(DefaultViewSet):
                 .exclude(detections=None)
                 .exclude(event=None)
                 .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .annotate(
-                    detections_count=models.Count("detections", distinct=True),
-                    duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
-                    first_appearance_timestamp=models.Min("detections__timestamp"),
-                    first_appearance_time=models.Min("detections__timestamp__time"),
-                )
                 .exclude(first_appearance_timestamp=None)  # This must come after annotations
                 .order_by("-determination_score")
             )
