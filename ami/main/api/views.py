@@ -461,7 +461,7 @@ class OccurrenceViewSet(DefaultViewSet):
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
-    filterset_fields = ["event", "deployment", "determination", "project"]
+    filterset_fields = ["event", "deployment", "determination", "project", "determination__rank"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -471,6 +471,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "duration",
         "deployment",
         "determination",
+        "determination__name",
         "determination_score",
         "event",
         "detections_count",

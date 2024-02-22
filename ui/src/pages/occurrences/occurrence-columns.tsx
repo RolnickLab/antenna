@@ -53,7 +53,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     {
       id: 'id',
       name: translate(STRING.FIELD_LABEL_ID),
-      sortField: 'determination',
+      sortField: 'determination__name',
       renderCell: (item: Occurrence) => (
         <TaxonCell item={item} projectId={projectId} />
       ),
