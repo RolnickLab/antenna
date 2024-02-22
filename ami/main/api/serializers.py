@@ -603,8 +603,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     best_detection = TaxonDetectionsSerializer(read_only=True)
     determination = CaptureTaxonSerializer(read_only=True)
-    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
-    last_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    # last_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -619,8 +619,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "detections_count",
             "duration",
             "duration_label",
-            "first_appearance",
-            "last_appearance",
+            # "first_appearance",
+            # "last_appearance",
         ]
 
 
