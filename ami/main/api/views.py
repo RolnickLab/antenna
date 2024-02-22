@@ -509,7 +509,11 @@ class OccurrenceViewSet(DefaultViewSet):
                 .order_by("-determination_score")
             )
         else:
-            qs = qs.prefetch_related("detections", "detections__source_image")
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
+                )
+            )
 
         return qs
 
@@ -650,10 +654,18 @@ class TaxonViewSet(DefaultViewSet):
 
         # @TODO this should check what the user has access to
         project_id = self.request.query_params.get("project")
-        taxon_occurrences_query = Occurrence.objects.filter(
-            determination_score__gte=get_active_classification_threshold(self.request),
-            event__isnull=False,
-        ).distinct()
+        taxon_occurrences_query = (
+            Occurrence.objects.filter(
+                determination_score__gte=get_active_classification_threshold(self.request),
+                event__isnull=False,
+            )
+            .distinct()
+            .annotate(
+                first_appearance_timestamp=models.Min("detections__timestamp"),
+                last_appearance_timestamp=models.Max("detections__timestamp"),
+            )
+            .order_by("-first_appearance_timestamp")
+        )
         taxon_occurrences_count_filter = models.Q(
             occurrences__determination_score__gte=get_active_classification_threshold(self.request),
             occurrences__event__isnull=False,

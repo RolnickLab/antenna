@@ -1542,6 +1542,13 @@ class Occurrence(BaseModel):
         """
         return None
 
+    def last_appearance_timestamp(self) -> datetime.datetime | None:
+        """
+        Return the timestamp of the last appearance.
+        ONLY if it has been added with a query annotation.
+        """
+        return None
+
     def duration(self) -> datetime.timedelta | None:
         first = self.first_appearance
         last = self.last_appearance

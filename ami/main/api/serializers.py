@@ -619,6 +619,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "detections_count",
             "duration",
             "duration_label",
+            "first_appearance_timestamp",
+            "last_appearance_timestamp",
             # "first_appearance",
             # "last_appearance",
         ]
@@ -950,16 +952,18 @@ class OccurrenceListSerializer(DefaultSerializer):
     class Meta:
         model = Occurrence
         # queryset = Occurrence.objects.annotate(
-        #     determination_score=Max("detections__classsifications__score")
+        #     determination_score=Max("detections__classifications__score")
         # )
         fields = [
             "id",
             "details",
             "event",
             "deployment",
-            # "first_appearance",
             # So far, we don't need the whole related object, just the timestamps
+            # "first_appearance",
             "first_appearance_timestamp",
+            # need both timestamp and time for sorting at the database level
+            # (want to see all moths that occur after 3am, regardless of the date)
             "first_appearance_time",
             "duration",
             "duration_label",
