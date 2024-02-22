@@ -132,6 +132,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     source_images = set()
 
     for detection in results.detections:
+        # @TODO use bulk create, or optimize this in some way
         print(detection)
         assert detection.algorithm
         algo, _created = Algorithm.objects.get_or_create(
