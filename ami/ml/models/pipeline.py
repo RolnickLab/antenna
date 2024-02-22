@@ -132,6 +132,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     source_images = set()
 
     for detection in results.detections:
+        # @TODO use bulk create, or optimize this in some way
         print(detection)
         assert detection.algorithm
         algo, _created = Algorithm.objects.get_or_create(
@@ -153,12 +154,12 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             new_detection = Detection.objects.create(
                 source_image=source_image,
                 bbox=list(detection.bbox.dict().values()),
+                timestamp=source_image.timestamp,
                 path=detection.crop_image_url or "",
                 detection_time=detection.timestamp,
             )
-            new_detection.detection_algorithm = algo
-            # new_detection.detection_time = detection.inference_time
-            new_detection.timestamp = now()  # @TODO what is this field for
+            # @TODO lookup and assign related algorithm object
+            # new_detection.detection_algorithm = detection.algorithm
             new_detection.save()
             print("Created new detection", new_detection)
             created_objects.append(new_detection)

@@ -120,8 +120,50 @@ def group_datetimes_by_gap(
     return groups
 
 
+def group_datetimes_by_shifted_day(timestamps: list[datetime.datetime]) -> list[list[datetime.datetime]]:
+    """
+    @TODO: Needs testing
+
+    Images are captured from Evening to Morning the next day.
+    Assume that the first image is taken after noon and the last image is taken before noon.
+    In that case, we can shift the timestamps so that the x-axis is centered around 12PM.
+    then group the images by day.
+
+    One way to do this directly in postgres is to use the following query:
+    SELECT date_trunc('day', timestamp + interval '12 hours') as day, count(*)
+    FROM images
+    GROUP BY day
+
+    >>> timestamps = [
+    ...     datetime.datetime(2021, 1, 1, 0, 0, 0),
+    ...     datetime.datetime(2021, 1, 1, 0, 1, 0),
+    ...     datetime.datetime(2021, 1, 1, 0, 2, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 0, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 1, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 2, 0),]
+    >>> result = group_datetimes_by_shifted_day(timestamps)
+    >>> len(result)
+    2
+    """
+
+    # Shift hours so that the x-axis is centered around 12PM.
+    time_delta = datetime.timedelta(hours=12)
+    timestamps = [timestamp - time_delta for timestamp in sorted(timestamps)]
+
+    # Group the timestamps by their day value:
+    groups = {}
+    for timestamp in timestamps:
+        day = timestamp.date()
+        if day not in groups:
+            groups[day] = []
+        groups[day].append(timestamp)
+
+    # Convert the dictionary to a list of lists
+    return list(groups.values())
+
+
 def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
-    """Shift hours so that the x-axis is centered around 12PM."""
+    """Another strategy to shift hours so that the x-axis is centered around 12PM."""
 
     split_index = 0
     for i, hour in enumerate(hours):

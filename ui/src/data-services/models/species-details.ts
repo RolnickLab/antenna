@@ -32,12 +32,11 @@ export class SpeciesDetails extends Species {
         width: occurrence.best_detection.width,
         height: occurrence.best_detection.height,
       },
-      label: `${occurrence.event.name}\n ${
-        occurrence.determination.name
-      } (${_.round(occurrence.determination_score, 4)})`,
+      label: `${occurrence.event.name}\n ${occurrence.determination.name
+        } (${_.round(occurrence.determination_score, 4)})`,
       timeLabel: getCompactTimespanString({
-        date1: new Date(occurrence.first_appearance.timestamp),
-        date2: new Date(occurrence.last_appearance.timestamp),
+        date1: new Date(occurrence.first_appearance_timestamp),
+        date2: new Date(occurrence.last_appearance_timestamp),
       }),
       countLabel: `${occurrence.detections_count}`,
     }

@@ -603,8 +603,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     best_detection = TaxonDetectionsSerializer(read_only=True)
     determination = CaptureTaxonSerializer(read_only=True)
-    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
-    last_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    # last_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -619,8 +619,10 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "detections_count",
             "duration",
             "duration_label",
-            "first_appearance",
-            "last_appearance",
+            "first_appearance_timestamp",
+            "last_appearance_timestamp",
+            # "first_appearance",
+            # "last_appearance",
         ]
 
 
@@ -944,21 +946,24 @@ class OccurrenceListSerializer(DefaultSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
-    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
         # queryset = Occurrence.objects.annotate(
-        #     determination_score=Max("detections__classsifications__score")
+        #     determination_score=Max("detections__classifications__score")
         # )
         fields = [
             "id",
             "details",
             "event",
             "deployment",
-            "first_appearance",
+            # So far, we don't need the whole related object, just the timestamps
+            # "first_appearance",
             "first_appearance_timestamp",
+            # need both timestamp and time for sorting at the database level
+            # (want to see all moths that occur after 3am, regardless of the date)
             "first_appearance_time",
             "duration",
             "duration_label",
@@ -1005,7 +1010,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
-    first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -1101,7 +1106,7 @@ class EventSerializer(DefaultSerializer):
 
     def get_capture_page_offset(self, obj) -> int | None:
         """
-        Look up the source image (capture) that contains a specfic detection or occurrence.
+        Look up the source image (capture) that contains a specific detection or occurrence.
 
         Return the page offset for the capture to be used when requesting the capture list endpoint.
         """

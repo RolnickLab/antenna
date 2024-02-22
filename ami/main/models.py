@@ -652,6 +652,8 @@ def group_images_into_events(
     )
 
     timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
+    # @TODO this event grouping needs testing. Still getting events over 24 hours
+    # timestamp_groups = ami.utils.dates.group_datetimes_by_shifted_day(image_timestamps)
 
     events = []
     for group in timestamp_groups:
@@ -679,10 +681,26 @@ def group_images_into_events(
         events.append(event)
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
         event.save()  # Update start and end times and other cached fields
-        logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
+        logger.info(
+            f"Created/updated event {event} with {len(group)} images for deployment {deployment}. "
+            f"Duration: {event.duration_label()}"
+        )
 
     if delete_empty:
         delete_empty_events()
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    )
+    if events_over_24_hours.count():
+        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
+    )
+    if events_starting_before_noon.count():
+        logger.warning(
+            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
+        )
 
     return events
 
@@ -1372,6 +1390,7 @@ class Detection(BaseModel):
         null=True,
         blank=True,
     )
+    # Time that the detection was created by the algorithm in the ML backend
     detection_time = models.DateTimeField(null=True, blank=True)
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
@@ -1460,6 +1479,21 @@ class Detection(BaseModel):
         self.source_image.save()
         return occurrence
 
+    def update_calculated_fields(self, save=True):
+        needs_update = False
+        if not self.timestamp:
+            self.timestamp = self.source_image.timestamp
+            needs_update = True
+        if save and needs_update:
+            self.save(update_calculated_fields=False)
+
+    def save(self, update_calculated_fields=True, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.pk and update_calculated_fields:
+            self.update_calculated_fields(save=True)
+        # if not self.occurrence:
+        #     self.associate_new_occurrence()
+
 
 @final
 class OccurrenceManager(models.Manager):
@@ -1495,7 +1529,7 @@ class Occurrence(BaseModel):
         return name
 
     def detections_count(self) -> int | None:
-        # Annotaions don't seem to work with nested serializers
+        # Annotations don't seem to work with nested serializers
         return self.detections.count()
 
     @functools.cached_property
@@ -1522,6 +1556,13 @@ class Occurrence(BaseModel):
     def first_appearance_time(self) -> datetime.time | None:
         """
         Return the time part only of the first appearance.
+        ONLY if it has been added with a query annotation.
+        """
+        return None
+
+    def last_appearance_timestamp(self) -> datetime.datetime | None:
+        """
+        Return the timestamp of the last appearance.
         ONLY if it has been added with a query annotation.
         """
         return None

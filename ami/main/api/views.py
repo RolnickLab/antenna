@@ -461,7 +461,7 @@ class OccurrenceViewSet(DefaultViewSet):
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
-    filterset_fields = ["event", "deployment", "determination", "project"]
+    filterset_fields = ["event", "deployment", "determination", "project", "determination__rank"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -471,6 +471,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "duration",
         "deployment",
         "determination",
+        "determination__name",
         "determination_score",
         "event",
         "detections_count",
@@ -492,6 +493,11 @@ class OccurrenceViewSet(DefaultViewSet):
             "determination",
             "deployment",
             "event",
+        ).annotate(
+            detections_count=models.Count("detections", distinct=True),
+            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
+            first_appearance_timestamp=models.Min("detections__timestamp"),
+            first_appearance_time=models.Min("detections__timestamp__time"),
         )
         if self.action == "list":
             qs = (
@@ -499,17 +505,15 @@ class OccurrenceViewSet(DefaultViewSet):
                 .exclude(detections=None)
                 .exclude(event=None)
                 .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .annotate(
-                    detections_count=models.Count("detections", distinct=True),
-                    duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
-                    first_appearance_timestamp=models.Min("detections__timestamp"),
-                    first_appearance_time=models.Min("detections__timestamp__time"),
-                )
                 .exclude(first_appearance_timestamp=None)  # This must come after annotations
                 .order_by("-determination_score")
             )
         else:
-            qs = qs.prefetch_related("detections", "detections__source_image")
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
+                )
+            )
 
         return qs
 
@@ -650,10 +654,18 @@ class TaxonViewSet(DefaultViewSet):
 
         # @TODO this should check what the user has access to
         project_id = self.request.query_params.get("project")
-        taxon_occurrences_query = Occurrence.objects.filter(
-            determination_score__gte=get_active_classification_threshold(self.request),
-            event__isnull=False,
-        ).distinct()
+        taxon_occurrences_query = (
+            Occurrence.objects.filter(
+                determination_score__gte=get_active_classification_threshold(self.request),
+                event__isnull=False,
+            )
+            .distinct()
+            .annotate(
+                first_appearance_timestamp=models.Min("detections__timestamp"),
+                last_appearance_timestamp=models.Max("detections__timestamp"),
+            )
+            .order_by("-first_appearance_timestamp")
+        )
         taxon_occurrences_count_filter = models.Q(
             occurrences__determination_score__gte=get_active_classification_threshold(self.request),
             occurrences__event__isnull=False,
