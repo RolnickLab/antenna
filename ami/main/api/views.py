@@ -475,6 +475,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "determination_score",
         "event",
         "detections_count",
+        "pixel_area",
         "created_at",
     ]
 
@@ -489,6 +490,11 @@ class OccurrenceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
+        from django.db.models.expressions import RawSQL
+
+        detections_with_area = Detection.objects.annotate(
+            area=RawSQL("((bbox->>2)::float - (bbox->>0)::float) * ((bbox->>3)::float - (bbox->>1)::float)", [])
+        )
         qs = qs.select_related(
             "determination",
             "deployment",
@@ -498,6 +504,9 @@ class OccurrenceViewSet(DefaultViewSet):
             duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
             first_appearance_timestamp=models.Min("detections__timestamp"),
             first_appearance_time=models.Min("detections__timestamp__time"),
+            pixel_area=models.Subquery(
+                detections_with_area.filter(occurrence=models.OuterRef("pk")).order_by("-area").values("area")[:1]
+            ),
         )
         if self.action == "list":
             qs = (

@@ -59,6 +59,16 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       ),
     },
     {
+      id: 'pixel_area',
+      name: 'Pixel Area',
+      sortField: 'pixel_area',
+      renderCell: (item: Occurrence) => (
+        <BasicTableCell
+          value={item.pixelArea}
+        />
+      ),
+    },
+    {
       id: 'deployment',
       name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       sortField: 'deployment',

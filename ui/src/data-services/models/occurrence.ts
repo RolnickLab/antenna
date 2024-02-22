@@ -22,6 +22,10 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
+  get pixelArea(): number {
+    return this._occurrence.pixel_area
+  }
+
   get firstAppearanceTimestamp(): string {
     // Return the timestamp of the first image where this occurrence appeared, in ISO format
     return this._occurrence.first_appearance_timestamp
