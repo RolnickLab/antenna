@@ -652,6 +652,8 @@ def group_images_into_events(
     )
 
     timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
+    # @TODO this event grouping needs testing. Still getting events over 24 hours
+    # timestamp_groups = ami.utils.dates.group_datetimes_by_shifted_day(image_timestamps)
 
     events = []
     for group in timestamp_groups:
@@ -679,10 +681,26 @@ def group_images_into_events(
         events.append(event)
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
         event.save()  # Update start and end times and other cached fields
-        logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
+        logger.info(
+            f"Created/updated event {event} with {len(group)} images for deployment {deployment}. "
+            f"Duration: {event.duration_label()}"
+        )
 
     if delete_empty:
         delete_empty_events()
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    )
+    if events_over_24_hours.count():
+        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
+    )
+    if events_starting_before_noon.count():
+        logger.warning(
+            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
+        )
 
     return events
 

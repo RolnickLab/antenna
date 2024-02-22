@@ -103,7 +103,16 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         msg = f"Syncing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
         self.message_user(request, msg)
 
-    actions = [sync_captures]
+    # Action that regroups all captures in the deployment into events
+    @admin.action(description="Regroup captures into events")
+    def regroup_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
+        from ami.main.models import group_images_into_events
+
+        for deployment in queryset:
+            group_images_into_events(deployment)
+        self.message_user(request, f"Regrouped {queryset.count()} deployments.")
+
+    actions = [sync_captures, regroup_events]
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
