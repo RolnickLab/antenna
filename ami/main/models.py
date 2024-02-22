@@ -238,9 +238,7 @@ def _insert_or_update_batch_for_sync(
     deployment.data_source_last_checked = datetime.datetime.now()
 
     if regroup_events_per_batch:
-        events = group_images_into_events(deployment)
-        for event in events:
-            set_dimensions_for_collection(event)
+        group_images_into_events(deployment)
 
     deployment.save(update_calculated_fields=False)
 
@@ -688,6 +686,10 @@ def group_images_into_events(
 
     if delete_empty:
         delete_empty_events()
+
+    for event in events:
+        # Set the width and height of all images in each event based on the first image
+        set_dimensions_for_collection(event)
 
     events_over_24_hours = Event.objects.filter(
         deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
