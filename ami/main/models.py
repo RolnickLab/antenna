@@ -238,9 +238,7 @@ def _insert_or_update_batch_for_sync(
     deployment.data_source_last_checked = datetime.datetime.now()
 
     if regroup_events_per_batch:
-        events = group_images_into_events(deployment)
-        for event in events:
-            set_dimensions_for_collection(event)
+        group_images_into_events(deployment)
 
     deployment.save(update_calculated_fields=False)
 
@@ -432,8 +430,23 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        self.occurrences_count = self.occurrences.count()
-        self.taxa_count = Taxon.objects.filter(Q(occurrences__deployment=self)).distinct().count()
+        self.occurrences_count = (
+            self.occurrences.filter(
+                determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                event__isnull=False,
+            )
+            .distinct()
+            .count()
+        )
+        self.taxa_count = (
+            Taxon.objects.filter(
+                occurrences__deployment=self,
+                occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                occurrences__event__isnull=False,
+            )
+            .distinct()
+            .count()
+        )
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
@@ -637,6 +650,8 @@ def group_images_into_events(
     )
 
     timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
+    # @TODO this event grouping needs testing. Still getting events over 24 hours
+    # timestamp_groups = ami.utils.dates.group_datetimes_by_shifted_day(image_timestamps)
 
     events = []
     for group in timestamp_groups:
@@ -664,10 +679,30 @@ def group_images_into_events(
         events.append(event)
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
         event.save()  # Update start and end times and other cached fields
-        logger.info(f"Created/updated event {event} with {len(group)} images for deployment {deployment}.")
+        logger.info(
+            f"Created/updated event {event} with {len(group)} images for deployment {deployment}. "
+            f"Duration: {event.duration_label()}"
+        )
 
     if delete_empty:
         delete_empty_events()
+
+    for event in events:
+        # Set the width and height of all images in each event based on the first image
+        set_dimensions_for_collection(event)
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    )
+    if events_over_24_hours.count():
+        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
+    )
+    if events_starting_before_noon.count():
+        logger.warning(
+            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
+        )
 
     return events
 
@@ -1357,7 +1392,10 @@ class Detection(BaseModel):
         null=True,
         blank=True,
     )
+    # Time that the detection was created by the algorithm in the ML backend
     detection_time = models.DateTimeField(null=True, blank=True)
+    # @TODO not sure if this detection score is ever used
+    # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
     # detection_job = models.ForeignKey(
     #     "Job",
@@ -1443,6 +1481,21 @@ class Detection(BaseModel):
         self.source_image.save()
         return occurrence
 
+    def update_calculated_fields(self, save=True):
+        needs_update = False
+        if not self.timestamp:
+            self.timestamp = self.source_image.timestamp
+            needs_update = True
+        if save and needs_update:
+            self.save(update_calculated_fields=False)
+
+    def save(self, update_calculated_fields=True, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.pk and update_calculated_fields:
+            self.update_calculated_fields(save=True)
+        # if not self.occurrence:
+        #     self.associate_new_occurrence()
+
 
 @final
 class OccurrenceManager(models.Manager):
@@ -1478,7 +1531,7 @@ class Occurrence(BaseModel):
         return name
 
     def detections_count(self) -> int | None:
-        # Annotaions don't seem to work with nested serializers
+        # Annotations don't seem to work with nested serializers
         return self.detections.count()
 
     @functools.cached_property
@@ -1495,9 +1548,23 @@ class Occurrence(BaseModel):
         if last:
             return last.source_image
 
+    def first_appearance_timestamp(self) -> datetime.datetime | None:
+        """
+        Return the timestamp of the first appearance.
+        ONLY if it has been added with a query annotation.
+        """
+        return None
+
     def first_appearance_time(self) -> datetime.time | None:
         """
         Return the time part only of the first appearance.
+        ONLY if it has been added with a query annotation.
+        """
+        return None
+
+    def last_appearance_timestamp(self) -> datetime.datetime | None:
+        """
+        Return the timestamp of the last appearance.
         ONLY if it has been added with a query annotation.
         """
         return None
@@ -1860,23 +1927,46 @@ class Taxon(BaseModel):
         # This is handled by an annotation if we are filtering by project, deployment or event
         return None
 
-    def occurrence_images(self, limit: int | None = 10) -> list[str]:
+    def occurrence_images(
+        self,
+        limit: int | None = 10,
+        project_id: int | None = None,
+        classification_threshold: float | None = None,
+    ) -> list[str]:
         """
         Return one image from each occurrence of this Taxon.
         The image should be from the detection with the highest classification score.
 
         This is used for image thumbnail previews in the species summary view.
+
+        The project ID is an optional filter however
+        @TODO important, this should always filter by what the current user has access to.
+        Use the request.user to filter by the user's access.
+        Use the request to generate the full media URLs.
         """
 
+        classification_threshold = classification_threshold or DEFAULT_CONFIDENCE_THRESHOLD
+
         # Retrieve the URLs using a single optimized query
-        detection_image_paths = (
-            self.occurrences.prefetch_related("detections__classifications")
+        qs = (
+            self.occurrences.prefetch_related(
+                models.Prefetch(
+                    "detections__classifications",
+                    queryset=Classification.objects.filter(score__gte=classification_threshold).order_by("-score"),
+                )
+            )
             .annotate(max_score=models.Max("detections__classifications__score"))
             .filter(detections__classifications__score=models.F("max_score"))
             .order_by("-max_score")
-            .values_list("detections__path", flat=True)[:limit]
         )
+        if project_id is not None:
+            # @TODO this should check the user's access instead
+            qs = qs.filter(project=project_id)
 
+        detection_image_paths = qs.values_list("detections__path", flat=True)[:limit]
+
+        # @TODO should this be done in the serializer?
+        # @TODO better way to get distinct values from an annotated queryset?
         return [get_media_url(path) for path in detection_image_paths if path]
 
     def list_names(self) -> str:
@@ -1906,7 +1996,7 @@ class Taxon(BaseModel):
         ]
         verbose_name_plural = "Taxa"
 
-        # Set unique contstraints on name & rank
+        # Set unique constraints on name & rank
         # constraints = [
         #     models.UniqueConstraint(fields=["name", "rank", "parent"], name="unique_name_and_placement"),
         # ]

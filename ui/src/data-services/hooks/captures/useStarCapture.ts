@@ -14,7 +14,7 @@ export const useStarCapture = (id: string, isStarred: boolean, onSuccess?: () =>
 
   const { mutateAsync, isLoading, isSuccess, error } = useMutation({
     mutationFn: () =>
-      axios.post(mutationUrl, {
+      axios.post(mutationUrl, {}, {
         headers: getAuthHeader(user),
       }),
     onSuccess: () => {

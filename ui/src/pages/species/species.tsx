@@ -92,7 +92,7 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { species, isLoading } = useSpeciesDetails(id)
+  const { species, isLoading } = useSpeciesDetails(id, projectId)
 
   useEffect(() => {
     setDetailBreadcrumb(species ? { title: species.name } : undefined)

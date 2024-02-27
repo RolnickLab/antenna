@@ -53,7 +53,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     {
       id: 'id',
       name: translate(STRING.FIELD_LABEL_ID),
-      sortField: 'determination',
+      sortField: 'determination__name',
       renderCell: (item: Occurrence) => (
         <TaxonCell item={item} projectId={projectId} />
       ),
@@ -89,9 +89,14 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     {
       id: 'date',
       name: translate(STRING.FIELD_LABEL_DATE),
-      sortField: 'first_appearance_time',
+      sortField: 'first_appearance_timestamp',
       renderCell: (item: Occurrence) => (
-        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+        <Link to={getAppRoute({
+          to: APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.sessionId }), filters: {
+            occurrence: item.id,
+            timestamp: item.firstAppearanceTimestamp
+          }
+        })}>
           <BasicTableCell value={item.dateLabel} />
         </Link>
       ),
@@ -101,7 +106,12 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       sortField: 'first_appearance_time',
       name: translate(STRING.FIELD_LABEL_TIME),
       renderCell: (item: Occurrence) => (
-        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+        <Link to={getAppRoute({
+          to: APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.sessionId }), filters: {
+            occurrence: item.id,
+            timestamp: item.firstAppearanceTimestamp
+          }
+        })}>
           <BasicTableCell value={item.timeLabel} />
         </Link>
       )
@@ -129,6 +139,16 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
       renderCell: (item: Occurrence) => (
         // This should always appear as a float with 2 decimal places, even if 1.00
         <BasicTableCell value={item.determinationScore.toFixed(2)} style={{ textAlign: 'right' }} />
+      ),
+    },
+    {
+      id: 'created_at',
+      name: translate(STRING.FIELD_LABEL_CREATED_AT),
+      sortField: 'created_at',
+      renderCell: (item: Occurrence) => (
+        <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
+          <BasicTableCell value={item.createdAtLabel} />
+        </Link>
       ),
     },
   ]

@@ -33,7 +33,7 @@ services:
 
   celeryworker:
     <<: *django
-    scale: 2
+    scale: 1
     ports: []
     command: /start-celeryworker
     restart: always

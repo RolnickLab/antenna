@@ -6,6 +6,7 @@ type FilterType =
   | 'occurrences__event'
   | 'occurrence'
   | 'capture'
+  | 'timestamp'
 
 export const getAppRoute = ({
   to,
