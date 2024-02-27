@@ -194,24 +194,6 @@ class EventViewSet(DefaultViewSet):
             duration=models.F("end") - models.F("start"),
         ).select_related("deployment", "project")
 
-        if self.action != "list":
-            qs = qs.annotate(
-                # detections_count=models.Count("captures__detections", distinct=True),
-                occurrences_count=models.Count(
-                    "occurrences",
-                    distinct=True,
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_active_classification_threshold(self.request)
-                    ),
-                ),
-                taxa_count=models.Count(
-                    "occurrences__determination",
-                    distinct=True,
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_active_classification_threshold(self.request)
-                    ),
-                ),
-            ).prefetch_related("occurrences", "occurrences__determination")
         return qs
 
 

@@ -1143,6 +1143,14 @@ class EventSerializer(DefaultSerializer):
 
         return offset
 
+    def get_occurrences_count(self, obj):
+        return obj.occurrences_count(
+            classification_threshold=get_active_classification_threshold(self.context["request"])
+        )
+
+    def get_taxa_count(self, obj):
+        return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
+
 
 class StorageStatusSerializer(serializers.Serializer):
     data_source = serializers.CharField(max_length=200)
