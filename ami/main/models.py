@@ -54,8 +54,6 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
-DEFAULT_CONFIDENCE_THRESHOLD = 0.29
-
 
 # @TODO move to settings & make configurable
 _SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
@@ -432,7 +430,7 @@ class Deployment(BaseModel):
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
         self.occurrences_count = (
             self.occurrences.filter(
-                determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 event__isnull=False,
             )
             .distinct()
@@ -441,7 +439,7 @@ class Deployment(BaseModel):
         self.taxa_count = (
             Taxon.objects.filter(
                 occurrences__deployment=self,
-                occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                occurrences__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 occurrences__event__isnull=False,
             )
             .distinct()
@@ -552,9 +550,12 @@ class Event(BaseModel):
         # return self.captures.distinct().count()
         return None
 
-    def occurrences_count(self) -> int | None:
-        # return self.occurrences.distinct().count()
-        return None
+    def occurrences_count(self, classification_threshold: int | None = None) -> int | None:
+        return (
+            self.occurrences.distinct()
+            .filter(determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD)
+            .count()
+        )
 
     def detections_count(self) -> int | None:
         # return Detection.objects.filter(Q(source_image__event=self)).count()
@@ -567,15 +568,18 @@ class Event(BaseModel):
             .aggregate(
                 detections_max_count=models.Max("count"),
                 detections_min_count=models.Min("count"),
-                detections_avg_count=models.Avg("count"),
+                # detections_avg_count=models.Avg("count"),
             )
         )
 
-    def taxa_count(self) -> int:
-        return self.taxa().count()
+    def taxa_count(self, classification_threshold: int | None = None) -> int:
+        return self.taxa(classification_threshold).count()
 
-    def taxa(self) -> models.QuerySet["Taxon"]:
-        return Taxon.objects.filter(Q(occurrences__event=self)).distinct()
+    def taxa(self, classification_threshold: int | None = None) -> models.QuerySet["Taxon"]:
+        return Taxon.objects.filter(
+            Q(occurrences__event=self),
+            occurrences__determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD,
+        ).distinct()
 
     def example_captures(self, num=5):
         return SourceImage.objects.filter(event=self).order_by("-size")[:num]
@@ -1945,7 +1949,7 @@ class Taxon(BaseModel):
         Use the request to generate the full media URLs.
         """
 
-        classification_threshold = classification_threshold or DEFAULT_CONFIDENCE_THRESHOLD
+        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
 
         # Retrieve the URLs using a single optimized query
         qs = (
