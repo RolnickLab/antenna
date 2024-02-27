@@ -10,6 +10,7 @@ from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
 from ami.utils.dates import get_image_timestamp_from_filename
+from ami.utils.requests import get_active_classification_threshold
 
 from ..models import (
     Classification,
@@ -447,10 +448,8 @@ class TaxonListSerializer(DefaultSerializer):
         Return URL to the occurrences endpoint filtered by this taxon.
         """
 
-        params = {"determination": obj.pk}
-        project_id = self.context.get("request", {}).query_params.get("project")
-        if project_id:
-            params["project"] = project_id
+        params = self.context["request"].query_params
+        params.update({"determination": obj.pk})
 
         return reverse_with_params(
             "occurrence-list",
@@ -466,7 +465,7 @@ class TaxonListSerializer(DefaultSerializer):
         # request = self.context.get("request")
         # project_id = request.query_params.get("project") if request else None
         project_id = self.context["request"].query_params["project"]
-        classification_threshold = self.context["request"].query_params.get("threshold", None)
+        classification_threshold = get_active_classification_threshold(self.context["request"])
 
         return obj.occurrence_images(
             # @TODO pass the request to generate media url & filter by current user's access
@@ -1061,6 +1060,8 @@ class EventSerializer(DefaultSerializer):
     start = serializers.DateTimeField(read_only=True)
     end = serializers.DateTimeField(read_only=True)
     capture_page_offset = serializers.SerializerMethodField()
+    occurrences_count = serializers.SerializerMethodField()
+    taxa_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Event

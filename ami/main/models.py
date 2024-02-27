@@ -54,8 +54,6 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
-DEFAULT_CONFIDENCE_THRESHOLD = 0.29
-
 
 # @TODO move to settings & make configurable
 _SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
@@ -432,7 +430,7 @@ class Deployment(BaseModel):
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
         self.occurrences_count = (
             self.occurrences.filter(
-                determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 event__isnull=False,
             )
             .distinct()
@@ -441,7 +439,7 @@ class Deployment(BaseModel):
         self.taxa_count = (
             Taxon.objects.filter(
                 occurrences__deployment=self,
-                occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                occurrences__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 occurrences__event__isnull=False,
             )
             .distinct()
@@ -1951,7 +1949,7 @@ class Taxon(BaseModel):
         Use the request to generate the full media URLs.
         """
 
-        classification_threshold = classification_threshold or DEFAULT_CONFIDENCE_THRESHOLD
+        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
 
         # Retrieve the URLs using a single optimized query
         qs = (

@@ -5,22 +5,21 @@ from django.core import exceptions
 from django.db import models
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
-from django.forms import BooleanField, CharField, FloatField, IntegerField
+from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
-from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
+from ami.utils.requests import get_active_classification_threshold
 
 from ..models import (
-    DEFAULT_CONFIDENCE_THRESHOLD,
     Classification,
     Deployment,
     Detection,
@@ -76,17 +75,6 @@ logger = logging.getLogger(__name__)
 #     Typed with the help of ``django-stubs`` project.
 #     """
 #     return render(request, "main/index.html")
-
-
-def get_active_classification_threshold(request: Request) -> float:
-    # Look for a query param to filter by score
-    classification_threshold = request.query_params.get("classification_threshold")
-
-    if classification_threshold is not None:
-        classification_threshold = FloatField(required=False).clean(classification_threshold)
-    else:
-        classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
-    return classification_threshold
 
 
 class DefaultViewSetMixin:
@@ -214,10 +202,9 @@ class SourceImageViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         has_detections = self.request.query_params.get("has_detections")
-        classification_threshold = self.request.query_params.get("classification_threshold")
+        classification_threshold = get_active_classification_threshold(self.request)
 
         if classification_threshold is not None:
-            classification_threshold = FloatField(required=False).clean(classification_threshold)
             prefetch_queryset = Detection.objects.filter(
                 occurrence__detections__classifications__score__gte=classification_threshold
             )
