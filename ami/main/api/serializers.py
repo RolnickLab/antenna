@@ -448,7 +448,8 @@ class TaxonListSerializer(DefaultSerializer):
         Return URL to the occurrences endpoint filtered by this taxon.
         """
 
-        params = self.context["request"].query_params
+        params = {}
+        params.update(dict(self.context["request"].query_params.items()))
         params.update({"determination": obj.pk})
 
         return reverse_with_params(
