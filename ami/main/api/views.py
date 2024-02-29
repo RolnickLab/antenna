@@ -9,7 +9,7 @@ from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
-from rest_framework import permissions, viewsets
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 
 from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
+from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.utils.requests import get_active_classification_threshold
 
 from ..models import (
@@ -86,7 +87,7 @@ class DefaultViewSetMixin:
     filterset_fields = []
     ordering_fields = ["created_at", "updated_at"]
     search_fields = []
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsActiveStaffOrReadOnly]
 
 
 class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
@@ -693,7 +694,7 @@ class ClassificationViewSet(DefaultViewSet):
 
 
 class SummaryView(APIView):
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsActiveStaffOrReadOnly]
     filterset_fields = ["project"]
 
     def get(self, request):
@@ -770,7 +771,7 @@ class StorageStatus(APIView):
     Return the status of the storage connection.
     """
 
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsActiveStaffOrReadOnly]
     serializer_class = StorageStatusSerializer
 
     def post(self, request):
