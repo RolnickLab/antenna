@@ -329,17 +329,20 @@ class DeploymentSerializer(DeploymentListSerializer):
         write_only=True,
         queryset=Device.objects.all(),
         source="device",
+        required=False,
     )
     research_site_id = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Site.objects.all(),
         source="research_site",
+        required=False,
     )
     data_source = serializers.SerializerMethodField()
     data_source_id = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=S3StorageSource.objects.all(),
         source="data_source",
+        required=False,
     )
 
     class Meta(DeploymentListSerializer.Meta):
