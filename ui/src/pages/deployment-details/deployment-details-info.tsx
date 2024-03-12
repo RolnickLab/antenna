@@ -83,7 +83,7 @@ export const DeploymentDetailsInfo = ({
         <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
           <FormRow>
             <InputValue
-              label="Data source"
+              label={translate(STRING.FIELD_LABEL_DATA_SOURCE)}
               value={deployment.dataSource?.name}
             />
             <InputValue
