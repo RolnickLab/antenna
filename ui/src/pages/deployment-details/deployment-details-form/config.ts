@@ -38,7 +38,7 @@ export const config: FormConfig = {
     },
   },
   dataSourceId: {
-    label: 'Data source',
+    label: translate(STRING.FIELD_LABEL_DATA_SOURCE),
   },
   latitude: {
     label: translate(STRING.FIELD_LABEL_LATITUDE),
