@@ -77,6 +77,20 @@ def get_media_url(path: str) -> str:
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
+def create_default_device(project: "Project") -> "Device":
+    """Create a default device for a project."""
+    device, _created = Device.objects.get_or_create(name="Default device", project=project)
+    logger.info(f"Created default device for project {project}")
+    return device
+
+
+def create_default_research_site(project: "Project") -> "Site":
+    """Create a default research site for a project."""
+    site, _created = Site.objects.get_or_create(name="Default site", project=project)
+    logger.info(f"Created default research site for project {project}")
+    return site
+
+
 @final
 class Project(BaseModel):
     """ """
@@ -94,6 +108,9 @@ class Project(BaseModel):
 
     active = models.BooleanField(default=True)
     priority = models.IntegerField(default=1)
+
+    devices: models.QuerySet["Device"]
+    sites: models.QuerySet["Site"]
 
     def deployments_count(self) -> int:
         return self.deployments.count()
@@ -117,6 +134,20 @@ class Project(BaseModel):
             # plots.append(charts.captures_per_month(project_pk=self.pk))
 
         return plots
+
+    def create_related_defaults(self):
+        """Create default device, and other related models for this project if they don't exist."""
+        if not self.devices.exists():
+            create_default_device(project=self)
+        if not self.sites.exists():
+            create_default_research_site(project=self)
+
+    def save(self, *args, **kwargs):
+        new_project = bool(self._state.adding)
+        super().save(*args, **kwargs)
+        if new_project:
+            logger.info(f"Created new project {self}")
+            self.create_related_defaults()
 
     class Meta:
         ordering = ["-priority", "created_at"]
@@ -297,10 +328,17 @@ class Deployment(BaseModel):
         Site,
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name="deployments",
     )
 
-    device = models.ForeignKey(Device, on_delete=models.SET_NULL, null=True, related_name="deployments")
+    device = models.ForeignKey(
+        Device,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deployments",
+    )
 
     events: models.QuerySet["Event"]
     captures: models.QuerySet["SourceImage"]
