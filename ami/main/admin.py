@@ -112,6 +112,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
             group_images_into_events(deployment)
         self.message_user(request, f"Regrouped {queryset.count()} deployments.")
 
+    list_filter = ("project",)
     actions = [sync_captures, regroup_events]
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
