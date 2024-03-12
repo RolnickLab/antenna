@@ -12,12 +12,11 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { bytesToMB } from 'utils/bytesToMB'
+import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { UserInfo } from 'utils/user/types'
 import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
-
-const IMAGE_MAX_SIZE = 1024 * 1024 // 1MB
 
 interface UserInfoFormValues {
   name?: string
@@ -32,7 +31,7 @@ const config: FormConfig = {
     label: translate(STRING.FIELD_LABEL_IMAGE),
     description: [
       translate(STRING.MESSAGE_IMAGE_SIZE, {
-        value: bytesToMB(IMAGE_MAX_SIZE),
+        value: bytesToMB(API_MAX_UPLOAD_SIZE),
         unit: 'MB',
       }),
       translate(STRING.MESSAGE_IMAGE_FORMAT),
@@ -40,7 +39,7 @@ const config: FormConfig = {
     rules: {
       validate: (file: File) => {
         if (file) {
-          if (file?.size > IMAGE_MAX_SIZE) {
+          if (file?.size > API_MAX_UPLOAD_SIZE) {
             return translate(STRING.MESSAGE_IMAGE_TOO_BIG)
           }
         }
