@@ -1,6 +1,8 @@
 # General
 # ------------------------------------------------------------------------------
+DJANGO_SETTINGS_MODULE="config.settings.local"
 USE_DOCKER=yes
+DJANGO_DEBUG=True
 IPYTHONDIR=/app/.ipython
 # Redis
 # ------------------------------------------------------------------------------
@@ -16,3 +18,5 @@ CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS
 # Monitoring
 NEW_RELIC_CONFIG_FILE=newrelic.ini
 NEW_RELIC_ENVIRONMENT=development
+
+DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:3000,

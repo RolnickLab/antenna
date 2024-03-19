@@ -5,22 +5,22 @@ from django.core import exceptions
 from django.db import models
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
-from django.forms import BooleanField, CharField, FloatField, IntegerField
+from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
-from rest_framework import permissions, viewsets
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
-from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
+from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.utils.requests import get_active_classification_threshold
 
 from ..models import (
-    DEFAULT_CONFIDENCE_THRESHOLD,
     Classification,
     Deployment,
     Detection,
@@ -78,17 +78,6 @@ logger = logging.getLogger(__name__)
 #     return render(request, "main/index.html")
 
 
-def get_active_classification_threshold(request: Request) -> float:
-    # Look for a query param to filter by score
-    classification_threshold = request.query_params.get("classification_threshold")
-
-    if classification_threshold is not None:
-        classification_threshold = FloatField(required=False).clean(classification_threshold)
-    else:
-        classification_threshold = DEFAULT_CONFIDENCE_THRESHOLD
-    return classification_threshold
-
-
 class DefaultViewSetMixin:
     filter_backends = [
         DjangoFilterBackend,
@@ -98,7 +87,7 @@ class DefaultViewSetMixin:
     filterset_fields = []
     ordering_fields = ["created_at", "updated_at"]
     search_fields = []
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsActiveStaffOrReadOnly]
 
 
 class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
@@ -194,24 +183,6 @@ class EventViewSet(DefaultViewSet):
             duration=models.F("end") - models.F("start"),
         ).select_related("deployment", "project")
 
-        if self.action != "list":
-            qs = qs.annotate(
-                # detections_count=models.Count("captures__detections", distinct=True),
-                occurrences_count=models.Count(
-                    "occurrences",
-                    distinct=True,
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_active_classification_threshold(self.request)
-                    ),
-                ),
-                taxa_count=models.Count(
-                    "occurrences__determination",
-                    distinct=True,
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_active_classification_threshold(self.request)
-                    ),
-                ),
-            ).prefetch_related("occurrences", "occurrences__determination")
         return qs
 
 
@@ -232,10 +203,9 @@ class SourceImageViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         has_detections = self.request.query_params.get("has_detections")
-        classification_threshold = self.request.query_params.get("classification_threshold")
+        classification_threshold = get_active_classification_threshold(self.request)
 
         if classification_threshold is not None:
-            classification_threshold = FloatField(required=False).clean(classification_threshold)
             prefetch_queryset = Detection.objects.filter(
                 occurrence__detections__classifications__score__gte=classification_threshold
             )
@@ -724,7 +694,7 @@ class ClassificationViewSet(DefaultViewSet):
 
 
 class SummaryView(APIView):
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsActiveStaffOrReadOnly]
     filterset_fields = ["project"]
 
     def get(self, request):
@@ -801,7 +771,7 @@ class StorageStatus(APIView):
     Return the status of the storage connection.
     """
 
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsActiveStaffOrReadOnly]
     serializer_class = StorageStatusSerializer
 
     def post(self, request):

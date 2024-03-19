@@ -59,7 +59,7 @@ export const SectionSourceImages = ({
           <FormController
             name="dataSourceId"
             control={control}
-            config={config.deviceId}
+            config={config.dataSourceId}
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}

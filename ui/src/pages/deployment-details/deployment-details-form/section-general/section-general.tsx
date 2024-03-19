@@ -70,7 +70,7 @@ export const SectionGeneral = ({
           <FormController
             name="siteId"
             control={control}
-            config={config.deviceId}
+            config={config.siteId}
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}

@@ -17,12 +17,13 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
 import { bytesToMB } from 'utils/bytesToMB'
+import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import styles from './section-example-captures.module.scss'
 import { useCaptureError } from './useCaptureError'
 
 export const CAPTURE_CONFIG = {
-  MAX_SIZE: 1024 * 1024 * 10, // 10MB
+  MAX_SIZE: API_MAX_UPLOAD_SIZE,
   NUM_CAPTURES: 20,
   RATIO: 16 / 9,
 }

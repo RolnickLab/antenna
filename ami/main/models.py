@@ -54,8 +54,6 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
-DEFAULT_CONFIDENCE_THRESHOLD = 0.29
-
 
 # @TODO move to settings & make configurable
 _SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
@@ -79,6 +77,20 @@ def get_media_url(path: str) -> str:
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
+def create_default_device(project: "Project") -> "Device":
+    """Create a default device for a project."""
+    device, _created = Device.objects.get_or_create(name="Default device", project=project)
+    logger.info(f"Created default device for project {project}")
+    return device
+
+
+def create_default_research_site(project: "Project") -> "Site":
+    """Create a default research site for a project."""
+    site, _created = Site.objects.get_or_create(name="Default site", project=project)
+    logger.info(f"Created default research site for project {project}")
+    return site
+
+
 @final
 class Project(BaseModel):
     """ """
@@ -96,6 +108,9 @@ class Project(BaseModel):
 
     active = models.BooleanField(default=True)
     priority = models.IntegerField(default=1)
+
+    devices: models.QuerySet["Device"]
+    sites: models.QuerySet["Site"]
 
     def deployments_count(self) -> int:
         return self.deployments.count()
@@ -119,6 +134,20 @@ class Project(BaseModel):
             # plots.append(charts.captures_per_month(project_pk=self.pk))
 
         return plots
+
+    def create_related_defaults(self):
+        """Create default device, and other related models for this project if they don't exist."""
+        if not self.devices.exists():
+            create_default_device(project=self)
+        if not self.sites.exists():
+            create_default_research_site(project=self)
+
+    def save(self, *args, **kwargs):
+        new_project = bool(self._state.adding)
+        super().save(*args, **kwargs)
+        if new_project:
+            logger.info(f"Created new project {self}")
+            self.create_related_defaults()
 
     class Meta:
         ordering = ["-priority", "created_at"]
@@ -299,10 +328,17 @@ class Deployment(BaseModel):
         Site,
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name="deployments",
     )
 
-    device = models.ForeignKey(Device, on_delete=models.SET_NULL, null=True, related_name="deployments")
+    device = models.ForeignKey(
+        Device,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deployments",
+    )
 
     events: models.QuerySet["Event"]
     captures: models.QuerySet["SourceImage"]
@@ -432,7 +468,7 @@ class Deployment(BaseModel):
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
         self.occurrences_count = (
             self.occurrences.filter(
-                determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 event__isnull=False,
             )
             .distinct()
@@ -441,7 +477,7 @@ class Deployment(BaseModel):
         self.taxa_count = (
             Taxon.objects.filter(
                 occurrences__deployment=self,
-                occurrences__determination_score__gte=DEFAULT_CONFIDENCE_THRESHOLD,
+                occurrences__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 occurrences__event__isnull=False,
             )
             .distinct()
@@ -552,9 +588,12 @@ class Event(BaseModel):
         # return self.captures.distinct().count()
         return None
 
-    def occurrences_count(self) -> int | None:
-        # return self.occurrences.distinct().count()
-        return None
+    def occurrences_count(self, classification_threshold: int | None = None) -> int | None:
+        return (
+            self.occurrences.distinct()
+            .filter(determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD)
+            .count()
+        )
 
     def detections_count(self) -> int | None:
         # return Detection.objects.filter(Q(source_image__event=self)).count()
@@ -567,15 +606,18 @@ class Event(BaseModel):
             .aggregate(
                 detections_max_count=models.Max("count"),
                 detections_min_count=models.Min("count"),
-                detections_avg_count=models.Avg("count"),
+                # detections_avg_count=models.Avg("count"),
             )
         )
 
-    def taxa_count(self) -> int:
-        return self.taxa().count()
+    def taxa_count(self, classification_threshold: int | None = None) -> int:
+        return self.taxa(classification_threshold).count()
 
-    def taxa(self) -> models.QuerySet["Taxon"]:
-        return Taxon.objects.filter(Q(occurrences__event=self)).distinct()
+    def taxa(self, classification_threshold: int | None = None) -> models.QuerySet["Taxon"]:
+        return Taxon.objects.filter(
+            Q(occurrences__event=self),
+            occurrences__determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD,
+        ).distinct()
 
     def example_captures(self, num=5):
         return SourceImage.objects.filter(event=self).order_by("-size")[:num]
@@ -1945,7 +1987,7 @@ class Taxon(BaseModel):
         Use the request to generate the full media URLs.
         """
 
-        classification_threshold = classification_threshold or DEFAULT_CONFIDENCE_THRESHOLD
+        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
 
         # Retrieve the URLs using a single optimized query
         qs = (
