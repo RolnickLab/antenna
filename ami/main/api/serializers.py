@@ -365,9 +365,12 @@ class DeploymentSerializer(DeploymentListSerializer):
         and the extra configuration in the Deployment model.
         """
 
-        data = StorageSourceNestedSerializer(obj.data_source, context=self.context).data
-        data["uri"] = obj.data_source_uri()
-        return data
+        if obj.data_source is None:
+            return None
+        else:
+            data = StorageSourceNestedSerializer(obj.data_source, context=self.context).data
+            data["uri"] = obj.data_source_uri()
+            return data
 
     def get_occurrences(self, obj):
         """
