@@ -47,11 +47,15 @@ class JobState(str, OrderedEnum):
 
     @classmethod
     def running_states(cls):
-        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY]
+        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
 
     @classmethod
     def final_states(cls):
         return [cls.SUCCESS, cls.FAILURE, cls.REVOKED]
+
+    @classmethod
+    def failed_states(cls):
+        return [cls.FAILURE, cls.REVOKED, cls.UNKNOWN]
 
 
 def get_status_label(status: JobState, progress: float) -> str:
@@ -247,6 +251,9 @@ class JobLogHandler(logging.Handler):
 
 class Job(BaseModel):
     """A job to be run by the scheduler"""
+
+    # Hide old failed jobs after 3 days
+    FAILED_CUTOFF_HOURS = 24 * 3
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")

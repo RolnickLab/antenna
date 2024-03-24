@@ -8,14 +8,22 @@ from ami.jobs.models import Job, JobState
 
 class Command(BaseCommand):
     help = (
-        "Update the status of all jobs that are not in a final state "
-        "and have not been updated in the last 24 hours."
+        "Update the status of all jobs that are not in a final state " "and have not been updated in the last X hours."
     )
+
+    # Add argument for the number of hours to consider a job stale
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--hours",
+            type=int,
+            default=Job.FAILED_CUTOFF_HOURS,
+            help="Number of hours to consider a job stale",
+        )
 
     def handle(self, *args, **options):
         stale_jobs = Job.objects.filter(
             status__in=JobState.running_states(),
-            updated_at__lt=timezone.now() - timezone.timedelta(hours=24),
+            updated_at__lt=timezone.now() - timezone.timedelta(hours=options["hours"]),
         )
 
         for job in stale_jobs:
