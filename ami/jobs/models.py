@@ -45,6 +45,14 @@ class JobState(str, OrderedEnum):
     RECEIVED = "RECEIVED"
     UNKNOWN = "UNKNOWN"
 
+    @classmethod
+    def running_states(cls):
+        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY]
+
+    @classmethod
+    def final_states(cls):
+        return [cls.SUCCESS, cls.FAILURE, cls.REVOKED]
+
 
 def get_status_label(status: JobState, progress: float) -> str:
     """
