@@ -436,10 +436,16 @@ class Job(BaseModel):
             chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
 
             for i, chunk in enumerate(chunks):
-                results = self.pipeline.process_images(
-                    images=chunk,
-                    job_id=self.pk,
-                )
+                try:
+                    results = self.pipeline.process_images(
+                        images=chunk,
+                        job_id=self.pk,
+                    )
+                except Exception as e:
+                    # Log error about image batch and continue
+                    self.logger.error(f"Failed to process image batch {i} of {len(chunks)}: {e}")
+                    continue
+
                 total_detections += len(results.detections)
                 total_classifications += len(results.classifications)
                 self.progress.update_stage(
