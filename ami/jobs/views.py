@@ -1,12 +1,15 @@
 import logging
 
+from django.db.models.query import QuerySet
+from django.forms import IntegerField
+from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 
-from .models import Job
+from .models import Job, JobState
 from .serializers import JobListSerializer, JobSerializer
 
 logger = logging.getLogger(__name__)
@@ -101,3 +104,16 @@ class JobViewSet(DefaultViewSet):
         if url_boolean_param(self.request, "start_now", default=False):
             # job.run()
             job.enqueue()
+
+    def get_queryset(self) -> QuerySet:
+        jobs = super().get_queryset()
+
+        cutoff_hours = IntegerField(required=False, min_value=0).clean(
+            self.request.query_params.get("cutoff_hours", Job.FAILED_CUTOFF_HOURS)
+        )
+        # Filter out completed jobs that have not been updated in the last X hours
+        cutoff_datetime = timezone.now() - timezone.timedelta(hours=cutoff_hours)
+        return jobs.exclude(
+            status=JobState.failed_states(),
+            updated_at__lt=cutoff_datetime,
+        )

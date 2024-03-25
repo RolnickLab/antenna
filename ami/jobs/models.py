@@ -45,6 +45,18 @@ class JobState(str, OrderedEnum):
     RECEIVED = "RECEIVED"
     UNKNOWN = "UNKNOWN"
 
+    @classmethod
+    def running_states(cls):
+        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
+
+    @classmethod
+    def final_states(cls):
+        return [cls.SUCCESS, cls.FAILURE, cls.REVOKED]
+
+    @classmethod
+    def failed_states(cls):
+        return [cls.FAILURE, cls.REVOKED, cls.UNKNOWN]
+
 
 def get_status_label(status: JobState, progress: float) -> str:
     """
@@ -240,6 +252,9 @@ class JobLogHandler(logging.Handler):
 class Job(BaseModel):
     """A job to be run by the scheduler"""
 
+    # Hide old failed jobs after 3 days
+    FAILED_CUTOFF_HOURS = 24 * 3
+
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
@@ -421,10 +436,16 @@ class Job(BaseModel):
             chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
 
             for i, chunk in enumerate(chunks):
-                results = self.pipeline.process_images(
-                    images=chunk,
-                    job_id=self.pk,
-                )
+                try:
+                    results = self.pipeline.process_images(
+                        images=chunk,
+                        job_id=self.pk,
+                    )
+                except Exception as e:
+                    # Log error about image batch and continue
+                    self.logger.error(f"Failed to process image batch {i} of {len(chunks)}: {e}")
+                    continue
+
                 total_detections += len(results.detections)
                 total_classifications += len(results.classifications)
                 self.progress.update_stage(
