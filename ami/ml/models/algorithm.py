@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ami.main.models import Classification
+    from ami.ml.models import Pipeline
 
 import typing
 
@@ -27,6 +28,7 @@ class Algorithm(BaseModel):
     # api_base_url = models.URLField(blank=True)
     # api = models.CharField(max_length=255, blank=True)
 
+    pipelines: models.QuerySet[Pipeline]
     classifications: models.QuerySet[Classification]
 
     class Meta:

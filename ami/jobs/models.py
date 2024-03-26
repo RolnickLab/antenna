@@ -401,6 +401,7 @@ class Job(BaseModel):
                     deployment=self.deployment,
                     source_images=[self.source_image_single] if self.source_image_single else None,
                     job_id=self.pk,
+                    skip_processed=True,
                     # shuffle=self.shuffle,
                 )
             )
@@ -452,7 +453,7 @@ class Job(BaseModel):
                     "process",
                     status=JobState.STARTED,
                     progress=(i + 1) / len(chunks),
-                    proccessed=(i + 1) * CHUNK_SIZE,
+                    processed=(i + 1) * CHUNK_SIZE,
                     remaining=image_count - (i + 1) * CHUNK_SIZE,
                     detections=total_detections,
                     classifications=total_classifications,
