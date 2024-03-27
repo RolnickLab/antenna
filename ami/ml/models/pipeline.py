@@ -44,8 +44,13 @@ def filter_processed_images(
             logger.info(f"Image {image} has no existing detections from pipeline {pipeline}")
             # If there are no existing detections from this pipeline, send the image
             yield image
+        elif not existing_detections.filter(classifications__isnull=True).exists():
+            # Check if there are detections with no classifications
+            logger.info(f"Image {image} has existing detections with no classifications from pipeline {pipeline}")
+            yield image
         else:
-            # If there are existing detections, check if they need to be classified by the pipeline
+            # If there are existing detections with classifications,
+            # Compare their classification algorithms to the current pipeline's algorithms
             detections_needing_classification = existing_detections.exclude(
                 classifications__algorithm__in=pipeline_algorithms
             )
@@ -200,18 +205,20 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     for detection in results.detections:
         # @TODO use bulk create, or optimize this in some way
         print(detection)
-        assert detection.algorithm
-        algo, _created = Algorithm.objects.get_or_create(
+        assert detection.algorithm, "No detection algorithm was specified in the returned results."
+        detection_algo, _created = Algorithm.objects.get_or_create(
             name=detection.algorithm,
         )
-        algorithms_used.add(algo)
+        algorithms_used.add(detection_algo)
+        if _created:
+            created_objects.append(detection_algo)
 
         # @TODO hmmmm what to do
         source_image = SourceImage.objects.get(pk=detection.source_image_id)
         source_images.add(source_image)
         existing_detection = Detection.objects.filter(
             source_image=source_image,
-            detection_algorithm=algo,
+            detection_algorithm=detection_algo,
             bbox=list(detection.bbox.dict().values()),
         ).first()
         if existing_detection:
@@ -226,7 +233,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
                 timestamp=source_image.timestamp,
                 path=detection.crop_image_url or "",
                 detection_time=detection.timestamp,
-                detection_algorithm=algo,
+                detection_algorithm=detection_algo,
             )
             new_detection.save()
             print("Created new detection", new_detection)
@@ -237,16 +244,16 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         source_image = SourceImage.objects.get(pk=classification.source_image_id)
         source_images.add(source_image)
 
-        assert classification.algorithm
-        algo, _created = Algorithm.objects.get_or_create(
+        assert classification.algorithm, "No classification algorithm was specified in the returned results."
+        classification_algo, _created = Algorithm.objects.get_or_create(
             name=classification.algorithm,
         )
-        algorithms_used.add(algo)
+        algorithms_used.add(classification_algo)
         if _created:
-            created_objects.append(algo)
+            created_objects.append(classification_algo)
 
         taxa_list, _created = TaxaList.objects.get_or_create(
-            name=f"Taxa returned by {algo.name}",
+            name=f"Taxa returned by {classification_algo.name}",
         )
         if _created:
             created_objects.append(taxa_list)
@@ -278,7 +285,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         new_classification = Classification()
         new_classification.detection = detection
         new_classification.taxon = taxon
-        new_classification.algorithm = algo
+        new_classification.algorithm = classification_algo
         new_classification.score = max(classification.scores)
         new_classification.timestamp = now()  # @TODO get timestamp from API response
         # @TODO add reference to job or pipeline?
@@ -304,10 +311,11 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     for source_image in source_images:
         source_image.save()
 
+    registered_algos = pipeline.algorithms.all()
     for algo in algorithms_used:
         # This is important for tracking what objects were processed by which algorithms
         # to avoid reprocessing, and for tracking provenance.
-        if algo not in pipeline.algorithms.all():
+        if algo not in registered_algos:
             pipeline.algorithms.add(algo)
             logger.warning(f"Added unregistered algorithm {algo} to pipeline {pipeline}")
 

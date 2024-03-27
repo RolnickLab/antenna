@@ -47,7 +47,7 @@ class SourceImageResponse(pydantic.BaseModel):
     url: str
 
 
-PipelineChoice = typing.Literal[
+KnownPipelineChoices = typing.Literal[
     "panama_moths_2023",
     "quebec_vermont_moths_2023",
     "uk_denmark_moths_2023",
@@ -55,12 +55,13 @@ PipelineChoice = typing.Literal[
 
 
 class PipelineRequest(pydantic.BaseModel):
-    pipeline: PipelineChoice
+    pipeline: str
     source_images: list[SourceImageRequest]
 
 
 class PipelineResponse(pydantic.BaseModel):
-    pipeline: PipelineChoice
+    # pipeline: PipelineChoice
+    pipeline: str
     total_time: float
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
