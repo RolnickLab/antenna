@@ -44,7 +44,7 @@ def filter_processed_images(
             logger.info(f"Image {image} has no existing detections from pipeline {pipeline}")
             # If there are no existing detections from this pipeline, send the image
             yield image
-        elif not existing_detections.filter(classifications__isnull=True).exists():
+        elif existing_detections.filter(classifications__isnull=True).exists():
             # Check if there are detections with no classifications
             logger.info(f"Image {image} has existing detections with no classifications from pipeline {pipeline}")
             yield image
