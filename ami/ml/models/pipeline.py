@@ -158,7 +158,7 @@ def process_images(
     if job:
         job.logger.debug(f"Results: {results}")
         detections = results.detections
-        classifications = results.classifications
+        classifications = [classification for detection in detections for classification in detection.classifications]
         if len(detections):
             job.logger.info(f"Found {len(detections)} detections")
         if len(classifications):
@@ -202,110 +202,101 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     # collection.images.set(source_images)
     source_images = set()
 
-    for detection in results.detections:
+    for detection_resp in results.detections:
         # @TODO use bulk create, or optimize this in some way
-        print(detection)
-        assert detection.algorithm, "No detection algorithm was specified in the returned results."
+        print(detection_resp)
+        assert detection_resp.algorithm, "No detection algorithm was specified in the returned results."
         detection_algo, _created = Algorithm.objects.get_or_create(
-            name=detection.algorithm,
+            name=detection_resp.algorithm,
         )
         algorithms_used.add(detection_algo)
         if _created:
             created_objects.append(detection_algo)
 
         # @TODO hmmmm what to do
-        source_image = SourceImage.objects.get(pk=detection.source_image_id)
+        source_image = SourceImage.objects.get(pk=detection_resp.source_image_id)
         source_images.add(source_image)
         existing_detection = Detection.objects.filter(
             source_image=source_image,
             detection_algorithm=detection_algo,
-            bbox=list(detection.bbox.dict().values()),
+            bbox=list(detection_resp.bbox.dict().values()),
         ).first()
         if existing_detection:
             if not existing_detection.path:
-                existing_detection.path = detection.crop_image_url or ""
+                existing_detection.path = detection_resp.crop_image_url or ""
                 existing_detection.save()
                 print("Updated existing detection", existing_detection)
+            detection = existing_detection
         else:
             new_detection = Detection.objects.create(
                 source_image=source_image,
-                bbox=list(detection.bbox.dict().values()),
+                bbox=list(detection_resp.bbox.dict().values()),
                 timestamp=source_image.timestamp,
-                path=detection.crop_image_url or "",
-                detection_time=detection.timestamp,
+                path=detection_resp.crop_image_url or "",
+                detection_time=detection_resp.timestamp,
                 detection_algorithm=detection_algo,
             )
             new_detection.save()
             print("Created new detection", new_detection)
             created_objects.append(new_detection)
+            detection = new_detection
 
-    for classification in results.classifications:
-        print(classification)
-        source_image = SourceImage.objects.get(pk=classification.source_image_id)
-        source_images.add(source_image)
+        for classification in detection_resp.classifications:
+            print(classification)
 
-        assert classification.algorithm, "No classification algorithm was specified in the returned results."
-        classification_algo, _created = Algorithm.objects.get_or_create(
-            name=classification.algorithm,
-        )
-        algorithms_used.add(classification_algo)
-        if _created:
-            created_objects.append(classification_algo)
-
-        taxa_list, _created = TaxaList.objects.get_or_create(
-            name=f"Taxa returned by {classification_algo.name}",
-        )
-        if _created:
-            created_objects.append(taxa_list)
-
-        taxon, _created = Taxon.objects.get_or_create(
-            name=classification.classification,
-            defaults={"name": classification.classification, "rank": TaxonRank.UNKNOWN},
-        )
-        if _created:
-            created_objects.append(taxon)
-
-        taxa_list.taxa.add(taxon)
-
-        # @TODO this is asking for trouble
-        # shouldn't we be able to get the detection from the classification?
-        # also should filter by the correct detection algorithm
-        # or do we use the bbox as a unique identifier?
-        # then it doesn't matter what detection algorithm was used
-        detection = (
-            Detection.objects.filter(
-                source_image=source_image,
-                bbox=list(classification.bbox.dict().values()),
+            assert classification.algorithm, "No classification algorithm was specified in the returned results."
+            classification_algo, _created = Algorithm.objects.get_or_create(
+                name=classification.algorithm,
             )
-            .order_by("-timestamp")
-            .first()
-        )
-        assert detection
+            algorithms_used.add(classification_algo)
+            if _created:
+                created_objects.append(classification_algo)
 
-        new_classification = Classification()
-        new_classification.detection = detection
-        new_classification.taxon = taxon
-        new_classification.algorithm = classification_algo
-        new_classification.score = max(classification.scores)
-        new_classification.timestamp = now()  # @TODO get timestamp from API response
-        # @TODO add reference to job or pipeline?
-
-        new_classification.save()
-        created_objects.append(new_classification)
-
-        # Create a new occurrence for each detection (no tracking yet)
-        # @TODO remove when we implement tracking
-        if not detection.occurrence:
-            occurrence = Occurrence.objects.create(
-                event=source_image.event,
-                deployment=source_image.deployment,
-                project=source_image.project,
-                determination=taxon,
-                determination_score=new_classification.score,
+            taxa_list, _created = TaxaList.objects.get_or_create(
+                name=f"Taxa returned by {classification_algo.name}",
             )
-            detection.occurrence = occurrence
-            detection.save()
-        detection.occurrence.save()
+            if _created:
+                created_objects.append(taxa_list)
+
+            taxon, _created = Taxon.objects.get_or_create(
+                name=classification.classification,
+                defaults={"name": classification.classification, "rank": TaxonRank.UNKNOWN},
+            )
+            if _created:
+                created_objects.append(taxon)
+
+            taxa_list.taxa.add(taxon)
+
+            # @TODO this is asking for trouble
+            # shouldn't we be able to get the detection from the classification?
+            # also should filter by the correct detection algorithm
+            # or do we use the bbox as a unique identifier?
+            # then it doesn't matter what detection algorithm was used
+
+            new_classification = Classification()
+            new_classification.detection = detection
+            new_classification.taxon = taxon
+            new_classification.algorithm = classification_algo
+            new_classification.score = max(classification.scores)
+            new_classification.timestamp = now()  # @TODO get timestamp from API response
+            # @TODO add reference to job or pipeline?
+
+            new_classification.save()
+            created_objects.append(new_classification)
+
+            # Create a new occurrence for each detection (no tracking yet)
+            # @TODO remove when we implement tracking
+            if not detection.occurrence:
+                occurrence = Occurrence.objects.create(
+                    event=source_image.event,
+                    deployment=source_image.deployment,
+                    project=source_image.project,
+                    determination=taxon,
+                    determination_score=new_classification.score,
+                )
+                detection.occurrence = occurrence
+                detection.save()
+            detection.occurrence.save()
 
     # Update precalculated counts on source images
     for source_image in source_images:

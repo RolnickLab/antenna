@@ -448,7 +448,7 @@ class Job(BaseModel):
                     continue
 
                 total_detections += len(results.detections)
-                total_classifications += len(results.classifications)
+                total_classifications += len([c for d in results.detections for c in d.classifications])
                 self.progress.update_stage(
                     "process",
                     status=JobState.STARTED,

@@ -15,6 +15,16 @@ class BoundingBox(pydantic.BaseModel):
         return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
 
 
+class ClassificationResponse(pydantic.BaseModel):
+    classification: str
+    labels: list[str] = []
+    scores: list[float] = []
+    inference_time: float | None = None
+    algorithm: str | None = None
+    timestamp: datetime.datetime
+    terminal: bool = True
+
+
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
     bbox: BoundingBox
@@ -22,17 +32,7 @@ class DetectionResponse(pydantic.BaseModel):
     algorithm: str | None = None
     timestamp: datetime.datetime
     crop_image_url: str | None = None
-
-
-class ClassificationResponse(pydantic.BaseModel):
-    source_image_id: str
-    bbox: BoundingBox | None = None
-    classification: str
-    labels: list[str] = []
-    scores: list[float] = []
-    inference_time: float | None = None
-    algorithm: str | None = None
-    timestamp: datetime.datetime
+    classifications: list[ClassificationResponse] = []
 
 
 class SourceImageRequest(pydantic.BaseModel):
@@ -65,4 +65,3 @@ class PipelineResponse(pydantic.BaseModel):
     total_time: float
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
-    classifications: list[ClassificationResponse]
