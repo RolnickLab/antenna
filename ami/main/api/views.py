@@ -232,7 +232,7 @@ class SourceImageViewSet(DefaultViewSet):
                 .filter(has_detections=has_detections)
                 .order_by(
                     "?"
-                )  # Random order is here for our demo ML backend to limit the same images from being proccessed
+                )  # Random order is here for our demo ML backend to limit the same images from being processed
                 # @TODO remove this when we have a real queue for the ML backend
             )
         return queryset

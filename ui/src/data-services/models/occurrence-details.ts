@@ -12,6 +12,7 @@ export interface Identification {
   overridden?: boolean
   taxon: Taxon
   userPermissions: UserPermission[]
+  createdAt: string
 }
 
 export interface HumanIdentification extends Identification {
@@ -57,6 +58,7 @@ export class OccurrenceDetails extends Occurrence {
           taxon,
           user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
           userPermissions: i.user_permissions,
+          createdAt: i.created_at,
         }
 
         return identification
@@ -76,6 +78,7 @@ export class OccurrenceDetails extends Occurrence {
           taxon,
           score: p.score,
           userPermissions: p.user_permissions,
+          createdAt: p.created_at,
         }
 
         return prediction
