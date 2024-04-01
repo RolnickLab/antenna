@@ -41,12 +41,12 @@ def filter_processed_images(
     for image in images:
         existing_detections = image.detections.filter(detection_algorithm__in=pipeline_algorithms)
         if not existing_detections.exists():
-            logger.info(f"Image {image} has no existing detections from pipeline {pipeline}")
+            logger.debug(f"Image {image} has no existing detections from pipeline {pipeline}")
             # If there are no existing detections from this pipeline, send the image
             yield image
         elif existing_detections.filter(classifications__isnull=True).exists():
             # Check if there are detections with no classifications
-            logger.info(f"Image {image} has existing detections with no classifications from pipeline {pipeline}")
+            logger.debug(f"Image {image} has existing detections with no classifications from pipeline {pipeline}")
             yield image
         else:
             # If there are existing detections with classifications,
@@ -55,7 +55,7 @@ def filter_processed_images(
                 classifications__algorithm__in=pipeline_algorithms
             )
             if detections_needing_classification.exists():
-                logger.info(
+                logger.debug(
                     f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}"
                 )
                 logger.warn(
@@ -65,7 +65,9 @@ def filter_processed_images(
                 yield image
             else:
                 # If all detections have been classified by the pipeline, skip the image
-                logger.info(f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!")
+                logger.debug(
+                    f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!"
+                )
                 continue
 
 
