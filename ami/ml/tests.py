@@ -42,7 +42,7 @@ class TestPipeline(TestCase):
 
     def test_create_pipeline(self):
         self.assertEqual(self.pipeline.slug, "test-pipeline")
-        self.assertEqual(self.pipeline.algorithms.count(), 2)
+        self.assertEqual(self.pipeline.algorithms.count(), 3)
 
         for algorithm in self.pipeline.algorithms.all():
             self.assertIn(algorithm.key, ["test-object-detector", "test-filter", "test-classifier"])
