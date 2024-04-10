@@ -10,7 +10,7 @@ export const useQueueJob = () => {
 
   const { mutateAsync, isLoading, isSuccess, error } = useMutation({
     mutationFn: (id: string) =>
-      axios.post<{ id: number }>(`${API_URL}/${API_ROUTES.JOBS}/${id}/run/`, {
+      axios.post<{ id: number }>(`${API_URL}/${API_ROUTES.JOBS}/${id}/run/`, undefined, {
         headers: getAuthHeader(user),
       }),
     onSuccess: () => {

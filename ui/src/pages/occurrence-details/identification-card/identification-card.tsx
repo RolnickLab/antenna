@@ -56,7 +56,8 @@ export const IdentificationCard = ({
   return (
     <div className={styles.identificationCard}>
       <div className={styles.content}>
-        <IdentificationSummary user={user}>
+
+        <IdentificationSummary user={user} identification={identification}>
           {identification.applied && (
             <StatusLabel label={translate(STRING.ID_APPLIED)} />
           )}

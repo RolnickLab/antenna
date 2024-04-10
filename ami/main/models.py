@@ -1393,6 +1393,9 @@ class Classification(BaseModel):
     class Meta:
         ordering = ["-created_at", "-score"]
 
+    def __str__(self) -> str:
+        return f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id}"
+
 
 @final
 class Detection(BaseModel):
@@ -1537,6 +1540,9 @@ class Detection(BaseModel):
             self.update_calculated_fields(save=True)
         # if not self.occurrence:
         #     self.associate_new_occurrence()
+
+    def __str__(self) -> str:
+        return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
 @final
