@@ -1,13 +1,18 @@
 import { Entity, ServerEntity } from 'data-services/models/entity'
 import { Storage } from 'data-services/models/storage'
+import { Collection } from 'data-services/models/collection'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (collection: string, record: ServerEntity) => {
+  // TODO: How to handle different types of entities?
+  // look at the customFormMap in constants.ts
   if (collection === 'storage') {
     return new Storage(record)
+  } else if (collection === 'collection') {
+    return new Collection(record)
   }
 
   return new Entity(record)

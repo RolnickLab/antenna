@@ -903,6 +903,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
     source_images = serializers.SerializerMethodField()
     kwargs = serializers.JSONField(initial=dict, required=False)
     jobs = JobStatusSerializer(many=True, read_only=True)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
 
     class Meta:
         model = SourceImageCollection
