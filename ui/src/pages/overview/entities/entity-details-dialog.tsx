@@ -6,6 +6,8 @@ import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { customFormMap } from './details-form/constants'
 import { EntityDetailsForm } from './details-form/entity-details-form'
+import { IconButton } from 'design-system/components/icon-button/icon-button'
+import { IconType } from 'design-system/components/icon/icon'
 import styles from './styles.module.scss'
 
 const CLOSE_TIMEOUT = 1000
@@ -39,9 +41,7 @@ export const UpdateEntityDialog = ({
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <button className={styles.dialogTrigger}>
-          <span>{entity.name}</span>
-        </button>
+        <IconButton icon={IconType.Pencil} />
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         <Dialog.Header title={label} />

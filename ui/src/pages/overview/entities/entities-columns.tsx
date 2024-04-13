@@ -16,15 +16,7 @@ export const columns: (
     sortField: 'name',
     renderCell: (item: Entity) => (
       <BasicTableCell>
-        {item.canUpdate ? (
-          <UpdateEntityDialog
-            collection={collection}
-            entity={item}
-            type={type}
-          />
-        ) : (
-          item.name
-        )}
+        {item.name}
       </BasicTableCell>
     ),
   },
@@ -54,6 +46,13 @@ export const columns: (
     },
     renderCell: (item: Entity) => (
       <div className={styles.entityActions}>
+        {item.canUpdate && (
+          <UpdateEntityDialog
+            collection={collection}
+            entity={item}
+            type={type}
+          />
+        )}
         {item.canDelete && (
           <DeleteEntityDialog
             collection={collection}
