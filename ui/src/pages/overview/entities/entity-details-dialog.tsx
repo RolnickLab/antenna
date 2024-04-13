@@ -10,7 +10,7 @@ import styles from './styles.module.scss'
 
 const CLOSE_TIMEOUT = 1000
 
-export const EntityDetailsDialog = ({
+export const UpdateEntityDialog = ({
   collection,
   entity,
   type,

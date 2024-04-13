@@ -10,6 +10,10 @@ export class Entity {
     this._data = entity
   }
 
+  get canUpdate(): boolean {
+    return this._data.user_permissions.includes(UserPermission.Update)
+  }
+
   get canDelete(): boolean {
     return this._data.user_permissions.includes(UserPermission.Delete)
   }

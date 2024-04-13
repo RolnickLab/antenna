@@ -3,7 +3,7 @@ import { BasicTableCell } from 'design-system/components/table/basic-table-cell/
 import { TableColumn } from 'design-system/components/table/types'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
-import { EntityDetailsDialog } from './entity-details-dialog'
+import { UpdateEntityDialog } from './entity-details-dialog'
 import styles from './styles.module.scss'
 
 export const columns: (
@@ -16,11 +16,15 @@ export const columns: (
     sortField: 'name',
     renderCell: (item: Entity) => (
       <BasicTableCell>
-        <EntityDetailsDialog
-          collection={collection}
-          entity={item}
-          type={type}
-        />
+        {item.canUpdate ? (
+          <UpdateEntityDialog
+            collection={collection}
+            entity={item}
+            type={type}
+          />
+        ) : (
+          item.name
+        )}
       </BasicTableCell>
     ),
   },
