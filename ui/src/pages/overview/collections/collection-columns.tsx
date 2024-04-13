@@ -12,6 +12,7 @@ import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog
 import styles from 'pages/overview/entities/styles.module.scss'
 import { API_ROUTES } from 'data-services/constants'
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
+import { PopulateCollection } from './collection-actions'
 
 export const columns: (projectId: string) => TableColumn<Collection>[] = (
   projectId: string
@@ -66,6 +67,9 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       },
       renderCell: (item: Collection) => (
         <div className={styles.entityActions}>
+          {item.canUpdate && (
+            <PopulateCollection collectionId={item.id} />
+          )}
           {item.canUpdate && (
             <UpdateEntityDialog
               collection={API_ROUTES.COLLECTIONS}
