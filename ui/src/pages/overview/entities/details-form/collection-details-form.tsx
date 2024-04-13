@@ -12,7 +12,7 @@ import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
-import { MethodEnum } from 'schema'
+// import { MethodEnum } from 'schema'
 
 type CollectionFormValues = FormValues & {
   method: string,
@@ -32,11 +32,17 @@ const config: FormConfig = {
     label: 'Sampling method',
     rules: {
       required: true,
+      // validate: (value: any) => {
+      //   if (!Object.values(MethodEnum).includes(value)) {
+      //     const validChoices = Object.values(MethodEnum).join(', ')
+      //     return `Valid choices are: ${validChoices}`
+      //   }
+      // },
     },
   },
-  kwargs: {
-    label: 'Sampling method parameters',
-  },
+  // kwargs: {
+  // label: 'Sampling method parameters',
+  // },
 }
 
 export const CollectionDetailsForm = ({
