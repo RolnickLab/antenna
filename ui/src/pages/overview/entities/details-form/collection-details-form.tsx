@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
+import { MethodEnum } from 'schema'
 
 type CollectionFormValues = FormValues & {
   method: string,
@@ -29,6 +30,12 @@ const config: FormConfig = {
   },
   method: {
     label: 'Sampling method',
+    rules: {
+      required: true,
+    },
+  },
+  kwargs: {
+    label: 'Sampling method parameters',
   },
 }
 

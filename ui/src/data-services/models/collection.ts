@@ -1,5 +1,4 @@
 export type ServerCollection = any // TODO: Update this type
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
 import { Entity } from './entity'
 
@@ -10,10 +9,18 @@ export class Collection extends Entity {
   }
 
   get method(): string {
+    return this._data.method
+  }
+
+  get kwargs(): object {
+    return this._data.kwargs || {};
+  }
+
+  get methodNameDisplay(): string {
     return snakeCaseToSentenceCase(this._data.method)
   }
 
-  get methodDetails(): string[] {
+  get methodDetailsDisplay(): string[] {
     return Object.entries(this._data.kwargs).map(
       ([key, value]) => `${snakeCaseToSentenceCase(key)} ${value}`
     )
