@@ -1,3 +1,4 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Collection } from 'data-services/models/collection'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import {
@@ -5,13 +6,12 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
+import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
+import styles from 'pages/overview/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
-import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
-import styles from 'pages/overview/entities/styles.module.scss'
-import { API_ROUTES } from 'data-services/constants'
-import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
 import { PopulateCollection } from './collection-actions'
 
 export const columns: (projectId: string) => TableColumn<Collection>[] = (
@@ -70,7 +70,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
           {item.canUpdate && (
             <PopulateCollection collectionId={item.id} />
           )}
-          {item.canUpdate && (
+          {item.canUpdate && item.method === 'common_combined' && (
             <UpdateEntityDialog
               collection={API_ROUTES.COLLECTIONS}
               entity={item}

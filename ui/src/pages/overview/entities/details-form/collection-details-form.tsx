@@ -16,6 +16,8 @@ import { DetailsFormProps, FormValues } from './types'
 
 type CollectionFormValues = FormValues & {
   method: string,
+  max_num: number,
+  minute_interval: number,
 }
 
 const config: FormConfig = {
@@ -40,6 +42,12 @@ const config: FormConfig = {
       // },
     },
   },
+  max_num: {
+    label: 'Max number of images',
+  },
+  minute_interval: {
+    label: 'Minute interval',
+  },
   // kwargs: {
   // label: 'Sampling method parameters',
   // },
@@ -61,7 +69,9 @@ export const CollectionDetailsForm = ({
     defaultValues: {
       name: entity?.name ?? '',
       description: entity?.description ?? '',
-      method: collection?.method ?? '',
+      method: collection?.method ?? 'common_combined',
+      max_num: collection?.kwargs?.max_num ?? undefined,
+      minute_interval: collection?.kwargs?.minute_interval ?? undefined,
     },
     mode: 'onChange',
   })
@@ -76,6 +86,10 @@ export const CollectionDetailsForm = ({
           description: values.description,
           customFields: {
             method: values.method,
+            kwargs: {
+              max_num: values.max_num,
+              minute_interval: values.minute_interval,
+            }
           },
         })
       )}
@@ -92,6 +106,18 @@ export const CollectionDetailsForm = ({
         <FormField
           name="description"
           type="text"
+          config={config}
+          control={control}
+        />
+        <FormField
+          name="max_num"
+          type="number"
+          config={config}
+          control={control}
+        />
+        <FormField
+          name="minute_interval"
+          type="number"
           config={config}
           control={control}
         />
