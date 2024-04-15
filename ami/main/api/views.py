@@ -317,6 +317,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         Populate a collection with source images using the configured sampling method and arguments.
         """
         collection = self.get_object()
+        collection.images.clear()
         task = tasks.populate_collection.apply_async([collection.pk])
         return Response({"task": task.id})
 
