@@ -20,8 +20,10 @@ type CollectionFormValues = FormValues & {
   kwargs: {
     max_num: number | undefined,
     minute_interval: number | undefined,
-    start_date: string | undefined,
-    end_date: string | undefined,
+    month_start: string | undefined,
+    month_end: string | undefined,
+    hour_start: number | undefined,
+    hour_end: number | undefined,
   }
 }
 
@@ -51,8 +53,21 @@ const config: FormConfig = {
     label: 'Max number of images',
   },
   'kwargs.minute_interval': {
-    label: 'Minute interval',
+    label: 'Minutes between captures',
   },
+  'kwargs.month_start': {
+    label: 'Earliest month',
+  },
+  'kwargs.month_end': {
+    label: 'Latest month',
+  },
+  'kwargs.hour_start': {
+    label: 'Earliest hour',
+  },
+  'kwargs.hour_end': {
+    label: 'Latest hour',
+  },
+
 }
 
 export const CollectionDetailsForm = ({
@@ -72,7 +87,7 @@ export const CollectionDetailsForm = ({
       name: entity?.name ?? '',
       description: entity?.description ?? '',
       method: collection?.method ?? editableSamplingMethods[0],
-      kwargs: collection?.kwargs ?? {},
+      kwargs: collection?.kwargs ?? {}
     },
     mode: 'onChange',
   })
@@ -81,16 +96,23 @@ export const CollectionDetailsForm = ({
 
   return (
     <form
-      onSubmit={handleSubmit((values) =>
+      onSubmit={handleSubmit((values) => {
+        const processedKwargs = Object.fromEntries(
+          Object.entries(values.kwargs).map(([key, value]) => [
+            key,
+            value === "" ? null : value,
+          ])
+        );
+
         onSubmit({
           name: values.name,
           description: values.description,
           customFields: {
             method: values.method,
-            kwargs: values.kwargs,
+            kwargs: processedKwargs,
           },
-        })
-      )}
+        });
+      })}
     >
       {errorMessage && (
         <FormError

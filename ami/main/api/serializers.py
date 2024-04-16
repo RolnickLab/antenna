@@ -902,20 +902,26 @@ class SourceImageUploadSerializer(DefaultSerializer):
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     # The most common kwargs for the sampling methods
     # use for the "common_combined" method
-    minute_interval = serializers.IntegerField(required=False)
-    max_num = serializers.IntegerField(required=False)
-    date_start = serializers.DateField(required=False)
-    date_end = serializers.DateField(required=False)
-    hour_start = serializers.IntegerField(required=False)
-    hour_end = serializers.IntegerField(required=False)
+    minute_interval = serializers.IntegerField(required=False, allow_null=True)
+    max_num = serializers.IntegerField(required=False, allow_null=True)
+    month_start = serializers.IntegerField(required=False, allow_null=True)
+    month_end = serializers.IntegerField(required=False, allow_null=True)
+
+    hour_start = serializers.IntegerField(required=False, allow_null=True)
+    hour_end = serializers.IntegerField(required=False, allow_null=True)
 
     # Kwargs for other sampling methods, this is not complete
     # see the SourceImageCollection model for all available kwargs.
-    size = serializers.IntegerField(required=False)
-    num_each = serializers.IntegerField(required=False)
-    exclude_events = serializers.CharField(required=False)
-    deployment_id = serializers.IntegerField(required=False)
-    position = serializers.IntegerField(required=False)
+    size = serializers.IntegerField(required=False, allow_null=True)
+    num_each = serializers.IntegerField(required=False, allow_null=True)
+    exclude_events = serializers.CharField(required=False, allow_null=True)
+    deployment_id = serializers.IntegerField(required=False, allow_null=True)
+    position = serializers.IntegerField(required=False, allow_null=True)
+
+    # Don't return the kwargs if they are empty
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return {key: value for key, value in data.items() if value is not None}
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
