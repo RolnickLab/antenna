@@ -901,6 +901,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
 
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     # The most common kwargs for the sampling methods
+    # use for the "common_combined" method
     minute_interval = serializers.IntegerField(required=False)
     max_num = serializers.IntegerField(required=False)
     date_start = serializers.DateField(required=False)
@@ -908,15 +909,20 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     hour_start = serializers.IntegerField(required=False)
     hour_end = serializers.IntegerField(required=False)
 
+    # Kwargs for other sampling methods, this is not complete
+    # see the SourceImageCollection model for all available kwargs.
+    size = serializers.IntegerField(required=False)
+    num_each = serializers.IntegerField(required=False)
+    exclude_events = serializers.CharField(required=False)
+    deployment_id = serializers.IntegerField(required=False)
+    position = serializers.IntegerField(required=False)
+
 
 class SourceImageCollectionSerializer(DefaultSerializer):
     # @TODO can sampling kwargs be a nested serializer instead??
 
     source_images = serializers.SerializerMethodField()
-    method = serializers.CharField(default="common_combined", required=False)
-    # kwargs = serializers.JSONField()
-    # common_kwargs = SourceImageCollectionCommonKwargsSerializer(source="kwargs", required=False, write_only=True)
-    kwargs = SourceImageCollectionCommonKwargsSerializer(required=False)
+    kwargs = SourceImageCollectionCommonKwargsSerializer(required=False, partial=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
 
