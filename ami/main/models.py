@@ -2168,6 +2168,7 @@ class SourceImageCollection(BaseModel):
         choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS),
         default="common_combined",
     )
+    # @TODO this should be a JSON field with a schema, use a pydantic model
     kwargs = models.JSONField(
         "Arguments",
         null=True,
@@ -2217,14 +2218,14 @@ class SourceImageCollection(BaseModel):
         max_num: int | None = 100,
         hour_start: int | None = None,
         hour_end: int | None = None,
-        date_start: datetime.date | None = None,
-        date_end: datetime.date | None = None,
+        month_start: datetime.date | None = None,
+        month_end: datetime.date | None = None,
     ) -> list[SourceImage]:
         qs = self.get_queryset()
-        if date_start:
-            qs = qs.filter(timestamp__gte=date_start)
-        if date_end:
-            qs = qs.filter(timestamp__lte=date_end)
+        if month_start:
+            qs = qs.filter(timestamp__month__gte=month_start)
+        if month_end:
+            qs = qs.filter(timestamp__month__lte=month_end)
         if hour_start:
             qs = qs.filter(timestamp__hour__gte=hour_start)
         if hour_end:
