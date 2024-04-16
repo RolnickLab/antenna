@@ -49,19 +49,13 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       renderCell: (item: Collection) => <BasicTableCell value={item.numImages} />,
     },
     {
-      id: 'created-at',
-      name: translate(STRING.FIELD_LABEL_CREATED_AT),
-      sortField: 'created_at',
-      renderCell: (item: Collection) => <BasicTableCell value={item.createdAt} />,
-    },
-    {
       id: 'updated-at',
       name: translate(STRING.FIELD_LABEL_UPDATED_AT),
       sortField: 'updated_at',
       renderCell: (item: Collection) => <BasicTableCell value={item.updatedAt} />,
     },
     {
-      id: 'actions',
+      id: 'collection-actions',
       name: '',
       styles: {
         padding: '16px',
@@ -72,6 +66,18 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
           {item.canUpdate && (
             <PopulateCollection collectionId={item.id} />
           )}
+        </div>
+      ),
+    },
+    {
+      id: 'actions',
+      name: '',
+      styles: {
+        padding: '16px',
+        width: '100%',
+      },
+      renderCell: (item: Collection) => (
+        <div className={styles.entityActions}>
           {item.canUpdate && editableSamplingMethods.includes(item.method) && (
             <UpdateEntityDialog
               collection={API_ROUTES.COLLECTIONS}

@@ -2,6 +2,7 @@ import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
+  FormRow,
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
@@ -122,31 +123,68 @@ export const CollectionDetailsForm = ({
         />
       )}
       <FormSection>
-        <FormField name="name" type="text" config={config} control={control} />
-        <FormField
-          name="description"
-          type="text"
-          config={config}
-          control={control}
-        />
-        <FormField
-          name="kwargs.max_num"
-          type="number"
-          config={config}
-          control={control}
-        />
-        <FormField
-          name="kwargs.minute_interval"
-          type="number"
-          config={config}
-          control={control}
-        />
-        <FormField
-          name="method"
-          type="text"
-          config={config}
-          control={control}
-        />
+        <FormRow>
+          <FormField name="name" type="text" config={config} control={control} />
+          <FormField
+            name="description"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+      </FormSection>
+      <FormSection>
+        <FormRow>
+          <FormField
+            name="kwargs.max_num"
+            type="number"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="kwargs.minute_interval"
+            type="number"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+
+          <FormField
+            name="kwargs.month_start"
+            type="number"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="kwargs.month_end"
+            type="number"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
+            name="kwargs.hour_start"
+            type="number"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="kwargs.hour_end"
+            type="number"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
+            name="method"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
       </FormSection>
       <FormActions>
         <Button
