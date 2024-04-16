@@ -11,6 +11,7 @@ interface IdentificationFieldValues {
   }
   occurrenceId: string
   taxonId: string
+  comment: string
 }
 
 const convertToServerFieldValues = (
@@ -20,6 +21,7 @@ const convertToServerFieldValues = (
   agreed_with_prediction_id: fieldValues.agreeWith?.predictionId,
   occurrence_id: fieldValues.occurrenceId,
   taxon_id: fieldValues.taxonId,
+  comment: fieldValues.comment,
 })
 
 export const useCreateIdentification = (onSuccess?: () => void) => {

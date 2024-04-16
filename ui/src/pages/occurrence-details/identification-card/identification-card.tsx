@@ -73,6 +73,9 @@ export const IdentificationCard = ({
               })
             }
           />
+          <div className={styles.comment}>
+            {identification.comment}
+          </div>
         </IdentificationSummary>
         <div className={styles.actions}>
           {showAgree && (

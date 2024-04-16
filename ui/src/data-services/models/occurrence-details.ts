@@ -11,11 +11,13 @@ export interface Identification {
   id: string
   overridden?: boolean
   taxon: Taxon
+  comment?: string
   userPermissions: UserPermission[]
   createdAt: string
 }
 
 export interface HumanIdentification extends Identification {
+  comment: string
   user: {
     id: string
     name: string
@@ -57,6 +59,7 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
+          comment: i.comment || 'no comment',
           userPermissions: i.user_permissions,
           createdAt: i.created_at,
         }
