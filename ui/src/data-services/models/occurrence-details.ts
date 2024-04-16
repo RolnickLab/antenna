@@ -59,7 +59,7 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
-          comment: i.comment || 'no comment',
+          comment: i.comment,
           userPermissions: i.user_permissions,
           createdAt: i.created_at,
         }
