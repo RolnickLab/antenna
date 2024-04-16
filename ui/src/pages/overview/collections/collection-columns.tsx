@@ -13,6 +13,8 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { PopulateCollection } from './collection-actions'
+import { editableSamplingMethods } from './constants'
+
 
 export const columns: (projectId: string) => TableColumn<Collection>[] = (
   projectId: string
@@ -70,7 +72,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
           {item.canUpdate && (
             <PopulateCollection collectionId={item.id} />
           )}
-          {item.canUpdate && item.method === 'common_combined' && (
+          {item.canUpdate && editableSamplingMethods.includes(item.method) && (
             <UpdateEntityDialog
               collection={API_ROUTES.COLLECTIONS}
               entity={item}

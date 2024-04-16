@@ -8,6 +8,7 @@ import { FormConfig } from 'components/form/types'
 import { Collection } from 'data-services/models/collection'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { editableSamplingMethods } from 'pages/overview/collections/constants'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -16,8 +17,12 @@ import { DetailsFormProps, FormValues } from './types'
 
 type CollectionFormValues = FormValues & {
   method: string,
-  max_num: number,
-  minute_interval: number,
+  kwargs: {
+    max_num: number | undefined,
+    minute_interval: number | undefined,
+    start_date: string | undefined,
+    end_date: string | undefined,
+  }
 }
 
 const config: FormConfig = {
@@ -34,23 +39,20 @@ const config: FormConfig = {
     label: 'Sampling method',
     rules: {
       required: true,
-      // validate: (value: any) => {
-      //   if (!Object.values(MethodEnum).includes(value)) {
-      //     const validChoices = Object.values(MethodEnum).join(', ')
-      //     return `Valid choices are: ${validChoices}`
-      //   }
-      // },
+      validate: (value: any) => {
+        if (!editableSamplingMethods.includes(value)) {
+          const validMethods = editableSamplingMethods.join(', ')
+          return `Invalid method. Must be one of: ${validMethods}`
+        }
+      },
     },
   },
-  max_num: {
+  'kwargs.max_num': {
     label: 'Max number of images',
   },
-  minute_interval: {
+  'kwargs.minute_interval': {
     label: 'Minute interval',
   },
-  // kwargs: {
-  // label: 'Sampling method parameters',
-  // },
 }
 
 export const CollectionDetailsForm = ({
@@ -69,9 +71,8 @@ export const CollectionDetailsForm = ({
     defaultValues: {
       name: entity?.name ?? '',
       description: entity?.description ?? '',
-      method: collection?.method ?? 'common_combined',
-      max_num: collection?.kwargs?.max_num ?? undefined,
-      minute_interval: collection?.kwargs?.minute_interval ?? undefined,
+      method: collection?.method ?? editableSamplingMethods[0],
+      kwargs: collection?.kwargs ?? {},
     },
     mode: 'onChange',
   })
@@ -86,10 +87,7 @@ export const CollectionDetailsForm = ({
           description: values.description,
           customFields: {
             method: values.method,
-            kwargs: {
-              max_num: values.max_num,
-              minute_interval: values.minute_interval,
-            }
+            kwargs: values.kwargs,
           },
         })
       )}
@@ -110,13 +108,13 @@ export const CollectionDetailsForm = ({
           control={control}
         />
         <FormField
-          name="max_num"
+          name="kwargs.max_num"
           type="number"
           config={config}
           control={control}
         />
         <FormField
-          name="minute_interval"
+          name="kwargs.minute_interval"
           type="number"
           config={config}
           control={control}
