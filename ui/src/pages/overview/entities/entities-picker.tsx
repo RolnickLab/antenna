@@ -15,6 +15,7 @@ export const EntitiesPicker = ({
   const { entities = [], isLoading } = useEntities(collection, {
     projectId: projectId as string,
   })
+  const validValue = entities.some((e) => e.id === value)
 
   return (
     <Select
@@ -24,7 +25,7 @@ export const EntitiesPicker = ({
         label: e.name,
       }))}
       showClear={false}
-      value={value}
+      value={validValue ? value : undefined}
       onValueChange={onValueChange}
     />
   )

@@ -1,8 +1,8 @@
 import { FormConfig } from 'components/form/types'
 import { bytesToMB } from 'utils/bytesToMB'
+import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-const IMAGE_MAX_SIZE = 1024 * 1024 // 1MB
 
 export const config: FormConfig = {
   name: {
@@ -22,7 +22,7 @@ export const config: FormConfig = {
     label: translate(STRING.FIELD_LABEL_IMAGE),
     description: [
       translate(STRING.MESSAGE_IMAGE_SIZE, {
-        value: bytesToMB(IMAGE_MAX_SIZE),
+        value: bytesToMB(API_MAX_UPLOAD_SIZE),
         unit: 'MB',
       }),
       translate(STRING.MESSAGE_IMAGE_FORMAT),
@@ -30,7 +30,7 @@ export const config: FormConfig = {
     rules: {
       validate: (file: File) => {
         if (file) {
-          if (file?.size > IMAGE_MAX_SIZE) {
+          if (file?.size > API_MAX_UPLOAD_SIZE) {
             return translate(STRING.MESSAGE_IMAGE_TOO_BIG)
           }
         }
@@ -38,7 +38,7 @@ export const config: FormConfig = {
     },
   },
   dataSourceId: {
-    label: 'Data source',
+    label: translate(STRING.FIELD_LABEL_DATA_SOURCE),
   },
   latitude: {
     label: translate(STRING.FIELD_LABEL_LATITUDE),

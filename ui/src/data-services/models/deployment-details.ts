@@ -47,7 +47,7 @@ export class DeploymentDetails extends Deployment {
   }
 
   get dataSource(): Storage | undefined {
-    if (this._deployment.data_source) {
+    if (this._deployment.data_source?.id) {
       return new Storage(this._deployment.data_source)
     }
   }
