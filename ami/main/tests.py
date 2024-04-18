@@ -3,6 +3,7 @@ import uuid
 
 from django.db import connection
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
 from ami.main.models import (
@@ -17,6 +18,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.users.models import User
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
@@ -547,3 +549,51 @@ class TestTaxonomyViews(TestCase):
         response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], taxon.name)
+
+
+class TestIdentification(APITestCase):
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        group_images_into_events(deployment=deployment)
+        create_occurrences(deployment=deployment, num=5)
+        self.project = project
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_identification(self):
+        from ami.main.models import Identification, Taxon
+
+        """
+        Post a new identification suggestion and check that it changed the occurrence's determination.
+        """
+
+        suggest_id_endpoint = "/api/v2/identifications/"
+        taxa = Taxon.objects.filter(projects=self.project)
+        assert taxa.count() > 1
+
+        occurrence = Occurrence.objects.filter(project=self.project).exclude(determination=None)[0]
+        original_taxon = occurrence.determination
+        assert original_taxon is not None
+        new_taxon = Taxon.objects.exclude(pk=original_taxon.pk)[0]
+        comment = "Test identification comment"
+
+        response = self.client.post(
+            suggest_id_endpoint,
+            {
+                "occurrence_id": occurrence.pk,
+                "taxon_id": new_taxon.pk,
+                "comment": comment,
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination, new_taxon)
+        identification = Identification.objects.get(pk=response.json()["id"])
+        self.assertEqual(identification.comment, comment)
