@@ -11,7 +11,7 @@ interface IdentificationFieldValues {
   }
   occurrenceId: string
   taxonId: string
-  comment: string
+  comment?: string
 }
 
 const convertToServerFieldValues = (
