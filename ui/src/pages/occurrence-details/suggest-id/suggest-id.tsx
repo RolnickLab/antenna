@@ -29,6 +29,7 @@ export const SuggestId = ({
 }: SuggestIdProps) => {
   const { projectId } = useParams()
   const [taxon, setTaxon] = useState<Taxon>()
+  const [comment, setComment] = useState("");
   const { createIdentification, isLoading, error } =
     useCreateIdentification(onCancel)
   const formError = error ? parseServerError(error)?.message : undefined
@@ -66,7 +67,8 @@ export const SuggestId = ({
         <Input
           label={translate(STRING.FIELD_LABEL_COMMENT)}
           name="comment"
-          disabled
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
         />
         <div className={styles.formActions}>
           <Button label={translate(STRING.CANCEL)} onClick={onCancel} />
@@ -82,6 +84,7 @@ export const SuggestId = ({
               createIdentification({
                 occurrenceId: occurrenceId,
                 taxonId: taxon.id,
+                comment: comment,
               })
             }}
           />

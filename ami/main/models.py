@@ -1285,6 +1285,7 @@ class Identification(BaseModel):
         related_name="agreed_identifications",
     )
     score = 1.0  # Always 1 for humans, at this time
+    comment = models.TextField(blank=True)
 
     class Meta:
         ordering = [
@@ -1389,6 +1390,10 @@ class Classification(BaseModel):
         null=True,
     )
     # job = models.CharField(max_length=255, null=True)
+
+    # Type hints for auto-generated fields
+    taxon_id: int
+    algorithm_id: int
 
     class Meta:
         ordering = ["-created_at", "-score"]
