@@ -552,6 +552,7 @@ class IdentificationSerializer(DefaultSerializer):
             "withdrawn",
             "agreed_with_identification_id",
             "agreed_with_prediction_id",
+            "comment",
             "created_at",
             "updated_at",
         ]
@@ -944,6 +945,7 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
             "taxon",
             "user",
             "withdrawn",
+            "comment",
             "created_at",
         ]
 
