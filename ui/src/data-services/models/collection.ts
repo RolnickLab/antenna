@@ -1,49 +1,37 @@
 export type ServerCollection = any // TODO: Update this type
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
+import { Entity } from './entity'
 
-export class Collection {
-  protected readonly _collection: ServerCollection
+export class Collection extends Entity {
 
-  public constructor(collection: ServerCollection) {
-    this._collection = collection
-  }
-
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._collection.created_at),
-    })
-  }
-
-  get id(): string {
-    return `${this._collection.id}`
+  public constructor(entity: ServerCollection) {
+    super(entity)
   }
 
   get method(): string {
-    return snakeCaseToSentenceCase(this._collection.method)
+    return this._data.method
   }
 
-  get methodDetails(): string[] {
-    return Object.entries(this._collection.kwargs).map(
+  get kwargs(): object {
+    return this._data.kwargs || {};
+  }
+
+  get methodNameDisplay(): string {
+    return snakeCaseToSentenceCase(this._data.method)
+  }
+
+  get methodDetailsDisplay(): string[] {
+    return Object.entries(this._data.kwargs).map(
       ([key, value]) => `${snakeCaseToSentenceCase(key)} ${value}`
     )
   }
 
   get name(): string {
-    return this._collection.name
+    return this._data.name
   }
 
   get numImages(): number | undefined {
-    return this._collection.source_image_count
+    return this._data.source_image_count
   }
 
-  get updatedAt(): string | undefined {
-    if (!this._collection.updated_at) {
-      return undefined
-    }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._collection.updated_at),
-    })
-  }
 }
