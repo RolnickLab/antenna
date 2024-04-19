@@ -5,7 +5,7 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Storage } from 'data-services/models/storage'
+import { StorageSource } from 'data-services/models/storage'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { useForm } from 'react-hook-form'
@@ -47,7 +47,7 @@ export const StorageDetailsForm = ({
   isSuccess,
   onSubmit,
 }: DetailsFormProps) => {
-  const storage = entity as Storage | undefined
+  const storage = entity as StorageSource | undefined
   const {
     control,
     handleSubmit,

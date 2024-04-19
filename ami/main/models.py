@@ -17,6 +17,7 @@ from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
+from django.template.defaultfilters import filesizeformat
 
 import ami.tasks
 import ami.utils
@@ -821,6 +822,22 @@ class S3StorageSource(BaseModel):
             endpoint_url=self.endpoint_url,
             public_base_url=self.public_base_url,
         )
+
+    def deployments_count(self) -> int:
+        return self.deployments.count()
+
+    def total_files_indexed(self) -> int:
+        return self.deployments.aggregate(total_files=models.Sum("data_source_total_files"))["total_files"]
+
+    @functools.cache
+    def total_size_indexed(self) -> int:
+        return self.deployments.aggregate(total_size=models.Sum("data_source_total_size"))["total_size"]
+
+    def total_size_indexed_display(self) -> str:
+        return filesizeformat(self.total_size_indexed())
+
+    def total_captures_indexed(self) -> int:
+        return self.deployments.aggregate(total_captures=models.Sum("captures_count"))["total_captures"]
 
     def list_files(self, limit=None):
         """Recursively list files in the bucket/prefix."""

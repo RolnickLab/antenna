@@ -1,6 +1,6 @@
 import { Deployment, ServerDeployment } from './deployment'
 import { Entity } from './entity'
-import { Storage } from './storage'
+import { StorageSource } from './storage'
 
 export type ServerDeploymentDetails = ServerDeployment & any // TODO: Update this type
 
@@ -46,9 +46,9 @@ export class DeploymentDetails extends Deployment {
     return this._exampleCaptures
   }
 
-  get dataSource(): Storage | undefined {
+  get dataSource(): StorageSource | undefined {
     if (this._deployment.data_source?.id) {
-      return new Storage(this._deployment.data_source)
+      return new StorageSource(this._deployment.data_source)
     }
   }
 
