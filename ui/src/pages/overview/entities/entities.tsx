@@ -7,6 +7,7 @@ import { Error } from 'pages/error/error'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { columns } from './entities-columns'
 import { NewEntityDialog } from './new-entity-dialog'
 import styles from './styles.module.scss'
@@ -21,7 +22,7 @@ export const Entities = ({
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()
-  const { entities, total, isLoading, isFetching, error } = useEntities(
+  const { entities, userPermissions, total, isLoading, isFetching, error } = useEntities(
     collection,
     {
       projectId,
@@ -29,6 +30,8 @@ export const Entities = ({
       sort,
     }
   )
+  const canCreate = userPermissions?.includes(UserPermission.Create)
+
 
   if (!isLoading && error) {
     return <Error />
@@ -56,7 +59,9 @@ export const Entities = ({
           setPage={setPage}
         />
       ) : null}
-      <NewEntityDialog collection={collection} type={type} />
+      {canCreate && (
+        <NewEntityDialog collection={collection} type={type} />
+      )}
     </>
   )
 }
