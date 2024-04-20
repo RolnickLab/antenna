@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 
 from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
+from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.utils.requests import get_active_classification_threshold
 
@@ -98,6 +99,10 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
     pass
 
 
+class ProjectPagination(LimitOffsetPaginationWithPermissions):
+    default_limit = 20
+
+
 class ProjectViewSet(DefaultViewSet):
     """
     API endpoint that allows projects to be viewed or edited.
@@ -105,6 +110,7 @@ class ProjectViewSet(DefaultViewSet):
 
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
+    pagination_class = ProjectPagination
 
     def get_serializer_class(self):
         """
