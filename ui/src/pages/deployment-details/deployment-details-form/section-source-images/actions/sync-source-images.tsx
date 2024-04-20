@@ -19,9 +19,9 @@ export const SyncDeploymentSourceImages = ({ deploymentId }: { deploymentId: str
       <>
         <div className={styles.buttonWrapper}>
           <Button
-            label={translate(STRING.SYNC)}
-            icon={IconType.RadixCheck}
-            theme={ButtonTheme.Success}
+            label={translate(STRING.QUEUED)}
+            icon={IconType.RadixClock}
+            theme={ButtonTheme.Neutral}
             disabled={true}
           />
           {projectId && jobId && (

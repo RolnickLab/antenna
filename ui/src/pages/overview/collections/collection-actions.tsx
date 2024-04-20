@@ -12,6 +12,7 @@ export const PopulateCollection = ({ collectionId }: { collectionId: string }) =
                 label={translate(STRING.QUEUED)}
                 icon={IconType.RadixClock}
                 theme={ButtonTheme.Neutral}
+                disabled={true}
             />
         )
     }
