@@ -144,6 +144,30 @@ class DeploymentViewSet(DefaultViewSet):
         else:
             return DeploymentSerializer
 
+    @action(detail=True, methods=["post"], name="sync")
+    def sync(self, _request, pk=None) -> Response:
+        """
+        Queue a task to sync data from the deployment's data source.
+        """
+        deployment: Deployment = self.get_object()
+        if deployment and deployment.data_source:
+            # queued_task = tasks.sync_source_images.delay(deployment.pk)
+            from ami.jobs.models import DataStorageSyncJob, Job
+
+            job = Job.objects.create(
+                name=f"Sync captures for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+            )
+            job.progress.add_stage(DataStorageSyncJob.key)
+            job.enqueue()
+            msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
+            logger.info(msg)
+            assert deployment.project
+            return Response({"job_id": job.pk, "project_id": deployment.project.pk})
+        else:
+            raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
+
 
 class EventViewSet(DefaultViewSet):
     """

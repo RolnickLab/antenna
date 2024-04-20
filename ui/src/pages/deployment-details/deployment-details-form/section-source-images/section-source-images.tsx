@@ -10,7 +10,7 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button } from 'design-system/components/button/button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { EntitiesPicker } from 'pages/overview/entities/entities-picker'
@@ -23,6 +23,7 @@ import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
 import { config } from '../config'
 import { SectionExampleCaptures } from '../section-example-captures/section-example-captures'
 import { Section } from '../types'
+import { SyncDeploymentSourceImages } from './actions/sync-source-images'
 
 type SectionSourceImagesFieldValues = Pick<
   DeploymentFieldValues,
@@ -75,17 +76,22 @@ export const SectionSourceImages = ({
               </InputContent>
             )}
           />
+          <InputContent label="Actions">
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <Button
+                label="Test"
+                disabled={true}
+                theme={ButtonTheme.Neutral}
+              />
+              <SyncDeploymentSourceImages deploymentId={deployment.id} />
+            </div>
+          </InputContent>
         </FormRow>
         <FormRow>
           <FormField name="dataSourceSubdir" control={control} config={config} />
           <FormField name="dataSourceRegex" control={control} config={config} />
         </FormRow>
-        <FormRow>
-          <InputValue
-            label="Full URI"
-            value={deployment.dataSourceDetails.uri}
-          />
-        </FormRow>
+        <InputValue label="Full URI" value={deployment.dataSourceDetails.uri} />
         <FormRow>
           <InputValue
             label="Last Synced"
@@ -97,11 +103,12 @@ export const SectionSourceImages = ({
           />
 
         </FormRow>
+
         <SectionExampleCaptures deployment={deployment} />
       </FormSection>
       <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
       </FormActions>
-    </form>
+    </form >
   )
 }

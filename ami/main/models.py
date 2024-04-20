@@ -26,6 +26,9 @@ from ami.main import charts
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
+
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -300,6 +303,7 @@ class Deployment(BaseModel):
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
     # @TODO consider sharing only the "data source auth/config" then a one-to-one config for each deployment
+    # Or a pydantic model with nested attributes about each data source relationship
     data_source = models.ForeignKey(
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
@@ -391,7 +395,13 @@ class Deployment(BaseModel):
             uri = None
         return uri
 
-    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False) -> int:
+    def data_source_total_size_display(self) -> str:
+        if self.data_source_total_size is None:
+            return filesizeformat(0)
+        else:
+            return filesizeformat(self.data_source_total_size)
+
+    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False, job: "Job | None" = None) -> int:
         """Import images from the deployment's data source"""
 
         deployment = self
@@ -403,6 +413,11 @@ class Deployment(BaseModel):
         source_images = []
         django_batch_size = batch_size
         sql_batch_size = 1000
+
+        if job:
+            job.logger.info(f"Syncing captures for deployment {deployment}")
+            job.update_progress()
+            job.save()
 
         for obj in ami.utils.s3.list_files_paginated(
             s3_config,
@@ -420,17 +435,34 @@ class Deployment(BaseModel):
                     deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
                 )
                 source_images = []
+                if job:
+                    job.logger.info(f"Processed {total_files} files")
+                    job.progress.update_stage(job.job_type().key, total_files=total_files)
+                    job.update_progress()
 
         if source_images:
             # Insert/update the last batch
             _insert_or_update_batch_for_sync(
                 deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
             )
+        if job:
+            job.logger.info(f"Processed {total_files} files")
+            job.progress.update_stage(job.job_type().key, total_files=total_files)
+            job.update_progress()
 
         _compare_totals_for_sync(deployment, total_files)
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
+
+        if job:
+            job.logger.info("Saving and recalculating sessions for deployment")
+            job.progress.update_stage(job.job_type().key, progress=1)
+            job.progress.add_stage("save_and_regroup")
+            job.update_progress()
         self.save()
+        if job:
+            job.progress.update_stage("save_and_regroup", progress=1)
+            job.update_progress()
 
         return total_files
 
