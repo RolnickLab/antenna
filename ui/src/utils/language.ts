@@ -229,7 +229,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
-  [STRING.FIELD_LABEL_GENERAL]: 'General',
+  [STRING.FIELD_LABEL_GENERAL]: 'General configuration',
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover Image',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
