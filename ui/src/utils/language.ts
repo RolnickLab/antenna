@@ -66,6 +66,7 @@ export enum STRING {
   FIELD_LABEL_GENERAL,
   FIELD_LABEL_ID,
   FIELD_LABEL_IMAGE,
+  FIELD_LABEL_ICON,
   FIELD_LABEL_LATITUDE,
   FIELD_LABEL_LOCATION,
   FIELD_LABEL_LOGS,
@@ -230,7 +231,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_GENERAL]: 'General',
   [STRING.FIELD_LABEL_ID]: 'ID',
-  [STRING.FIELD_LABEL_IMAGE]: 'Image',
+  [STRING.FIELD_LABEL_IMAGE]: 'Cover Image',
+  [STRING.FIELD_LABEL_ICON]: 'Icon',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
   [STRING.FIELD_LABEL_LOGS]: 'Logs',
@@ -255,13 +257,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_STATUS]: 'Status',
   [STRING.FIELD_LABEL_TAXON]: 'Taxon',
   [STRING.FIELD_LABEL_THUMBNAIL]: 'Thumbnail',
-  [STRING.FIELD_LABEL_TIME]: 'Time',
+  [STRING.FIELD_LABEL_TIME]: 'Local Time',
   [STRING.FIELD_LABEL_TIMESTAMP]: 'Timestamp',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
-  [STRING.FIELD_LABEL_UPLOADED_CAPTURES]: 'Manually uploaded captures',
+  [STRING.FIELD_LABEL_UPLOADED_CAPTURES]: 'Sample captures',
   [STRING.FIELD_LABEL_VERSION]: 'Version',
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version',
 
@@ -270,7 +272,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
-  [STRING.ENTITY_TYPE_CAPTURE]: 'dapture',
+  [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'deployment',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
   [STRING.ENTITY_TYPE_PIPELINE]: 'pipeline',
@@ -282,7 +284,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} captures can be uploaded.',
+    'A maximum of {{numCaptures}} example captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
     'To upload more than {{numCaptures}} images you must configure a data source.',
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:

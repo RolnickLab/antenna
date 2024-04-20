@@ -28,7 +28,7 @@ const config: FormConfig = {
     label: translate(STRING.FIELD_LABEL_NAME),
   },
   image: {
-    label: translate(STRING.FIELD_LABEL_IMAGE),
+    label: translate(STRING.FIELD_LABEL_ICON),
     description: [
       translate(STRING.MESSAGE_IMAGE_SIZE, {
         value: bytesToMB(API_MAX_UPLOAD_SIZE),
