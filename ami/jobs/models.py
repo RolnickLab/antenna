@@ -3,6 +3,7 @@ import logging
 import random
 import time
 import typing
+from dataclasses import dataclass
 
 import pydantic
 from django.db import models
@@ -249,6 +250,87 @@ class JobLogHandler(logging.Handler):
         self.job.save()
 
 
+@dataclass
+class JobType:
+    name: str
+    key: str
+
+    @classmethod
+    def run(cls, job: "Job"):
+        """
+        Execute the run function specific to this job type.
+        """
+        pass
+
+
+AnyJobType = typing.TypeVar("AnyJobType", bound=JobType)
+
+
+class MLJob(JobType):
+    name = "ML Pipeline"
+    key = "ml"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        """
+        Execute the run function specific to this job type.
+        """
+        raise Exception("This would be the ML job!")
+
+
+class DataStorageSyncJob(JobType):
+    name = "Data Storage Sync"
+    key = "data_storage_sync"
+
+    @classmethod
+    def setup(cls, job: "Job", save=True):
+        job.progress = job.progress or default_job_progress
+        job.progress.add_stage_param(cls.key, "Total Images", "")
+
+        if save:
+            job.save()
+
+    @classmethod
+    def run(cls, job: "Job"):
+        """
+        Run the data storage sync job.
+
+        This is meant to be called by an async task, not directly.
+        """
+
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        if job.deployment:
+            job.logger.info(f"Syncing captures for deployment {job.deployment}")
+            job.progress.update_stage(
+                cls.key,
+                status=JobState.STARTED,
+                progress=0,
+                total_images=0,
+            )
+            job.save()
+
+            job.deployment.sync_captures(job=job)
+
+            job.logger.info(f"Finished syncing captures for deployment {job.deployment}")
+            job.progress.update_stage(
+                cls.key,
+                status=JobState.SUCCESS,
+                progress=1,
+            )
+            job.update_status(JobState.SUCCESS)
+            job.save()
+        else:
+            job.update_status(JobState.FAILURE)
+
+        job.update_progress()
+        job.finished_at = datetime.datetime.now()
+        job.save()
+
+
 class Job(BaseModel):
     """A job to be run by the scheduler"""
 
@@ -308,6 +390,22 @@ class Job(BaseModel):
     def __str__(self) -> str:
         return f'#{self.pk} "{self.name}" ({self.status})'
 
+    def job_type(self) -> type[JobType]:
+        """
+        This is a temporary way to determine the type of job.
+        @TODO rework Job classes and background tasks.
+        """
+        try:
+            self.progress.get_stage(DataStorageSyncJob.key)
+            return DataStorageSyncJob
+        except ValueError:
+            pass
+
+        if self.pipeline:
+            return MLJob
+
+        raise ValueError("Could not determine job type")
+
     def enqueue(self):
         """
         Add the job to the queue so that it will run in the background.
@@ -355,6 +453,9 @@ class Job(BaseModel):
 
         This is meant to be called by an async task, not directly.
         """
+        job_type = self.job_type()
+        job_type.run(job=self)
+        return None
 
         self.update_status(JobState.STARTED)
         self.started_at = datetime.datetime.now()
