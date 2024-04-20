@@ -6,6 +6,8 @@ export type ServerDeploymentDetails = ServerDeployment & any // TODO: Update thi
 
 export interface DeploymentFieldValues {
   dataSourceId?: string
+  dataSourceSubdir?: string
+  dataSourceRegex?: string
   description: string
   deviceId?: string
   name: string
@@ -50,6 +52,14 @@ export class DeploymentDetails extends Deployment {
     if (this._deployment.data_source?.id) {
       return new StorageSource(this._deployment.data_source)
     }
+  }
+
+  get dataSourceSubdir(): string {
+    return this._deployment.data_source_subdir
+  }
+
+  get dataSourceRegex(): string {
+    return this._deployment.data_source_regex
   }
 
   get site(): Entity | undefined {

@@ -91,6 +91,16 @@ export const DeploymentDetailsInfo = ({
               value={deployment.numImages}
             />
           </FormRow>
+          <FormRow>
+            <InputValue
+              label="Last Synced"
+              value={deployment.dataSourceDetails.lastChecked}
+            />
+            <InputValue
+              label="Total Size"
+              value={deployment.dataSourceDetails.totalSizeDisplay}
+            />
+          </FormRow>
           {deployment.exampleCaptures.length > 0 && (
             <div className={styles.section}>
               <ImageCarousel

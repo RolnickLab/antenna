@@ -40,6 +40,12 @@ export const config: FormConfig = {
   dataSourceId: {
     label: translate(STRING.FIELD_LABEL_DATA_SOURCE),
   },
+  dataSourceSubdir: {
+    label: "Data Source Subdir"
+  },
+  dataSourceRegex: {
+    label: "Data Source Regex"
+  },
   latitude: {
     label: translate(STRING.FIELD_LABEL_LATITUDE),
     rules: { min: -90, max: 90 },

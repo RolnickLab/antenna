@@ -66,4 +66,20 @@ export class Deployment {
   get lastDate(): number {
     return this._deployment.last_date
   }
+
+  get dataSourceDetails(): {
+    lastChecked: string | undefined;
+    totalFiles: number | undefined;
+    totalSize: number | undefined;
+    totalSizeDisplay: string | undefined;
+    uri: string | undefined;
+  } {
+    return {
+      lastChecked: this._deployment.data_source_last_checked,
+      totalFiles: this._deployment.data_source_total_files,
+      totalSize: this._deployment.data_source_total_size,
+      totalSizeDisplay: this._deployment.data_source_total_size_display,
+      uri: this._deployment.data_source_uri
+    };
+  }
 }

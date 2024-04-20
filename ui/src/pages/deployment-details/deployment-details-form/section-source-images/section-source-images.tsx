@@ -1,4 +1,5 @@
 import { FormController } from 'components/form/form-controller'
+import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormRow,
@@ -10,7 +11,7 @@ import {
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
-import { InputContent } from 'design-system/components/input/input'
+import { InputContent, InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { EntitiesPicker } from 'pages/overview/entities/entities-picker'
 import { useContext } from 'react'
@@ -25,7 +26,7 @@ import { Section } from '../types'
 
 type SectionSourceImagesFieldValues = Pick<
   DeploymentFieldValues,
-  'dataSourceId'
+  'dataSourceId' | 'dataSourceSubdir' | 'dataSourceRegex'
 >
 
 export const SectionSourceImages = ({
@@ -74,6 +75,27 @@ export const SectionSourceImages = ({
               </InputContent>
             )}
           />
+        </FormRow>
+        <FormRow>
+          <FormField name="dataSourceSubdir" control={control} config={config} />
+          <FormField name="dataSourceRegex" control={control} config={config} />
+        </FormRow>
+        <FormRow>
+          <InputValue
+            label="Full URI"
+            value={deployment.dataSourceDetails.uri}
+          />
+        </FormRow>
+        <FormRow>
+          <InputValue
+            label="Last Synced"
+            value={deployment.dataSourceDetails.lastChecked}
+          />
+          <InputValue
+            label="Total Size"
+            value={deployment.dataSourceDetails.totalSizeDisplay}
+          />
+
         </FormRow>
         <SectionExampleCaptures deployment={deployment} />
       </FormSection>

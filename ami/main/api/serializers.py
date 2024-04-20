@@ -344,6 +344,10 @@ class DeploymentSerializer(DeploymentListSerializer):
         source="data_source",
         required=False,
     )
+    data_source_total_files = serializers.IntegerField(read_only=True)
+    data_source_total_size = serializers.IntegerField(read_only=True)
+    data_source_total_size_display = serializers.CharField(read_only=True)
+    data_source_last_checked = serializers.DateTimeField(read_only=True)
 
     class Meta(DeploymentListSerializer.Meta):
         fields = DeploymentListSerializer.Meta.fields + [
@@ -352,6 +356,13 @@ class DeploymentSerializer(DeploymentListSerializer):
             "research_site_id",
             "data_source",
             "data_source_id",
+            "data_source_uri",
+            "data_source_total_files",
+            "data_source_total_size",
+            "data_source_total_size_display",
+            "data_source_last_checked",
+            "data_source_subdir",
+            "data_source_regex",
             "description",
             "example_captures",
             # "capture_images",
