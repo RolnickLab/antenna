@@ -31,6 +31,7 @@ export enum STRING {
   START,
   SUBMIT,
   SUGGEST_ID,
+  SYNC,
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
@@ -209,6 +210,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.START]: 'Start',
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
+  [STRING.SYNC]: 'Sync',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
