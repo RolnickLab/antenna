@@ -2182,7 +2182,7 @@ class SourceImageCollection(BaseModel):
         default=dict,
     )
 
-    def source_image_count(self):
+    def source_image_count(self) -> int:
         # This should always be pre-populated using queryset annotations
         return self.images.count()
 
