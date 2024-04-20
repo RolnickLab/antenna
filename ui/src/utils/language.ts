@@ -221,7 +221,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
   [STRING.FIELD_LABEL_DATE]: 'Date',
   [STRING.FIELD_LABEL_DELAY]: 'Delay',
-  [STRING.FIELD_LABEL_DEVICE]: 'Device',
+  [STRING.FIELD_LABEL_DEVICE]: 'Device Type',
   [STRING.FIELD_LABEL_DEPLOYMENT]: 'Deployment',
   [STRING.FIELD_LABEL_DESCRIPTION]: 'Description',
   [STRING.FIELD_LABEL_DETECTIONS]: 'Detections',
@@ -325,7 +325,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TAB_ITEM */
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
-  [STRING.TAB_ITEM_DEVICES]: 'Devices',
+  [STRING.TAB_ITEM_DEVICES]: 'Device Types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
