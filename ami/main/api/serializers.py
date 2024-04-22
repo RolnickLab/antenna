@@ -707,7 +707,7 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "classifications",
         ]
 
-    def get_classifications(self, obj):
+    def get_classifications(self, obj) -> str:
         """
         Return URL to the classifications endpoint filtered by this detection.
         """
@@ -949,7 +949,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "updated_at",
         ]
 
-    def get_source_images(self, obj):
+    def get_source_images(self, obj) -> str:
         """
         Return URL to the captures endpoint filtered by this collection.
         """
