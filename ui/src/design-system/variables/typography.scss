@@ -110,3 +110,9 @@
   line-height: 15px;
   text-transform: uppercase;
 }
+
+@mixin mono {
+  @include paragraph-xx-small();
+  font-family: monospace;
+  font-weight: 400;
+}

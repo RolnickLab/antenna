@@ -9,6 +9,8 @@ import { useParams } from 'react-router-dom'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './collection-columns'
 import styles from './collections.module.scss'
+import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
+import { API_ROUTES } from 'data-services/constants'
 
 export const Collections = () => {
   const { projectId } = useParams()
@@ -46,6 +48,7 @@ export const Collections = () => {
           setPage={setPage}
         />
       ) : null}
+      <NewEntityDialog collection={API_ROUTES.COLLECTIONS} type="collection" />
     </>
   )
 }

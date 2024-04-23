@@ -48,6 +48,7 @@ class TestJobView(APITestCase):
         self.job = Job.objects.create(project=self.project, name="Test job", delay=0)
         self.user = User.objects.create_user(  # type: ignore
             email="testuser@insectai.org",
+            is_staff=True,
         )
         self.factory = APIRequestFactory()
 
@@ -99,7 +100,6 @@ class TestJobView(APITestCase):
         jobs_run_url = reverse_with_params("api:job-run", args=[self.job.pk], params={"no_async": True})
         self.client.force_authenticate(user=self.user)
         resp = self.client.post(jobs_run_url)
-        self.client.force_authenticate(user=None)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["id"], self.job.pk)

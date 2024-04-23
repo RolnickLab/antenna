@@ -16,6 +16,7 @@ import Overview from './assets/overview.svg?react'
 import Photograph from './assets/photograph.svg?react'
 import PlayButton from './assets/play-button.svg?react'
 import RadixCheck from './assets/radix/check.svg?react'
+import RadixClock from './assets/radix/clock.svg?react'
 import Cross from './assets/radix/cross.svg?react'
 import Error from './assets/radix/error.svg?react'
 import ExternalLink from './assets/radix/external-link.svg?react'
@@ -65,6 +66,7 @@ export enum IconType {
   PlayButton = 'play-button',
   Plus = 'plus',
   RadixCheck = 'radix-check',
+  RadixClock = 'radix-clock',
   RadixQuestionMark = 'radix-question-mark',
   RadixSearch = 'radix-search',
   RadixTrash = 'radix-trash',
@@ -115,6 +117,7 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.PlayButton]: PlayButton,
   [IconType.Plus]: Plus,
   [IconType.RadixCheck]: RadixCheck,
+  [IconType.RadixClock]: RadixClock,
   [IconType.RadixQuestionMark]: RadixQuestionMark,
   [IconType.RadixSearch]: RadixSearch,
   [IconType.RadixTrash]: RadixTrash,

@@ -552,6 +552,7 @@ class IdentificationSerializer(DefaultSerializer):
             "withdrawn",
             "agreed_with_identification_id",
             "agreed_with_prediction_id",
+            "comment",
             "created_at",
             "updated_at",
         ]
@@ -706,7 +707,7 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "classifications",
         ]
 
-    def get_classifications(self, obj):
+    def get_classifications(self, obj) -> str:
         """
         Return URL to the classifications endpoint filtered by this detection.
         """
@@ -899,10 +900,38 @@ class SourceImageUploadSerializer(DefaultSerializer):
         return value
 
 
+class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
+    # The most common kwargs for the sampling methods
+    # use for the "common_combined" method
+    minute_interval = serializers.IntegerField(required=False, allow_null=True)
+    max_num = serializers.IntegerField(required=False, allow_null=True)
+    month_start = serializers.IntegerField(required=False, allow_null=True)
+    month_end = serializers.IntegerField(required=False, allow_null=True)
+
+    hour_start = serializers.IntegerField(required=False, allow_null=True)
+    hour_end = serializers.IntegerField(required=False, allow_null=True)
+
+    # Kwargs for other sampling methods, this is not complete
+    # see the SourceImageCollection model for all available kwargs.
+    size = serializers.IntegerField(required=False, allow_null=True)
+    num_each = serializers.IntegerField(required=False, allow_null=True)
+    exclude_events = serializers.CharField(required=False, allow_null=True)
+    deployment_id = serializers.IntegerField(required=False, allow_null=True)
+    position = serializers.IntegerField(required=False, allow_null=True)
+
+    # Don't return the kwargs if they are empty
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return {key: value for key, value in data.items() if value is not None}
+
+
 class SourceImageCollectionSerializer(DefaultSerializer):
+    # @TODO can sampling kwargs be a nested serializer instead??
+
     source_images = serializers.SerializerMethodField()
-    kwargs = serializers.JSONField(initial=dict, required=False)
+    kwargs = SourceImageCollectionCommonKwargsSerializer(required=False, partial=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
 
     class Meta:
         model = SourceImageCollection
@@ -920,7 +949,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "updated_at",
         ]
 
-    def get_source_images(self, obj):
+    def get_source_images(self, obj) -> str:
         """
         Return URL to the captures endpoint filtered by this collection.
         """
@@ -944,6 +973,7 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
             "taxon",
             "user",
             "withdrawn",
+            "comment",
             "created_at",
         ]
 
