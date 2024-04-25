@@ -264,6 +264,19 @@ def public_url(config: S3Config, key: str):
     return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
 
 
+def get_presigned_url(config: S3Config, key: str, expires_in: int = 3600):
+    """
+    Generate a presigned URL for a given key.
+    """
+    client = get_client(config)
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": config.bucket_name, "Key": key},
+        ExpiresIn=expires_in,
+    )
+    return url
+
+
 # Methods to resize all images under a prefix
 def resize_images(config: S3Config, prefix: str, width: int, height: int):
     bucket = get_bucket(config)

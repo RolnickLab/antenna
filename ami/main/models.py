@@ -1035,7 +1035,11 @@ class SourceImage(BaseModel):
         @TODO add support for thumbnail URLs here?
         @TODO consider if we ever need to access the original image directly!
         """
-        return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
+        # Get presigned URL if necessary
+        if self.deployment and self.deployment.data_source:  # and config.use_signed_urls:
+            return ami.utils.s3.get_presigned_url(self.deployment.data_source.config, key=self.path)
+        else:
+            return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
 
     # backwards compatibility
     url = public_url
