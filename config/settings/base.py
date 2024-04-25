@@ -355,8 +355,8 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Automated Monitoring of Insects ML Platform API",
     "DESCRIPTION": "Documentation of API endpoints of Automated Monitoring of Insects ML Platform",
     "VERSION": "1.0.0",
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
-    # "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
