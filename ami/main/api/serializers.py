@@ -1294,6 +1294,7 @@ class StorageSourceSerializer(DefaultSerializer):
             "secret_key",
             "endpoint_url",
             "public_base_url",
+            "use_presigned_urls",
             "project",
             "deployments_count",
             "total_files_indexed",

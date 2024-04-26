@@ -841,6 +841,9 @@ class S3StorageSource(BaseModel):
     # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
+    use_presigned_urls = models.BooleanField(
+        default=True, help_text="Uncheck this option if your image URLs are public for faster loading."
+    )
 
     deployments: models.QuerySet["Deployment"]
 
@@ -1031,12 +1034,17 @@ class SourceImage(BaseModel):
         on the source image. If the deployment's data source changes, the URLs
         for all source images will be updated.
 
-        @TODO use signed URLs if necessary.
         @TODO add support for thumbnail URLs here?
         @TODO consider if we ever need to access the original image directly!
         """
-        # Get presigned URL if necessary
-        if self.deployment and self.deployment.data_source:  # and config.use_signed_urls:
+        # Get presigned URL if access keys are configured
+        data_source = self.deployment.data_source if self.deployment and self.deployment.data_source else None
+        if (
+            data_source is not None
+            and data_source.use_presigned_urls
+            and data_source.access_key
+            and data_source.secret_key
+        ):
             return ami.utils.s3.get_presigned_url(self.deployment.data_source.config, key=self.path)
         else:
             return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
