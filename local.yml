@@ -8,7 +8,8 @@ volumes:
       type: none
       device: ./backups/local/postgres
       o: bind
-
+  minio_data:
+    driver: local
 
 services:
   django: &django
@@ -92,3 +93,21 @@ services:
     ports:
       - "5555:5555"
     command: /start-flower
+
+  minio:
+    # image: minio/minio
+    image: quay.io/minio/minio:RELEASE.2024-04-18T19-09-19Z
+    command: minio server /data --console-address "0.0.0.0:9001"
+    volumes:
+      - "minio_data:/data"
+    # - ./config/minio:/etc/config.env
+    env_file:
+      - ./.envs/.local/.django
+    expose:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

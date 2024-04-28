@@ -362,3 +362,8 @@ SPECTACULAR_SETTINGS = {
 # ------------------------------------------------------------------------------
 
 DEFAULT_CONFIDENCE_THRESHOLD = env.float("DEFAULT_CONFIDENCE_THRESHOLD", default=0.29)  # type: ignore[no-untyped-call]
+
+S3_TEST_ENDPOINT = env("MINIO_ENDPOINT", default="http://minio:9000")  # type: ignore[no-untyped-call]
+S3_TEST_KEY = env("MINIO_ROOT_USER")  # type: ignore[no-untyped-call]
+S3_TEST_SECRET = env("MINIO_ROOT_PASSWORD")  # type: ignore[no-untyped-call]
+S3_TEST_BUCKET = env("MINIO_DEFAULT_BUCKET")  # type: ignore[no-untyped-call]
