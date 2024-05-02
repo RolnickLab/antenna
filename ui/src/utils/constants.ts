@@ -45,4 +45,4 @@ export const APP_ROUTES = {
     `/projects/${params.projectId}/collections/${params.collectionId}`,
 }
 
-export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 10 // 10MB
+export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB

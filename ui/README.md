@@ -1,11 +1,13 @@
-# AMI Platform
+# AMI Data Companion UI
 
-Web interface to explore data from automated insect monitoring stations. We use React and TypeScript for the implementation. The project was setup using [Create React App](https://github.com/facebook/create-react-app).
+Web interface to explore data from automated insect monitoring stations. We use React and TypeScript for the implementation. The project was setup using [Vite](https://vitejs.dev/).
 
 ## System requirements
 
 - Node
 - Yarn
+
+The `.nvmrc` file in project root describes what Node version to use to make sure we all use the same. To switch between Node versions, a version manager, such as [Node Version Manager (NVM)](https://github.com/nvm-sh/nvm), is suggested.
 
 ## Getting started
 
@@ -49,6 +51,10 @@ To run tests:
 # Launch test runner in interactive watch mode
 yarn test
 ```
+
+## Deployment
+
+We use [Netlify](https://www.netlify.com/) for deployment. Changes pushed to main branch are automatically deployed to https://app.preview.insectai.org/. When a pull request is opened, a preview version of the changes will be deployed. The URL to the preview deploy will be visible as a PR comment.
 
 ## Storybook
 

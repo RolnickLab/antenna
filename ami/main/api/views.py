@@ -12,11 +12,13 @@ from rest_framework import exceptions as api_exceptions
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
+from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
+from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.utils.requests import get_active_classification_threshold
 
@@ -98,6 +100,10 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
     pass
 
 
+class ProjectPagination(LimitOffsetPaginationWithPermissions):
+    default_limit = 20
+
+
 class ProjectViewSet(DefaultViewSet):
     """
     API endpoint that allows projects to be viewed or edited.
@@ -105,6 +111,7 @@ class ProjectViewSet(DefaultViewSet):
 
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
+    pagination_class = ProjectPagination
 
     def get_serializer_class(self):
         """
@@ -317,6 +324,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         Populate a collection with source images using the configured sampling method and arguments.
         """
         collection = self.get_object()
+        collection.images.clear()
         task = tasks.populate_collection.apply_async([collection.pk])
         return Response({"task": task.id})
 
@@ -693,7 +701,7 @@ class ClassificationViewSet(DefaultViewSet):
     ]
 
 
-class SummaryView(APIView):
+class SummaryView(GenericAPIView):
     permission_classes = [IsActiveStaffOrReadOnly]
     filterset_fields = ["project"]
 

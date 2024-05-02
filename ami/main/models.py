@@ -1133,26 +1133,31 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
-    minute_interval: int = 10, qs: models.QuerySet[SourceImage] | None = None
+    minute_interval: int = 10, qs: models.QuerySet[SourceImage] | None = None, max_num: int | None = None
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
     """
 
     last_capture = None
+    total = 0
 
     if not qs:
         qs = SourceImage.objects.all()
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     for capture in qs.all():
+        if max_num and total >= max_num:
+            break
         if not last_capture:
+            total += 1
             yield capture
             last_capture = capture
         else:
             assert capture.timestamp and last_capture.timestamp
             delta: datetime.timedelta = capture.timestamp - last_capture.timestamp
             if delta.total_seconds() >= minute_interval * 60:
+                total += 1
                 yield capture
                 last_capture = capture
 
@@ -2132,6 +2137,7 @@ class Page(BaseModel):
 
 
 _SOURCE_IMAGE_SAMPLING_METHODS = [
+    "common_combined",
     "random",
     "stratified_random",
     "interval",
@@ -2162,7 +2168,12 @@ class SourceImageCollection(BaseModel):
     description = models.TextField(blank=True)
     images = models.ManyToManyField("SourceImage", related_name="collections", blank=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
-    method = models.CharField(max_length=255, choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS))
+    method = models.CharField(
+        max_length=255,
+        choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS),
+        default="common_combined",
+    )
+    # @TODO this should be a JSON field with a schema, use a pydantic model
     kwargs = models.JSONField(
         "Arguments",
         null=True,
@@ -2171,7 +2182,7 @@ class SourceImageCollection(BaseModel):
         default=dict,
     )
 
-    def source_image_count(self):
+    def source_image_count(self) -> int:
         # This should always be pre-populated using queryset annotations
         return self.images.count()
 
@@ -2205,6 +2216,33 @@ class SourceImageCollection(BaseModel):
 
         qs = self.get_queryset()
         return qs.filter(id__in=image_ids)
+
+    def sample_common_combined(
+        self,
+        minute_interval: int | None = None,
+        max_num: int | None = 100,
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: datetime.date | None = None,
+        month_end: datetime.date | None = None,
+    ) -> list[SourceImage]:
+        qs = self.get_queryset()
+        if month_start:
+            qs = qs.filter(timestamp__month__gte=month_start)
+        if month_end:
+            qs = qs.filter(timestamp__month__lte=month_end)
+        if hour_start:
+            qs = qs.filter(timestamp__hour__gte=hour_start)
+        if hour_end:
+            qs = qs.filter(timestamp__hour__lte=hour_end)
+        if minute_interval:
+            # @TODO can this be done in the database and return a queryset?
+            # this currently returns a list of source images
+            qs = list(sample_captures_by_interval(minute_interval, qs, max_num=max_num))
+        if max_num:
+            qs = qs[:max_num]
+        captures = list(qs)
+        return captures
 
     def sample_interval(
         self, minute_interval: int = 10, exclude_events: list[int] = [], deployment_id: int | None = None
