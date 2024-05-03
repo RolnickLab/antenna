@@ -23,6 +23,7 @@ services:
       - postgres
       - redis
       - mailhog
+      - minio
     volumes:
       - .:/app:z
     env_file:
