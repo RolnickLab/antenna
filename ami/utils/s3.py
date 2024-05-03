@@ -220,7 +220,8 @@ def write_file(config: S3Config, key: str, body: bytes):
         # Use path join to ensure there are no extra or missing slashes
         key = pathlib.Path(config.prefix, key).as_posix()
     obj = bucket.Object(key)
-    return obj.put(Body=body)
+    obj.put(Body=body)
+    return obj
 
 
 def file_exists(config: S3Config, key: str) -> bool:
@@ -232,7 +233,7 @@ def file_exists(config: S3Config, key: str) -> bool:
     try:
         obj.load()
     except botocore.exceptions.ClientError as e:
-        if e.response["Error"]["Code"] == "404":
+        if e.response.get("Error", {}).get("Code") == "404":
             return False
         else:
             raise
@@ -269,6 +270,8 @@ def get_presigned_url(config: S3Config, key: str, expires_in: int = 3600):
     Generate a presigned URL for a given key.
     """
     client = get_client(config)
+    if config.prefix:
+        key = pathlib.Path(config.prefix, key).as_posix()
     url = client.generate_presigned_url(
         "get_object",
         Params={"Bucket": config.bucket_name, "Key": key},
