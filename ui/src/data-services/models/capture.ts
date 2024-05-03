@@ -7,6 +7,7 @@ export type CaptureDetection = {
   bbox: number[]
   id: string
   label: string
+  score: number
   occurrenceId?: string
 }
 
@@ -18,16 +19,28 @@ export class Capture {
     this._capture = capture
 
     if (capture.detections?.length) {
-      this._detections = capture.detections.map((detection: any) => ({
-        bbox: detection.bbox,
-        id: `${detection.id}`,
-        label: detection.occurrence
-          ? detection.occurrence.determination.name
-          : detection.id,
-        occurrenceId: detection.occurrence
-          ? `${detection.occurrence.id}`
-          : undefined,
-      }))
+      this._detections = capture.detections.map((detection: any) => {
+        const makeLabel = (occurrence: any) => {
+          if (occurrence && occurrence.determination) {
+            const { name } = occurrence.determination;
+            const determination_score = occurrence.determination_score;
+            if (determination_score !== undefined) {
+              const scorePercentage = Math.round(determination_score * 100).toString();
+              return `${name} (${scorePercentage}%)`;
+            }
+            return name;
+          }
+          return detection.id;
+        };
+
+        return {
+          bbox: detection.bbox,
+          id: `${detection.id}`,
+          label: makeLabel(detection.occurrence),
+          score: detection.score,
+          occurrenceId: detection.occurrence ? `${detection.occurrence.id}` : undefined,
+        };
+      });
     }
   }
 
