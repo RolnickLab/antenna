@@ -3,13 +3,34 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 
 export type ServerCapture = any // TODO: Update this type
 
+export type DetectionOccurrence = {
+  id: string
+  determination: {
+    name: string
+  }
+  determination_score: number
+}
+
 export type CaptureDetection = {
   bbox: number[]
   id: string
   label: string
   score: number
   occurrenceId?: string
+  occurrence?: DetectionOccurrence
 }
+
+const makeDetectionLabel = (detection: CaptureDetection) => {
+  const occurrence: DetectionOccurrence | undefined = detection.occurrence;
+  if (occurrence && occurrence.determination) {
+    if (occurrence.determination_score) {
+      const scorePercentage = Math.round(occurrence.determination_score * 100).toString();
+      return `${occurrence.determination.name} (${scorePercentage}%)`;
+    }
+    return occurrence.determination.name;
+  }
+  return detection.id;
+};
 
 export class Capture {
   protected readonly _capture: ServerCapture
@@ -19,24 +40,11 @@ export class Capture {
     this._capture = capture
 
     if (capture.detections?.length) {
-      this._detections = capture.detections.map((detection: any) => {
-        const makeLabel = (occurrence: any) => {
-          if (occurrence && occurrence.determination) {
-            const { name } = occurrence.determination;
-            const determination_score = occurrence.determination_score;
-            if (determination_score !== undefined) {
-              const scorePercentage = Math.round(determination_score * 100).toString();
-              return `${name} (${scorePercentage}%)`;
-            }
-            return name;
-          }
-          return detection.id;
-        };
-
+      this._detections = capture.detections.map((detection: CaptureDetection) => {
         return {
           bbox: detection.bbox,
           id: `${detection.id}`,
-          label: makeLabel(detection.occurrence),
+          label: makeDetectionLabel(detection),
           score: detection.score,
           occurrenceId: detection.occurrence ? `${detection.occurrence.id}` : undefined,
         };
