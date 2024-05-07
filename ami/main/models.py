@@ -848,7 +848,7 @@ class S3StorageSource(BaseModel):
     deployments: models.QuerySet["Deployment"]
 
     @property
-    def config(self):
+    def config(self) -> ami.utils.s3.S3Config:
         return ami.utils.s3.S3Config(
             bucket_name=self.bucket,
             prefix=self.prefix,

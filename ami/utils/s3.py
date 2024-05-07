@@ -19,6 +19,9 @@ from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResou
 from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef
 from rich import print
 
+# @TODO don't use Django cache in utils if possible
+from django.core.cache import cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -265,18 +268,23 @@ def public_url(config: S3Config, key: str):
     return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
 
 
-def get_presigned_url(config: S3Config, key: str, expires_in: int = 3600):
+def get_presigned_url(config: S3Config, key: str, expires_in: int = 60*60*24*7):
     """
     Generate a presigned URL for a given key.
     """
-    client = get_client(config)
-    if config.prefix:
-        key = pathlib.Path(config.prefix, key).as_posix()
-    url = client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": config.bucket_name, "Key": key},
-        ExpiresIn=expires_in,
-    )
+    cache_key = public_url(config, key)
+    url = cache.get(cache_key)
+    if not url:
+        logger.debug(f"Fetching new presigned URL for: {cache_key}")
+        client = get_client(config)
+        url = client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": config.bucket_name, "Key": key},
+            ExpiresIn=expires_in,
+        )
+        cache.set(cache_key, url, timeout=expires_in)
+    else:
+        logger.debug(f"Got cached presigned URL for: {cache_key}")
     return url
 
 
