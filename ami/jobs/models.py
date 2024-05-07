@@ -332,7 +332,7 @@ class MLJob(JobType):
                 random.shuffle(images)
 
             # @TODO remove this temporary limit
-            TEMPORARY_LIMIT = 200
+            TEMPORARY_LIMIT = 1000
             job.limit = job.limit or TEMPORARY_LIMIT
 
             if job.limit and source_image_count > job.limit:
@@ -474,7 +474,7 @@ class Job(BaseModel):
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
     limit = models.IntegerField(
-        "Limit", null=True, blank=True, default=100, help_text="Limit the number of images to process"
+        "Limit", null=True, blank=True, default=1000, help_text="Limit the number of images to process"
     )
     shuffle = models.BooleanField("Shuffle", default=True, help_text="Process images in a random order")
 
