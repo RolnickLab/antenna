@@ -508,11 +508,16 @@ class TestTaxonomyViews(TestCase):
             self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
     def test_taxa_list(self):
-        from ami.main.models import Taxon
+        # This currently fails! @TODO investigate
 
-        response = self.client.get("/api/v2/taxa/")
+        response = self.client.get("/api/v2/taxa/", {"project": self.project_one.pk})
+        taxa_for_project = self.project_one.taxa.all()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["count"], Taxon.objects.count())
+        # Compare lists of taxa:
+        self.assertListEqual(
+            [taxon.name for taxon in taxa_for_project],
+            [taxon["name"] for taxon in response.json()["results"]],
+        )
 
     def _test_taxa_for_project(self, project: Project):
         """
