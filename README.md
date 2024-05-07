@@ -2,96 +2,140 @@
 
 Platform for processing and reviewing images from automated insect monitoring stations.
 
-[![Built with Cookiecutter Django](https://img.shields.io/badge/built%20with-Cookiecutter%20Django-ff69b4.svg?logo=cookiecutter)](https://github.com/cookiecutter/cookiecutter-django/)
+
 [![Black code style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
-License: MIT
+## Quick Start
 
-## Settings
+The project uses docker compose to run all backend services. To start the project, run the following command:
 
-Moved to [settings](http://cookiecutter-django.readthedocs.io/en/latest/settings.html).
+    $ docker-compose up
 
-## Basic Commands
+Explore the API
+- Rest Framework: http://localhost:8000/api/v2/
+- OpenAPI / Swagger: http://localhost:8000/api/v2/docs/
 
-### Setting Up Your Users
 
-- To create a **normal user account**, just go to Sign Up and fill out the form. Once you submit it, you'll see a "Verify Your E-mail Address" page. Go to your console to see a simulated email verification message. Copy the link into your browser. Now the user's email should be verified and ready to go.
-
-- To create a **superuser account**, use this command:
-
-      $ python manage.py createsuperuser
-
-For convenience, you can keep your normal user logged in on Chrome and your superuser logged in on Firefox (or similar), so that you can see how the site behaves for both kinds of users.
-
-### Type checks
-
-Running type checks with mypy:
-
-    $ mypy ami
-
-### Test coverage
-
-To run the tests, check your test coverage, and generate an HTML coverage report:
-
-    $ coverage run -m pytest
-    $ coverage html
-    $ open htmlcov/index.html
-
-#### Running tests with pytest
-
-    $ pytest
-
-### Live reloading and Sass CSS compilation
-
-Moved to [Live reloading and SASS compilation](https://cookiecutter-django.readthedocs.io/en/latest/developing-locally.html#sass-compilation-live-reloading).
-
-### Celery
-
-This app comes with Celery.
-
-To run a celery worker:
+Install and run the frontend:
 
 ```bash
-cd ami
-celery -A config.celery_app worker -l info
+cd ui
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+nvm install
+yarn install
+yarn start
 ```
 
-Please note: For Celery's import magic to work, it is important _where_ the celery commands are run. If you are in the same folder with _manage.py_, you should be right.
+Visit http://localhost:3000/
 
-To run [periodic tasks](https://docs.celeryq.dev/en/stable/userguide/periodic-tasks.html), you'll need to start the celery beat scheduler service. You can start it as a standalone process:
+
+Create a super user account:
+
+    docker compose exec django python manage.py createsuperuser
+
+Access the Django admin:
+
+http://localhost:8000/admin/
+
+
+
+## Helpful Commands
+
+Generate OpenAPI schema
 
 ```bash
-cd ami
-celery -A config.celery_app beat
+docker-compose -f local.yml run --rm django python manage.py spectacular --api-version 'api' --format openapi --file ami-openapi-schema.yaml
 ```
 
-or you can embed the beat service inside a worker with the `-B` option (not recommended for production use):
+Generate TypeScript types from OpenAPI schema
 
 ```bash
-cd ami
-celery -A config.celery_app worker -B -l info
+docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i /local/ami-openapi-schema.yaml -g typescript-axios -o /local/ui/src/api-schema.d.ts
 ```
 
-### Email Server
+Generate diagram graph of Django models & relationships (Graphviz required)
 
-In development, it is often nice to be able to see emails that are being sent from your application. For that reason local SMTP server [MailHog](https://github.com/mailhog/MailHog) with a web interface is available as docker container.
+```bash
+docker compose -f local.yml run --rm django python manage.py graph_models -a -o models.dot --dot
+dot -Tsvg  models.dot > models.svg
+```
 
-Container mailhog will start automatically when you will run all docker containers.
-Please check [cookiecutter-django Docker documentation](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html) for more details how to start all containers.
+Run tests
 
-With MailHog running, to view messages that are sent by your application, open your browser and go to `http://127.0.0.1:8025`
+```bash
+docker-compose -f local.yml run --rm django python manage.py test
+```
 
-### Sentry
+Run tests with a specific pattern in the test name
 
-Sentry is an error logging aggregator service. You can sign up for a free account at <https://sentry.io/signup/?code=cookiecutter> or download and host it yourself.
-The system is set up with reasonable defaults, including 404 logging and integration with the WSGI application.
+```bash
+docker-compose -f local.yml run --rm django python manage.py test -k pattern
+```
 
-You must set the DSN url in production.
 
-## Deployment
+Launch the Django shell:
 
-The following details how to deploy this application.
+    docker-compose exec django python manage.py shell
 
-### Docker
+Install dependencies locally for IDE support (Intellisense, etc):
 
-See detailed [cookiecutter-django Docker documentation](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html).
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements/local.txt
+```
+
+
+## Dependencies
+
+### Backend
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
+### Frontend
+- [Node.js](https://nodejs.org/en/download/)
+- [Yarn](https://yarnpkg.com/getting-started/install)
+
+
+### Frontend
+
+0. Change to the frontend directory:
+
+    ```bash
+    $ cd ui
+    ```
+
+1. Install Node Version Manager:
+
+    ```bash
+    $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+    ```
+2. Install Node.js:
+
+    ```bash
+    $ nvm install
+    ```
+
+3. Install Yarn:
+
+    ```bash
+    $ npm install --global yarn
+    ```
+
+4. Install the dependencies:
+
+    ```bash
+    $ yarn install
+    ```
+
+5. Create a `.env` file in the `frontend` directory with the following content:
+
+    ```bash
+    REACT_APP_API_URL=http://localhost:8000
+    ```
+
+6. Start the frontend:
+
+    ```bash
+    $ yarn start
+    ```
