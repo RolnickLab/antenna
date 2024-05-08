@@ -901,6 +901,12 @@ class DeviceViewSet(DefaultViewSet):
     ]
 
 
+class StorageSourceConnectionException(api_exceptions.APIException):
+    status_code = 400
+    default_detail = "Failed to connect to the storage source."
+    default_code = "storage_source_connection_error"
+
+
 class StorageSourceViewSet(DefaultViewSet):
     """
     API endpoint that allows storage sources to be viewed or edited.
@@ -914,3 +920,19 @@ class StorageSourceViewSet(DefaultViewSet):
         "updated_at",
         "name",
     ]
+
+    @action(detail=True, methods=["post"], name="test")
+    def test(self, _request, pk=None) -> Response:
+        """
+        Test the connection to the storage source.
+        """
+        storage_source: S3StorageSource = self.get_object()
+        if storage_source:
+            result = storage_source.test_connection()
+            # result is a TestConnectionResult object
+            if result.success:
+                return Response(status=200)
+            else:
+                raise StorageSourceConnectionException(detail=result.error_message, code=result.error_code)
+        else:
+            raise api_exceptions.ValidationError(detail="Storage source not found")

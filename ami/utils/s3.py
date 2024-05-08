@@ -34,6 +34,14 @@ class S3Config:
     prefix: str
     public_base_url: str | None = None
 
+    sensitive_fields = ["access_key_id", "secret_access_key"]
+
+    def safe_dict(self):
+        return {k: v for k, v in self.__dict__.items() if k not in self.sensitive_fields}
+
+    def safe_hash(self):
+        return "-".join(map(str, self.safe_dict().values()))
+
 
 def with_trailing_slash(s: str):
     return s if s.endswith("/") else f"{s}/"
@@ -95,6 +103,42 @@ def get_resource(config: S3Config) -> S3ServiceResource:
         # api_version="s3v4",
     )
     return s3
+
+
+@dataclass
+class TestConnectionResponse:
+    success: bool
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+def test_connection(config: S3Config) -> TestConnectionResponse:
+    """
+    Test connection to S3 bucket.
+
+    Returns a tuple of (success, error_message)
+
+    @TODO consider testing latency here.
+    """
+    client = get_client(config)
+    try:
+        client.list_objects_v2(
+            Bucket=config.bucket_name,
+            MaxKeys=1,
+            Prefix=config.prefix,
+        )
+    except botocore.exceptions.ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        error_message = e.response.get("Error", {}).get("Message")
+        return TestConnectionResponse(False, error_code, error_message)
+    except botocore.exceptions.EndpointConnectionError as e:
+        return TestConnectionResponse(False, "EndpointConnectionError", str(e))
+    except botocore.exceptions.BotoCoreError as e:
+        return TestConnectionResponse(False, "BotoCoreError", str(e))
+    except Exception as e:
+        raise e
+    else:
+        return TestConnectionResponse(True)
 
 
 def list_buckets(config: S3Config) -> list[BucketTypeDef]:
@@ -275,7 +319,7 @@ def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24
     """
     Generate a presigned URL for a given key.
     """
-    cache_key = public_url(config, key)
+    cache_key = f"s3_presigned_url:{config.safe_hash()}:{key}"
     url = cache.get(cache_key)
     if not url:
         logger.debug(f"Fetching new presigned URL for: {cache_key}")

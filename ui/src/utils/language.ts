@@ -32,6 +32,8 @@ export enum STRING {
   SUBMIT,
   SUGGEST_ID,
   SYNC,
+  TEST,
+  TEST_CONNECTION,
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
@@ -172,6 +174,7 @@ export enum STRING {
   STAGES,
   SUMMARY,
   UNKNOWN,
+  UNKNOWN_ERROR,
   UPDATING_DATA,
   USER_INFO,
   VERIFIED_BY,
@@ -212,6 +215,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
   [STRING.SYNC]: 'Sync',
+  [STRING.TEST]: 'Test',
+  [STRING.TEST_CONNECTION]: 'Test Connection',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
@@ -363,6 +368,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.STAGES]: 'Stages',
   [STRING.SUMMARY]: 'Summary',
   [STRING.UNKNOWN]: 'Unknown',
+  [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UPDATING_DATA]: 'Updating data',
   [STRING.USER_INFO]: 'User info',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
