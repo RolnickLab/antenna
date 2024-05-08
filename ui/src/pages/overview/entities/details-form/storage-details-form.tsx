@@ -2,7 +2,8 @@ import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
-  FormSection,
+  FormRow,
+  FormSection
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { StorageSource } from 'data-services/models/storage'
@@ -15,29 +16,43 @@ import { DetailsFormProps, FormValues } from './types'
 
 type StorageFormValues = FormValues & {
   bucket: string
-  public_base_url: string
-  endpoint_url: string
+  public_base_url: string | undefined
+  endpoint_url: string | undefined
+  access_key: string | undefined
+  secret_key: string | undefined
 }
 
 const config: FormConfig = {
   name: {
     label: translate(STRING.FIELD_LABEL_NAME),
+    description: 'A descriptive name for internal reference.',
     rules: {
       required: true,
     },
   },
-  description: {
-    label: translate(STRING.FIELD_LABEL_DESCRIPTION),
-  },
   bucket: {
-    label: 'Bucket',
-  },
-  public_base_url: {
-    label: 'Public base URL',
+    label: 'Bucket / Container Name',
+    description: 'The root location within the storage service.',
   },
   endpoint_url: {
-    label: 'Endpoint URL',
+    label: 'Endpoint URL (optional)',
+    description: "Custom storage service endpoint. If not provided, the endpoint for Amazon's S3 service will be used.",
+    rules: {
+      required: false,
+    }
   },
+  public_base_url: {
+    label: 'Public base URL (optional)',
+    description: 'Base URL for public access to files. If not provided, temporary private URLs will be generated on-demand.',
+  },
+  access_key: {
+    label: 'Access Key ID',
+    description: 'Access key ID for the S3 object storage service.',
+  },
+  secret_key: {
+    label: 'Secret Access Key',
+    description: 'Secret access key for the S3 object storage service.',
+  }
 }
 
 export const StorageDetailsForm = ({
@@ -54,11 +69,11 @@ export const StorageDetailsForm = ({
     setError: setFieldError,
   } = useForm<StorageFormValues>({
     defaultValues: {
-      name: entity?.name ?? '',
-      description: entity?.description ?? '',
-      bucket: storage?.bucket ?? '',
-      public_base_url: storage?.publicBaseUrl ?? '',
-      endpoint_url: storage?.endpointUrl ?? '',
+      name: entity?.name,
+      bucket: storage?.bucket,
+      public_base_url: storage?.publicBaseUrl,
+      endpoint_url: storage?.endpointUrl,
+      // access key and secret key are not returned by the API
     },
     mode: 'onChange',
   })
@@ -75,6 +90,8 @@ export const StorageDetailsForm = ({
             bucket: values.bucket,
             public_base_url: values.public_base_url,
             endpoint_url: values.endpoint_url,
+            access_key: values.access_key,
+            secret_key: values.secret_key,
           },
         })
       )}
@@ -87,31 +104,43 @@ export const StorageDetailsForm = ({
         />
       )}
       <FormSection>
-        <FormField name="name" type="text" config={config} control={control} />
-        <FormField
-          name="description"
-          type="text"
-          config={config}
-          control={control}
-        />
-        <FormField
-          name="bucket"
-          type="text"
-          config={config}
-          control={control}
-        />
-        <FormField
-          name="public_base_url"
-          type="text"
-          config={config}
-          control={control}
-        />
-        <FormField
-          name="endpoint_url"
-          type="text"
-          config={config}
-          control={control}
-        />
+        <FormRow>
+          <FormField name="name" type="text" config={config} control={control} />
+          <FormField
+            name="bucket"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
+            name="endpoint_url"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="public_base_url"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
+            name="access_key"
+            type="password"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="secret_key"
+            type="password"
+            config={config}
+            control={control}
+          />
+        </FormRow>
       </FormSection>
       <FormActions>
         <Button
@@ -122,6 +151,6 @@ export const StorageDetailsForm = ({
           loading={isLoading}
         />
       </FormActions>
-    </form>
+    </form >
   )
 }

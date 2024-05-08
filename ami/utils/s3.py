@@ -13,14 +13,14 @@ import botocore.config
 import botocore.exceptions
 import PIL
 import PIL.Image
+
+# @TODO don't use Django cache in utils if possible
+from django.core.cache import cache
 from mypy_boto3_s3.client import S3Client
 from mypy_boto3_s3.paginator import ListObjectsV2Paginator
 from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResource
 from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef
 from rich import print
-
-# @TODO don't use Django cache in utils if possible
-from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class S3Config:
     secret_access_key: str
     bucket_name: str
     prefix: str
-    public_base_url: str = "/"
+    public_base_url: str | None = None
 
 
 def with_trailing_slash(s: str):
@@ -265,10 +265,13 @@ def public_url(config: S3Config, key: str):
 
     @TODO Handle non-public buckets with signed URLs
     """
-    return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
+    if not config.public_base_url:
+        return get_presigned_url(config, key)
+    else:
+        return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
 
 
-def get_presigned_url(config: S3Config, key: str, expires_in: int = 60*60*24*7):
+def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24 * 7):
     """
     Generate a presigned URL for a given key.
     """

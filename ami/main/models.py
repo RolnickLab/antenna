@@ -834,7 +834,7 @@ class S3StorageSource(BaseModel):
     access_key = models.TextField()
     secret_key = models.TextField()
     endpoint_url = models.CharField(max_length=255, blank=True, null=True)
-    public_base_url = models.CharField(max_length=255, blank=True)
+    public_base_url = models.CharField(max_length=255, blank=True, null=True)
     total_size = models.BigIntegerField(null=True, blank=True)
     total_files = models.BigIntegerField(null=True, blank=True)
     last_checked = models.DateTimeField(null=True, blank=True)
