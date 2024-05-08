@@ -33,16 +33,16 @@ const config: FormConfig = {
   bucket: {
     label: 'Bucket / Container Name',
     description: 'The root location within the storage service.',
+    rules: {
+      required: true,
+    },
   },
   endpoint_url: {
-    label: 'Endpoint URL (optional)',
+    label: 'Endpoint URL',
     description: "Custom storage service endpoint. If not provided, the endpoint for Amazon's S3 service will be used.",
-    rules: {
-      required: false,
-    }
   },
   public_base_url: {
-    label: 'Public base URL (optional)',
+    label: 'Public Base URL',
     description: 'Base URL for public access to files. If not provided, temporary private URLs will be generated on-demand.',
   },
   access_key: {
