@@ -13,7 +13,6 @@ import { SyncStorage } from './storage-actions'
 
 
 export const columns: (projectId: string) => TableColumn<StorageSource>[] = (
-  projectId: string
 ) => [
     {
       id: 'name',
