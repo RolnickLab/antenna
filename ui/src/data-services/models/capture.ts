@@ -3,12 +3,34 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 
 export type ServerCapture = any // TODO: Update this type
 
+export type DetectionOccurrence = {
+  id: string
+  determination: {
+    name: string
+  }
+  determination_score: number
+}
+
 export type CaptureDetection = {
   bbox: number[]
   id: string
   label: string
+  score: number
   occurrenceId?: string
+  occurrence?: DetectionOccurrence
 }
+
+const makeDetectionLabel = (detection: CaptureDetection) => {
+  const occurrence: DetectionOccurrence | undefined = detection.occurrence;
+  if (occurrence && occurrence.determination) {
+    if (occurrence.determination_score) {
+      const scorePercentage = Math.round(occurrence.determination_score * 100).toString();
+      return `${occurrence.determination.name} (${scorePercentage}%)`;
+    }
+    return occurrence.determination.name;
+  }
+  return detection.id;
+};
 
 export class Capture {
   protected readonly _capture: ServerCapture
@@ -18,16 +40,15 @@ export class Capture {
     this._capture = capture
 
     if (capture.detections?.length) {
-      this._detections = capture.detections.map((detection: any) => ({
-        bbox: detection.bbox,
-        id: `${detection.id}`,
-        label: detection.occurrence
-          ? detection.occurrence.determination.name
-          : detection.id,
-        occurrenceId: detection.occurrence
-          ? `${detection.occurrence.id}`
-          : undefined,
-      }))
+      this._detections = capture.detections.map((detection: CaptureDetection) => {
+        return {
+          bbox: detection.bbox,
+          id: `${detection.id}`,
+          label: makeDetectionLabel(detection),
+          score: detection.score,
+          occurrenceId: detection.occurrence ? `${detection.occurrence.id}` : undefined,
+        };
+      });
     }
   }
 
