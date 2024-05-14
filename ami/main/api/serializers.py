@@ -1279,7 +1279,9 @@ class StorageSourceSerializer(DefaultSerializer):
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
     access_key = serializers.CharField(write_only=True, required=False)
     secret_key = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
-    endpoint_url = serializers.URLField(required=False, allow_blank=True)
+    # endpoint_url = serializers.URLField(required=False, allow_blank=True)
+    # @TODO the endpoint needs to support host names without a TLD extension like "minio:9000"
+    endpoint_url = serializers.CharField(required=False, allow_blank=True)
     public_base_url = serializers.URLField(required=False, allow_blank=True)
 
     class Meta:
