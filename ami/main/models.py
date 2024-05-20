@@ -2085,6 +2085,72 @@ class TaxaList(BaseModel):
 
 
 @final
+class TaxonObserved(BaseModel):
+    """
+    A record of a taxon that was detected or identified in a Project.
+
+    Should be fast to retrieve and cache any counts or other aggregate values.
+    """
+
+    taxon = models.ForeignKey(Taxon, on_delete=models.CASCADE, related_name="observations")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="taxa_observed")
+    detections_count = models.IntegerField(default=0)
+    occurrences_count = models.IntegerField(default=0)
+    best_determination_score = models.FloatField(null=True, blank=True)
+    best_detection = models.ForeignKey(Detection, on_delete=models.SET_NULL, null=True, blank=True)
+    last_detected = models.DateTimeField(null=True, blank=True)
+    occurrences = models.ManyToManyField(Occurrence, related_name="taxa_observed")
+    detections = models.ManyToManyField(Detection, related_name="taxa_observed")
+
+    class Meta:
+        ordering = ["-last_detected"]
+        verbose_name_plural = "Taxa Observed"
+
+    def __str__(self) -> str:
+        return f"{self.taxon} in {self.project}"
+
+    def update_counts(self):
+        """
+        Update the counts and timestamps of detections, identifications, and occurrences.
+        """
+        self.detections_count = Detection.objects.filter(
+            occurrence__determination=self.taxon,
+            project=self.project,
+        ).count()
+        self.occurrences_count = Occurrence.objects.filter(
+            determination=self.taxon,
+            project=self.project,
+        ).count()
+
+        best_detection = (
+            Detection.objects.filter(occurrence__determination=self.taxon, project=self.project)
+            .order_by("-classifications__score")
+            .first()
+        )
+        if best_detection:
+            self.best_detection = best_detection
+            best_classification = best_detection.classifications.first()
+            if best_classification:
+                self.best_determination_score = best_classification.score
+
+        last_detected = (
+            Detection.objects.filter(occurrence__determination=self.taxon, project=self.project)
+            .order_by("-timestamp")
+            .values_list("timestamp", flat=True)
+            .first()
+        )
+        if last_detected:
+            self.last_detected = last_detected
+
+        self.save()
+
+    def save(self, update_counts=True, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if update_counts:
+            self.update_counts()
+
+
+@final
 class BlogPost(BaseModel):
     """
     This model is used just as an example.
