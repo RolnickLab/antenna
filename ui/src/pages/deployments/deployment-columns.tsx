@@ -80,9 +80,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
-    ),
+    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
   },
   {
     id: 'occurrences',

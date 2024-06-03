@@ -92,7 +92,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       <Link to={item.trainingImagesUrl} target="_blank">
         <BasicTableCell
           value={item.trainingImagesLabel}
-          theme={CellTheme.Bubble}
+          theme={CellTheme.Primary}
         />
       </Link>
     ),
