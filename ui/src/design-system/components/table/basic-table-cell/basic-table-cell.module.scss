@@ -21,6 +21,19 @@
       color: $color-primary-1-600;
     }
   }
+
+  &.bubble {
+    .label {
+      display: inline-flex;
+      height: 30px;
+      border-radius: 15px;
+      padding: 0 12px;
+      background-color: #f2f3fe;
+      line-height: 30px;
+      color: $color-primary-1-600;
+      font-weight: 600;
+    }
+  }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

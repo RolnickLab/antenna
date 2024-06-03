@@ -26,6 +26,7 @@ export const BasicTableCell = ({
     <div
       className={classNames(styles.tableCell, {
         [styles.primary]: theme === CellTheme.Primary,
+        [styles.bubble]: theme === CellTheme.Bubble,
       })}
       style={{ textAlign, ...style }}
     >
