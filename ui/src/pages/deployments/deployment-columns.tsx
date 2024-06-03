@@ -69,7 +69,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numEvents} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -80,7 +80,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
+    ),
   },
   {
     id: 'occurrences',
@@ -96,7 +98,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -114,7 +116,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { occurrences__deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
