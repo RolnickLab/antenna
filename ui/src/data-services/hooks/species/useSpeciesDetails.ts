@@ -12,7 +12,7 @@ const convertServerRecord = (record: ServerSpeciesDetails) =>
 
 export const useSpeciesDetails = (
   id: string,
-  projectId: string | undefined,
+  projectId: string | undefined
 ): {
   species?: SpeciesDetails
   isLoading: boolean

@@ -53,7 +53,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
       value: species.trainingImagesLabel,
       to: species.trainingImagesUrl,
     },
-  ].filter((field) => field.value !== null);
+  ].filter((field) => field.value !== null)
 
   return (
     <div className={styles.wrapper}>

@@ -18,7 +18,6 @@ import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 
-
 interface ProjectFormValues {
   name?: string
   description?: string

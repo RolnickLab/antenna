@@ -12,7 +12,8 @@ interface Field {
 export const InfoBlock = ({ fields }: { fields: Field[] }) => (
   <>
     {fields.map((field, index) => {
-      const value = field.value !== undefined ? field.value : STRING.VALUE_NOT_AVAILABLE
+      const value =
+        field.value !== undefined ? field.value : STRING.VALUE_NOT_AVAILABLE
 
       return (
         <p className={styles.field} key={index}>
