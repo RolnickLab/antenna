@@ -67,7 +67,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           filters: { determination: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
