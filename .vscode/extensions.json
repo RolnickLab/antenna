@@ -1,0 +1,16 @@
+{
+	"recommendations": [
+		"batisteo.vscode-django",
+		"ms-python.black-formatter",
+		"dbaeumer.vscode-eslint",
+		"ms-python.isort",
+		"esbenp.prettier-vscode",
+		"ms-python.python",
+		"foxundermoon.shell-format",
+		"ms-azuretools.vscode-docker"
+
+	],
+	"unwantedRecommendations": [
+
+	]
+}
