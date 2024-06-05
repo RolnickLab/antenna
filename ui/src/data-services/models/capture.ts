@@ -21,16 +21,18 @@ export type CaptureDetection = {
 }
 
 const makeDetectionLabel = (detection: CaptureDetection) => {
-  const occurrence: DetectionOccurrence | undefined = detection.occurrence;
+  const occurrence: DetectionOccurrence | undefined = detection.occurrence
   if (occurrence && occurrence.determination) {
     if (occurrence.determination_score) {
-      const scorePercentage = Math.round(occurrence.determination_score * 100).toString();
-      return `${occurrence.determination.name} (${scorePercentage}%)`;
+      const scorePercentage = Math.round(
+        occurrence.determination_score * 100
+      ).toString()
+      return `${occurrence.determination.name} (${scorePercentage}%)`
     }
-    return occurrence.determination.name;
+    return occurrence.determination.name
   }
-  return detection.id;
-};
+  return detection.id
+}
 
 export class Capture {
   protected readonly _capture: ServerCapture
@@ -40,15 +42,19 @@ export class Capture {
     this._capture = capture
 
     if (capture.detections?.length) {
-      this._detections = capture.detections.map((detection: CaptureDetection) => {
-        return {
-          bbox: detection.bbox,
-          id: `${detection.id}`,
-          label: makeDetectionLabel(detection),
-          score: detection.score,
-          occurrenceId: detection.occurrence ? `${detection.occurrence.id}` : undefined,
-        };
-      });
+      this._detections = capture.detections.map(
+        (detection: CaptureDetection) => {
+          return {
+            bbox: detection.bbox,
+            id: `${detection.id}`,
+            label: makeDetectionLabel(detection),
+            score: detection.score,
+            occurrenceId: detection.occurrence
+              ? `${detection.occurrence.id}`
+              : undefined,
+          }
+        }
+      )
     }
   }
 

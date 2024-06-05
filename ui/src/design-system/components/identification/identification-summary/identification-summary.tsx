@@ -1,6 +1,4 @@
-import {
-  Identification
-} from 'data-services/models/occurrence-details'
+import { Identification } from 'data-services/models/occurrence-details'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
@@ -22,7 +20,9 @@ export const IdentificationSummary = ({
   user,
   identification,
 }: IdentificationSummaryProps) => {
-  const formattedTime = getFormatedDateTimeString({ date: new Date(identification.createdAt) });
+  const formattedTime = getFormatedDateTimeString({
+    date: new Date(identification.createdAt),
+  })
 
   return (
     <div>
@@ -50,5 +50,5 @@ export const IdentificationSummary = ({
       </div>
       {children}
     </div>
-  );
-};
+  )
+}
