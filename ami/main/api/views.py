@@ -101,7 +101,7 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
 
 
 class ProjectPagination(LimitOffsetPaginationWithPermissions):
-    default_limit = 20
+    default_limit = 40
 
 
 class ProjectViewSet(DefaultViewSet):
