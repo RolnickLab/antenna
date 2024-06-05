@@ -54,8 +54,7 @@ repos:
     rev: v9.4.0
     hooks:
       - id: eslint
-        args: ['--ext', '.js,.jsx,.ts,.tsx']
-
+        args: ["--config", "./ui/.eslintrc.json"]
 
 # sets up .pre-commit-ci.yaml to ensure pre-commit dependencies stay up to date
 ci:
