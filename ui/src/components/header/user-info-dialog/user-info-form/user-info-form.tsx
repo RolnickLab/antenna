@@ -74,7 +74,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
       <FormSection>
         <FormRow>
           <InputValue
-            label={translate(STRING.FIELD_LABEL_NAME)}
+            label={translate(STRING.FIELD_LABEL_EMAIL)}
             value={userInfo.email}
           />
           <InputValue
