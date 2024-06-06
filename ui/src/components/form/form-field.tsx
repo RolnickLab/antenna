@@ -30,7 +30,7 @@ export const FormField = <
         <Input
           {...field}
           type={type}
-          label={fieldConfig.label}
+          label={fieldConfig.rules?.required ? `${fieldConfig.label} *` : fieldConfig.label}
           error={fieldState.error?.message}
           description={fieldConfig.description}
           onBlur={(e) => {
