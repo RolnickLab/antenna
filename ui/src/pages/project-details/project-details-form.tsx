@@ -33,6 +33,9 @@ const config: FormConfig = {
   },
   description: {
     label: translate(STRING.FIELD_LABEL_DESCRIPTION),
+    rules: {
+      required: true,
+    },
   },
   image: {
     label: translate(STRING.FIELD_LABEL_IMAGE),
