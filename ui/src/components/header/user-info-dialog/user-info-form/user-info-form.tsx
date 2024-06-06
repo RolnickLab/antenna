@@ -17,6 +17,7 @@ import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { UserInfo } from 'utils/user/types'
 import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
+import { IconType } from 'design-system/components/icon/icon'
 
 interface UserInfoFormValues {
   name: string
@@ -62,7 +63,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
     },
     mode: 'onChange',
   })
-  const { updateUserInfo, isLoading, error } = useUpdateUserInfo()
+  const { updateUserInfo, error, isLoading, isSuccess } = useUpdateUserInfo()
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
@@ -116,7 +117,8 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
       </FormSection>
       <FormActions>
         <Button
-          label={translate(STRING.SAVE)}
+          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
+          icon={isSuccess ? IconType.RadixCheck : undefined}
           type="submit"
           theme={ButtonTheme.Success}
           loading={isLoading}

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import { API_ROUTES, API_URL } from 'data-services/constants'
+import { API_ROUTES, API_URL, SUCCESS_TIMEOUT } from 'data-services/constants'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
@@ -8,7 +8,7 @@ export const useUpdateUserInfo = () => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
-  const { mutate, isLoading, error, isSuccess } = useMutation({
+  const { mutate, isLoading, isSuccess, reset, error } = useMutation({
     mutationFn: (fieldValues: any) => {
       const data = new FormData()
       if (fieldValues.name) {
@@ -29,6 +29,7 @@ export const useUpdateUserInfo = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.ME])
+      setTimeout(reset, SUCCESS_TIMEOUT)
     },
   })
 
