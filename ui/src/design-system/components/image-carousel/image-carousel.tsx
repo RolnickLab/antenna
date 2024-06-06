@@ -110,7 +110,9 @@ const MultiImageCarousel = ({
   const slideIndexRef = useRef(slideIndex)
   const pausedRef = useRef(paused)
 
-  const totalLabel = total ? `${images.length}${images.length < total ? '+' : ''}` : images.length
+  const totalLabel = total
+    ? `${images.length}${images.length < total ? '+' : ''}`
+    : images.length
 
   useEffect(() => {
     if (!autoPlay) {
