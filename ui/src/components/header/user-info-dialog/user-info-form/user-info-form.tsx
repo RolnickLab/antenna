@@ -19,13 +19,16 @@ import { UserInfo } from 'utils/user/types'
 import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
 
 interface UserInfoFormValues {
-  name?: string
+  name: string
   image?: File | null
 }
 
 const config: FormConfig = {
   name: {
     label: translate(STRING.FIELD_LABEL_NAME),
+    rules: {
+      required: true,
+    },
   },
   image: {
     label: translate(STRING.FIELD_LABEL_ICON),
