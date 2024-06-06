@@ -16,10 +16,6 @@
   color: $color-neutral-200;
   box-sizing: border-box;
 
-  .numDetections {
-    opacity: 0;
-  }
-
   .bar {
     height: 8px;
     width: 100%;
@@ -28,21 +24,9 @@
     background-color: $color-success-300;
   }
 
-  .timestamp {
-    opacity: 0;
-  }
-
   &:hover {
     cursor: pointer;
     opacity: 0.7;
-
-    .numDetections {
-      opacity: 1;
-    }
-
-    .timestamp {
-      opacity: 1;
-    }
   }
 
   &.empty {
@@ -54,16 +38,8 @@
   &.active {
     background-color: #383a3c;
 
-    .numDetections {
-      opacity: 1;
-    }
-
     .bar {
       background-color: $color-generic-white;
-    }
-
-    .timestamp {
-      opacity: 1;
     }
   }
 }

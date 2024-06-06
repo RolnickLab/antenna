@@ -10,7 +10,7 @@ export const CaptureRow = ({
   onClick,
 }: {
   capture: {
-    details: string
+    details?: string
     scale: number
     timeLabel: string
   }
