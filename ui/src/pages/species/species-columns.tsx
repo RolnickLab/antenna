@@ -24,11 +24,17 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     },
     renderCell: (item: Species, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
+      const detailsRoute = getAppRoute({
+        to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+        keepSearchParams: true,
+      })
 
       return (
         <ImageTableCell
           images={item.images}
+          total={item.numOccurrences}
           theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          to={detailsRoute}
         />
       )
     },
@@ -49,17 +55,8 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     ),
   },
   {
-    id: 'detections',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
     id: 'occurrences',
+    sortField: 'occurrences_count',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     styles: {
       textAlign: TextAlign.Right,
@@ -71,8 +68,19 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           filters: { determination: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
+    ),
+  },
+  {
+    id: 'score',
+    sortField: 'best_determination_score',
+    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <BasicTableCell value={item.score.toFixed(2)} />
     ),
   },
   {

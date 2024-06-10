@@ -1,10 +1,11 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .wrapper {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: transform 400ms ease;
 
   &.light {
     color: $color-generic-white;
@@ -24,6 +25,10 @@
 
   &.success {
     color: $color-success-700;
+  }
+
+  &.error {
+    color: $color-destructive-600;
   }
 
   &.fixedSized {

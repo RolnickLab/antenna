@@ -40,6 +40,8 @@ export const DeploymentDetailsForm = ({
         values: {
           name: deployment.name,
           description: deployment.description,
+          deviceId: deployment.device?.id,
+          siteId: deployment.site?.id,
         },
         isValid: startValid,
       },
@@ -52,7 +54,7 @@ export const DeploymentDetailsForm = ({
       },
       [Section.SourceImages]: {
         values: {
-          path: deployment.path,
+          dataSourceId: deployment.dataSource?.id,
         },
         isValid: startValid,
       },
@@ -154,7 +156,11 @@ const FormError = ({ error }: { error: unknown }) => {
   const errorMessage = useFormError({ error })
 
   return errorMessage ? (
-    <_FormError inDialog intro="Could not save" message={errorMessage} />
+    <_FormError
+      inDialog
+      intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
+      message={errorMessage}
+    />
   ) : null
 }
 
@@ -164,7 +170,10 @@ const FormContent = ({ deployment }: { deployment: DeploymentDetails }) => {
   switch (currentSection) {
     case Section.General:
       return (
-        <SectionGeneral onNext={() => setCurrentSection(Section.Location)} />
+        <SectionGeneral
+          deployment={deployment}
+          onNext={() => setCurrentSection(Section.Location)}
+        />
       )
     case Section.Location:
       return (

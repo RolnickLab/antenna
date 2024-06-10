@@ -23,7 +23,7 @@ urlpatterns += [
     # API base url
     path("api/v2/", include("config.api_router", namespace="api")),
     # OpenAPI Docs
-    path("api/v2/schema/", SpectacularAPIView.as_view(), name="api-schema"),
+    path("api/v2/schema/", SpectacularAPIView.as_view(api_version="api"), name="api-schema"),
     path(
         "api/v2/docs/",
         SpectacularSwaggerView.as_view(url_name="api-schema"),

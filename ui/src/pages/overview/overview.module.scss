@@ -1,6 +1,6 @@
-@import 'design-system/variables/variables.scss';
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .loadingWrapper {
   display: flex;
@@ -17,7 +17,7 @@
   border: 1px solid $color-neutral-100;
   background: $color-generic-white;
   overflow: hidden;
-  margin: 0 0 16px;
+  margin: 0 0 32px;
 }
 
 .aboutImage {
@@ -42,28 +42,6 @@
   box-sizing: border-box;
 }
 
-// Plots
-.plotsContainer {
-  background: $color-generic-white;
-  width: 100%;
-  border-radius: 8px;
-  border: 1px solid $color-neutral-100;
-  padding: 32px;
-  box-sizing: border-box;
-  overflow-x: auto;
-}
-
-.plotsContent {
-  display: inline-block;
-  min-width: 100%;
-}
-
-.plots {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
-}
-
 // Text
 .title {
   @include paragraph-large();
@@ -76,14 +54,6 @@
   @include paragraph-medium();
   color: $color-neutral-800;
   margin: 0 0 16px;
-}
-
-.label {
-  display: block;
-  @include label();
-  font-weight: 600;
-  color: $color-neutral-500;
-  margin: 0 0 32px;
 }
 
 // Small screen adjustments
@@ -102,23 +72,7 @@
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .about {
-    margin: 0 0 16px;
-  }
-
   .aboutInfo {
     padding: 16px;
-  }
-
-  .plots {
-    grid-template-columns: 1fr;
-  }
-
-  .plotsContainer {
-    padding: 16px;
-  }
-
-  .label {
-    margin-bottom: 16px;
   }
 }

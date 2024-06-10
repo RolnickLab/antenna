@@ -1,4 +1,5 @@
-import { Job, ServerJob } from './job'
+import { Job, JobStatus, ServerJob } from './job'
+import { Pipeline } from './pipeline'
 
 export type ServerJobDetails = ServerJob & any // TODO: Update this type
 
@@ -7,53 +8,72 @@ export class JobDetails extends Job {
     super(job)
   }
 
-  get inputLabel(): string {
-    return this._job.config.input.name
+  get description(): string {
+    return `Job ${this.id} "${this.name}"`
   }
 
-  get inputValue(): string | number {
-    return this._job.config.input.size
+  get delay(): number {
+    return this._job.delay
   }
 
-  get stages(): { key: string }[] {
-    return this._job.config.stages
+  get errors(): string[] {
+    return this._job.progress.errors ?? []
   }
 
-  getStageInfo(key: string) {
-    const stage = this._job.config.stages.find(
-      (stage: any) => stage.key === key
-    )
+  get pipeline(): Pipeline | undefined {
+    return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
+  }
 
-    const progress = this._job.progress.stages.find(
-      (stage: any) => stage.key === key
-    )
+  get logs(): string[] {
+    return this._job.progress.logs ?? []
+  }
 
-    if (!stage || !progress) {
-      return undefined
-    }
+  get stages(): {
+    fields: { key: string; label: string; value?: string | number }[]
+    name: string
+    key: string
+    status: JobStatus
+    statusLabel: string
+    statusDetails: string
+  }[] {
+    return this._job.progress.stages.map((stage: any) => {
+      const status = this.getStatus(stage.status)
 
-    const name = stage.name
-    const status = this.getStatus(progress.status)
-    const statusLabel = this.getStatusLabel(status)
-    const statusDetails = stage.status_label
-    const fields: { key: string; label: string; value?: string | number }[] =
-      stage.params.map((param: any) => {
-        const configValue = param.value
-        const progressValue = progress[param.key]
-
-        return {
+      const fields: { key: string; label: string; value?: string | number }[] =
+        stage.params.map((param: any) => ({
           key: param.key,
           label: param.name,
-          value: configValue !== undefined ? configValue : progressValue,
-        }
-      })
+          value: param.value,
+        }))
 
-    return {
-      name,
-      status,
-      statusLabel,
-      statusDetails,
-      fields,
-    }
+      return {
+        fields,
+        key: stage.key,
+        name: stage.name,
+        status,
+        statusLabel: this.getStatusLabel(status),
+        statusDetails: stage.status_label,
+      }
+    })
+  }
+
+  get sourceImages(): { id: string; name: string } | undefined {
+    const collection = this._job.source_image_collection
+
+    return collection
+      ? { id: `${collection.id}`, name: collection.name }
+      : undefined
+  }
+
+  get sourceImage() {
+    const capture = this._job.source_image_single
+
+    return capture
+      ? {
+          id: `${capture.id}`,
+          label: `${capture.id}`,
+          sessionId: capture.event_id ? `${capture.event_id}` : undefined,
+        }
+      : undefined
   }
 }

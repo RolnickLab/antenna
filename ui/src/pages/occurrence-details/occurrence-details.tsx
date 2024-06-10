@@ -37,6 +37,7 @@ export const OccurrenceDetails = ({
 }: {
   occurrence: Occurrence
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null)
   const suggestIdInputRef = useRef<HTMLInputElement>(null)
   const {
     user: { loggedIn },
@@ -115,7 +116,7 @@ export const OccurrenceDetails = ({
   ]
 
   return (
-    <div className={styles.wrapper}>
+    <div className={styles.wrapper} ref={containerRef}>
       <div className={styles.header}>
         <TaxonInfo
           taxon={occurrence.determinationTaxon}
@@ -133,8 +134,12 @@ export const OccurrenceDetails = ({
           <Tooltip
             content={
               occurrence.determinationVerified
-                ? `Verified by\n${occurrence.determinationVerifiedBy}`
-                : `Machine prediction\nscore ${occurrence.determinationScore}`
+                ? translate(STRING.VERIFIED_BY, {
+                    name: occurrence.determinationVerifiedBy as string,
+                  })
+                : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                    score: occurrence.determinationScore,
+                  })
             }
           >
             <IdentificationStatus
@@ -159,7 +164,7 @@ export const OccurrenceDetails = ({
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
-                label="Suggest ID"
+                label={translate(STRING.SUGGEST_ID)}
                 icon={IconType.ShieldAlert}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
@@ -201,12 +206,14 @@ export const OccurrenceDetails = ({
                 </Tabs.Content>
                 <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>
-                    <SuggestId
-                      inputRef={suggestIdInputRef}
-                      occurrenceId={occurrence.id}
-                      open={suggestIdOpen}
-                      onOpenChange={setSuggestIdOpen}
-                    />
+                    {suggestIdOpen && (
+                      <SuggestId
+                        containerRef={containerRef}
+                        inputRef={suggestIdInputRef}
+                        occurrenceId={occurrence.id}
+                        onCancel={() => setSuggestIdOpen(false)}
+                      />
+                    )}
 
                     {occurrence.humanIdentifications.map((i) => (
                       <IdentificationCard

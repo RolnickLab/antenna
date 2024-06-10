@@ -19,7 +19,7 @@ export const Menu = () => {
           activeItemId={activeNavItemId}
           onItemClick={(id) => {
             const item = navItems.find((i) => i.id === id)
-            if (item) {
+            if (item?.path) {
               navigate(item.path)
             }
           }}

@@ -5,54 +5,33 @@ import { Taxon } from 'data-services/models/taxa'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Input, InputContent } from 'design-system/components/input/input'
 import { RefObject, useState } from 'react'
-import { useParams } from 'react-router'
+import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { StatusLabel } from '../status-label/status-label'
 import { TaxonSearch } from '../taxon-search/taxon-search'
 import styles from './suggest-id.module.scss'
 
 interface SuggestIdProps {
-  inputRef: RefObject<HTMLInputElement>
-  occurrenceId: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}
-
-export const SuggestId = ({
-  inputRef,
-  occurrenceId,
-  open,
-  onOpenChange,
-}: SuggestIdProps) => {
-  if (!open) {
-    return null
-  }
-
-  return (
-    <SuggestIdForm
-      inputRef={inputRef}
-      occurrenceId={occurrenceId}
-      onCancel={() => onOpenChange(false)}
-    />
-  )
-}
-
-const SuggestIdForm = ({
-  inputRef,
-  occurrenceId,
-  onCancel,
-}: {
+  containerRef: RefObject<HTMLDivElement>
   inputRef: RefObject<HTMLInputElement>
   occurrenceId: string
   onCancel: () => void
-}) => {
+}
+
+export const SuggestId = ({
+  containerRef,
+  inputRef,
+  occurrenceId,
+  onCancel,
+}: SuggestIdProps) => {
   const { projectId } = useParams()
   const [taxon, setTaxon] = useState<Taxon>()
-  const { createIdentification, isLoading, error } = useCreateIdentification(
-    () => onCancel()
-  )
+  const [comment, setComment] = useState('')
+  const { createIdentification, isLoading, error } =
+    useCreateIdentification(onCancel)
   const formError = error ? parseServerError(error)?.message : undefined
 
   return (
@@ -61,10 +40,11 @@ const SuggestIdForm = ({
         <FormError message={formError} style={{ padding: '8px 16px' }} />
       )}
       <div className={styles.content}>
-        <StatusLabel label="New ID" />
-        <InputContent label="Taxon">
+        <StatusLabel label={translate(STRING.NEW_ID)} />
+        <InputContent label={translate(STRING.FIELD_LABEL_TAXON)}>
           <div className={styles.taxonActions}>
             <TaxonSearch
+              containerRef={containerRef}
               inputRef={inputRef}
               taxon={taxon}
               onTaxonChange={setTaxon}
@@ -84,11 +64,16 @@ const SuggestIdForm = ({
             />
           )}
         </InputContent>
-        <Input label="Comment" name="comment" disabled />
+        <Input
+          label={translate(STRING.FIELD_LABEL_COMMENT)}
+          name="comment"
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+        />
         <div className={styles.formActions}>
-          <Button label="Cancel" onClick={onCancel} />
+          <Button label={translate(STRING.CANCEL)} onClick={onCancel} />
           <Button
-            label="Submit"
+            label={translate(STRING.SUBMIT)}
             theme={ButtonTheme.Success}
             loading={isLoading}
             disabled={!taxon}
@@ -99,6 +84,7 @@ const SuggestIdForm = ({
               createIdentification({
                 occurrenceId: occurrenceId,
                 taxonId: taxon.id,
+                comment: comment,
               })
             }}
           />

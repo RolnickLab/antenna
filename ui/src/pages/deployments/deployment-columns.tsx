@@ -1,18 +1,42 @@
 import { Deployment } from 'data-services/models/deployment'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
+  ImageCellTheme,
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { DeleteDeploymentDialog } from 'pages/deployment-details/delete-deployment-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import styles from './deployments.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   projectId: string
 ) => [
+  {
+    id: 'snapshot',
+    sortField: 'createdAt',
+    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    renderCell: (item: Deployment, rowIndex: number) => {
+      const isOddRow = rowIndex % 2 == 0
+      const detailsRoute = getAppRoute({
+        to: APP_ROUTES.DEPLOYMENT_DETAILS({ projectId, deploymentId: item.id }),
+        keepSearchParams: true,
+      })
+
+      return (
+        <ImageTableCell
+          images={item.image ? [{ src: item.image }] : []}
+          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          to={detailsRoute}
+        />
+      )
+    },
+  },
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
@@ -45,7 +69,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numEvents} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -72,7 +96,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -90,7 +114,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { occurrences__deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -111,5 +135,18 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => <BasicTableCell value={item.lastDate} />,
+  },
+  {
+    id: 'actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: Deployment) => (
+      <div className={styles.deploymentActions}>
+        {item.canDelete && <DeleteDeploymentDialog id={item.id} />}
+      </div>
+    ),
   },
 ]

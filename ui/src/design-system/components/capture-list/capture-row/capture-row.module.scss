@@ -1,10 +1,10 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .capture {
   width: 100%;
   display: grid;
-  grid-template-columns: 2fr 2fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
   justify-content: flex-start;
   gap: 16px;
@@ -16,10 +16,6 @@
   color: $color-neutral-200;
   box-sizing: border-box;
 
-  .numDetections {
-    opacity: 0;
-  }
-
   .bar {
     height: 8px;
     width: 100%;
@@ -29,20 +25,12 @@
   }
 
   .timestamp {
-    opacity: 0;
+    text-align: right;
   }
 
   &:hover {
     cursor: pointer;
     opacity: 0.7;
-
-    .numDetections {
-      opacity: 1;
-    }
-
-    .timestamp {
-      opacity: 1;
-    }
   }
 
   &.empty {
@@ -54,16 +42,8 @@
   &.active {
     background-color: #383a3c;
 
-    .numDetections {
-      opacity: 1;
-    }
-
     .bar {
       background-color: $color-generic-white;
-    }
-
-    .timestamp {
-      opacity: 1;
     }
   }
 }

@@ -12,9 +12,11 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 import { userAgreed } from '../agree/userAgreed'
+import { AlgorithmDetails } from '../algorithm-details/algorithm-details'
 import { StatusLabel } from '../status-label/status-label'
 import styles from './identification-card.module.scss'
 
@@ -55,8 +57,11 @@ export const IdentificationCard = ({
   return (
     <div className={styles.identificationCard}>
       <div className={styles.content}>
-        <IdentificationSummary user={user}>
-          {identification.applied && <StatusLabel label="ID applied" />}
+        <IdentificationSummary user={user} identification={identification}>
+          {identification.applied && (
+            <StatusLabel label={translate(STRING.ID_APPLIED)} />
+          )}
+          <AlgorithmDetails algorithm={identification.algorithm} />
           <TaxonInfo
             overridden={identification.overridden}
             taxon={identification.taxon}
@@ -69,6 +74,7 @@ export const IdentificationCard = ({
               })
             }
           />
+          <div className={styles.comment}>{identification.comment}</div>
         </IdentificationSummary>
         <div className={styles.actions}>
           {showAgree && (

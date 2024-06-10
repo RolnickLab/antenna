@@ -26,6 +26,26 @@ from .models import (
 )
 
 
+class AdminBase(admin.ModelAdmin):
+    """Mixin to add ``created_at`` and ``updated_at`` to admin panel."""
+
+    readonly_fields = ("created_at", "updated_at")
+
+    @admin.action(description="Save selected instances in the background")
+    def save_async(self, request: HttpRequest, queryset: QuerySet[SourceImage]) -> None:
+        app_label = self.model._meta.app_label
+        model_name = self.model._meta.model_name
+        assert app_label and model_name, "Model must have app_label and model_name"
+        batch_size = 10
+        # @TODO should these IDs be split into chunks here for millions of records?
+        # Can we use a queryset iterator or send the queryset directly to the task?
+        instance_pks = list(queryset.values_list("pk", flat=True))
+        tasks.save_model_instances(app_label=app_label, model_name=model_name, pks=instance_pks, batch_size=100)
+        self.message_user(request, f"Saving {len(instance_pks)} instances in background in batches of {batch_size}.")
+
+    actions = [save_async]
+
+
 @admin.register(BlogPost)
 class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
     """Admin panel example for ``BlogPost`` model."""
@@ -34,6 +54,8 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
+
+    list_display = ("name", "priority", "active", "created_at", "updated_at")
 
 
 @admin.register(Deployment)
@@ -81,7 +103,17 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         msg = f"Syncing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
         self.message_user(request, msg)
 
-    actions = [sync_captures]
+    # Action that regroups all captures in the deployment into events
+    @admin.action(description="Regroup captures into events")
+    def regroup_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
+        from ami.main.models import group_images_into_events
+
+        for deployment in queryset:
+            group_images_into_events(deployment)
+        self.message_user(request, f"Regrouped {queryset.count()} deployments.")
+
+    list_filter = ("project",)
+    actions = [sync_captures, regroup_events]
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -135,13 +167,14 @@ class EventAdmin(admin.ModelAdmin[Event]):
 
 
 @admin.register(SourceImage)
-class SourceImageAdmin(admin.ModelAdmin[SourceImage]):
+class SourceImageAdmin(AdminBase):
     """Admin panel example for ``SourceImage`` model."""
 
     list_display = (
         "path",
         "timestamp",
         "event",
+        "detections_count",
         "deployment",
         "width",
         "height",
@@ -197,8 +230,17 @@ class TaxonParentFilter(admin.SimpleListFilter):
 class TaxonAdmin(admin.ModelAdmin[Taxon]):
     """Admin panel example for ``Taxon`` model."""
 
-    list_display = ("name", "occurrence_count", "rank", "parent", "parent_names", "list_names")
-    list_filter = ("rank", TaxonParentFilter)
+    list_display = (
+        "name",
+        "occurrence_count",
+        "rank",
+        "parent",
+        "parent_names",
+        "list_names",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("lists", "rank", TaxonParentFilter)
     search_fields = ("name",)
     exclude = ("parents",)
 

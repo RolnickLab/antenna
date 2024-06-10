@@ -1,13 +1,17 @@
-import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
-import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 
 export type ServerJob = any // TODO: Update this type
 
 export enum JobStatus {
+  Created = 'created',
   Pending = 'pending',
   Started = 'started',
   Success = 'success',
+  Canceling = 'canceling',
+  Revoked = 'revoked',
+  Failed = 'failed',
   Unknown = 'unknown',
 }
 
@@ -18,16 +22,37 @@ export class Job {
     this._job = job
   }
 
+  get canCancel(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Update) &&
+      this.status === JobStatus.Started
+    )
+  }
+
+  get canDelete(): boolean {
+    return this._job.user_permissions.includes(UserPermission.Delete)
+  }
+
+  get canQueue(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Update) &&
+      this.status === JobStatus.Created
+    )
+  }
+
+  get createdAt(): string | undefined {
+    if (!this._job.created_at) {
+      return
+    }
+
+    return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
+  }
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return
     }
 
-    const date = new Date(this._job.finished_at)
-    const dateString = getFormatedDateString({ date })
-    const timeString = getFormatedTimeString({ date })
-
-    return `${dateString} ${timeString}`
+    return getFormatedDateTimeString({ date: new Date(this._job.finished_at) })
   }
 
   get id(): string {
@@ -39,11 +64,7 @@ export class Job {
       return
     }
 
-    const date = new Date(this._job.started_at)
-    const dateString = getFormatedDateString({ date })
-    const timeString = getFormatedTimeString({ date })
-
-    return `${dateString} ${timeString}`
+    return getFormatedDateTimeString({ date: new Date(this._job.started_at) })
   }
 
   get name(): string {
@@ -59,11 +80,11 @@ export class Job {
   }
 
   get statusDetails(): string {
-    return this._job.progress.summary.status_label
+    return this._job.progress?.summary.status_label
   }
 
   get statusValue(): number {
-    return this._job.progress.summary.progress
+    return this._job.progress?.summary.progress ?? this._job.status
   }
 
   get statusLabel(): string {
@@ -72,12 +93,20 @@ export class Job {
 
   protected getStatus(status: string): JobStatus {
     switch (status) {
+      case 'CREATED':
+        return JobStatus.Created
       case 'PENDING':
         return JobStatus.Pending
       case 'STARTED':
         return JobStatus.Started
       case 'SUCCESS':
         return JobStatus.Success
+      case 'CANCELING':
+        return JobStatus.Canceling
+      case 'REVOKED':
+        return JobStatus.Revoked
+      case 'FAILURE':
+        return JobStatus.Failed
       default:
         return JobStatus.Unknown
     }
@@ -85,12 +114,20 @@ export class Job {
 
   protected getStatusLabel(status: JobStatus): string {
     switch (status) {
+      case JobStatus.Created:
+        return translate(STRING.CREATED)
       case JobStatus.Pending:
         return translate(STRING.PENDING)
       case JobStatus.Started:
         return translate(STRING.RUNNING)
       case JobStatus.Success:
         return translate(STRING.DONE)
+      case JobStatus.Canceling:
+        return translate(STRING.CANCELING)
+      case JobStatus.Revoked:
+        return translate(STRING.REVOKED)
+      case JobStatus.Failed:
+        return translate(STRING.FAILED)
       default:
         return translate(STRING.UNKNOWN)
     }

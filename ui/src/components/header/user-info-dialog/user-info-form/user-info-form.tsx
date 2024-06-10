@@ -12,31 +12,38 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { bytesToMB } from 'utils/bytesToMB'
+import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { UserInfo } from 'utils/user/types'
 import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
-
-const IMAGE_MAX_SIZE = 1024 * 1024 // 1MB
+import { IconType } from 'design-system/components/icon/icon'
 
 interface UserInfoFormValues {
-  name?: string
+  name: string
   image?: File | null
 }
 
 const config: FormConfig = {
   name: {
-    label: 'Name',
+    label: translate(STRING.FIELD_LABEL_NAME),
+    rules: {
+      required: true,
+    },
   },
   image: {
-    label: 'Image',
-    description: `The image must smaller than ${bytesToMB(
-      IMAGE_MAX_SIZE
-    )} MB. Valid formats are PNG, GIF and JPEG.`,
+    label: translate(STRING.FIELD_LABEL_ICON),
+    description: [
+      translate(STRING.MESSAGE_IMAGE_SIZE, {
+        value: bytesToMB(API_MAX_UPLOAD_SIZE),
+        unit: 'MB',
+      }),
+      translate(STRING.MESSAGE_IMAGE_FORMAT),
+    ].join('\n'),
     rules: {
       validate: (file: File) => {
         if (file) {
-          if (file?.size > IMAGE_MAX_SIZE) {
+          if (file?.size > API_MAX_UPLOAD_SIZE) {
             return translate(STRING.MESSAGE_IMAGE_TOO_BIG)
           }
         }
@@ -56,20 +63,27 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
     },
     mode: 'onChange',
   })
-  const { updateUserInfo, isLoading, error } = useUpdateUserInfo()
+  const { updateUserInfo, error, isLoading, isSuccess } = useUpdateUserInfo()
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
     <form onSubmit={handleSubmit((values) => updateUserInfo(values))}>
       {errorMessage && (
-        <FormError inDialog intro="Could not save" message={errorMessage} />
+        <FormError
+          inDialog
+          intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
+          message={errorMessage}
+        />
       )}
       <FormSection>
         <FormRow>
-          <InputValue label="Email" value={userInfo.email} />
           <InputValue
-            label="Password"
-            value="Contact an administrator to change your email or password."
+            label={translate(STRING.FIELD_LABEL_EMAIL)}
+            value={userInfo.email}
+          />
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_PASSWORD)}
+            value={translate(STRING.MESSAGE_CHANGE_PASSWORD)}
           />
         </FormRow>
         <FormRow>
@@ -103,7 +117,8 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
       </FormSection>
       <FormActions>
         <Button
-          label={translate(STRING.SAVE)}
+          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
+          icon={isSuccess ? IconType.RadixCheck : undefined}
           type="submit"
           theme={ButtonTheme.Success}
           loading={isLoading}

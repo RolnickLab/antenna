@@ -1,6 +1,7 @@
 """
 Base settings to build other settings files upon.
 """
+
 from pathlib import Path
 
 import django_stubs_ext
@@ -86,13 +87,16 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "anymail",
+    "cachalot",
 ]
 
 LOCAL_APPS = [
+    # Your stuff: custom apps go here
     "ami.users",
     "ami.main",
+    "ami.jobs",
+    "ami.ml",
     "ami.labelstudio",
-    # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -311,13 +315,13 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticatedOrReadOnly",),
+    "DEFAULT_PERMISSION_CLASSES": ("ami.base.permissions.IsActiveStaffOrReadOnly",),
     # "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PAGINATION_CLASS": "ami.main.api.pagination.LimitOffsetPaginationWithPermissions",
+    "DEFAULT_PAGINATION_CLASS": "ami.base.pagination.LimitOffsetPaginationWithPermissions",
     "PAGE_SIZE": 10,
-    "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
+    "HTML_SELECT_CUTOFF": 100,
 }
 
 # django-cors-headers - https://github.com/adamchainz/django-cors-headers#setup
@@ -352,8 +356,10 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Automated Monitoring of Insects ML Platform API",
     "DESCRIPTION": "Documentation of API endpoints of Automated Monitoring of Insects ML Platform",
     "VERSION": "1.0.0",
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
-    # "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+DEFAULT_CONFIDENCE_THRESHOLD = env.float("DEFAULT_CONFIDENCE_THRESHOLD", default=0.29)  # type: ignore[no-untyped-call]

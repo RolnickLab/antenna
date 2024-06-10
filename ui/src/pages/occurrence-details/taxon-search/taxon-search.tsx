@@ -1,15 +1,17 @@
 import { Taxon } from 'data-services/models/taxa'
-import { ComboBoxFlat } from 'design-system/components/combo-box/combo-box-flat'
+import { ComboBoxTree } from 'design-system/components/combo-box/combo-box-tree/combo-box-tree'
 import { RefObject, useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useDebounce } from 'utils/useDebounce'
 import { useTaxonSearch } from './useTaxonSearch'
 
 export const TaxonSearch = ({
+  containerRef,
   inputRef,
   taxon,
   onTaxonChange,
 }: {
+  containerRef: RefObject<HTMLDivElement>
   inputRef: RefObject<HTMLInputElement>
   taxon?: Taxon
   onTaxonChange: (taxon: Taxon) => void
@@ -18,25 +20,29 @@ export const TaxonSearch = ({
   const debouncedSearchString = useDebounce(searchString, 200)
   const { data, isLoading } = useTaxonSearch(debouncedSearchString)
 
-  const items = useMemo(() => {
+  const nodes = useMemo(() => {
     if (!data?.length) {
       return []
     }
-    return data.map((result) => ({
-      id: result.id,
-      label: result.name,
-      details: result.rank,
+
+    return data.map((taxon) => ({
+      id: taxon.id,
+      label: taxon.name,
+      details: taxon.rank,
+      parentId: taxon.parentId,
     }))
   }, [data])
 
   return (
-    <ComboBoxFlat
+    <ComboBoxTree
+      containerRef={containerRef}
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       inputRef={inputRef}
-      items={items}
       loading={isLoading}
+      nodes={nodes}
       searchString={searchString}
-      selectedItemId={taxon?.id}
+      selectedLabel={taxon?.name}
+      selectedNodeId={taxon?.id}
       onItemSelect={(id) => {
         const taxon = data?.find((i) => i.id === id)
         if (taxon) {

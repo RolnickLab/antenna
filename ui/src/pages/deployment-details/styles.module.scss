@@ -1,6 +1,6 @@
-@import 'design-system/variables/variables.scss';
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .buttonWrapper {
   display: flex;
@@ -12,10 +12,26 @@
   width: 720px;
   max-width: 100%;
   box-sizing: border-box;
+
+  &.compact {
+    width: 320px;
+  }
 }
 
 .section {
   margin: 32px 0;
+}
+
+.image {
+  width: fit-content;
+  border-radius: 4px;
+  border: 1px solid $color-neutral-100;
+  overflow: hidden;
+
+  img {
+    display: block;
+    max-width: 100%;
+  }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

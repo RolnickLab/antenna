@@ -1,11 +1,17 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Project } from 'data-services/models/project'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { Plot } from 'design-system/components/plot/plot'
+import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { useOutletContext } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
+import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
+import { Entities } from './entities/entities'
 import styles from './overview.module.scss'
+import { Pipelines } from './pipelines/pipelines'
+import { Summary } from './summary/summary'
 
 export const Overview = () => {
   const { project, isLoading, error } = useOutletContext<{
@@ -47,21 +53,54 @@ export const Overview = () => {
           <DeploymentsMap deployments={project.deployments} />
         </div>
       </div>
-      <div className={styles.plotsContainer}>
-        <div className={styles.plotsContent}>
-          <span className={styles.label}>Summary</span>
-          <div className={styles.plots}>
-            {project.summaryData.map((summary, index) => (
-              <Plot
-                key={index}
-                title={summary.title}
-                data={summary.data}
-                type={summary.type}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+      <Tabs.Root defaultValue="summary">
+        <Tabs.List>
+          <Tabs.Trigger
+            value="summary"
+            label={translate(STRING.TAB_ITEM_SUMMARY)}
+          />
+          <Tabs.Trigger
+            value="collections"
+            label={translate(STRING.TAB_ITEM_COLLECTIONS)}
+          />
+          <Tabs.Trigger
+            value="pipelines"
+            label={translate(STRING.TAB_ITEM_PIPELINES)}
+          />
+          <Tabs.Trigger
+            value="storage"
+            label={translate(STRING.TAB_ITEM_STORAGE)}
+          />
+          <Tabs.Trigger
+            value="sites"
+            label={translate(STRING.TAB_ITEM_SITES)}
+          />
+          <Tabs.Trigger
+            value="devices"
+            label={translate(STRING.TAB_ITEM_DEVICES)}
+          />
+        </Tabs.List>
+        <Tabs.Content value="summary">
+          <Summary project={project} />
+        </Tabs.Content>
+        <Tabs.Content value="collections">
+          <Collections />
+        </Tabs.Content>
+        <Tabs.Content value="pipelines">
+          <Pipelines />
+        </Tabs.Content>
+        <Tabs.Content value="storage">
+          <Entities collection={API_ROUTES.STORAGE} type="storage" />
+        </Tabs.Content>
+        <Tabs.Content value="sites">
+          <Entities collection={API_ROUTES.SITES} type="site" />
+        </Tabs.Content>
+        <Tabs.Content value="devices">
+          <Entities collection={API_ROUTES.DEVICES} type="device" />
+        </Tabs.Content>
+      </Tabs.Root>
     </>
   )
 }
+
+export default Overview

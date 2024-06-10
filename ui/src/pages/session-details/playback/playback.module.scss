@@ -1,8 +1,10 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/variables.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/variables.scss';
 
 .wrapper {
   display: flex;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .playbackFrame {

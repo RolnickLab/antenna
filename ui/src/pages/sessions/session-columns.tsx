@@ -18,15 +18,22 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    sortField: 'updated_at',
     styles: {
       padding: '16px 32px 16px 50px',
     },
     renderCell: (item: Session, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
+      const detailsRoute = APP_ROUTES.SESSION_DETAILS({
+        projectId,
+        sessionId: item.id,
+      })
 
       return (
         <ImageTableCell
           images={item.exampleCaptures}
+          total={item.numImages}
+          to={detailsRoute}
           theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
         />
       )
@@ -34,6 +41,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'session',
+    sortField: 'start',
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Session) => (
       <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
@@ -44,6 +52,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    sortField: 'deployment',
     renderCell: (item: Session) => (
       <Link
         to={APP_ROUTES.DEPLOYMENT_DETAILS({
@@ -60,8 +69,8 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'date',
-    sortField: 'start',
     name: translate(STRING.FIELD_LABEL_DATE),
+    sortField: 'start',
     renderCell: (item: Session) => (
       <BasicTableCell value={item.datespanLabel} />
     ),
@@ -69,14 +78,15 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'time',
     name: translate(STRING.FIELD_LABEL_TIME),
+    sortField: 'start__time',
     renderCell: (item: Session) => (
       <BasicTableCell value={item.timespanLabel} />
     ),
   },
   {
     id: 'duration',
-    sortField: 'duration',
     name: translate(STRING.FIELD_LABEL_DURATION),
+    sortField: 'duration',
     renderCell: (item: Session) => (
       <BasicTableCell value={item.durationLabel} />
     ),
@@ -93,6 +103,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'detections',
     name: translate(STRING.FIELD_LABEL_DETECTIONS),
+    sortField: 'detections_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -114,13 +125,14 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
           filters: { event: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
   {
     id: 'species',
     name: translate(STRING.FIELD_LABEL_SPECIES),
+    // sortField: 'taxa_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -131,7 +143,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
           filters: { occurrences__event: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
       </Link>
     ),
   },

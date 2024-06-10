@@ -13,7 +13,6 @@ export const Default: Meta = {
   args: {
     label: 'Label',
     placeholder: 'Placeholder',
-    description: 'Description',
     options: [
       { value: 'option-1', label: 'Option 1' },
       { value: 'option-2', label: 'Option 2' },

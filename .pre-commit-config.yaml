@@ -1,4 +1,4 @@
-exclude: "^docs/|/migrations/"
+exclude: "^docs/|/migrations/|ui/"
 default_stages: [commit]
 
 repos:
@@ -49,6 +49,7 @@ repos:
     hooks:
       - id: djlint-reformat-django
       - id: djlint-django
+
 
 # sets up .pre-commit-ci.yaml to ensure pre-commit dependencies stay up to date
 ci:

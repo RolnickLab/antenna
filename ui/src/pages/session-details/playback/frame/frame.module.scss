@@ -1,5 +1,5 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .wrapper {
   position: relative;
@@ -35,9 +35,11 @@
   position: absolute;
   box-sizing: border-box;
 
-  &:hover {
-    cursor: pointer;
-    opacity: 1;
+  &.clickable {
+    &:hover {
+      cursor: pointer;
+      opacity: 1;
+    }
   }
 
   &.active {

@@ -1,24 +1,34 @@
 import datetime
+import uuid
 
 from django.db import connection
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
 from ami.main.models import (
     Deployment,
+    Detection,
     Event,
     Occurrence,
     Project,
     SourceImage,
     TaxaList,
     Taxon,
+    TaxonRank,
     group_images_into_events,
 )
+from ami.users.models import User
 
 
-def setup_test_project() -> tuple[Project, Deployment]:
-    project, _ = Project.objects.get_or_create(name="Test Project")
-    deployment, _ = Deployment.objects.get_or_create(project=project, name="Test Deployment")
+def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
+    if reuse:
+        project, _ = Project.objects.get_or_create(name="Test Project")
+        deployment, _ = Deployment.objects.get_or_create(project=project, name="Test Deployment")
+    else:
+        short_id = uuid.uuid4().hex[:8]
+        project = Project.objects.create(name=f"Test Project {short_id}")
+        deployment = Deployment.objects.create(project=project, name=f"Test Deployment {short_id}")
     return project, deployment
 
 
@@ -42,30 +52,65 @@ def create_captures(
 
 
 def create_taxa(project: Project) -> TaxaList:
-    taxa_list = TaxaList.objects.create(project=project, name="Test Taxa List")
-    parent_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Lepidoptera", rank="order")
-    family_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Nymphalidae", parent=parent_taxon, rank="family")
-    genus_taxon = Taxon.objects.create(taxa_list=taxa_list, name="Vanessa", parent=family_taxon, rank="genus")
+    taxa_list = TaxaList.objects.create(name="Test Taxa List")
+    taxa_list.projects.add(project)
+    root, _created = Taxon.objects.get_or_create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
+    root.projects.add(project)
+    family_taxon, _ = Taxon.objects.get_or_create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
+    family_taxon.projects.add(project)
+    genus_taxon, _ = Taxon.objects.get_or_create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
+    genus_taxon.projects.add(project)
     for species in ["Vanessa itea", "Vanessa cardui", "Vanessa atalanta"]:
-        Taxon.objects.create(taxa_list=taxa_list, name=species, parent=genus_taxon, rank="species")
+        taxon, _ = Taxon.objects.get_or_create(
+            name=species,
+            defaults=dict(
+                parent=genus_taxon,
+                rank=TaxonRank.SPECIES.name,
+            ),
+        )
+        taxon.projects.add(project)
+    taxa_list.taxa.set([root, family_taxon, genus_taxon])
     return taxa_list
 
 
 def create_occurrences(
     deployment: Deployment,
-    num: int = 12,
+    num: int = 6,
 ):
     event = Event.objects.filter(deployment=deployment).first()
     if not event:
         raise ValueError("No events found for deployment")
 
     for i in range(num):
-        Occurrence.objects.create(
-            project=deployment.project,
-            deployment=deployment,
-            determination=Taxon.objects.order_by("?").first(),
-            event=event,
+        # Every Occurrence requires a Detection
+        source_image = SourceImage.objects.filter(event=event).order_by("?").first()
+        if not source_image:
+            raise ValueError("No source images found for event")
+        taxon = Taxon.objects.filter(projects=deployment.project).order_by("?").first()
+        if not taxon:
+            raise ValueError("No taxa found for project")
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,  # @TODO this should be automatically set to the source image timestamp
         )
+        # Could speed this up by creating an Occurrence with a determined taxon directly
+        # but this tests more of the code.
+        detection.classifications.create(
+            taxon=taxon,
+            score=0.9,
+            timestamp=datetime.datetime.now(),
+        )
+        occurrence = detection.associate_new_occurrence()
+
+        # Assert that the occurrence was created and has a detection, event, first_appearance,
+        # and species determination
+        assert detection.occurrence is not None
+        assert detection.occurrence.event is not None
+        assert detection.occurrence.first_appearance is not None
+        assert occurrence.best_detection is not None
+        assert occurrence.best_prediction is not None
+        assert occurrence.determination is not None
+        assert occurrence.determination_score is not None
 
 
 class TestImageGrouping(TestCase):
@@ -162,7 +207,9 @@ class TestDuplicateFieldsOnChildren(TestCase):
 
         create_captures(deployment=self.deployment)
         group_images_into_events(deployment=self.deployment)
-        create_occurrences(deployment=self.deployment)
+        create_taxa(project=self.project_one)
+        create_taxa(project=self.project_two)
+        create_occurrences(deployment=self.deployment, num=1)
 
         return super().setUp()
 
@@ -171,6 +218,7 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.captures.first().project == self.project_one
         assert self.deployment.events.first().project == self.project_one
         assert self.deployment.occurrences.first().project == self.project_one
+        assert self.deployment.occurrences.first().detections.first().source_image.project == self.project_one
 
     def test_change_project(self):
         self.deployment.project = self.project_two
@@ -194,7 +242,7 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.occurrences.first().project is None
 
 
-class TestSourceImageCollectins(TestCase):
+class TestSourceImageCollections(TestCase):
     def setUp(self) -> None:
         from ami.main.models import Deployment, Project
 
@@ -302,3 +350,250 @@ class TestSourceImageCollectins(TestCase):
 
         with self.assertRaises(TypeError):
             collection.populate_sample()
+
+    def test_last_and_random(self):
+        from ami.main.models import SourceImageCollection
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Last and Random Collection",
+            project=self.project_one,
+            method="last_and_random_from_each_event",
+            kwargs={"num_each": 2},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        collection_images = collection.images.all()
+
+        # 2 nights, last image from each, 2 additional random images from each
+        self.assertEqual(collection_images.count(), 6)
+
+        for event in self.project_one.events.all():
+            last_capture = event.captures.last()
+            assert last_capture
+            # ensure last_capture is in the collection
+            self.assertIn(last_capture, collection_images)
+            # ensure there are 2 other random images from each event
+            self.assertEqual(collection_images.filter(event=event).exclude(pk=last_capture.pk).count(), 2)
+
+    def test_random_from_each_event(self):
+        from ami.main.models import SourceImageCollection
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Random From Each Event Collection",
+            project=self.project_one,
+            method="random_from_each_event",
+            kwargs={"num_each": 2},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        collection_images = collection.images.all()
+
+        # 2 nights, 2 random images from each
+        assert collection_images.count() == 4
+
+        # Test that there are 2 images from each event
+        for event in self.project_one.events.all():
+            assert collection_images.filter(event=event).count() == 2
+
+
+class TestTaxonomy(TestCase):
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        return super().setUp()
+
+    def test_tree(self):
+        """
+        example_tree = {
+            'taxon': <Taxon: Lepidoptera (order)>,
+            'children': [
+                {
+                    'taxon': <Taxon: Vanessa (genus)>,
+                    'children': [
+                        {'taxon': <Taxon: Vanessa atalanta (species)>, 'children': []},
+                        {'taxon': <Taxon: Vanessa cardui (species)>, 'children': []},
+                        {'taxon': <Taxon: Vanessa itea (species)>, 'children': []}
+                    ]
+                }
+            ]
+        }
+        """
+        from ami.main.models import Taxon
+
+        tree = Taxon.objects.tree()
+        self.assertDictContainsSubset({"taxon": Taxon.objects.get(name="Lepidoptera")}, tree)
+
+    def test_rank_formatting(self):
+        """
+        Test that all ranks in the DB are uppercase and match a TaxonRank value
+        """
+
+        from ami.main.models import Taxon
+
+        for taxon in Taxon.objects.all():
+            self.assertIn(taxon.rank, [rank.name for rank in TaxonRank])
+            self.assertEqual(taxon.rank, taxon.rank.upper())
+
+    def _test_filtered_tree(self, filter_ranks: list[TaxonRank]):
+        """ """
+        filter_rank_names = [rank.name for rank in filter_ranks]
+        expected_taxa = list(Taxon.objects.filter(rank__in=filter_rank_names).all())
+
+        tree = Taxon.objects.tree(filter_ranks=filter_ranks)
+
+        # collect all Taxon objects in tree to test against expected
+        def _tree_taxa(tree: dict) -> list[Taxon]:
+            taxa = []
+            taxa.append(tree["taxon"])
+            for child in tree["children"]:
+                taxa.extend(_tree_taxa(child))
+            return taxa
+
+        taxa_in_tree = _tree_taxa(tree)
+        expected_taxa = expected_taxa
+
+        self.assertListEqual(taxa_in_tree, expected_taxa)
+
+    def test_tree_filtered_families(self):
+        # Try skipping over family
+        filter_ranks = [TaxonRank.ORDER, TaxonRank.GENUS, TaxonRank.SPECIES]
+        self._test_filtered_tree(filter_ranks)
+
+    def test_tree_filtered_genera(self):
+        # Try skipping over genus
+        filter_ranks = [TaxonRank.ORDER, TaxonRank.FAMILY, TaxonRank.SPECIES]
+        self._test_filtered_tree(filter_ranks)
+
+    def test_tree_filtered_species(self):
+        # Try skipping over species
+        filter_ranks = [TaxonRank.ORDER, TaxonRank.FAMILY, TaxonRank.GENUS]
+        self._test_filtered_tree(filter_ranks)
+
+    def test_tree_filtered_root(self):
+        # Try skipping over order
+        root = Taxon.objects.root()
+        filter_ranks = [rank for rank in TaxonRank if rank != root.get_rank()]
+        with self.assertRaises(ValueError):
+            self._test_filtered_tree(filter_ranks)
+
+
+class TestTaxonomyViews(TestCase):
+    def setUp(self) -> None:
+        project_one, deployment_one = setup_test_project(reuse=False)
+        project_two, deployment_two = setup_test_project(reuse=False)
+        create_taxa(project=project_one)
+        create_taxa(project=project_two)
+        # Show project & deployment IDs
+        print(f"Project One: {project_one}")
+        print(f"Project Two: {project_two}")
+        print(f"Deployment One: {deployment_one.pk}")
+        print(f"Deployment Two: {deployment_two.pk}")
+        create_captures(deployment=deployment_one)
+        create_captures(deployment=deployment_two)
+        group_images_into_events(deployment=deployment_one)
+        group_images_into_events(deployment=deployment_two)
+        create_occurrences(deployment=deployment_one, num=5)
+        create_occurrences(deployment=deployment_two, num=5)
+        self.project_one = project_one
+        self.project_two = project_two
+        return super().setUp()
+
+    def test_occurrences_for_project(self):
+        # Test that occurrences are specific to each project
+        for project in [self.project_one, self.project_two]:
+            response = self.client.get(f"/api/v2/occurrences/?project={project.pk}")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
+
+    def test_taxa_list(self):
+        from ami.main.models import Taxon
+
+        response = self.client.get("/api/v2/taxa/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], Taxon.objects.count())
+
+    def _test_taxa_for_project(self, project: Project):
+        """
+        Ensure the annotation counts are specific to each project, not global counts
+        of occurrences and detections.
+        """
+        from ami.main.models import Taxon
+
+        response = self.client.get(f"/api/v2/taxa/?project={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
+        # project_any_taxa = Taxon.objects.filter(projects=project)
+        self.assertGreater(project_occurred_taxa.count(), 0)
+        self.assertEqual(response.json()["count"], project_occurred_taxa.count())
+
+        # Check counts for each taxon
+        results = response.json()["results"]
+        for taxon_result in results:
+            taxon: Taxon = Taxon.objects.get(pk=taxon_result["id"])
+            project_occurrences = taxon.occurrences.filter(project=project).count()
+            # project_detections = taxon.detections.filter(project=project).count()
+            self.assertEqual(taxon_result["occurrences_count"], project_occurrences)
+
+    def test_taxa_for_project(self):
+        for project in [self.project_one, self.project_two]:
+            self._test_taxa_for_project(project)
+
+    def test_taxon_detail(self):
+        from ami.main.models import Taxon
+
+        taxon = Taxon.objects.last()
+        assert taxon is not None
+        print("Testing taxon", taxon, taxon.pk)
+        response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], taxon.name)
+
+
+class TestIdentification(APITestCase):
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        group_images_into_events(deployment=deployment)
+        create_occurrences(deployment=deployment, num=5)
+        self.project = project
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_identification(self):
+        from ami.main.models import Identification, Taxon
+
+        """
+        Post a new identification suggestion and check that it changed the occurrence's determination.
+        """
+
+        suggest_id_endpoint = "/api/v2/identifications/"
+        taxa = Taxon.objects.filter(projects=self.project)
+        assert taxa.count() > 1
+
+        occurrence = Occurrence.objects.filter(project=self.project).exclude(determination=None)[0]
+        original_taxon = occurrence.determination
+        assert original_taxon is not None
+        new_taxon = Taxon.objects.exclude(pk=original_taxon.pk)[0]
+        comment = "Test identification comment"
+
+        response = self.client.post(
+            suggest_id_endpoint,
+            {
+                "occurrence_id": occurrence.pk,
+                "taxon_id": new_taxon.pk,
+                "comment": comment,
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination, new_taxon)
+        identification = Identification.objects.get(pk=response.json()["id"])
+        self.assertEqual(identification.comment, comment)

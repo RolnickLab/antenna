@@ -1,5 +1,5 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .container {
   display: flex;
@@ -16,30 +16,4 @@
   overflow: hidden;
   position: absolute;
   z-index: -1;
-}
-
-.fileInput + label {
-  all: unset;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-  padding: 0 16px;
-  border-radius: 8px;
-  @include paragraph-x-small();
-  font-weight: 600;
-  border: 1px solid $color-neutral-100;
-  background-color: $color-generic-white;
-  color: $color-primary-1-600;
-  box-sizing: border-box;
-  white-space: nowrap;
-
-  &:hover {
-    cursor: pointer;
-    opacity: 0.7;
-  }
-}
-
-.fileInput:focus-visible + label {
-  box-shadow: 0 0 0 2px $color-generic-black;
 }

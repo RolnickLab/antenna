@@ -1,8 +1,26 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .wrapper {
   position: relative;
+
+  &.white {
+    .overflowFader {
+      background-image: linear-gradient(
+        to right,
+        rgba($color: $color-generic-white, $alpha: 0),
+        rgba($color: $color-generic-white, $alpha: 1)
+      );
+    }
+
+    .table {
+      tbody {
+        tr:nth-child(odd) {
+          background-color: $color-neutral-50;
+        }
+      }
+    }
+  }
 }
 
 .tableWrapper {
@@ -61,6 +79,10 @@
   tbody {
     position: relative;
     display: table-row-group;
+
+    tr:nth-child(even) {
+      background-color: rgba(255, 255, 255, 0.6);
+    }
 
     tr:nth-child(odd) {
       background-color: $color-generic-white;

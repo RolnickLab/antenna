@@ -1,6 +1,6 @@
-@import 'design-system/variables/variables.scss';
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .wrapper {
   display: flex;
@@ -16,7 +16,6 @@
 
 .header {
   padding: 24px;
-  background: $color-neutral-100;
   background-color: $color-neutral-50;
   border-bottom: 2px solid $color-neutral-100;
   z-index: 1;
@@ -39,11 +38,6 @@
   height: 100%;
   position: absolute;
   overflow-y: auto;
-}
-
-.title {
-  @include heading-4-italic();
-  color: $color-primary-1-600;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

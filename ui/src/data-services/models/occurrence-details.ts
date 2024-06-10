@@ -1,6 +1,7 @@
 import _ from 'lodash'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { UserPermission } from 'utils/user/types'
+import { Algorithm } from './algorithm'
 import { Occurrence, ServerOccurrence } from './occurrence'
 import { Taxon } from './taxa'
 
@@ -11,10 +12,14 @@ export interface Identification {
   id: string
   overridden?: boolean
   taxon: Taxon
+  comment?: string
+  algorithm?: Algorithm
   userPermissions: UserPermission[]
+  createdAt: string
 }
 
 export interface HumanIdentification extends Identification {
+  comment: string
   user: {
     id: string
     name: string
@@ -23,6 +28,7 @@ export interface HumanIdentification extends Identification {
 }
 
 export interface MachinePrediction extends Identification {
+  algorithm: Algorithm
   score: number
 }
 
@@ -56,7 +62,9 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
+          comment: i.comment,
           userPermissions: i.user_permissions,
+          createdAt: i.created_at,
         }
 
         return identification
@@ -75,7 +83,9 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           score: p.score,
+          algorithm: p.algorithm,
           userPermissions: p.user_permissions,
+          createdAt: p.created_at,
         }
 
         return prediction
@@ -100,9 +110,13 @@ export class OccurrenceDetails extends Occurrence {
     )
 
     const classification = detection?.classifications?.[0]
+    let label = 'No classification'
 
-    if (!classification) {
-      return
+    if (classification) {
+      label = `${classification.taxon.name} (${_.round(
+        classification.score,
+        4
+      )})`
     }
 
     return {
@@ -116,12 +130,10 @@ export class OccurrenceDetails extends Occurrence {
         width: detection.width,
         height: detection.height,
       },
-      label: `${classification.taxon.name} (${_.round(
-        classification.score,
-        4
-      )})`,
+      label: label,
       timeLabel: getFormatedTimeString({
         date: new Date(detection.timestamp),
+        options: { second: true },
       }),
     }
   }

@@ -1,0 +1,64 @@
+# Identical to production.yml, but with the following differences:
+# Uses the django production settings file, but staging .env file.
+# Uses "local" database
+#
+# 1. The database is a service in the Docker Compose configuration rather than external as in production.
+# 2. Redis is a service in the Docker Compose configuration rather than external as in production.
+# 3. Port 5001 is exposed for the Django application.
+version: "3"
+
+volumes:
+  ami_local_postgres_data: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      # This is the most important setting to test the production configuration of Django.
+      dockerfile: ./compose/production/django/Dockerfile
+
+    image: insectai/ami_backend
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.local/.postgres
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "5001:5000"
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      # There is not a local/staging version of the Postgres Dockerfile.
+      dockerfile: ./compose/local/postgres/Dockerfile
+    # Share the local Postgres image with the staging configuration.
+    # Production uses an external Postgres service.
+    volumes:
+      - ami_local_postgres_data:/var/lib/postgresql/data
+      - ./backups/local/postgres:/backups
+    env_file:
+      - ./.envs/.local/.postgres
+
+  redis:
+    image: redis:6
+
+  celeryworker:
+    <<: *django
+    scale: 1
+    ports: []
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    ports: []
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    ports:
+      - "5550:5555"
+    command: /start-flower

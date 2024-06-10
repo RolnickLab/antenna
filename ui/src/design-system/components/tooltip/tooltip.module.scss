@@ -1,5 +1,5 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .tooltipContent {
   padding: 4px 12px;
@@ -9,9 +9,10 @@
   color: $color-neutral-800;
   @include paragraph-x-small();
   user-select: none;
-  white-space: pre;
+  white-space: normal;
   text-align: center;
   z-index: 2;
+  max-width: 240px;
 
   .tooltipArrow {
     fill: $color-generic-white;

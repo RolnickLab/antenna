@@ -9,12 +9,26 @@ export class Deployment {
     this._deployment = deployment
   }
 
+  get createdAt(): Date | undefined {
+    return this._deployment.created_at
+      ? new Date(this._deployment.created_at)
+      : undefined
+  }
+
+  get canDelete(): boolean {
+    return this._deployment.user_permissions.includes(UserPermission.Delete)
+  }
+
   get canUpdate(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Update)
   }
 
   get id(): string {
     return `${this._deployment.id}`
+  }
+
+  get image(): string | undefined {
+    return this._deployment.image ? `${this._deployment.image}` : undefined
   }
 
   get latitude(): number {

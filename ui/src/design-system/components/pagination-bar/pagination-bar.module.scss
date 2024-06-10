@@ -1,0 +1,28 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pageSettings {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.pageWindow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.divider {
+  @include paragraph-small();
+  font-weight: 600;
+  color: $color-neutral-300;
+}

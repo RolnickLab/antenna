@@ -1,6 +1,7 @@
 import classNames from 'classnames'
-import { forwardRef } from 'react'
+import { forwardRef, MouseEvent } from 'react'
 import { Icon, IconTheme, IconType } from '../icon/icon'
+import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './icon-button.module.scss'
 
 export enum IconButtonShape {
@@ -15,15 +16,18 @@ export enum IconButtonTheme {
   Plain = 'plain',
   Primary = 'primary',
   Success = 'success',
+  Error = 'error',
 }
 
 interface IconButtonProps {
   disabled?: boolean
   icon: IconType
+  iconTransform?: string
+  loading?: boolean
   shape?: IconButtonShape
   theme?: IconButtonTheme
   title?: string
-  onClick?: () => void
+  onClick?: (e: MouseEvent) => void
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
@@ -31,6 +35,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     const {
       disabled,
       icon,
+      iconTransform,
+      loading,
       shape = IconButtonShape.Square,
       theme = IconButtonTheme.Default,
       title,
@@ -44,6 +50,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
           return IconTheme.Primary
         case IconButtonTheme.Plain:
           return IconTheme.Dark
+        case IconButtonTheme.Error:
+          return IconTheme.Error
         default:
           return IconTheme.Light
       }
@@ -63,17 +71,32 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
           [styles.plain]: theme === IconButtonTheme.Plain,
           [styles.primary]: theme === IconButtonTheme.Primary,
           [styles.success]: theme === IconButtonTheme.Success,
+          [styles.error]: theme === IconButtonTheme.Error,
 
           // Other
           [styles.disabled]: disabled,
         })}
         disabled={disabled}
-        onClick={onClick}
+        onClick={(e) => {
+          if (loading) {
+            return
+          }
+          onClick?.(e)
+        }}
         title={title}
         type="button"
         {...rest}
       >
-        <Icon type={icon} theme={iconTheme} size={14} />
+        {loading ? (
+          <LoadingSpinner size={12} />
+        ) : (
+          <Icon
+            size={14}
+            theme={iconTheme}
+            transform={iconTransform}
+            type={icon}
+          />
+        )}
       </button>
     )
   }

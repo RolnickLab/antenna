@@ -28,6 +28,9 @@ def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.d
     >>> # Snapshot date format in Cyprus traps
     >>> get_image_timestamp_from_filename("84-20220916202959-snapshot.jpg").strftime(out_fmt)
     '2022-09-16 20:29:59'
+    >>> # Snapshot date format from Wingscape camera from Newfoundland
+    >>> get_image_timestamp_from_filename("Project_20230801023001_4393.JPG").strftime(out_fmt)
+    '2023-08-01 02:30:01'
 
     """
     name = pathlib.Path(img_path).stem
@@ -36,8 +39,12 @@ def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.d
     # Extract date from a filename using regex in the format %Y%m%d%H%M%S
     matches = re.search(r"(\d{14})", name)
     if matches:
-        date = datetime.datetime.strptime(matches.group(), "%Y%m%d%H%M%S")
-    else:
+        try:
+            date = datetime.datetime.strptime(matches.group(), "%Y%m%d%H%M%S")
+        except ValueError:
+            pass
+
+    if not date:
         try:
             date = dateutil.parser.parse(name, fuzzy=False)  # Fuzzy will interpret "DSC_1974" as 1974-01-01
         except dateutil.parser.ParserError:
@@ -77,21 +84,34 @@ def group_datetimes_by_gap(
     Divide a list of timestamps into groups based on a maximum time gap.
 
     >>> timestamps = [
-    ...     datetime.datetime(2021, 1, 1, 0, 0, 0),
-    ...     datetime.datetime(2021, 1, 1, 0, 1, 0),
-    ...     datetime.datetime(2021, 1, 1, 0, 2, 0),
-    ...     datetime.datetime(2021, 1, 2, 0, 0, 0),
-    ...     datetime.datetime(2021, 1, 2, 0, 1, 0),
-    ...     datetime.datetime(2021, 1, 2, 0, 2, 0),]
-    >>> result = group_dates_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=120))
+    ...     datetime.datetime(2021, 1, 1, 0, 10, 0), # @TODO confirm the first gap is having an effect
+    ...     datetime.datetime(2021, 1, 1, 0, 19, 0),
+    ...     datetime.datetime(2021, 1, 1, 1, 20, 0),
+    ...     datetime.datetime(2021, 1, 1, 1, 30, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 10, 0),
+    ...     datetime.datetime(2021, 1, 2, 1, 29, 0),
+    ...     datetime.datetime(2021, 1, 2, 1, 30, 0),
+    ...     datetime.datetime(2021, 1, 2, 1, 31, 0),
+    ...     datetime.datetime(2021, 1, 2, 1, 32, 0),
+    ...     datetime.datetime(2021, 1, 2, 1, 40, 0),]
+    >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=120))
     >>> len(result)
     2
-    >>> result = group_dates_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=1))
-    >>> len(result)
-    6
-    >>> result = group_dates_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=60))
+    >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=60))
     >>> len(result)
     4
+    >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=11))
+    >>> len(result)
+    4
+    >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=10))
+    >>> len(result)
+    5
+    >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=9))
+    >>> len(result)
+    6
+    >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=1))
+    >>> len(result)
+    10
     """
     timestamps.sort()
     prev_timestamp: datetime.datetime | None = None
@@ -116,8 +136,50 @@ def group_datetimes_by_gap(
     return groups
 
 
+def group_datetimes_by_shifted_day(timestamps: list[datetime.datetime]) -> list[list[datetime.datetime]]:
+    """
+    @TODO: Needs testing
+
+    Images are captured from Evening to Morning the next day.
+    Assume that the first image is taken after noon and the last image is taken before noon.
+    In that case, we can shift the timestamps so that the x-axis is centered around 12PM.
+    then group the images by day.
+
+    One way to do this directly in postgres is to use the following query:
+    SELECT date_trunc('day', timestamp + interval '12 hours') as day, count(*)
+    FROM images
+    GROUP BY day
+
+    >>> timestamps = [
+    ...     datetime.datetime(2021, 1, 1, 0, 0, 0),
+    ...     datetime.datetime(2021, 1, 1, 0, 1, 0),
+    ...     datetime.datetime(2021, 1, 1, 0, 2, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 0, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 1, 0),
+    ...     datetime.datetime(2021, 1, 2, 0, 2, 0),]
+    >>> result = group_datetimes_by_shifted_day(timestamps)
+    >>> len(result)
+    2
+    """
+
+    # Shift hours so that the x-axis is centered around 12PM.
+    time_delta = datetime.timedelta(hours=12)
+    timestamps = [timestamp - time_delta for timestamp in sorted(timestamps)]
+
+    # Group the timestamps by their day value:
+    groups = {}
+    for timestamp in timestamps:
+        day = timestamp.date()
+        if day not in groups:
+            groups[day] = []
+        groups[day].append(timestamp)
+
+    # Convert the dictionary to a list of lists
+    return list(groups.values())
+
+
 def shift_to_nighttime(hours: list[int], values: list) -> tuple[list[int], list]:
-    """Shift hours so that the x-axis is centered around 12PM."""
+    """Another strategy to shift hours so that the x-axis is centered around 12PM."""
 
     split_index = 0
     for i, hour in enumerate(hours):

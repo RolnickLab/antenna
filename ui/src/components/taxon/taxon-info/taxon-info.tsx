@@ -31,11 +31,11 @@ export const TaxonInfo = ({
   return (
     <div>
       {getLink ? (
-        <Link to={getLink(taxon.id)}>
-          <Tooltip content={taxon.rank}>
-            <span className={nameClasses}>{taxon.name}</span>
-          </Tooltip>
-        </Link>
+        <Tooltip content={taxon.rank}>
+          <span className={nameClasses}>
+            <Link to={getLink(taxon.id)}>{taxon.name}</Link>
+          </span>
+        </Tooltip>
       ) : (
         <span className={nameClasses}>{taxon.name}</span>
       )}

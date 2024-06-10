@@ -1,6 +1,6 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
-@import 'design-system/variables/variables.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
 
 .blueprint {
   display: flex;
@@ -70,6 +70,7 @@
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .blueprint {
+    min-width: 100%;
     flex-direction: row;
 
     &.empty {

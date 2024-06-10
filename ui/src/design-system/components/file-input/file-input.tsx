@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { STRING, translate } from 'utils/language'
 import { Button, ButtonTheme } from '../button/button'
 import styles from './file-input.module.scss'
 import { FileInputAccept } from './types'
@@ -10,17 +11,24 @@ const acceptValues: { [key in FileInputAccept]: string | undefined } = {
 
 interface FileInputProps {
   accept?: FileInputAccept
-  label?: string
   loading?: boolean
+  multiple?: boolean
   name: string
-  onChange: (file: File | null) => void
+  renderInput: (props: {
+    loading?: boolean
+    onClick: () => void
+  }) => JSX.Element
+  withClear?: boolean
+  onChange: (files: FileList | null) => void
 }
 
 export const FileInput = ({
   accept = FileInputAccept.All,
-  label = 'Choose file',
   loading,
+  multiple,
   name,
+  renderInput,
+  withClear,
   onChange,
 }: FileInputProps) => {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -32,29 +40,34 @@ export const FileInput = ({
         className={styles.fileInput}
         disabled={loading}
         id={name}
+        multiple={multiple}
         name={name}
         ref={inputRef}
+        tabIndex={-1}
         type="file"
         onChange={(e) => {
-          const file = e.currentTarget.files?.[0]
-          if (!file) {
+          const files = e.currentTarget.files
+          if (!files?.length) {
             return
           }
-          onChange(file)
+          onChange(files)
+          e.currentTarget.value = ''
         }}
       />
-      <label htmlFor={name}>{!loading ? label : `${label}...`}</label>
-      <Button
-        label="Clear"
-        theme={ButtonTheme.Plain}
-        onClick={() => {
-          if (inputRef.current) {
-            inputRef.current.value = ''
-            inputRef.current.files = null
-          }
-          onChange(null)
-        }}
-      />
+      {renderInput({ loading, onClick: () => inputRef.current?.click() })}
+      {withClear && (
+        <Button
+          label={translate(STRING.CLEAR)}
+          theme={ButtonTheme.Plain}
+          onClick={() => {
+            if (inputRef.current) {
+              inputRef.current.value = ''
+              inputRef.current.files = null
+            }
+            onChange(null)
+          }}
+        />
+      )}
     </div>
   )
 }

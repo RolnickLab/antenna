@@ -8,10 +8,12 @@ export enum ButtonTheme {
   Success = 'success',
   Plain = 'plain',
   Neutral = 'neutral',
-  Destructive = 'neutral',
+  Destructive = 'destructive',
+  Error = 'error',
 }
 
 interface ButtonProps {
+  customClass?: string
   disabled?: boolean
   icon?: IconType
   label: string
@@ -24,6 +26,7 @@ interface ButtonProps {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ ...props }, forwardedRef) => {
     const {
+      customClass,
       disabled,
       icon,
       label,
@@ -34,21 +37,34 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ...rest
     } = props
 
-    const iconTheme =
-      theme === ButtonTheme.Success || theme === ButtonTheme.Neutral
-        ? IconTheme.Light
-        : IconTheme.Primary
+    const iconTheme = (() => {
+      switch (theme) {
+        case ButtonTheme.Success:
+        case ButtonTheme.Neutral:
+        case ButtonTheme.Destructive:
+          return IconTheme.Light
+        case ButtonTheme.Error:
+          return IconTheme.Error
+        default:
+          return IconTheme.Primary
+      }
+    })()
 
     return (
       <button
         ref={forwardedRef}
-        className={classNames(styles.button, {
-          [styles.success]: theme === ButtonTheme.Success,
-          [styles.plain]: theme === ButtonTheme.Plain,
-          [styles.neutral]: theme === ButtonTheme.Neutral,
-          [styles.destructive]: theme === ButtonTheme.Destructive,
-          [styles.disabled]: disabled,
-        })}
+        className={classNames(
+          styles.button,
+          {
+            [styles.success]: theme === ButtonTheme.Success,
+            [styles.plain]: theme === ButtonTheme.Plain,
+            [styles.neutral]: theme === ButtonTheme.Neutral,
+            [styles.destructive]: theme === ButtonTheme.Destructive,
+            [styles.error]: theme === ButtonTheme.Error,
+            [styles.disabled]: disabled,
+          },
+          customClass
+        )}
         disabled={disabled}
         type={type}
         onClick={(e) => {

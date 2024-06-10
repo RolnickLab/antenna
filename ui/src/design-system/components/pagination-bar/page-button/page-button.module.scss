@@ -1,0 +1,7 @@
+@import 'src/design-system/variables/typography.scss';
+
+.pageButton {
+  @include paragraph-small();
+  font-weight: 600;
+  padding: 0 8px;
+}

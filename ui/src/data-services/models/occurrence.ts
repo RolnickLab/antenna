@@ -1,5 +1,6 @@
 import _ from 'lodash'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
@@ -21,17 +22,35 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
-  get dateLabel(): string {
-    const date = new Date(this._occurrence.first_appearance.timestamp)
-    return getFormatedDateString({ date })
+  get firstAppearanceTimestamp(): string {
+    // Return the timestamp of the first image where this occurrence appeared, in ISO format
+    return this._occurrence.first_appearance_timestamp
   }
 
-  get deploymentLabel(): string {
-    return this._occurrence.deployment.name
+  get dateLabel(): string {
+    return getFormatedDateString({
+      date: new Date(this.firstAppearanceTimestamp),
+    })
+  }
+
+  get timeLabel(): string {
+    return getFormatedTimeString({
+      date: new Date(this.firstAppearanceTimestamp),
+    })
+  }
+
+  get createdAtLabel(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._occurrence.created_at),
+    })
   }
 
   get deploymentId(): string {
     return `${this._occurrence.deployment.id}`
+  }
+
+  get deploymentLabel(): string {
+    return this._occurrence.deployment.name
   }
 
   get determinationId(): string {
@@ -80,6 +99,10 @@ export class Occurrence {
     return this._occurrence.duration_label
   }
 
+  get displayName(): string {
+    return `${this.determinationTaxon.name} #${this.id}`
+  }
+
   get id(): string {
     return `${this._occurrence.id}`
   }
@@ -98,11 +121,6 @@ export class Occurrence {
 
   get sessionLabel(): string {
     return this._occurrence.event.name
-  }
-
-  get timeLabel(): string {
-    const date = new Date(this._occurrence.first_appearance.timestamp)
-    return getFormatedTimeString({ date })
   }
 
   get userPermissions(): UserPermission[] {

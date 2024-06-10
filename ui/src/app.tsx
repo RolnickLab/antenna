@@ -1,18 +1,20 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import classNames from 'classnames'
+import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
 import { Menu } from 'components/menu/menu'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
 import { SignUp } from 'pages/auth/sign-up'
+import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
-import { Overview } from 'pages/overview/overview'
+import Overview from 'pages/overview/overview'
 import { Projects } from 'pages/projects/projects'
-import { SessionDetails } from 'pages/session-details/session-details'
+import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
@@ -23,6 +25,8 @@ import {
   BreadcrumbContextProvider,
 } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
+import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import { UserContextProvider } from 'utils/user/userContext'
 import styles from './app.module.scss'
 
@@ -62,6 +66,7 @@ export const App = () => {
                 <Route path="sessions/:id" element={<SessionDetails />} />
                 <Route path="occurrences/:id?" element={<Occurrences />} />
                 <Route path="species/:id?" element={<Species />} />
+                <Route path="collections/:id" element={<CollectionDetails />} />
                 <Route path="*" element={<UnderConstruction />} />
               </Route>
             </Routes>
@@ -75,23 +80,39 @@ export const App = () => {
 const AuthContainer = () => (
   <main className={classNames(styles.main, styles.fullscreen)}>
     <Auth>
-      <Outlet />
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
     </Auth>
   </main>
 )
 
-const ProjectsContainer = () => (
-  <main className={styles.main}>
-    <div className={styles.content}>
-      <Projects />
-    </div>
-  </main>
-)
+const ProjectsContainer = () => {
+  usePageBreadcrumb({
+    title: translate(STRING.NAV_ITEM_PROJECTS),
+    path: APP_ROUTES.HOME,
+  })
+
+  return (
+    <main className={styles.main}>
+      <div className={styles.content}>
+        <ErrorBoundary>
+          <Projects />
+        </ErrorBoundary>
+      </div>
+    </main>
+  )
+}
 
 const ProjectContainer = () => {
   const { projectId } = useParams()
   const projectDetails = useProjectDetails(projectId as string)
   const { setProjectBreadcrumb } = useContext(BreadcrumbContext)
+
+  usePageBreadcrumb({
+    title: translate(STRING.NAV_ITEM_PROJECTS),
+    path: APP_ROUTES.HOME,
+  })
 
   useEffect(() => {
     setProjectBreadcrumb({
@@ -104,12 +125,30 @@ const ProjectContainer = () => {
     }
   }, [projectDetails.project])
 
+  useEffect(() => {
+    const meta = document.getElementsByTagName('meta').namedItem('description')
+    const newDescription = projectDetails.project?.description
+    const prevDescription = meta?.content
+
+    if (meta && newDescription) {
+      meta.content = newDescription
+    }
+
+    return () => {
+      if (meta && prevDescription) {
+        meta.content = prevDescription
+      }
+    }
+  }, [projectDetails.project])
+
   return (
     <>
       <Menu />
       <main className={styles.main}>
         <div className={styles.content}>
-          <Outlet context={projectDetails} />
+          <ErrorBoundary>
+            <Outlet context={projectDetails} />
+          </ErrorBoundary>
         </div>
       </main>
     </>

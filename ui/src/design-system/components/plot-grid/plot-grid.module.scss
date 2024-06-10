@@ -1,0 +1,28 @@
+.container {
+  container-type: inline-size;
+  container-name: container;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+/* Adjust number of columns based on container width, to avoid horizontal scrolling.
+ *
+ * Breakpoints are calculated as follows:
+ * maxWidth = plotWidth * numBoxes + gapSize * (numBoxes - 1)
+ */
+
+@container container (max-width: calc(384px * 3 + 16px * 2)) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@container container (max-width: calc(384px * 2 + 16px * 1)) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

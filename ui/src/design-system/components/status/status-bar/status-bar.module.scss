@@ -1,5 +1,5 @@
-@import 'design-system/variables/colors.scss';
-@import 'design-system/variables/typography.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .barBackground {
   width: 100%;
@@ -15,6 +15,7 @@
   position: absolute;
   top: 0;
   left: 0;
+  transition: width 400ms ease, background-color 200ms ease;
 
   &.success {
     background-color: $color-success-500;

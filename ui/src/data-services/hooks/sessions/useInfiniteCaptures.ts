@@ -11,13 +11,23 @@ const PER_PAGE = 200
 
 const convertServerRecord = (record: ServerCapture) => new Capture(record)
 
-const fetchCaptures = async (sessionId: string, page: number, user: User) => {
+const fetchCaptures = async (
+  sessionId: string,
+  page: number,
+  user: User,
+  threshold?: number
+) => {
   const fetchUrl = getFetchUrl({
     collection: API_ROUTES.CAPTURES,
     params: {
       pagination: { page, perPage: PER_PAGE },
       sort: { field: 'timestamp', order: 'asc' },
-      filters: [{ field: 'event', value: sessionId }],
+      filters: [
+        { field: 'event', value: sessionId },
+        ...(threshold
+          ? [{ field: 'classification_threshold', value: `${threshold}` }]
+          : []),
+      ],
     },
   })
 
@@ -33,9 +43,13 @@ const fetchCaptures = async (sessionId: string, page: number, user: User) => {
   }
 }
 
-export const useInfiniteCaptures = (sessionId: string, offset?: number) => {
+export const useInfiniteCaptures = (
+  sessionId: string,
+  offset?: number,
+  threshold?: number
+) => {
   const { user } = useUser()
-  const queryKey = [API_ROUTES.CAPTURES, { event: sessionId }]
+  const queryKey = [API_ROUTES.CAPTURES, { event: sessionId, threshold }]
   const startPage = offset !== undefined ? Math.floor(offset / PER_PAGE) : 0
 
   const {
@@ -48,7 +62,8 @@ export const useInfiniteCaptures = (sessionId: string, offset?: number) => {
     hasPreviousPage,
   } = useInfiniteQuery(
     queryKey,
-    ({ pageParam = startPage }) => fetchCaptures(sessionId, pageParam, user),
+    ({ pageParam = startPage }) =>
+      fetchCaptures(sessionId, pageParam, user, threshold),
     {
       getNextPageParam: (lastPage) => {
         if ((lastPage.page + 1) * PER_PAGE >= lastPage.count) {

@@ -16,7 +16,7 @@ from ami.labelstudio.serializers import (
     LabelStudioSourceImageSerializer,
 )
 from ami.main.api.views import DefaultReadOnlyViewSet
-from ami.main.models import Deployment, Detection, Occurrence, Project, SourceImage, TaxaList, Taxon
+from ami.main.models import DEFAULT_RANKS, Deployment, Detection, Occurrence, Project, SourceImage, TaxaList, Taxon
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,9 @@ def taxa_tree_to_xml(taxa_tree):
 
     def _node_to_xml(node, level=0):
         indent = "  " * level
-        value = html.escape(str(node["taxon"]))
-        xml = f'\n{indent}<Choice value="{value}">'
+        value = html.escape(str(node["taxon"].get_display_name()))
+        rank = html.escape(str(node["taxon"].rank))
+        xml = f'\n{indent}<Choice value="{value}" hint="{rank}">'
         for child in node["children"]:
             xml += _node_to_xml(child, level + 1)
         xml += f"{indent}</Choice>\n"
@@ -252,12 +253,12 @@ class LabelStudioConfigViewSet(viewsets.ViewSet):
             closest_parent = path_parts[-1]
             parent = Taxon.objects.filter(display_name=closest_parent).first()
             if parent:
-                taxa_tree = Taxon.objects.tree(root=parent)
+                taxa_tree = Taxon.objects.tree(root=parent, filter_ranks=DEFAULT_RANKS)
             else:
                 # If a matching node is not found, return an empty response
                 return HttpResponse("", content_type="text/xml")
         else:
-            taxa_tree = Taxon.objects.tree()
+            taxa_tree = Taxon.objects.tree(filter_ranks=DEFAULT_RANKS)
         content = taxa_tree_to_xml(taxa_tree)
         return HttpResponse(content, content_type="text/xml")
 

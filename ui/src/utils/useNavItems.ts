@@ -10,7 +10,7 @@ interface NavigationItem {
   title: string
   icon?: IconType
   count?: number
-  path: string
+  path?: string
   matchPath: string
 }
 

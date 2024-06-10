@@ -2,6 +2,8 @@ import time
 
 from django.core.management.base import BaseCommand, CommandError  # noqa
 
+from ami.ml.models import Algorithm, Pipeline
+
 from ...models import Deployment, Device, Event, Project, Site, SourceImage, TaxaList, Taxon
 
 
@@ -49,3 +51,17 @@ class Command(BaseCommand):
         # num_captures_imported = deployment.import_captures()
         # msg = f"Imported {num_captures_imported} source images for {deployment}"
         # self.stdout.write(self.style.SUCCESS(msg))
+
+        # Create an algorithm and a pipeline
+        algorithm, _ = Algorithm.objects.get_or_create(
+            name="Default Algorithm",
+            key="default",
+            version=1,
+            version_name="v1",
+        )
+        pipeline, _ = Pipeline.objects.get_or_create(
+            name="Default Pipeline",
+            version=1,
+            version_name="v1",
+        )
+        pipeline.algorithms.set([algorithm])

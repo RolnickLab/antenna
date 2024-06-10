@@ -1,10 +1,9 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessions } from 'data-services/hooks/sessions/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
-import { PaginationBar } from 'design-system/components/pagination/pagination-bar'
+import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { useState } from 'react'
@@ -12,6 +11,8 @@ import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { useSelectedView } from 'utils/useSelectedView'
+import { useSort } from 'utils/useSort'
 import { FilterSettings } from '../../components/filter-settings/filter-settings'
 import { columns } from './session-columns'
 import { SessionGallery } from './session-gallery'
@@ -19,6 +20,7 @@ import styles from './sessions.module.scss'
 
 export const Sessions = () => {
   const { projectId } = useParams()
+
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -27,11 +29,12 @@ export const Sessions = () => {
     session: true,
     images: true,
     duration: true,
-    occurrences: true,
+    captures: true,
+    occurrences: false,
     species: true,
   })
-  const [sort, setSort] = useState<TableSortSettings>()
-  const { pagination, setPrevPage, setNextPage } = usePagination()
+  const { sort, setSort } = useSort()
+  const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({
     projectId,
@@ -39,6 +42,7 @@ export const Sessions = () => {
     pagination,
     filters,
   })
+  const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
     return <Error />
@@ -50,7 +54,7 @@ export const Sessions = () => {
         {isFetching && <FetchInfo isLoading={isLoading} />}
         <FilterSettings />
       </div>
-      <Tabs.Root defaultValue="table">
+      <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
         <Tabs.List>
           <Tabs.Trigger
             value="table"
@@ -92,11 +96,9 @@ export const Sessions = () => {
       </Tabs.Root>
       {sessions?.length ? (
         <PaginationBar
-          page={pagination.page}
-          perPage={pagination.perPage}
+          pagination={pagination}
           total={total}
-          onPrevClick={setPrevPage}
-          onNextClick={setNextPage}
+          setPage={setPage}
         />
       ) : null}
     </>

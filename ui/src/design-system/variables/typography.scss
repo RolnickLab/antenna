@@ -1,4 +1,4 @@
-@import 'design-system/variables/variables.scss';
+@import 'src/design-system/variables/variables.scss';
 
 @mixin heading-6 {
   font-family: 'AzoSans';
@@ -109,4 +109,10 @@
   font-size: 12px;
   line-height: 15px;
   text-transform: uppercase;
+}
+
+@mixin mono {
+  @include paragraph-xx-small();
+  font-family: monospace;
+  font-weight: 400;
 }
