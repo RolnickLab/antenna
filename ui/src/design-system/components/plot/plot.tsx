@@ -25,6 +25,8 @@ const Plot = ({
           type,
           x: data.x,
           y: data.y,
+          width:
+            orientation === 'h' ? undefined : data.x.length > 3 ? 1 / 3 : 1 / 6,
           marker: {
             color: markerColor,
           },
