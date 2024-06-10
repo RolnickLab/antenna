@@ -17,6 +17,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
@@ -33,6 +34,7 @@ export const Species = () => {
     pagination,
     filters,
   })
+  const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
     return <Error />
@@ -44,7 +46,7 @@ export const Species = () => {
         {isFetching && <FetchInfo isLoading={isLoading} />}
         <FilterSettings />
       </div>
-      <Tabs.Root defaultValue="table">
+      <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
         <Tabs.List>
           <Tabs.Trigger
             value="table"

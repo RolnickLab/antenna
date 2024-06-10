@@ -11,6 +11,7 @@ import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { FilterSettings } from '../../components/filter-settings/filter-settings'
 import { columns } from './session-columns'
@@ -19,6 +20,7 @@ import styles from './sessions.module.scss'
 
 export const Sessions = () => {
   const { projectId } = useParams()
+
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
@@ -40,6 +42,7 @@ export const Sessions = () => {
     pagination,
     filters,
   })
+  const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
     return <Error />
@@ -51,7 +54,7 @@ export const Sessions = () => {
         {isFetching && <FetchInfo isLoading={isLoading} />}
         <FilterSettings />
       </div>
-      <Tabs.Root defaultValue="table">
+      <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
         <Tabs.List>
           <Tabs.Trigger
             value="table"
