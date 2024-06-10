@@ -8,6 +8,7 @@ interface ImageTableCellProps {
     src: string
     alt?: string
   }[]
+  total?: number
   theme?: ImageCellTheme
   to?: string
 }

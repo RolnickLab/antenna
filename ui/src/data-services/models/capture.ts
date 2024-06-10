@@ -101,7 +101,10 @@ export class Capture {
   }
 
   get timeLabel(): string {
-    return getFormatedTimeString({ date: new Date(this._capture.timestamp) })
+    return getFormatedTimeString({
+      date: new Date(this._capture.timestamp),
+      options: { second: true },
+    })
   }
 
   get width(): number {
