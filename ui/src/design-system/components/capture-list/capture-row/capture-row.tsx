@@ -27,15 +27,13 @@ export const CaptureRow = ({
     })}
     onClick={onClick}
   >
-    <div className={styles.numDetections}>{capture.details}</div>
-    <div className={styles.barContainer}>
-      <div
-        className={styles.bar}
-        style={{
-          width: `${capture.scale * 100}%`,
-        }}
-      />
-    </div>
+    <div>{capture.details}</div>
+    <div
+      className={styles.bar}
+      style={{
+        width: `${capture.scale * 100}%`,
+      }}
+    />
     <div className={styles.timestamp}>{capture.timeLabel}</div>
   </div>
 )
