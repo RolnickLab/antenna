@@ -50,11 +50,6 @@ repos:
       - id: djlint-reformat-django
       - id: djlint-django
 
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.4.0
-    hooks:
-      - id: eslint
-        args: ["--config", "./ui/.eslintrc.json"]
 
 # sets up .pre-commit-ci.yaml to ensure pre-commit dependencies stay up to date
 ci:
