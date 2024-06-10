@@ -6,7 +6,15 @@ const OPTIONS: Intl.DateTimeFormatOptions = {
 export const getFormatedTimeString = ({
   date,
   locale,
+  options = {},
 }: {
   date: Date
   locale?: string
-}) => date.toLocaleTimeString(locale, OPTIONS)
+  options?: {
+    second?: boolean
+  }
+}) =>
+  date.toLocaleTimeString(locale, {
+    ...OPTIONS,
+    ...(options.second ? { second: '2-digit' } : {}),
+  })

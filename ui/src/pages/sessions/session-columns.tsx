@@ -32,6 +32,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
       return (
         <ImageTableCell
           images={item.exampleCaptures}
+          total={item.numImages}
           to={detailsRoute}
           theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
         />

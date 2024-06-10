@@ -1,12 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import { API_URL } from 'data-services/constants'
+import { API_URL, SUCCESS_TIMEOUT } from 'data-services/constants'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 import { EntityFieldValues } from './types'
 import { convertToServerFieldValues } from './utils'
-
-const SUCCESS_TIMEOUT = 1000 // Reset success after 1 second
 
 export const useCreateEntity = (collection: string, onSuccess?: () => void) => {
   const { user } = useUser()

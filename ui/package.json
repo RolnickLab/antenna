@@ -43,7 +43,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "jest",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format": "prettier \"src/**/*.{ts,tsx,css}\"",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"

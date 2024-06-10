@@ -14,11 +14,7 @@ export const columns: (
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
-    renderCell: (item: Entity) => (
-      <BasicTableCell>
-        {item.name}
-      </BasicTableCell>
-    ),
+    renderCell: (item: Entity) => <BasicTableCell>{item.name}</BasicTableCell>,
   },
   {
     id: 'description',
