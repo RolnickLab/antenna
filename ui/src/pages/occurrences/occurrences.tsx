@@ -7,7 +7,6 @@ import { IconType } from 'design-system/components/icon/icon'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
@@ -19,6 +18,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { useSort } from 'utils/useSort'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
@@ -37,7 +37,7 @@ export const Occurrences = () => {
     detections: true,
     score: true,
   })
-  const [sort, setSort] = useState<TableSortSettings>()
+  const { sort, setSort } = useSort()
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
