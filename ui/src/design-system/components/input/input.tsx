@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react'
 import { Link } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
 import { IconType } from '../icon/icon'
 import { Tooltip } from '../tooltip/tooltip'
@@ -114,7 +115,7 @@ export const InputValue = ({
 }) => {
   const value =
     _value === undefined
-      ? 'N/A'
+      ? translate(STRING.VALUE_NOT_AVAILABLE)
       : _.isNumber(_value)
       ? _value.toLocaleString()
       : _value
