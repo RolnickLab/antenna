@@ -21,6 +21,7 @@ interface InputProps {
   error?: string
   label: string
   name: string
+  noArrows?: boolean
   placeholder?: string
   step?: number
   type?: 'text' | 'number' | 'password'
@@ -38,6 +39,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       error,
       label,
       name,
+      noArrows,
       step = 'any',
       type: initialType,
       ...rest
@@ -71,6 +73,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             autoComplete="on"
             className={classNames(styles.input, {
               [styles.password]: initialType === 'password',
+              [styles.noArrows]: noArrows,
             })}
             disabled={disabled}
             id={name}
