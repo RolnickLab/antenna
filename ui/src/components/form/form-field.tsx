@@ -12,11 +12,13 @@ export const FormField = <
   config,
   control,
   name,
+  step,
   type,
   onBlur,
 }: Pick<ControllerProps<TFieldValues, TName>, 'name' | 'control'> & {
   config: FormConfig
   type?: 'number' | 'text' | 'password'
+  step?: number
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
 }) => {
   const fieldConfig = config[name]
@@ -37,6 +39,7 @@ export const FormField = <
           }
           error={fieldState.error?.message}
           description={fieldConfig.description}
+          step={step}
           onBlur={(e) => {
             onBlur?.(e)
             field.onBlur()

@@ -22,8 +22,9 @@ interface InputProps {
   label: string
   name: string
   placeholder?: string
-  value?: string | number
+  step?: number
   type?: 'text' | 'number' | 'password'
+  value?: string | number
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   onFocus?: (e: FocusEvent<HTMLInputElement>) => void
@@ -37,6 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       error,
       label,
       name,
+      step = 'any',
       type: initialType,
       ...rest
     } = props
@@ -74,7 +76,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             id={name}
             name={name}
             ref={forwardedRef}
-            step={type === 'number' ? 'any' : undefined}
+            step={type === 'number' ? step : undefined}
             type={type}
             {...rest}
           />
