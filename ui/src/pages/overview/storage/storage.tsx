@@ -17,11 +17,12 @@ export const StorageSources = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()
-  const { items, userPermissions, total, isLoading, isFetching, error } = useStorageSources({
-    projectId,
-    pagination,
-    sort,
-  })
+  const { items, userPermissions, total, isLoading, isFetching, error } =
+    useStorageSources({
+      projectId,
+      pagination,
+      sort,
+    })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {

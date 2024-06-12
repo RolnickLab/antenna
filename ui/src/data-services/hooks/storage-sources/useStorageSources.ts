@@ -29,10 +29,7 @@ export const useStorageSources = (
     url: fetchUrl,
   })
 
-  const items = useMemo(
-    () => data?.results.map(convertServerRecord),
-    [data]
-  )
+  const items = useMemo(() => data?.results.map(convertServerRecord), [data])
 
   return {
     items,

@@ -3,7 +3,7 @@ import {
   FormActions,
   FormError,
   FormRow,
-  FormSection
+  FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { StorageSource } from 'data-services/models/storage'
@@ -39,11 +39,13 @@ const config: FormConfig = {
   },
   endpoint_url: {
     label: 'Endpoint URL',
-    description: "Custom storage service endpoint. If not provided, the endpoint for Amazon's S3 service will be used.",
+    description:
+      "Custom storage service endpoint. If not provided, the endpoint for Amazon's S3 service will be used.",
   },
   public_base_url: {
     label: 'Public Base URL',
-    description: 'Base URL for public access to files. If not provided, temporary private URLs will be generated on-demand.',
+    description:
+      'Base URL for public access to files. If not provided, temporary private URLs will be generated on-demand.',
   },
   access_key: {
     label: 'Access Key ID',
@@ -52,7 +54,7 @@ const config: FormConfig = {
   secret_key: {
     label: 'Secret Access Key',
     description: 'Secret access key for the S3 object storage service.',
-  }
+  },
 }
 
 export const StorageDetailsForm = ({
@@ -105,7 +107,12 @@ export const StorageDetailsForm = ({
       )}
       <FormSection>
         <FormRow>
-          <FormField name="name" type="text" config={config} control={control} />
+          <FormField
+            name="name"
+            type="text"
+            config={config}
+            control={control}
+          />
           <FormField
             name="bucket"
             type="text"
@@ -151,6 +158,6 @@ export const StorageDetailsForm = ({
           loading={isLoading}
         />
       </FormActions>
-    </form >
+    </form>
   )
 }

@@ -56,7 +56,7 @@ export const DeploymentDetailsForm = ({
         values: {
           dataSourceId: deployment.dataSource?.id,
           dataSourceSubdir: deployment.dataSourceSubdir,
-          dataSourceRegex: deployment.dataSourceRegex
+          dataSourceRegex: deployment.dataSourceRegex,
         },
         isValid: startValid,
       },

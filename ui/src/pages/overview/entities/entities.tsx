@@ -22,16 +22,13 @@ export const Entities = ({
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()
-  const { entities, userPermissions, total, isLoading, isFetching, error } = useEntities(
-    collection,
-    {
+  const { entities, userPermissions, total, isLoading, isFetching, error } =
+    useEntities(collection, {
       projectId,
       pagination,
       sort,
-    }
-  )
+    })
   const canCreate = userPermissions?.includes(UserPermission.Create)
-
 
   if (!isLoading && error) {
     return <Error />
@@ -59,9 +56,7 @@ export const Entities = ({
           setPage={setPage}
         />
       ) : null}
-      {canCreate && (
-        <NewEntityDialog collection={collection} type={type} />
-      )}
+      {canCreate && <NewEntityDialog collection={collection} type={type} />}
     </>
   )
 }

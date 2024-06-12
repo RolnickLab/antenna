@@ -7,9 +7,13 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
 
-
-export const SyncDeploymentSourceImages = ({ deploymentId }: { deploymentId: string }) => {
-  const { syncDeploymentSourceImages, isLoading, isSuccess, error, data } = useSyncDeploymentSourceImages()
+export const SyncDeploymentSourceImages = ({
+  deploymentId,
+}: {
+  deploymentId: string
+}) => {
+  const { syncDeploymentSourceImages, isLoading, isSuccess, error, data } =
+    useSyncDeploymentSourceImages()
 
   if (isSuccess) {
     const projectId = data?.data.project_id
@@ -28,7 +32,10 @@ export const SyncDeploymentSourceImages = ({ deploymentId }: { deploymentId: str
             <Link
               className={styles.link}
               to={getAppRoute({
-                to: APP_ROUTES.JOB_DETAILS({ projectId: String(projectId), jobId: String(jobId) }),
+                to: APP_ROUTES.JOB_DETAILS({
+                  projectId: String(projectId),
+                  jobId: String(jobId),
+                }),
                 keepSearchParams: true,
               })}
             >

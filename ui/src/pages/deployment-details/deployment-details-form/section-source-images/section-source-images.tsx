@@ -88,7 +88,11 @@ export const SectionSourceImages = ({
           </InputContent>
         </FormRow>
         <FormRow>
-          <FormField name="dataSourceSubdir" control={control} config={config} />
+          <FormField
+            name="dataSourceSubdir"
+            control={control}
+            config={config}
+          />
           <FormField name="dataSourceRegex" control={control} config={config} />
         </FormRow>
         <InputValue label="Full URI" value={deployment.dataSourceDetails.uri} />
@@ -101,7 +105,6 @@ export const SectionSourceImages = ({
             label="Total Size"
             value={deployment.dataSourceDetails.totalSizeDisplay}
           />
-
         </FormRow>
 
         <SectionExampleCaptures deployment={deployment} />
@@ -109,6 +112,6 @@ export const SectionSourceImages = ({
       <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
       </FormActions>
-    </form >
+    </form>
   )
 }

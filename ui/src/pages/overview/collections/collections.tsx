@@ -17,11 +17,12 @@ export const Collections = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()
-  const { collections, userPermissions, total, isLoading, isFetching, error } = useCollections({
-    projectId,
-    pagination,
-    sort,
-  })
+  const { collections, userPermissions, total, isLoading, isFetching, error } =
+    useCollections({
+      projectId,
+      pagination,
+      sort,
+    })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
@@ -51,7 +52,10 @@ export const Collections = () => {
         />
       ) : null}
       {canCreate && (
-        <NewEntityDialog collection={API_ROUTES.COLLECTIONS} type="collection" />
+        <NewEntityDialog
+          collection={API_ROUTES.COLLECTIONS}
+          type="collection"
+        />
       )}
     </>
   )
