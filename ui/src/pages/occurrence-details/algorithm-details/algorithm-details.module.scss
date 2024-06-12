@@ -3,8 +3,7 @@
 @import 'src/design-system/variables/typography.scss';
 
 .algorithmDetails {
-    display: block;
-    @include mono();
-    padding-bottom: 2px;
-    color: $color-neutral-600;
+  display: block;
+  @include mono();
+  color: $color-neutral-600;
 }
