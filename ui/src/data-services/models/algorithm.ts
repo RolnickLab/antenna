@@ -15,7 +15,7 @@ export class Algorithm {
     })
   }
 
-  get description(): string {
+  get description(): string | undefined {
     return this._algorithm.description
   }
 

@@ -35,6 +35,7 @@ export const Agree = ({
         label={translate(STRING.AGREED)}
         icon={IconType.RadixCheck}
         theme={buttonTheme}
+        disabled
       />
     )
   }
