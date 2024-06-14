@@ -92,6 +92,8 @@ export const SectionLocation = ({
             control={control}
             config={config}
             type="number"
+            step={1 / 100000}
+            noArrows
             onBlur={(e) => {
               const lat = _.toNumber(e.currentTarget.value)
               setValue('latitude', lat)
@@ -103,6 +105,8 @@ export const SectionLocation = ({
             control={control}
             config={config}
             type="number"
+            step={1 / 100000}
+            noArrows
             onBlur={(e) => {
               const lng = _.toNumber(e.currentTarget.value)
               setValue('longitude', lng)
