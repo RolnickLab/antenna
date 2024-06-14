@@ -52,10 +52,21 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   },
   {
     id: 'id',
-    name: translate(STRING.FIELD_LABEL_ID),
+    name: translate(STRING.FIELD_LABEL_TAXON),
     sortField: 'determination__name',
     renderCell: (item: Occurrence) => (
       <TaxonCell item={item} projectId={projectId} />
+    ),
+  },
+  {
+    id: 'score',
+    name: translate(STRING.FIELD_LABEL_SCORE),
+    sortField: 'determination_score',
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell
+        value={item.determinationScoreLabel}
+        style={{ textAlign: 'right' }}
+      />
     ),
   },
   {
@@ -147,28 +158,6 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     sortField: 'detections_count',
     renderCell: (item: Occurrence) => (
       <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
-    id: 'score',
-    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
-    sortField: 'determination_score',
-    renderCell: (item: Occurrence) => (
-      // This should always appear as a float with 2 decimal places, even if 1.00
-      <BasicTableCell
-        value={item.determinationScore.toFixed(2)}
-        style={{ textAlign: 'right' }}
-      />
-    ),
-  },
-  {
-    id: 'created_at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    sortField: 'created_at',
-    renderCell: (item: Occurrence) => (
-      <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
-        <BasicTableCell value={item.createdAtLabel} />
-      </Link>
     ),
   },
 ]

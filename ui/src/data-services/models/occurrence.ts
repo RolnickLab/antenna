@@ -83,6 +83,10 @@ export class Occurrence {
     return _.round(this._occurrence.determination_score, 4)
   }
 
+  get determinationScoreLabel(): string {
+    return this.determinationScore.toFixed(2)
+  }
+
   get determinationTaxon(): Taxon {
     return this._determinationTaxon
   }
