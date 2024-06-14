@@ -21,3 +21,7 @@ export interface UserContextValues {
   setToken: (token: string, from?: string) => void
   user: User
 }
+
+export interface UserInfoContextValues {
+  userInfo?: UserInfo
+}
