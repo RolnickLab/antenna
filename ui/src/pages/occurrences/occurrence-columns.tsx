@@ -63,10 +63,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_SCORE),
     sortField: 'determination_score',
     renderCell: (item: Occurrence) => (
-      <BasicTableCell
-        value={item.determinationScoreLabel}
-        style={{ textAlign: 'right' }}
-      />
+      <ScoreCell item={item} projectId={projectId} />
     ),
   },
   {
@@ -184,29 +181,6 @@ const TaxonCell = ({
     <div className={styles.taxonCell}>
       <BasicTableCell>
         <div className={styles.taxonCellContent}>
-          <Tooltip
-            content={
-              item.determinationVerified
-                ? translate(STRING.VERIFIED_BY, {
-                    name: item.determinationVerifiedBy as string,
-                  })
-                : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: item.determinationScore,
-                  })
-            }
-          >
-            <IdentificationStatus
-              isVerified={item.determinationVerified}
-              score={item.determinationScore}
-              onStatusClick={() =>
-                navigate(detailsRoute, {
-                  state: {
-                    defaultTab: TABS.IDENTIFICATION,
-                  },
-                })
-              }
-            />
-          </Tooltip>
           <Link to={detailsRoute}>
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
@@ -236,6 +210,58 @@ const TaxonCell = ({
               </Tooltip>
             </div>
           )}
+        </div>
+      </BasicTableCell>
+    </div>
+  )
+}
+
+const ScoreCell = ({
+  item,
+  projectId,
+}: {
+  item: Occurrence
+  projectId: string
+}) => {
+  const navigate = useNavigate()
+  const detailsRoute = getAppRoute({
+    to: APP_ROUTES.OCCURRENCE_DETAILS({
+      projectId,
+      occurrenceId: item.id,
+    }),
+    keepSearchParams: true,
+  })
+
+  return (
+    <div className={styles.scoreCell}>
+      <BasicTableCell>
+        <div className={styles.scoreCellContent}>
+          <Tooltip
+            content={
+              item.determinationVerified
+                ? translate(STRING.VERIFIED_BY, {
+                    name: item.determinationVerifiedBy as string,
+                  })
+                : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                    score: item.determinationScore,
+                  })
+            }
+          >
+            <IdentificationStatus
+              isVerified={item.determinationVerified}
+              score={item.determinationScore}
+              onStatusClick={() =>
+                navigate(detailsRoute, {
+                  state: {
+                    defaultTab: TABS.IDENTIFICATION,
+                  },
+                })
+              }
+            />
+          </Tooltip>
+          <span className={styles.scoreCellLabel}>
+            {item.determinationScoreLabel}
+          </span>
         </div>
       </BasicTableCell>
     </div>

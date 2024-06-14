@@ -34,11 +34,9 @@
 
 .taxonCell {
   .taxonCellContent {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    column-gap: 16px;
-    row-gap: 8px;
-    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .taxonActions {
@@ -47,6 +45,21 @@
     align-items: center;
     justify-content: flex-start;
     gap: 8px;
+  }
+}
+
+.scoreCell {
+  .scoreCellContent {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+  }
+
+  .scoreCellLabel {
+    display: block;
+    @include paragraph-medium();
+    color: $color-neutral-800;
   }
 }
 
