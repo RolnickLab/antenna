@@ -20,6 +20,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import styles from './occurrences.module.scss'
+import { useUserInfo } from 'utils/user/userInfoContext'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   projectId: string
@@ -166,6 +167,7 @@ const TaxonCell = ({
   item: Occurrence
   projectId: string
 }) => {
+  const { userInfo } = useUserInfo()
   const navigate = useNavigate()
   const detailsRoute = getAppRoute({
     to: APP_ROUTES.OCCURRENCE_DETAILS({
@@ -175,7 +177,9 @@ const TaxonCell = ({
     keepSearchParams: true,
   })
   const canUpdate = item.userPermissions.includes(UserPermission.Update)
-  const showQuickActions = !item.determinationVerified && canUpdate
+  const agreed = userInfo?.id
+    ? userInfo.id === item.determinationVerifiedBy?.id
+    : false
 
   return (
     <div className={styles.taxonCell}>
@@ -184,9 +188,10 @@ const TaxonCell = ({
           <Link to={detailsRoute}>
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
-          {showQuickActions && (
+          {canUpdate && (
             <div className={styles.taxonActions}>
               <Agree
+                agreed={agreed}
                 agreeWith={{
                   identificationId: item.determinationIdentificationId,
                   predictionId: item.determinationPredictionId,
@@ -240,7 +245,7 @@ const ScoreCell = ({
             content={
               item.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
-                    name: item.determinationVerifiedBy as string,
+                    name: item.determinationVerifiedBy?.name,
                   })
                 : translate(STRING.MACHINE_PREDICTION_SCORE, {
                     score: item.determinationScore,

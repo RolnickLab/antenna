@@ -135,7 +135,7 @@ export const OccurrenceDetails = ({
             content={
               occurrence.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
-                    name: occurrence.determinationVerifiedBy as string,
+                    name: occurrence.determinationVerifiedBy?.name,
                   })
                 : translate(STRING.MACHINE_PREDICTION_SCORE, {
                     score: occurrence.determinationScore,
