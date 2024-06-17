@@ -26,6 +26,7 @@ import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
 import { SuggestId } from './suggest-id/suggest-id'
+import { RejectId } from './reject-id/reject-id'
 
 export const TABS = {
   FIELDS: 'fields',
@@ -171,6 +172,11 @@ export const OccurrenceDetails = ({
                   setSuggestIdOpen(true)
                   suggestIdInputRef?.current?.focus()
                 }}
+              />
+              <RejectId
+                occurrenceId={occurrence.id}
+                occurrenceTaxonId={occurrence.determinationTaxon.id}
+                containerRef={containerRef}
               />
             </>
           )}
