@@ -83,16 +83,25 @@ export class Occurrence {
     return _.round(this._occurrence.determination_score, 4)
   }
 
+  get determinationScoreLabel(): string {
+    return this.determinationScore.toFixed(2)
+  }
+
   get determinationTaxon(): Taxon {
     return this._determinationTaxon
   }
 
-  get determinationVerifiedBy(): string | undefined {
-    return this._occurrence.determination_details.identification?.user?.name
-  }
-
   get determinationVerified(): boolean {
     return !!this._occurrence.determination_details.identification?.user
+  }
+
+  get determinationVerifiedBy() {
+    const verifiedBy =
+      this._occurrence.determination_details.identification?.user
+
+    return verifiedBy
+      ? { id: `${verifiedBy.id}`, name: verifiedBy.name }
+      : undefined
   }
 
   get durationLabel(): string {

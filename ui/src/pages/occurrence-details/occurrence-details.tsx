@@ -6,7 +6,6 @@ import {
   TaxonInfo,
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
-import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
@@ -21,6 +20,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
+import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
@@ -135,7 +135,7 @@ export const OccurrenceDetails = ({
             content={
               occurrence.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
-                    name: occurrence.determinationVerifiedBy as string,
+                    name: occurrence.determinationVerifiedBy?.name,
                   })
                 : translate(STRING.MACHINE_PREDICTION_SCORE, {
                     score: occurrence.determinationScore,

@@ -1,3 +1,4 @@
+import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -42,7 +43,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
   {
     id: 'name',
     sortField: 'name',
-    name: translate(STRING.FIELD_LABEL_NAME),
+    name: translate(STRING.FIELD_LABEL_TAXON),
     renderCell: (item: Species) => (
       <Link
         to={getAppRoute({
@@ -50,8 +51,21 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell>
+          <TaxonInfo taxon={item} />
+        </BasicTableCell>
       </Link>
+    ),
+  },
+  {
+    id: 'score',
+    sortField: 'best_determination_score',
+    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <BasicTableCell value={item.scoreLabel} style={{ textAlign: 'right' }} />
     ),
   },
   {
@@ -70,17 +84,6 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
-    ),
-  },
-  {
-    id: 'score',
-    sortField: 'best_determination_score',
-    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.score.toFixed(2)} />
     ),
   },
   {
