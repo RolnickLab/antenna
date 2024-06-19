@@ -3,7 +3,6 @@ import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-
 export const config: FormConfig = {
   name: {
     label: translate(STRING.FIELD_LABEL_NAME),

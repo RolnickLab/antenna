@@ -29,7 +29,7 @@ export const SuggestId = ({
 }: SuggestIdProps) => {
   const { projectId } = useParams()
   const [taxon, setTaxon] = useState<Taxon>()
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState('')
   const { createIdentification, isLoading, error } =
     useCreateIdentification(onCancel)
   const formError = error ? parseServerError(error)?.message : undefined

@@ -80,6 +80,10 @@
     position: relative;
     display: table-row-group;
 
+    tr:nth-child(even) {
+      background-color: rgba(255, 255, 255, 0.6);
+    }
+
     tr:nth-child(odd) {
       background-color: $color-generic-white;
     }

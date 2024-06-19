@@ -17,6 +17,7 @@ interface ImageCarouselProps {
     src: string
     alt?: string
   }[]
+  total?: number
   size?: {
     width: string | number
     ratio: number
@@ -28,6 +29,7 @@ interface ImageCarouselProps {
 export const ImageCarousel = ({
   autoPlay,
   images,
+  total,
   size,
   theme = CarouselTheme.Default,
   to,
@@ -42,6 +44,7 @@ export const ImageCarousel = ({
     <MultiImageCarousel
       autoPlay={autoPlay}
       images={images}
+      total={total}
       size={size}
       theme={theme}
       to={to}
@@ -96,6 +99,7 @@ const DURATION = 10000 // Change image every 10 second
 const MultiImageCarousel = ({
   autoPlay,
   images,
+  total,
   size,
   theme,
   to,
@@ -105,6 +109,10 @@ const MultiImageCarousel = ({
 
   const slideIndexRef = useRef(slideIndex)
   const pausedRef = useRef(paused)
+
+  const totalLabel = total
+    ? `${images.length}${images.length < total ? '+' : ''}`
+    : images.length
 
   useEffect(() => {
     if (!autoPlay) {
@@ -221,7 +229,7 @@ const MultiImageCarousel = ({
               {slideIndex + 1} / {images.length}
             </span>
           ) : (
-            <span>{images.length}</span>
+            <span>{totalLabel}</span>
           )}
         </>
       </span>
