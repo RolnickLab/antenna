@@ -10,10 +10,11 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Button } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { EntitiesPicker } from 'pages/overview/entities/entities-picker'
+import { SyncStorage } from 'pages/overview/storage/storage-actions'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
@@ -56,7 +57,7 @@ export const SectionSourceImages = ({
         setFormSectionValues(Section.SourceImages, values)
       )}
     >
-      <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
+      <FormSection title={translate(STRING.FIELD_LABEL_DATA_SOURCE)}>
         <FormRow>
           <FormController
             name="dataSourceId"
@@ -76,16 +77,9 @@ export const SectionSourceImages = ({
               </InputContent>
             )}
           />
-          <InputContent label="Actions">
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <Button
-                label="Test"
-                disabled={true}
-                theme={ButtonTheme.Neutral}
-              />
-              <SyncDeploymentSourceImages deploymentId={deployment.id} />
-            </div>
-          </InputContent>
+          {deployment.dataSource?.id && (
+            <SyncStorage storageId={deployment.dataSource?.id} />
+          )}
         </FormRow>
         <FormRow>
           <FormField
@@ -95,23 +89,46 @@ export const SectionSourceImages = ({
           />
           <FormField name="dataSourceRegex" control={control} config={config} />
         </FormRow>
-        <InputValue label="Full URI" value={deployment.dataSourceDetails.uri} />
-        <FormRow>
-          <InputValue
-            label="Last Synced"
-            value={deployment.dataSourceDetails.lastChecked}
-          />
-          <InputValue
-            label="Total Size"
-            value={deployment.dataSourceDetails.totalSizeDisplay}
-          />
-        </FormRow>
-
-        <SectionExampleCaptures deployment={deployment} />
       </FormSection>
+      <SectionDataSourceCaptures deployment={deployment} />
+      <SectionExampleCaptures deployment={deployment} />
       <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
       </FormActions>
     </form>
+  )
+}
+
+const SectionDataSourceCaptures = ({
+  deployment,
+}: {
+  deployment: DeploymentDetails
+}) => {
+  if (!deployment?.dataSource?.id) {
+    return (
+      <FormSection
+        title={translate(STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES)}
+        description={
+          deployment?.createdAt
+            ? translate(STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED)
+            : translate(STRING.MESSAGE_CAPTURE_SYNC_HIDDEN)
+        }
+      />
+    )
+  }
+
+  return (
+    <FormSection title={translate(STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES)}>
+      <FormRow>
+        <InputValue label="Total files" value={deployment.numImages} />
+        <InputValue
+          label="Total size"
+          value={deployment.dataSourceDetails.totalSizeDisplay}
+        />
+        <InputContent label="Import captures">
+          <SyncDeploymentSourceImages deploymentId={deployment.id} />
+        </InputContent>
+      </FormRow>
+    </FormSection>
   )
 }

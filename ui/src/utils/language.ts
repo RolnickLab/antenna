@@ -56,6 +56,7 @@ export enum STRING {
   FIELD_LABEL_COMMENT,
   FIELD_LABEL_CONNECTION_STATUS,
   FIELD_LABEL_CREATED_AT,
+  FIELD_LABEL_DATA_SOURCE_CAPTURES,
   FIELD_LABEL_DATE,
   FIELD_LABEL_DELAY,
   FIELD_LABEL_DEPLOYMENT,
@@ -108,10 +109,12 @@ export enum STRING {
   /* MESSAGE */
   MESSAGE_CAPTURE_FILENAME,
   MESSAGE_CAPTURE_LIMIT,
+  MESSAGE_CAPTURE_SYNC_HIDDEN,
   MESSAGE_CAPTURE_TOO_MANY,
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
   MESSAGE_CHANGE_PASSWORD,
   MESSAGE_COULD_NOT_SAVE,
+  MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DELETE_CONFIRM,
   MESSAGE_HAS_ACCOUNT,
   MESSAGE_IMAGE_FORMAT,
@@ -228,6 +231,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
+  [STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES]: 'Data source captures',
   [STRING.FIELD_LABEL_DATE]: 'Date',
   [STRING.FIELD_LABEL_DELAY]: 'Delay',
   [STRING.FIELD_LABEL_DEVICE]: 'Device Type',
@@ -295,13 +299,17 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
     'A maximum of {{numCaptures}} example captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+  [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
+    'Deployment must be created before syncing captures.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
     'To upload more than {{numCaptures}} images you must configure a data source.',
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
-    'Deployment must be saved before uploading captures.',
+    'Deployment must be created before uploading captures.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
     'Contact an administrator to change your email or password.',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
+  [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
+    'A data source must be configured and saved before syncing captures.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
