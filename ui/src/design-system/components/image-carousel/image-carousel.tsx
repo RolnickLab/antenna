@@ -6,10 +6,10 @@ import {
 } from 'design-system/components/icon-button/icon-button'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { ReactNode, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
 import { getImageBoxStyles, getPlaceholderStyles } from './utils'
-import { Link } from 'react-router-dom'
 
 interface ImageCarouselProps {
   autoPlay?: boolean
@@ -222,16 +222,7 @@ const MultiImageCarousel = ({
         </div>
       </div>
       <span className={styles.info}>
-        <>
-          <Icon type={IconType.Detections} size={12} />
-          {paused ? (
-            <span>
-              {slideIndex + 1} / {images.length}
-            </span>
-          ) : (
-            <span>{totalLabel}</span>
-          )}
-        </>
+        {slideIndex + 1} / {images.length}
       </span>
     </div>
   )
