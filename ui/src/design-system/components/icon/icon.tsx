@@ -16,6 +16,7 @@ import Overview from './assets/overview.svg?react'
 import Photograph from './assets/photograph.svg?react'
 import PlayButton from './assets/play-button.svg?react'
 import RadixCheck from './assets/radix/check.svg?react'
+import CircleBackslash from './assets/radix/circle-backslash.svg?react'
 import RadixClock from './assets/radix/clock.svg?react'
 import Cross from './assets/radix/cross.svg?react'
 import Error from './assets/radix/error.svg?react'
@@ -44,6 +45,7 @@ import styles from './icon.module.scss'
 export enum IconType {
   BatchId = 'batch-id',
   Checkmark = 'checkmark',
+  CircleBackslash = 'circle-backslash',
   Close = 'close',
   Cross = 'cross',
   Deployments = 'deployments',
@@ -95,6 +97,7 @@ export enum IconTheme {
 const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.BatchId]: BatchId,
   [IconType.Checkmark]: Checkmark,
+  [IconType.CircleBackslash]: CircleBackslash,
   [IconType.Close]: Close,
   [IconType.Cross]: Cross,
   [IconType.Deployments]: Deployments,
