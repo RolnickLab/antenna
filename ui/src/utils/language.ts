@@ -31,6 +31,7 @@ export enum STRING {
   START,
   SUBMIT,
   SUGGEST_ID,
+  SUGGEST_ID_SHORT,
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
@@ -169,6 +170,7 @@ export enum STRING {
   NOT_CONNECTED,
   OR,
   REJECT_ID,
+  REJECT_ID_SHORT,
   SELECT_COLUMNS,
   STAGES,
   SUMMARY,
@@ -212,6 +214,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.START]: 'Start',
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
+  [STRING.SUGGEST_ID_SHORT]: 'Suggest',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
@@ -361,6 +364,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.OR]: 'Or',
   [STRING.REJECT_ID]: 'Reject ID',
+  [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.SELECT_COLUMNS]: 'Select columns',
   [STRING.STAGES]: 'Stages',
   [STRING.SUMMARY]: 'Summary',
