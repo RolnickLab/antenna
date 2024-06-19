@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import _Plot from 'react-plotly.js'
 import styles from './plot.module.scss'
 import { PlotProps } from './types'
@@ -17,7 +18,9 @@ const Plot = ({
   type = 'bar',
   showRangeSlider,
 }: PlotProps) => (
-  <div className={styles.plot}>
+  <div
+    className={classNames(styles.plot, { [styles.round]: data.x.length >= 3 })}
+  >
     <_Plot
       data={[
         {
