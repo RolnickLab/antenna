@@ -6,7 +6,6 @@ import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
 import styles from 'pages/overview/entities/styles.module.scss'
 import { STRING, translate } from 'utils/language'
-import { SyncStorage } from './storage-actions'
 
 export const columns: (
   projectId: string
@@ -18,33 +17,25 @@ export const columns: (
     renderCell: (item: StorageSource) => <BasicTableCell value={item.name} />,
   },
   {
-    id: 'description',
-    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
-    sortField: 'description',
-    renderCell: (item: StorageSource) => (
-      <BasicTableCell value={item.description} />
-    ),
-  },
-  {
-    id: 'total_size',
-    name: 'Total Size', // 'Total Size
-    sortField: 'total_size_indexed',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: StorageSource) => (
-      <BasicTableCell value={item.totalSizeDisplay} />
-    ),
-  },
-  {
     id: 'total_files',
-    name: 'Total Files', // 'Total Files
+    name: 'Total files',
     sortField: 'total_files_indexed',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: StorageSource) => (
       <BasicTableCell value={item.totalFiles} />
+    ),
+  },
+  {
+    id: 'total_size',
+    name: 'Total size',
+    sortField: 'total_size_indexed',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: StorageSource) => (
+      <BasicTableCell value={item.totalSizeDisplay} />
     ),
   },
   {
@@ -59,24 +50,19 @@ export const columns: (
     ),
   },
   {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: StorageSource) => (
+      <BasicTableCell value={item.createdAt} />
+    ),
+  },
+  {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: StorageSource) => (
       <BasicTableCell value={item.updatedAt} />
-    ),
-  },
-  {
-    id: 'storage-actions',
-    name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: StorageSource) => (
-      <div className={styles.entityActions}>
-        {item.canUpdate && <SyncStorage storageId={item.id} />}
-      </div>
     ),
   },
   {

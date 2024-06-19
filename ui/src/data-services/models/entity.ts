@@ -27,7 +27,7 @@ export class Entity {
     })
   }
 
-  get description(): string {
+  get description(): string | undefined {
     return this._data.description
   }
 

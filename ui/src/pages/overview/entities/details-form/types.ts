@@ -14,5 +14,5 @@ export type DetailsFormProps = {
 
 export type FormValues = {
   name: string
-  description: string
+  description?: string
 }

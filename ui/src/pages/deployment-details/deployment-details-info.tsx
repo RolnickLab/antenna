@@ -87,17 +87,14 @@ export const DeploymentDetailsInfo = ({
               value={deployment.dataSource?.name}
             />
             <InputValue
-              label={translate(STRING.FIELD_LABEL_CAPTURES)}
-              value={deployment.numImages}
+              label="Last synced"
+              value={deployment.dataSourceDetails.lastChecked}
             />
           </FormRow>
           <FormRow>
+            <InputValue label="Total files" value={deployment.numImages} />
             <InputValue
-              label="Last Synced"
-              value={deployment.dataSourceDetails.lastChecked}
-            />
-            <InputValue
-              label="Total Size"
+              label="Total size"
               value={deployment.dataSourceDetails.totalSizeDisplay}
             />
           </FormRow>

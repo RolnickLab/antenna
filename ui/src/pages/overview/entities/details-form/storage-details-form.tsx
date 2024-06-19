@@ -9,6 +9,7 @@ import { FormConfig } from 'components/form/types'
 import { StorageSource } from 'data-services/models/storage'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { SyncStorage } from 'pages/overview/storage/storage-actions'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -31,7 +32,7 @@ const config: FormConfig = {
     },
   },
   bucket: {
-    label: 'Bucket / Container Name',
+    label: 'Bucket/Container name',
     description: 'The root location within the storage service.',
     rules: {
       required: true,
@@ -43,16 +44,16 @@ const config: FormConfig = {
       "Custom storage service endpoint. If not provided, the endpoint for Amazon's S3 service will be used.",
   },
   public_base_url: {
-    label: 'Public Base URL',
+    label: 'Public base URL',
     description:
       'Base URL for public access to files. If not provided, temporary private URLs will be generated on-demand.',
   },
   access_key: {
-    label: 'Access Key ID',
+    label: 'Access key ID',
     description: 'Access key ID for the S3 object storage service.',
   },
   secret_key: {
-    label: 'Secret Access Key',
+    label: 'Secret access key',
     description: 'Secret access key for the S3 object storage service.',
   },
 }
@@ -87,7 +88,6 @@ export const StorageDetailsForm = ({
       onSubmit={handleSubmit((values) =>
         onSubmit({
           name: values.name,
-          description: values.description,
           customFields: {
             bucket: values.bucket,
             public_base_url: values.public_base_url,
@@ -147,6 +147,9 @@ export const StorageDetailsForm = ({
             config={config}
             control={control}
           />
+        </FormRow>
+        <FormRow>
+          {storage?.id && <SyncStorage storageId={storage.id} />}
         </FormRow>
       </FormSection>
       <FormActions>
