@@ -2,11 +2,8 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-.buttonWrapper {
-    display: flex;
-    gap: 8px;
-}
-
-.link {
-    @include paragraph-x-small();
+.wrapper {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }

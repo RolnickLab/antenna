@@ -1,10 +1,10 @@
 import { useSyncDeploymentSourceImages } from 'data-services/hooks/deployments/useSyncDeploymentSourceImages'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { IconButton } from 'design-system/components/icon-button/icon-button'
+import { IconType } from 'design-system/components/icon/icon'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
-import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
 
 export const SyncDeploymentSourceImages = ({
@@ -12,58 +12,37 @@ export const SyncDeploymentSourceImages = ({
 }: {
   deploymentId: string
 }) => {
-  const { syncDeploymentSourceImages, isLoading, isSuccess, error, data } =
+  const { syncDeploymentSourceImages, isLoading, isSuccess, data } =
     useSyncDeploymentSourceImages()
 
-  if (isSuccess) {
-    const projectId = data?.data.project_id
-    const jobId = data?.data.job_id
+  // TODO: Show error
 
-    return (
-      <>
-        <div className={styles.buttonWrapper}>
-          <Button
-            label={translate(STRING.QUEUED)}
-            icon={IconType.RadixClock}
-            theme={ButtonTheme.Neutral}
-            disabled={true}
-          />
-          {projectId && jobId && (
-            <Link
-              className={styles.link}
-              to={getAppRoute({
-                to: APP_ROUTES.JOB_DETAILS({
-                  projectId: String(projectId),
-                  jobId: String(jobId),
-                }),
-                keepSearchParams: true,
-              })}
-            >
-              <span>Job details {jobId}</span>
-              <Icon type={IconType.ExternalLink} theme={IconTheme.Primary} />
-            </Link>
-          )}
-        </div>
-      </>
-    )
-  }
-
-  if (error) {
-    return (
-      <Button
-        label={translate(STRING.FAILED)}
-        icon={IconType.Error}
-        theme={ButtonTheme.Error}
-      />
-    )
-  }
+  const projectId = data?.data.project_id
+  const jobId = data?.data.job_id
 
   return (
-    <Button
-      label={translate(STRING.SYNC)}
-      loading={isLoading}
-      theme={ButtonTheme.Success}
-      onClick={() => syncDeploymentSourceImages(deploymentId)}
-    />
+    <div className={styles.wrapper}>
+      <Button
+        label="Sync now"
+        loading={isLoading}
+        disabled={isSuccess}
+        theme={ButtonTheme.Success}
+        icon={isSuccess ? IconType.RadixCheck : undefined}
+        onClick={() => syncDeploymentSourceImages(deploymentId)}
+      />
+      {projectId && jobId && (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.JOB_DETAILS({
+              projectId: String(projectId),
+              jobId: String(jobId),
+            }),
+            keepSearchParams: true,
+          })}
+        >
+          <IconButton icon={IconType.BatchId} />
+        </Link>
+      )}
+    </div>
   )
 }
