@@ -11,7 +11,7 @@ export default {
 } as Meta
 
 const items = [
-  { id: 'general', label: 'General' },
+  { id: 'general', label: 'Deployment configuration' },
   { id: 'location', label: 'Location' },
   { id: 'source-images', label: 'Source images' },
 ]
