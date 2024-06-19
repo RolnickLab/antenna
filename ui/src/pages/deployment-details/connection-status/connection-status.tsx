@@ -31,11 +31,11 @@ const statusInfo: {
 export const ConnectionStatus = ({
   status,
   onRefreshClick,
-  lastUpdated,
+  tooltip,
 }: {
   status: Status
   onRefreshClick: () => void
-  lastUpdated: string
+  tooltip?: string
 }) => {
   const info = statusInfo[status]
 
@@ -50,13 +50,13 @@ export const ConnectionStatus = ({
               theme={IconButtonTheme.Plain}
               title={translate(STRING.REFRESH)}
               onClick={onRefreshClick}
-            ></IconButton>
+            />
           </div>
         </div>
       </div>
 
       <div className={styles.infoRow}>
-        <Tooltip content={`${translate(STRING.LAST_UPDATED)} ${lastUpdated}`}>
+        <Tooltip content={tooltip}>
           <div className={styles.infoRowContent}>
             <div className={classNames(styles.iconContainer, info.className)}>
               {info.icon && (
