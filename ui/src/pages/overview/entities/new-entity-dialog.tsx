@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { useCreateEntity } from 'data-services/hooks/entities/useCreateEntity'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -14,9 +15,11 @@ const CLOSE_TIMEOUT = 1000
 export const NewEntityDialog = ({
   collection,
   type,
+  isCompact,
 }: {
   collection: string
   type: string
+  isCompact?: boolean
 }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
@@ -43,9 +46,16 @@ export const NewEntityDialog = ({
           theme={ButtonTheme.Default}
         />
       </Dialog.Trigger>
-      <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
+      <Dialog.Content
+        ariaCloselabel={translate(STRING.CLOSE)}
+        isCompact={isCompact}
+      >
         <Dialog.Header title={label} />
-        <div className={styles.dialogContent}>
+        <div
+          className={classNames(styles.dialogContent, {
+            [styles.compact]: isCompact,
+          })}
+        >
           <DetailsForm
             error={error}
             isLoading={isLoading}

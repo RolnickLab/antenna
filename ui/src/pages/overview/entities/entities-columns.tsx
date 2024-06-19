@@ -47,6 +47,7 @@ export const columns: (
             collection={collection}
             entity={item}
             type={type}
+            isCompact
           />
         )}
         {item.canDelete && (

@@ -56,7 +56,9 @@ export const Entities = ({
           setPage={setPage}
         />
       ) : null}
-      {canCreate && <NewEntityDialog collection={collection} type={type} />}
+      {canCreate && (
+        <NewEntityDialog collection={collection} type={type} isCompact />
+      )}
     </>
   )
 }
