@@ -1,3 +1,4 @@
+import { FormController } from 'components/form/form-controller'
 import { FormField } from 'components/form/form-field'
 import {
   FormActions,
@@ -9,8 +10,16 @@ import { FormConfig } from 'components/form/types'
 import { StorageSource } from 'data-services/models/storage'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { Input, LockedInput } from 'design-system/components/input/input'
 import { SyncStorage } from 'pages/overview/storage/storage-actions'
-import { useForm } from 'react-hook-form'
+import { useState } from 'react'
+import {
+  ControllerFieldState,
+  ControllerRenderProps,
+  FieldPath,
+  FieldValues,
+  useForm,
+} from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
@@ -70,13 +79,14 @@ export const StorageDetailsForm = ({
     control,
     handleSubmit,
     setError: setFieldError,
+    setFocus,
   } = useForm<StorageFormValues>({
     defaultValues: {
       name: entity?.name,
       bucket: storage?.bucket,
       public_base_url: storage?.publicBaseUrl,
       endpoint_url: storage?.endpointUrl,
-      // access key and secret key are not returned by the API
+      // Access key and secret key are not returned by the API
     },
     mode: 'onChange',
   })
@@ -135,21 +145,40 @@ export const StorageDetailsForm = ({
           />
         </FormRow>
         <FormRow>
-          <FormField
+          <FormController
             name="access_key"
-            type="password"
-            config={config}
             control={control}
+            config={config.access_key}
+            render={({ field, fieldState }) => (
+              <SecretKeyInput
+                entityCreated={!!storage?.createdAt}
+                field={field}
+                fieldState={fieldState}
+                onEditStart={() => setTimeout(() => setFocus(field.name))}
+              />
+            )}
           />
-          <FormField
+          <FormController
             name="secret_key"
-            type="password"
-            config={config}
             control={control}
+            config={config.access_key}
+            render={({ field, fieldState }) => (
+              <SecretKeyInput
+                entityCreated={!!storage?.createdAt}
+                field={field}
+                fieldState={fieldState}
+                onEditStart={() => setTimeout(() => setFocus(field.name))}
+              />
+            )}
           />
         </FormRow>
         <FormRow>
-          {storage?.id && <SyncStorage storageId={storage.id} />}
+          {storage?.id && (
+            <SyncStorage
+              storageId={storage.id}
+              updatedAt={storage.updatedAtDetailed}
+            />
+          )}
         </FormRow>
       </FormSection>
       <FormActions>
@@ -162,5 +191,66 @@ export const StorageDetailsForm = ({
         />
       </FormActions>
     </form>
+  )
+}
+
+const SecretKeyInput = <
+  TFieldValues extends FieldValues,
+  TName extends FieldPath<TFieldValues>
+>({
+  entityCreated,
+  field,
+  fieldState,
+  onEditStart,
+}: {
+  entityCreated?: boolean
+  field: ControllerRenderProps<TFieldValues, TName>
+  fieldState: ControllerFieldState
+  onEditStart?: () => void
+}) => {
+  const fieldConfig = config[field.name]
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState<string>(field.value)
+
+  const maskedValue = field.value?.length
+    ? field.value.replace(/./g, '*')
+    : '************'
+
+  if (!entityCreated) {
+    return (
+      <Input
+        {...field}
+        type="password"
+        label={fieldConfig.label}
+        description={fieldConfig.description}
+        error={fieldState.error?.message}
+      />
+    )
+  }
+
+  return (
+    <LockedInput
+      editing={editing}
+      setEditing={(editing) => {
+        setEditing(editing)
+
+        if (editing) {
+          onEditStart?.()
+        }
+      }}
+      onCancel={() => setEditValue(field.value)}
+      onSubmit={() => field.onChange(editValue.length ? editValue : undefined)}
+    >
+      <Input
+        {...field}
+        type="password"
+        label={fieldConfig.label}
+        description={fieldConfig.description}
+        error={fieldState.error?.message}
+        disabled={!editing}
+        value={!editing ? maskedValue : editValue ?? ''}
+        onChange={(e) => setEditValue(e.currentTarget.value)}
+      />
+    </LockedInput>
   )
 }

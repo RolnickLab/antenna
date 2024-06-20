@@ -70,7 +70,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             aria-describedby={descriptionId}
             aria-errormessage={errorId}
             aria-invalid={hasError}
-            autoComplete="on"
+            autoComplete="off"
             className={classNames(styles.input, {
               [styles.password]: initialType === 'password',
               [styles.noArrows]: noArrows,
@@ -83,7 +83,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             type={type}
             {...rest}
           />
-          {initialType === 'password' ? (
+          {initialType === 'password' && !disabled ? (
             <div className={styles.passwordButtonContainer}>
               <Tooltip
                 content={`${type === 'password' ? 'Show' : 'Hide'} password`}
@@ -167,3 +167,44 @@ export const InputContent = ({
     </div>
   )
 }
+
+export const LockedInput = ({
+  editing,
+  setEditing,
+  onCancel,
+  onSubmit,
+  children,
+}: {
+  editing: boolean
+  setEditing: (editing: boolean) => void
+  onCancel: () => void
+  onSubmit: () => void
+  children: ReactNode
+}) => (
+  <div className={styles.lockedInputContainer}>
+    <div className={styles.editButtonContainer}>
+      <IconButton
+        icon={editing ? IconType.Cross : IconType.Pencil}
+        onClick={() => {
+          if (editing) {
+            setEditing(false)
+            onCancel()
+          } else {
+            setEditing(true)
+          }
+        }}
+      />
+      {editing && (
+        <IconButton
+          icon={IconType.RadixCheck}
+          onClick={() => {
+            setEditing(false)
+            onSubmit()
+          }}
+        />
+      )}
+    </div>
+
+    {children}
+  </div>
+)

@@ -7,16 +7,23 @@ import { STRING, translate } from 'utils/language'
 
 export const SyncStorage = ({
   storageId: storageId,
+  updatedAt,
 }: {
   storageId: string
+  updatedAt?: string
 }) => {
   const { syncStorage, isLoading, isSuccess, error, validationError } =
     useSyncStorage()
   const [lastUpdated, setLastUpdated] = useState<Date>()
 
+  const update = async () => {
+    await syncStorage(storageId)
+    setLastUpdated(new Date())
+  }
+
   useEffect(() => {
-    syncStorage(storageId)
-  }, [storageId])
+    update()
+  }, [storageId, updatedAt])
 
   const status = (() => {
     if (isSuccess) {
@@ -38,6 +45,7 @@ export const SyncStorage = ({
     if (lastUpdated) {
       return `${translate(STRING.LAST_UPDATED)} ${getFormatedDateTimeString({
         date: lastUpdated,
+        options: { second: true },
       })}`
     }
   })()
@@ -45,10 +53,7 @@ export const SyncStorage = ({
   return (
     <ConnectionStatus
       status={status}
-      onRefreshClick={async () => {
-        await syncStorage(storageId)
-        setLastUpdated(new Date())
-      }}
+      onRefreshClick={update}
       tooltip={tooltip}
     />
   )

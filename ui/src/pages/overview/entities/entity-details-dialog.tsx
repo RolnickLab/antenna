@@ -11,8 +11,6 @@ import { customFormMap } from './details-form/constants'
 import { EntityDetailsForm } from './details-form/entity-details-form'
 import styles from './styles.module.scss'
 
-const CLOSE_TIMEOUT = 1000
-
 export const UpdateEntityDialog = ({
   collection,
   entity,
@@ -28,11 +26,7 @@ export const UpdateEntityDialog = ({
   const [isOpen, setIsOpen] = useState(false)
   const { updateEntity, isLoading, isSuccess, error } = useUpdateEntity(
     entity.id,
-    collection,
-    () =>
-      setTimeout(() => {
-        setIsOpen(false)
-      }, CLOSE_TIMEOUT)
+    collection
   )
 
   const label = translate(STRING.ENTITY_EDIT, {
