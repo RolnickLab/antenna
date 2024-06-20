@@ -36,6 +36,7 @@ export class Occurrence {
   get timeLabel(): string {
     return getFormatedTimeString({
       date: new Date(this.firstAppearanceTimestamp),
+      options: { second: true },
     })
   }
 

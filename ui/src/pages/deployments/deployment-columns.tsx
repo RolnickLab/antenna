@@ -19,8 +19,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
 ) => [
   {
     id: 'snapshot',
-    sortField: 'createdAt',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_IMAGE),
     renderCell: (item: Deployment, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
       const detailsRoute = getAppRoute({
