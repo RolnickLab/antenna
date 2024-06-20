@@ -330,7 +330,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TAB_ITEM */
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
-  [STRING.TAB_ITEM_DEVICES]: 'Device Types',
+  [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
