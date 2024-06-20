@@ -38,7 +38,10 @@ export const Occurrences = () => {
     detections: true,
     score: true,
   })
-  const { sort, setSort } = useSort()
+  const { sort, setSort } = useSort({
+    field: 'first_appearance_timestamp',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
