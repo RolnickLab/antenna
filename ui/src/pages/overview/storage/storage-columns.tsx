@@ -18,7 +18,7 @@ export const columns: (
   },
   {
     id: 'total_files',
-    name: 'Total files',
+    name: translate(STRING.FIELD_LABEL_TOTAL_FILES),
     sortField: 'total_files_indexed',
     styles: {
       textAlign: TextAlign.Right,
@@ -29,7 +29,7 @@ export const columns: (
   },
   {
     id: 'total_size',
-    name: 'Total size',
+    name: translate(STRING.FIELD_LABEL_TOTAL_SIZE),
     sortField: 'total_size_indexed',
     styles: {
       textAlign: TextAlign.Right,

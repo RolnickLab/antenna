@@ -25,7 +25,6 @@ import { config } from '../config'
 import { SectionExampleCaptures } from '../section-example-captures/section-example-captures'
 import { Section } from '../types'
 import { SyncDeploymentSourceImages } from './actions/sync-source-images'
-import styles from '../../styles.module.scss'
 
 type SectionSourceImagesFieldValues = Pick<
   DeploymentFieldValues,
@@ -121,14 +120,17 @@ const SectionDataSourceCaptures = ({
   return (
     <FormSection title={translate(STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES)}>
       <FormRow>
-        <InputValue label="Total files" value={deployment.numImages} />
         <InputValue
-          label="Total size"
+          label={translate(STRING.FIELD_LABEL_TOTAL_FILES)}
+          value={deployment.numImages}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_TOTAL_SIZE)}
           value={deployment.dataSourceDetails.totalSizeDisplay}
         />
         <div>
           <InputValue
-            label="Last synced"
+            label={translate(STRING.FIELD_LABEL_LAST_SYNCED)}
             value={deployment.dataSourceDetails.lastChecked}
           />
           <SyncDeploymentSourceImages deploymentId={deployment.id} />
