@@ -2,9 +2,6 @@
 @import 'src/design-system/variables/colors.scss';
 
 .menu {
-  position: sticky;
-  top: 64px;
-  left: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;

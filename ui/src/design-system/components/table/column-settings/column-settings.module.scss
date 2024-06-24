@@ -7,6 +7,10 @@
   box-sizing: border-box;
 }
 
+.triggerButton {
+  flex-direction: row-reverse;
+}
+
 .description {
   display: block;
   @include paragraph-small();

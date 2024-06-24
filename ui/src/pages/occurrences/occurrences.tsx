@@ -3,7 +3,8 @@ import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
+import { PageFooter } from 'design-system/components/page-footer/page-footer'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
@@ -55,12 +56,20 @@ export const Occurrences = () => {
 
   return (
     <>
-      <div className={styles.infoWrapper}>
-        {isFetching && <FetchInfo isLoading={isLoading} />}
+      <PageHeader
+        title={translate(STRING.NAV_ITEM_OCCURRENCES)}
+        subTitle={`${total} results`}
+        isLoading={isFetching}
+      >
         <FilterSettings />
-      </div>
+        <ColumnSettings
+          columns={columns(projectId as string)}
+          columnSettings={columnSettings}
+          onColumnSettingsChange={setColumnSettings}
+        />
+      </PageHeader>
       <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
-        <Tabs.List>
+        {/* <Tabs.List>
           <Tabs.Trigger
             value="table"
             label={translate(STRING.TAB_ITEM_TABLE)}
@@ -71,27 +80,18 @@ export const Occurrences = () => {
             label={translate(STRING.TAB_ITEM_GALLERY)}
             icon={IconType.GalleryView}
           />
-        </Tabs.List>
+        </Tabs.List> */}
         <Tabs.Content value="table">
-          <div className={styles.tableContent}>
-            <div className={styles.settingsWrapper}>
-              <ColumnSettings
-                columns={columns(projectId as string)}
-                columnSettings={columnSettings}
-                onColumnSettingsChange={setColumnSettings}
-              />
-            </div>
-            <Table
-              items={occurrences}
-              isLoading={isLoading}
-              columns={columns(projectId as string).filter(
-                (column) => !!columnSettings[column.id]
-              )}
-              sortable
-              sortSettings={sort}
-              onSortSettingsChange={setSort}
-            />
-          </div>
+          <Table
+            items={occurrences}
+            isLoading={isLoading}
+            columns={columns(projectId as string).filter(
+              (column) => !!columnSettings[column.id]
+            )}
+            sortable
+            sortSettings={sort}
+            onSortSettingsChange={setSort}
+          />
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
@@ -102,13 +102,15 @@ export const Occurrences = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-      {occurrences?.length ? (
-        <PaginationBar
-          pagination={pagination}
-          total={total}
-          setPage={setPage}
-        />
-      ) : null}
+      <PageFooter>
+        {occurrences?.length ? (
+          <PaginationBar
+            pagination={pagination}
+            total={total}
+            setPage={setPage}
+          />
+        ) : null}
+      </PageFooter>
       {!isLoading && id ? <OccurrenceDetailsDialog id={id} /> : null}
     </>
   )
