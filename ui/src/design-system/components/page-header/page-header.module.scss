@@ -1,0 +1,37 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.wrapper {
+  position: sticky;
+  top: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid $color-neutral-200;
+  background-color: $color-neutral-50;
+  height: 96px;
+  margin: -32px 0 0;
+  z-index: 2;
+}
+
+.title {
+  @include paragraph-large();
+  font-weight: 600;
+  color: $color-neutral-800;
+  margin: 0;
+}
+
+.subTitle {
+  @include paragraph-small();
+  font-weight: 600;
+  color: $color-neutral-500;
+  margin: 0;
+}
+
+.controls {
+  height: 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+}
