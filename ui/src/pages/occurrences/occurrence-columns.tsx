@@ -102,7 +102,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   },
   {
     id: 'date',
-    name: translate(STRING.FIELD_LABEL_DATE),
+    name: translate(STRING.FIELD_LABEL_DATE_OBSERVED),
     sortField: 'first_appearance_timestamp',
     renderCell: (item: Occurrence) => (
       <Link
@@ -124,7 +124,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   {
     id: 'time',
     sortField: 'first_appearance_time',
-    name: translate(STRING.FIELD_LABEL_TIME),
+    name: translate(STRING.FIELD_LABEL_TIME_OBSERVED),
     renderCell: (item: Occurrence) => (
       <Link
         to={getAppRoute({
@@ -157,6 +157,12 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     renderCell: (item: Occurrence) => (
       <BasicTableCell value={item.numDetections} />
     ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
   },
 ]
 

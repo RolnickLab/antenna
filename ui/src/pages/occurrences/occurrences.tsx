@@ -37,9 +37,10 @@ export const Occurrences = () => {
     duration: false,
     detections: true,
     score: true,
+    ['created-at']: true,
   })
   const { sort, setSort } = useSort({
-    field: 'first_appearance_timestamp',
+    field: 'created_at',
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
