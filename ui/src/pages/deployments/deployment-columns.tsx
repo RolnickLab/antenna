@@ -124,7 +124,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.firstDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.firstDateLabel} />
+    ),
   },
   {
     id: 'lastDate',
@@ -133,7 +135,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.lastDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.lastDateLabel} />
+    ),
   },
   {
     id: 'actions',
