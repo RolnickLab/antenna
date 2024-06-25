@@ -1,8 +1,4 @@
-import { Button } from 'design-system/components/button/button'
-import {
-  IconButton,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import * as Popover from 'design-system/components/popover/popover'
 import { STRING, translate } from 'utils/language'
@@ -15,9 +11,11 @@ export const FilterSettings = () => {
   return (
     <Popover.Root>
       <Popover.Trigger>
-        <IconButton
-          icon={IconType.Filters}
-          theme={isActive ? IconButtonTheme.Neutral : IconButtonTheme.Default}
+        <Button
+          label="Filters"
+          icon={IconType.ToggleDown}
+          theme={isActive ? ButtonTheme.Neutral : ButtonTheme.Default}
+          customClass={styles.triggerButton}
         />
       </Popover.Trigger>
       <Popover.Content

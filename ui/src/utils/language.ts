@@ -337,13 +337,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
-  [STRING.TAB_ITEM_GALLERY]: 'Gallery',
+  [STRING.TAB_ITEM_GALLERY]: 'Gallery view',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
   [STRING.TAB_ITEM_PIPELINES]: 'Pipelines',
   [STRING.TAB_ITEM_SITES]: 'Sites',
   [STRING.TAB_ITEM_STORAGE]: 'Storage',
   [STRING.TAB_ITEM_SUMMARY]: 'Summary',
-  [STRING.TAB_ITEM_TABLE]: 'Table',
+  [STRING.TAB_ITEM_TABLE]: 'Table view',
 
   /* JOB STATUS */
   [STRING.CREATED]: 'Created',
