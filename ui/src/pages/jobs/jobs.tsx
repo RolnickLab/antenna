@@ -23,7 +23,7 @@ import { columns } from './jobs-columns'
 export const Jobs = () => {
   const { projectId, id } = useParams()
   const { pagination, setPage } = usePagination()
-  const { sort, setSort } = useSort()
+  const { sort, setSort } = useSort({ field: 'created_at', order: 'desc' })
   const { jobs, userPermissions, total, isLoading, isFetching, error } =
     useJobs({
       projectId,

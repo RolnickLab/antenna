@@ -19,7 +19,7 @@ export const Deployments = () => {
     })
   const { sortedItems, sort, setSort } = useClientSideSort({
     items: deployments,
-    defaultSort: { field: 'name', order: 'desc' },
+    defaultSort: { field: 'name', order: 'asc' },
   })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 

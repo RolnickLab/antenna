@@ -18,8 +18,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
 ) => [
   {
     id: 'snapshots',
-    sortField: 'updated_at',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
       padding: '16px 32px 16px 50px',
     },

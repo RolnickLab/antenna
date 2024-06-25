@@ -19,7 +19,10 @@ export const Entities = ({
   type: string
 }) => {
   const { projectId } = useParams()
-  const [sort, setSort] = useState<TableSortSettings>()
+  const [sort, setSort] = useState<TableSortSettings | undefined>({
+    field: 'created_at',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
   const { entities, total, isLoading, isFetching, error } = useEntities(
     collection,

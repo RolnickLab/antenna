@@ -20,16 +20,15 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
-import styles from './occurrences.module.scss'
 import { useUserInfo } from 'utils/user/userInfoContext'
+import styles from './occurrences.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   projectId: string
 ) => [
   {
     id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    sortField: 'updated_at',
+    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     renderCell: (item: Occurrence, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
       const detailsRoute = getAppRoute({
@@ -100,7 +99,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   },
   {
     id: 'date',
-    name: translate(STRING.FIELD_LABEL_DATE),
+    name: translate(STRING.FIELD_LABEL_DATE_OBSERVED),
     sortField: 'first_appearance_timestamp',
     renderCell: (item: Occurrence) => (
       <Link
@@ -122,7 +121,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   {
     id: 'time',
     sortField: 'first_appearance_time',
-    name: translate(STRING.FIELD_LABEL_TIME),
+    name: translate(STRING.FIELD_LABEL_TIME_OBSERVED),
     renderCell: (item: Occurrence) => (
       <Link
         to={getAppRoute({
@@ -155,6 +154,12 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     renderCell: (item: Occurrence) => (
       <BasicTableCell value={item.numDetections} />
     ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
   },
 ]
 
