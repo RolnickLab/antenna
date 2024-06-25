@@ -1,9 +1,9 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
+import { PageFooter } from 'design-system/components/page-footer/page-footer'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -42,12 +42,18 @@ export const Species = () => {
 
   return (
     <>
-      <div className={styles.infoWrapper}>
-        {isFetching && <FetchInfo isLoading={isLoading} />}
+      <PageHeader
+        title={translate(STRING.NAV_ITEM_SPECIES)}
+        subTitle={translate(STRING.RESULTS, {
+          total,
+        })}
+        isLoading={isLoading}
+        isFetching={isFetching}
+      >
         <FilterSettings />
-      </div>
+      </PageHeader>
       <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
-        <Tabs.List>
+        {/* <Tabs.List>
           <Tabs.Trigger
             value="table"
             label={translate(STRING.TAB_ITEM_TABLE)}
@@ -58,18 +64,16 @@ export const Species = () => {
             label={translate(STRING.TAB_ITEM_GALLERY)}
             icon={IconType.GalleryView}
           />
-        </Tabs.List>
+        </Tabs.List> */}
         <Tabs.Content value="table">
-          <div className={styles.tableContent}>
-            <Table
-              items={species}
-              isLoading={isLoading}
-              columns={columns(projectId as string)}
-              sortable
-              sortSettings={sort}
-              onSortSettingsChange={setSort}
-            />
-          </div>
+          <Table
+            items={species}
+            isLoading={isLoading}
+            columns={columns(projectId as string)}
+            sortable
+            sortSettings={sort}
+            onSortSettingsChange={setSort}
+          />
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
@@ -77,14 +81,15 @@ export const Species = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-      {species?.length ? (
-        <PaginationBar
-          pagination={pagination}
-          total={total}
-          setPage={setPage}
-        />
-      ) : null}
-
+      <PageFooter>
+        {species?.length ? (
+          <PaginationBar
+            pagination={pagination}
+            total={total}
+            setPage={setPage}
+          />
+        ) : null}
+      </PageFooter>
       {!isLoading && id ? <SpeciesDetailsDialog id={id} /> : null}
     </>
   )

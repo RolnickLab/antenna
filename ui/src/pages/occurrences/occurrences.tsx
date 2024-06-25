@@ -57,7 +57,9 @@ export const Occurrences = () => {
     <>
       <PageHeader
         title={translate(STRING.NAV_ITEM_OCCURRENCES)}
-        subTitle={`${total} results`}
+        subTitle={translate(STRING.RESULTS, {
+          total,
+        })}
         isLoading={isLoading}
         isFetching={isFetching}
       >
