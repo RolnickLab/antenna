@@ -14,6 +14,13 @@
   z-index: 2;
 }
 
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
 .title {
   @include paragraph-large();
   font-weight: 600;
@@ -26,12 +33,4 @@
   font-weight: 600;
   color: $color-neutral-500;
   margin: 0;
-}
-
-.controls {
-  height: 28px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 8px;
 }

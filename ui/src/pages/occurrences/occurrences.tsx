@@ -1,4 +1,3 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
@@ -59,7 +58,8 @@ export const Occurrences = () => {
       <PageHeader
         title={translate(STRING.NAV_ITEM_OCCURRENCES)}
         subTitle={`${total} results`}
-        isLoading={isFetching}
+        isLoading={isLoading}
+        isFetching={isFetching}
       >
         <FilterSettings />
         <ColumnSettings
