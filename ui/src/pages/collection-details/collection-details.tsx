@@ -1,7 +1,7 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useCaptures } from 'data-services/hooks/captures/useCaptures'
 import { useCollectionDetails } from 'data-services/hooks/collections/useCollectionDetails'
-import { IconType } from 'design-system/components/icon/icon'
+import { PageFooter } from 'design-system/components/page-footer/page-footer'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
@@ -52,13 +52,18 @@ export const CollectionDetails = () => {
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
+      {collection && (
+        <PageHeader
+          title={collection.name}
+          subTitle={translate(STRING.RESULTS, {
+            total,
+          })}
+          isLoading={isLoading}
+          isFetching={isFetching}
+        ></PageHeader>
       )}
       <Tabs.Root defaultValue="table">
-        <Tabs.List>
+        {/* <Tabs.List>
           <Tabs.Trigger
             value="table"
             label={translate(STRING.TAB_ITEM_TABLE)}
@@ -69,18 +74,16 @@ export const CollectionDetails = () => {
             label={translate(STRING.TAB_ITEM_GALLERY)}
             icon={IconType.GalleryView}
           />
-        </Tabs.List>
+        </Tabs.List> */}
         <Tabs.Content value="table">
-          <div className={styles.tableContent}>
-            <Table
-              items={captures}
-              isLoading={isLoading}
-              columns={columns(projectId as string)}
-              sortable
-              sortSettings={sort}
-              onSortSettingsChange={setSort}
-            />
-          </div>
+          <Table
+            items={captures}
+            isLoading={isLoading}
+            columns={columns(projectId as string)}
+            sortable
+            sortSettings={sort}
+            onSortSettingsChange={setSort}
+          />
         </Tabs.Content>
         <Tabs.Content value="gallery">
           <div className={styles.galleryContent}>
@@ -88,14 +91,15 @@ export const CollectionDetails = () => {
           </div>
         </Tabs.Content>
       </Tabs.Root>
-
-      {captures?.length ? (
-        <PaginationBar
-          pagination={pagination}
-          total={total}
-          setPage={setPage}
-        />
-      ) : null}
+      <PageFooter>
+        {captures?.length ? (
+          <PaginationBar
+            pagination={pagination}
+            total={total}
+            setPage={setPage}
+          />
+        ) : null}
+      </PageFooter>
     </>
   )
 }
