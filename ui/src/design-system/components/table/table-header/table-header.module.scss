@@ -8,6 +8,10 @@
   white-space: nowrap;
   vertical-align: middle;
   border-bottom: 2px solid $color-neutral-200;
+  position: sticky;
+  top: 160px;
+  z-index: 2;
+  background-color: $color-neutral-50;
 
   &.active {
     border-color: $color-neutral-400;
