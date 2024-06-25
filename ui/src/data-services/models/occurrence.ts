@@ -22,26 +22,15 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
-  get firstAppearanceTimestamp(): string {
-    // Return the timestamp of the first image where this occurrence appeared, in ISO format
-    return this._occurrence.first_appearance_timestamp
+  get createdAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._occurrence.created_at),
+    })
   }
 
   get dateLabel(): string {
     return getFormatedDateString({
       date: new Date(this.firstAppearanceTimestamp),
-    })
-  }
-
-  get timeLabel(): string {
-    return getFormatedTimeString({
-      date: new Date(this.firstAppearanceTimestamp),
-    })
-  }
-
-  get createdAtLabel(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._occurrence.created_at),
     })
   }
 
@@ -112,6 +101,11 @@ export class Occurrence {
     return `${this.determinationTaxon.name} #${this.id}`
   }
 
+  get firstAppearanceTimestamp(): string {
+    // Return the timestamp of the first image where this occurrence appeared, in ISO format
+    return this._occurrence.first_appearance_timestamp
+  }
+
   get id(): string {
     return `${this._occurrence.id}`
   }
@@ -130,6 +124,13 @@ export class Occurrence {
 
   get sessionLabel(): string {
     return this._occurrence.event.name
+  }
+
+  get timeLabel(): string {
+    return getFormatedTimeString({
+      date: new Date(this.firstAppearanceTimestamp),
+      options: { second: true },
+    })
   }
 
   get userPermissions(): UserPermission[] {
