@@ -25,7 +25,7 @@ import styles from './species.module.scss'
 
 export const Species = () => {
   const { projectId, id } = useParams()
-  const { sort, setSort } = useSort()
+  const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({

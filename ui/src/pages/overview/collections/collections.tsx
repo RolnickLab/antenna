@@ -14,7 +14,10 @@ import { API_ROUTES } from 'data-services/constants'
 
 export const Collections = () => {
   const { projectId } = useParams()
-  const [sort, setSort] = useState<TableSortSettings>()
+  const [sort, setSort] = useState<TableSortSettings | undefined>({
+    field: 'created_at',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
   const { collections, total, isLoading, isFetching, error } = useCollections({
     projectId,
