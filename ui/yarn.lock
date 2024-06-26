@@ -3591,6 +3591,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@radix-ui/react-portal@npm:^1.1.1":
+  version: 1.1.1
+  resolution: "@radix-ui/react-portal@npm:1.1.1"
+  dependencies:
+    "@radix-ui/react-primitive": "npm:2.0.0"
+    "@radix-ui/react-use-layout-effect": "npm:1.1.0"
+  peerDependencies:
+    "@types/react": "*"
+    "@types/react-dom": "*"
+    react: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+    react-dom: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+    "@types/react-dom":
+      optional: true
+  checksum: 7e7130fcb0d99197322cd97987e1d7279b6c264fb6be3d883cbfcd49267740d83ca17b431e0d98848afd6067a13ee823ca396a8b63ae68f18a728cf70398c830
+  languageName: node
+  linkType: hard
+
 "@radix-ui/react-presence@npm:1.0.0":
   version: 1.0.0
   resolution: "@radix-ui/react-presence@npm:1.0.0"
@@ -6798,6 +6818,7 @@ __metadata:
     "@radix-ui/react-dialog": "npm:^1.0.4-rc.9"
     "@radix-ui/react-dropdown-menu": "npm:^2.0.5"
     "@radix-ui/react-popover": "npm:^1.0.6"
+    "@radix-ui/react-portal": "npm:^1.1.1"
     "@radix-ui/react-select": "npm:^1.2.1"
     "@radix-ui/react-slider": "npm:^1.1.1"
     "@radix-ui/react-tabs": "npm:^1.0.3"
