@@ -25,7 +25,7 @@ export const ToggleGroup = ({
     className={styles.root}
   >
     {items.map((item) => (
-      <Tooltip content={item.label}>
+      <Tooltip content={item.label} key={item.value}>
         <div className={styles.itemWrapper}>
           <_ToggleGroup.Item value={item.value} className={styles.item}>
             <Icon
