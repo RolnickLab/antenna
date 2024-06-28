@@ -222,7 +222,7 @@ const MultiImageCarousel = ({
         </div>
       </div>
       <span className={styles.info}>
-        {slideIndex + 1} / {images.length}
+        {slideIndex + 1} / {totalLabel}
       </span>
     </div>
   )
