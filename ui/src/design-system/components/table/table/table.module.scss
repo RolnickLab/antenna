@@ -3,6 +3,7 @@
 
 .wrapper {
   position: relative;
+  min-height: 320px;
 
   &.white {
     .overflowFader {
@@ -63,10 +64,6 @@
   .tableClone {
     all: unset;
     display: table;
-  }
-
-  .table {
-    min-height: 320px;
   }
 
   tbody {
