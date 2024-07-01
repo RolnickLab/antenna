@@ -1,16 +1,16 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
+import { API_ROUTES } from 'data-services/constants'
 import { useCollections } from 'data-services/hooks/collections/useCollections'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import { Error } from 'pages/error/error'
+import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './collection-columns'
-import styles from './collections.module.scss'
-import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
-import { API_ROUTES } from 'data-services/constants'
 
 export const Collections = () => {
   const { projectId } = useParams()
@@ -31,11 +31,19 @@ export const Collections = () => {
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <PageHeader
+        title={translate(STRING.TAB_ITEM_COLLECTIONS)}
+        subTitle={translate(STRING.RESULTS, {
+          total,
+        })}
+        isLoading={isLoading}
+        isFetching={isFetching}
+      >
+        <NewEntityDialog
+          collection={API_ROUTES.COLLECTIONS}
+          type="collection"
+        />
+      </PageHeader>
       <Table
         items={collections}
         isLoading={isLoading}
@@ -51,7 +59,6 @@ export const Collections = () => {
           setPage={setPage}
         />
       ) : null}
-      <NewEntityDialog collection={API_ROUTES.COLLECTIONS} type="collection" />
     </>
   )
 }

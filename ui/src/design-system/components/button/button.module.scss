@@ -5,6 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   height: 28px;
   padding: 0 16px;
   border-radius: 8px;
@@ -15,10 +16,6 @@
   color: $color-primary-1-600;
   box-sizing: border-box;
   white-space: nowrap;
-
-  :not(:last-child) {
-    margin-right: 6px;
-  }
 
   &.success {
     background-color: $color-success-500;

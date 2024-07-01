@@ -1,6 +1,10 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
+.triggerButton {
+  flex-direction: row-reverse;
+}
+
 .wrapper {
   padding: 20px;
   min-width: 180px;

@@ -20,7 +20,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
-      padding: '16px 32px 16px 50px',
+      textAlign: TextAlign.Center,
     },
     renderCell: (item: Species, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0

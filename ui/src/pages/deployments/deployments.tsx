@@ -1,14 +1,14 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { Table } from 'design-system/components/table/table/table'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
 import { Error } from 'pages/error/error'
 import { useParams } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { useClientSideSort } from 'utils/useClientSideSort'
 import { UserPermission } from 'utils/user/types'
 import { columns } from './deployment-columns'
-import styles from './deployments.module.scss'
 
 export const Deployments = () => {
   const { projectId, id } = useParams()
@@ -29,11 +29,16 @@ export const Deployments = () => {
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <PageHeader
+        title={translate(STRING.NAV_ITEM_DEPLOYMENTS)}
+        subTitle={translate(STRING.RESULTS, {
+          total: deployments?.length ?? 0,
+        })}
+        isLoading={isLoading}
+        isFetching={isFetching}
+      >
+        {canCreate ? <NewDeploymentDialog /> : null}
+      </PageHeader>
       <Table
         items={sortedItems}
         isLoading={isLoading}
@@ -42,11 +47,7 @@ export const Deployments = () => {
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
-      {!isLoading && id ? (
-        <DeploymentDetailsDialog id={id} />
-      ) : canCreate ? (
-        <NewDeploymentDialog />
-      ) : null}
+      {!isLoading && id ? <DeploymentDetailsDialog id={id} /> : null}
     </>
   )
 }
