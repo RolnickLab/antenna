@@ -1,5 +1,5 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { Error } from 'pages/error/error'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { STRING, translate } from 'utils/language'
@@ -10,25 +10,25 @@ import styles from './projects.module.scss'
 export const Projects = () => {
   const { projects, userPermissions, isLoading, isFetching, error } =
     useProjects()
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
     return <Error />
   }
 
-  const canCreate = userPermissions?.includes(UserPermission.Create)
-
   return (
     <>
-      <div className={styles.infoWrapper}>
-        {isFetching && <FetchInfo isLoading={isLoading} />}
+      <PageHeader
+        title={translate(STRING.NAV_ITEM_PROJECTS)}
+        subTitle={translate(STRING.RESULTS, { total: projects?.length ?? 0 })}
+        isLoading={isLoading}
+        isFetching={isFetching}
+      >
+        {canCreate && <NewProjectDialog />}
+      </PageHeader>
+      <div className={styles.galleryContent}>
+        <ProjectGallery projects={projects} isLoading={isLoading} />
       </div>
-      <div className={styles.header}>
-        <h1 className={styles.title}>{translate(STRING.NAV_ITEM_PROJECTS)}</h1>
-      </div>
-      <div className={styles.divider} />
-      <ProjectGallery projects={projects} isLoading={isLoading} />
-      <div className={styles.spacer} />
-      {canCreate && <NewProjectDialog />}
     </>
   )
 }

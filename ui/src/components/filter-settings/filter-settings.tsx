@@ -12,15 +12,16 @@ export const FilterSettings = () => {
     <Popover.Root>
       <Popover.Trigger>
         <Button
-          icon={IconType.Filters}
           label="Filters"
+          icon={IconType.ToggleDown}
           theme={isActive ? ButtonTheme.Neutral : ButtonTheme.Default}
+          customClass={styles.triggerButton}
         />
       </Popover.Trigger>
       <Popover.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        align="start"
-        side="left"
+        align="end"
+        side="bottom"
       >
         <div className={styles.wrapper}>
           <span className={styles.description}>Filters</span>

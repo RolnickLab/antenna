@@ -9,6 +9,7 @@ import {
   CellTheme,
   ImageCellTheme,
   TableColumn,
+  TextAlign,
 } from 'design-system/components/table/types'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Agree } from 'pages/occurrence-details/agree/agree'
@@ -29,7 +30,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
-      padding: '16px 32px 16px 50px',
+      textAlign: TextAlign.Center,
     },
     renderCell: (item: Occurrence, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0

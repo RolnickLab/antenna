@@ -162,6 +162,7 @@ export enum STRING {
   /* OTHER */
   ALGORITHMS,
   CLOSE,
+  COLUMNS,
   CONNECTED,
   CONNECTING,
   ID_APPLIED,
@@ -175,6 +176,7 @@ export enum STRING {
   REJECT_ID,
   REJECT_ID_SHORT,
   SELECT_COLUMNS,
+  RESULTS,
   STAGES,
   SUMMARY,
   UNKNOWN,
@@ -339,13 +341,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
-  [STRING.TAB_ITEM_GALLERY]: 'Gallery',
+  [STRING.TAB_ITEM_GALLERY]: 'Gallery view',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
   [STRING.TAB_ITEM_PIPELINES]: 'Pipelines',
   [STRING.TAB_ITEM_SITES]: 'Sites',
   [STRING.TAB_ITEM_STORAGE]: 'Storage',
   [STRING.TAB_ITEM_SUMMARY]: 'Summary',
-  [STRING.TAB_ITEM_TABLE]: 'Table',
+  [STRING.TAB_ITEM_TABLE]: 'Table view',
 
   /* JOB STATUS */
   [STRING.CREATED]: 'Created',
@@ -359,6 +361,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* OTHER */
   [STRING.ALGORITHMS]: 'Algorithms',
   [STRING.CLOSE]: 'Close',
+  [STRING.COLUMNS]: 'Columns',
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting',
   [STRING.ID_APPLIED]: 'ID applied',
@@ -372,6 +375,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.SELECT_COLUMNS]: 'Select columns',
+  [STRING.RESULTS]: '{{total}} results',
   [STRING.STAGES]: 'Stages',
   [STRING.SUMMARY]: 'Summary',
   [STRING.UNKNOWN]: 'Unknown',
