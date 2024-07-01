@@ -25,8 +25,8 @@ import { Agree } from './agree/agree'
 import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
-import { SuggestId } from './suggest-id/suggest-id'
 import { RejectId } from './reject-id/reject-id'
+import { SuggestId } from './suggest-id/suggest-id'
 
 export const TABS = {
   FIELDS: 'fields',
@@ -165,7 +165,7 @@ export const OccurrenceDetails = ({
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
-                label={translate(STRING.SUGGEST_ID)}
+                label={translate(STRING.SUGGEST_ID_SHORT)}
                 icon={IconType.ShieldAlert}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)

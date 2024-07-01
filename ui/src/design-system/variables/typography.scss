@@ -111,6 +111,18 @@
   text-transform: uppercase;
 }
 
+@mixin bubble-label {
+  display: inline-flex;
+  height: 30px;
+  border-radius: 15px;
+  padding: 0 12px;
+  background-color: #f2f3fe;
+  color: $color-primary-1-600;
+  font-size: 16px;
+  line-height: 30px;
+  font-weight: 600;
+}
+
 @mixin mono {
   @include paragraph-xx-small();
   font-family: monospace;

@@ -1,7 +1,6 @@
-import { IconButton } from 'design-system/components/icon-button/icon-button'
+import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import * as Popover from 'design-system/components/popover/popover'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { RefObject, useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { REJECT_OPTIONS } from './contants'
@@ -28,13 +27,13 @@ export const RejectId = ({
 
   return (
     <Popover.Root open={open} onOpenChange={setIsOpen}>
-      <Tooltip content={translate(STRING.REJECT_ID)}>
-        <div>
-          <Popover.Trigger>
-            <IconButton icon={IconType.CircleBackslash} />
-          </Popover.Trigger>
-        </div>
-      </Tooltip>
+      <Popover.Trigger>
+        <Button
+          label={translate(STRING.REJECT_ID_SHORT)}
+          icon={IconType.ToggleDown}
+          customClass={styles.triggerButton}
+        />
+      </Popover.Trigger>
       <Popover.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         align="start"

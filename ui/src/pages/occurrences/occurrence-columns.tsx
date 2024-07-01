@@ -1,7 +1,6 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { ButtonTheme } from 'design-system/components/button/button'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -207,19 +206,18 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <Tooltip content={translate(STRING.SUGGEST_ID)}>
-                <IconButton
-                  icon={IconType.ShieldAlert}
-                  onClick={() =>
-                    navigate(detailsRoute, {
-                      state: {
-                        defaultTab: TABS.IDENTIFICATION,
-                        suggestIdOpen: true,
-                      },
-                    })
-                  }
-                />
-              </Tooltip>
+              <Button
+                label={translate(STRING.SUGGEST_ID_SHORT)}
+                icon={IconType.ShieldAlert}
+                onClick={() =>
+                  navigate(detailsRoute, {
+                    state: {
+                      defaultTab: TABS.IDENTIFICATION,
+                      suggestIdOpen: true,
+                    },
+                  })
+                }
+              />
               <RejectId
                 occurrenceId={item.id}
                 occurrenceTaxonId={item.determinationTaxon.id}
