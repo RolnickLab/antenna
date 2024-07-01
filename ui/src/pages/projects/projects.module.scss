@@ -1,35 +1,7 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
 
-.infoWrapper {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 1;
-}
-
-.header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.title {
-  @include heading-4-italic();
-  color: $color-primary-1-600;
-  margin: 0;
-}
-
-.divider {
-  height: 2px;
-  margin: 24px 0;
-  background-color: $color-neutral-200;
-}
-
-.spacer {
-  height: 16px;
+.galleryContent {
+  padding-top: 32px;
 }
 
 .projectActions {
@@ -39,4 +11,10 @@
   align-items: flex-end;
   justify-content: flex-end;
   gap: 8px;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .galleryContent {
+    padding-top: 16px;
+  }
 }

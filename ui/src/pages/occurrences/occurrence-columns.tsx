@@ -1,7 +1,6 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { ButtonTheme } from 'design-system/components/button/button'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -10,6 +9,7 @@ import {
   CellTheme,
   ImageCellTheme,
   TableColumn,
+  TextAlign,
 } from 'design-system/components/table/types'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Agree } from 'pages/occurrence-details/agree/agree'
@@ -20,18 +20,17 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
-import styles from './occurrences.module.scss'
 import { useUserInfo } from 'utils/user/userInfoContext'
+import styles from './occurrences.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   projectId: string
 ) => [
   {
     id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    sortField: 'updated_at',
+    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
-      padding: '16px 32px 16px 50px',
+      textAlign: TextAlign.Center,
     },
     renderCell: (item: Occurrence, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
@@ -103,7 +102,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   },
   {
     id: 'date',
-    name: translate(STRING.FIELD_LABEL_DATE),
+    name: translate(STRING.FIELD_LABEL_DATE_OBSERVED),
     sortField: 'first_appearance_timestamp',
     renderCell: (item: Occurrence) => (
       <Link
@@ -125,7 +124,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   {
     id: 'time',
     sortField: 'first_appearance_time',
-    name: translate(STRING.FIELD_LABEL_TIME),
+    name: translate(STRING.FIELD_LABEL_TIME_OBSERVED),
     renderCell: (item: Occurrence) => (
       <Link
         to={getAppRoute({
@@ -158,6 +157,12 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     renderCell: (item: Occurrence) => (
       <BasicTableCell value={item.numDetections} />
     ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
   },
 ]
 
@@ -201,19 +206,18 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <Tooltip content={translate(STRING.SUGGEST_ID)}>
-                <IconButton
-                  icon={IconType.ShieldAlert}
-                  onClick={() =>
-                    navigate(detailsRoute, {
-                      state: {
-                        defaultTab: TABS.IDENTIFICATION,
-                        suggestIdOpen: true,
-                      },
-                    })
-                  }
-                />
-              </Tooltip>
+              <Button
+                label={translate(STRING.SUGGEST_ID_SHORT)}
+                icon={IconType.ShieldAlert}
+                onClick={() =>
+                  navigate(detailsRoute, {
+                    state: {
+                      defaultTab: TABS.IDENTIFICATION,
+                      suggestIdOpen: true,
+                    },
+                  })
+                }
+              />
               <RejectId
                 occurrenceId={item.id}
                 occurrenceTaxonId={item.determinationTaxon.id}

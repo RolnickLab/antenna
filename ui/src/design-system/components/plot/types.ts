@@ -10,4 +10,5 @@ export interface PlotProps {
   type?: 'bar' | 'scatter'
   showRangeSlider?: boolean
   categorical?: boolean
+  hovertemplate?: string
 }

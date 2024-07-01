@@ -19,8 +19,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
 ) => [
   {
     id: 'snapshot',
-    sortField: 'createdAt',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_IMAGE),
     renderCell: (item: Deployment, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
       const detailsRoute = getAppRoute({
@@ -125,7 +124,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.firstDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.firstDateLabel} />
+    ),
   },
   {
     id: 'lastDate',
@@ -134,7 +135,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.lastDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.lastDateLabel} />
+    ),
   },
   {
     id: 'actions',
