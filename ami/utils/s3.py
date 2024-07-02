@@ -2,6 +2,7 @@ import io
 import logging
 import pathlib
 import re
+import time
 import typing
 import urllib.parse
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ from django.core.cache import cache
 from mypy_boto3_s3.client import S3Client
 from mypy_boto3_s3.paginator import ListObjectsV2Paginator
 from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResource
-from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef
+from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef, PaginatorConfigTypeDef
 from rich import print
 
 logger = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ class TestConnectionResponse:
     error_message: str | None = None
 
 
-def test_connection(config: S3Config) -> TestConnectionResponse:
+def test_connection_depreciated(config: S3Config) -> TestConnectionResponse:
     """
     Test connection to S3 bucket.
 
@@ -219,23 +220,82 @@ def list_files(
         yield obj
 
 
-def list_files_paginated(
-    config: S3Config,
-    subdir: str | None = None,
-    regex_filter: str | None = None,
-) -> typing.Generator[ObjectTypeDef, typing.Any, None]:
-    """
-    List files in a bucket, with pagination to increase performance.
-    """
-    client = get_client(config)
+def make_full_prefix(config: S3Config, subdir: str | None = None) -> str:
     if subdir:
         full_prefix = urllib.parse.urljoin(config.prefix, subdir.lstrip("/")).strip("/")
     else:
         full_prefix = config.prefix.strip("/")
-    logger.info(f"Scanning {config.bucket_name}/{full_prefix}/")
+    return full_prefix
+
+
+def make_full_uri(config: S3Config, subdir: str | None = None, regex_filter: str | None = None) -> str:
+    full_prefix = make_full_prefix(config, subdir)
+    protocol = "s3://"
+    uri = urllib.parse.urljoin(protocol, full_prefix)
+    if regex_filter:
+        uri = f"{uri}?regex={urllib.parse.quote_plus(regex_filter)}"
+    return uri
+
+
+@dataclass
+class ConnectionTestResult:
+    connection_successful: bool
+    file_exists: bool
+    latency: float
+    total_time: float
+    files_scanned: int
+    error_code: str | None
+    error_message: str | None
+    first_file_key: str | None
+    success: bool
+
+
+def list_files_paginated(
+    config: S3Config,
+    subdir: str | None = None,
+    regex_filter: str | None = None,
+    max_keys: int | None = None,
+    **paginator_params: typing.Any,
+) -> typing.Generator[ObjectTypeDef, None, None]:
+    """
+    List files in a bucket, with pagination to increase performance.
+    """
+    client = get_client(config)
+    full_prefix = make_full_prefix(config, subdir)
+    full_uri = make_full_uri(config, subdir, regex_filter)
+    logger.info(f"Scanning {full_uri}")
     paginator: ListObjectsV2Paginator = client.get_paginator("list_objects_v2")
+
+    # Prepare paginator parameters
+    paginate_params: dict[str, typing.Any] = {
+        "Bucket": config.bucket_name,
+        "Prefix": full_prefix,
+    }
+
+    # Prepare pagination configuration
+    pagination_config: PaginatorConfigTypeDef = {}
+    if max_keys is not None:
+        pagination_config["MaxItems"] = max_keys
+
+    # Update with any additional paginator parameters
+    paginate_params.update(paginator_params)
+
+    # Use the Prefix parameter to filter results server-side
+    page_iterator = paginator.paginate(PaginationConfig=pagination_config, **paginate_params)
+
+    # Use a separate generator for regex filtering
+    return filter_objects(page_iterator, regex_filter)
+
+
+def filter_objects(
+    page_iterator, regex_filter: str | None = None
+) -> typing.Generator[ObjectTypeDef, typing.Any, None]:
+    """
+    Filter objects based on regex pattern and yield matching objects.
+    """
     regex = re.compile(str(regex_filter)) if regex_filter else None
-    for page in paginator.paginate(Bucket=config.bucket_name, Prefix=full_prefix):
+
+    for page in page_iterator:
         if "Contents" in page:
             for obj in page["Contents"]:
                 assert "Key" in obj, f"Key is missing from object: {obj}"
@@ -243,13 +303,72 @@ def list_files_paginated(
                     logger.debug(obj["Key"] + " is skipped because it is a folder")
                     continue
                 if regex and not regex.match(obj["Key"]):
-                    # @TODO can we use JMESPath to filter and return a whole page?
                     logger.debug(obj["Key"] + " is skipped by regex filter")
                     continue
                 logger.debug(f"Yielding {obj['Key']}")
                 yield obj
         else:
             logger.debug("No Contents in page")
+
+
+def test_connection(
+    config: S3Config, subdir: str | None = None, regex_filter: str | None = None
+) -> ConnectionTestResult:
+    """
+    Test the connection and return detailed statistics about the operation.
+    """
+    start_time = time.time()
+    latency = None
+    files_scanned = 0
+    first_file_key = None
+    error_message = None
+
+    try:
+        # Determine max_keys based on whether a regex_filter is provided
+        max_keys = 1 if not regex_filter else None
+
+        # Use list_files_paginated with appropriate max_keys
+        file_generator = list_files_paginated(config, subdir, regex_filter, max_keys=max_keys)
+
+        # Measure latency to first response
+        first_response_time = time.time()
+        latency = first_response_time - start_time
+
+        # Scan through the generator
+        for file in file_generator:
+            files_scanned += 1
+            if first_file_key is None and "Key" in file:
+                first_file_key = file["Key"]
+            if not regex_filter:
+                break  # If no regex, we only need the first file
+
+        connection_successful = True
+        file_exists = files_scanned > 0
+
+    except Exception as e:
+        connection_successful = False
+        file_exists = False
+        error_message = str(e)
+        logger.error(f"Error testing connection: {error_message}")
+
+    if connection_successful and (regex_filter and files_scanned > 0) or (not regex_filter and file_exists):
+        success = True
+    else:
+        success = False
+
+    total_time = time.time() - start_time
+
+    return ConnectionTestResult(
+        connection_successful=connection_successful,
+        file_exists=file_exists,
+        latency=latency if latency is not None else total_time,
+        total_time=total_time,
+        files_scanned=files_scanned,
+        error_message=error_message,
+        error_code=None,
+        first_file_key=first_file_key,
+        success=success,
+    )
 
 
 def read_file(config: S3Config, key: str) -> bytes:
