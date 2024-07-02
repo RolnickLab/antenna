@@ -3,7 +3,7 @@ import { IconType } from 'design-system/components/icon/icon'
 import * as Popover from 'design-system/components/popover/popover'
 import { RefObject, useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { REJECT_OPTIONS } from './contants'
+import { REJECT_OPTIONS } from './constants'
 import { RejectIdButton } from './reject-id-button'
 import styles from './reject-id.module.scss'
 
