@@ -11,7 +11,7 @@ import { ProjectGallery } from './project-gallery'
 import styles from './projects.module.scss'
 
 export const Projects = () => {
-  const { pagination, setPage } = usePagination({ perPage: 24 })
+  const { pagination, setPage } = usePagination()
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({ pagination })
   const canCreate = userPermissions?.includes(UserPermission.Create)
