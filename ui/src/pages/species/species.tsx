@@ -50,6 +50,7 @@ export const Species = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        showAppliedFilters
       >
         <ToggleGroup
           items={[

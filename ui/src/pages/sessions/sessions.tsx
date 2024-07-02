@@ -57,6 +57,7 @@ export const Sessions = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        showAppliedFilters
       >
         <ToggleGroup
           items={[

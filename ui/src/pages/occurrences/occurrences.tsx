@@ -66,6 +66,7 @@ export const Occurrences = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        showAppliedFilters
       >
         <ToggleGroup
           items={[
