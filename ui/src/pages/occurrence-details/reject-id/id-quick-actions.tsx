@@ -24,12 +24,10 @@ export const IdQuickActions = ({
   const sections = [
     {
       title: translate(STRING.APPLY_ID),
-      options: [occurrenceTaxon, ...occurrenceTaxon.ranks].map(
-        ({ id, rank }) => ({
-          label: `${translate(STRING.APPLY_ID_SHORT)} ${rank.toLowerCase()}`,
-          value: id,
-        })
-      ),
+      options: [...occurrenceTaxon.ranks].reverse().map(({ id, rank }) => ({
+        label: `${translate(STRING.APPLY_ID_SHORT)} ${rank.toLowerCase()}`,
+        value: id,
+      })),
     },
     { title: translate(STRING.REJECT_ID), options: REJECT_OPTIONS },
   ]
