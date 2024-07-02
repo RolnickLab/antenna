@@ -1,6 +1,7 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { ButtonTheme } from 'design-system/components/button/button'
+import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -14,7 +15,6 @@ import {
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
-
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -207,18 +207,19 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <Button
-                label={translate(STRING.SUGGEST_ID_SHORT)}
-                icon={IconType.ShieldAlert}
-                onClick={() =>
-                  navigate(detailsRoute, {
-                    state: {
-                      defaultTab: TABS.IDENTIFICATION,
-                      suggestIdOpen: true,
-                    },
-                  })
-                }
-              />
+              <Tooltip content={translate(STRING.SUGGEST_ID)}>
+                <IconButton
+                  icon={IconType.ShieldAlert}
+                  onClick={() =>
+                    navigate(detailsRoute, {
+                      state: {
+                        defaultTab: TABS.IDENTIFICATION,
+                        suggestIdOpen: true,
+                      },
+                    })
+                  }
+                />
+              </Tooltip>
               <IdQuickActions
                 occurrenceId={item.id}
                 occurrenceTaxon={item.determinationTaxon}

@@ -165,7 +165,7 @@ export const OccurrenceDetails = ({
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
-                label={translate(STRING.SUGGEST_ID_SHORT)}
+                label={translate(STRING.SUGGEST_ID)}
                 icon={IconType.ShieldAlert}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
