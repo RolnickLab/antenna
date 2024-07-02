@@ -1,4 +1,3 @@
-import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -84,7 +83,6 @@ export const Occurrences = () => {
           value={selectedView}
           onValueChange={setSelectedView}
         />
-        <FilterSettings />
         <ColumnSettings
           columns={columns(projectId as string)}
           columnSettings={columnSettings}

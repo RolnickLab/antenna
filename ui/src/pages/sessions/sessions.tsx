@@ -14,7 +14,6 @@ import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
-import { FilterSettings } from '../../components/filter-settings/filter-settings'
 import { columns } from './session-columns'
 import { SessionGallery } from './session-gallery'
 import styles from './sessions.module.scss'
@@ -75,7 +74,6 @@ export const Sessions = () => {
           value={selectedView}
           onValueChange={setSelectedView}
         />
-        <FilterSettings />
         <ColumnSettings
           columns={columns(projectId as string)}
           columnSettings={columnSettings}
