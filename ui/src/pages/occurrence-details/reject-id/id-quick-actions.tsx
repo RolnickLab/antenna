@@ -49,22 +49,28 @@ export const IdQuickActions = ({
         container={containerRef?.current ?? undefined}
       >
         <div className={styles.wrapper}>
-          {sections.map((section, index) => (
-            <div key={index} className={styles.section}>
-              <span className={styles.title}>{section.title}</span>
-              <div className={styles.options}>
-                {section.options.map((option) => (
-                  <IdButton
-                    key={option.value}
-                    occurrenceId={occurrenceId}
-                    applied={occurrenceTaxon.id === option.value}
-                    label={option.label}
-                    value={option.value}
-                  />
-                ))}
+          {sections.map((section, index) => {
+            if (!section.options.length) {
+              return null
+            }
+
+            return (
+              <div key={index} className={styles.section}>
+                <span className={styles.title}>{section.title}</span>
+                <div className={styles.options}>
+                  {section.options.map((option) => (
+                    <IdButton
+                      key={option.value}
+                      occurrenceId={occurrenceId}
+                      applied={occurrenceTaxon.id === option.value}
+                      label={option.label}
+                      value={option.value}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </Popover.Content>
     </Popover.Root>
