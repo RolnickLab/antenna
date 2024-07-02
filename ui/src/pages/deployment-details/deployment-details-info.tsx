@@ -3,7 +3,7 @@ import { DeploymentDetails } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
-import { InputValue } from 'design-system/components/input/input'
+import { InputContent, InputValue } from 'design-system/components/input/input'
 import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-map'
 import { MarkerPosition } from 'design-system/map/types'
 import { useMemo } from 'react'
@@ -71,11 +71,11 @@ export const DeploymentDetailsInfo = ({
           <FormRow>
             <InputValue
               label={translate(STRING.FIELD_LABEL_LATITUDE)}
-              value={deployment.latitude}
+              value={`${deployment.latitude}`}
             />
             <InputValue
               label={translate(STRING.FIELD_LABEL_LONGITUDE)}
-              value={deployment.longitude}
+              value={`${deployment.longitude}`}
             />
           </FormRow>
         </FormSection>
@@ -91,14 +91,16 @@ export const DeploymentDetailsInfo = ({
               value={deployment.numImages}
             />
           </FormRow>
-          {deployment.exampleCaptures.length > 0 && (
-            <div className={styles.section}>
-              <ImageCarousel
-                images={deployment.exampleCaptures}
-                size={{ width: '100%', ratio: 16 / 9 }}
-              />
-            </div>
-          )}
+          <InputContent label={translate(STRING.FIELD_LABEL_SAMPLE_CAPTURES)}>
+            {deployment.exampleCaptures.length > 0 && (
+              <div className={styles.section}>
+                <ImageCarousel
+                  images={deployment.exampleCaptures}
+                  size={{ width: '100%', ratio: 16 / 9 }}
+                />
+              </div>
+            )}
+          </InputContent>
         </FormSection>
       </div>
     </>

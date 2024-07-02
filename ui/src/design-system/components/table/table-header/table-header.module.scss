@@ -3,11 +3,10 @@
 @import 'src/design-system/variables/variables.scss';
 
 .tableHeader {
-  all: unset;
-  display: table-cell;
   white-space: nowrap;
   vertical-align: middle;
   border-bottom: 2px solid $color-neutral-200;
+  background-color: $color-neutral-50;
 
   &.active {
     border-color: $color-neutral-400;

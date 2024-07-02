@@ -133,6 +133,7 @@ export class OccurrenceDetails extends Occurrence {
       label: label,
       timeLabel: getFormatedTimeString({
         date: new Date(detection.timestamp),
+        options: { second: true },
       }),
     }
   }

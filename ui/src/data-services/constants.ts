@@ -25,3 +25,5 @@ export const API_ROUTES = {
 export const STATUS_CODES = {
   FORBIDDEN: 403,
 }
+
+export const SUCCESS_TIMEOUT = 1000 // Reset success after 1 second

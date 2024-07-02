@@ -1,7 +1,6 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { ButtonTheme } from 'design-system/components/button/button'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -10,15 +9,18 @@ import {
   CellTheme,
   ImageCellTheme,
   TableColumn,
+  TextAlign,
 } from 'design-system/components/table/types'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
+import { RejectId } from 'pages/occurrence-details/reject-id/reject-id'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
+import { useUserInfo } from 'utils/user/userInfoContext'
 import styles from './occurrences.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
@@ -26,10 +28,9 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
 ) => [
   {
     id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    sortField: 'updated_at',
+    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
-      padding: '16px 32px 16px 50px',
+      textAlign: TextAlign.Center,
     },
     renderCell: (item: Occurrence, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
@@ -52,10 +53,18 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   },
   {
     id: 'id',
-    name: translate(STRING.FIELD_LABEL_ID),
+    name: translate(STRING.FIELD_LABEL_TAXON),
     sortField: 'determination__name',
     renderCell: (item: Occurrence) => (
       <TaxonCell item={item} projectId={projectId} />
+    ),
+  },
+  {
+    id: 'score',
+    name: translate(STRING.FIELD_LABEL_SCORE),
+    sortField: 'determination_score',
+    renderCell: (item: Occurrence) => (
+      <ScoreCell item={item} projectId={projectId} />
     ),
   },
   {
@@ -93,7 +102,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   },
   {
     id: 'date',
-    name: translate(STRING.FIELD_LABEL_DATE),
+    name: translate(STRING.FIELD_LABEL_DATE_OBSERVED),
     sortField: 'first_appearance_timestamp',
     renderCell: (item: Occurrence) => (
       <Link
@@ -115,7 +124,7 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
   {
     id: 'time',
     sortField: 'first_appearance_time',
-    name: translate(STRING.FIELD_LABEL_TIME),
+    name: translate(STRING.FIELD_LABEL_TIME_OBSERVED),
     renderCell: (item: Occurrence) => (
       <Link
         to={getAppRoute({
@@ -150,30 +159,78 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     ),
   },
   {
-    id: 'score',
-    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
-    sortField: 'determination_score',
-    renderCell: (item: Occurrence) => (
-      // This should always appear as a float with 2 decimal places, even if 1.00
-      <BasicTableCell
-        value={item.determinationScore.toFixed(2)}
-        style={{ textAlign: 'right' }}
-      />
-    ),
-  },
-  {
-    id: 'created_at',
+    id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Occurrence) => (
-      <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
-        <BasicTableCell value={item.createdAtLabel} />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
   },
 ]
 
 const TaxonCell = ({
+  item,
+  projectId,
+}: {
+  item: Occurrence
+  projectId: string
+}) => {
+  const { userInfo } = useUserInfo()
+  const navigate = useNavigate()
+  const detailsRoute = getAppRoute({
+    to: APP_ROUTES.OCCURRENCE_DETAILS({
+      projectId,
+      occurrenceId: item.id,
+    }),
+    keepSearchParams: true,
+  })
+  const canUpdate = item.userPermissions.includes(UserPermission.Update)
+  const agreed = userInfo?.id
+    ? userInfo.id === item.determinationVerifiedBy?.id
+    : false
+
+  return (
+    <div className={styles.taxonCell}>
+      <BasicTableCell>
+        <div className={styles.taxonCellContent}>
+          <Link to={detailsRoute}>
+            <TaxonInfo taxon={item.determinationTaxon} />
+          </Link>
+          {canUpdate && (
+            <div className={styles.taxonActions}>
+              <Agree
+                agreed={agreed}
+                agreeWith={{
+                  identificationId: item.determinationIdentificationId,
+                  predictionId: item.determinationPredictionId,
+                }}
+                buttonTheme={ButtonTheme.Success}
+                occurrenceId={item.id}
+                taxonId={item.determinationTaxon.id}
+              />
+              <Button
+                label={translate(STRING.SUGGEST_ID_SHORT)}
+                icon={IconType.ShieldAlert}
+                onClick={() =>
+                  navigate(detailsRoute, {
+                    state: {
+                      defaultTab: TABS.IDENTIFICATION,
+                      suggestIdOpen: true,
+                    },
+                  })
+                }
+              />
+              <RejectId
+                occurrenceId={item.id}
+                occurrenceTaxonId={item.determinationTaxon.id}
+              />
+            </div>
+          )}
+        </div>
+      </BasicTableCell>
+    </div>
+  )
+}
+
+const ScoreCell = ({
   item,
   projectId,
 }: {
@@ -188,18 +245,16 @@ const TaxonCell = ({
     }),
     keepSearchParams: true,
   })
-  const canUpdate = item.userPermissions.includes(UserPermission.Update)
-  const showQuickActions = !item.determinationVerified && canUpdate
 
   return (
-    <div className={styles.taxonCell}>
+    <div className={styles.scoreCell}>
       <BasicTableCell>
-        <div className={styles.taxonCellContent}>
+        <div className={styles.scoreCellContent}>
           <Tooltip
             content={
               item.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
-                    name: item.determinationVerifiedBy as string,
+                    name: item.determinationVerifiedBy?.name,
                   })
                 : translate(STRING.MACHINE_PREDICTION_SCORE, {
                     score: item.determinationScore,
@@ -218,35 +273,9 @@ const TaxonCell = ({
               }
             />
           </Tooltip>
-          <Link to={detailsRoute}>
-            <TaxonInfo taxon={item.determinationTaxon} />
-          </Link>
-          {showQuickActions && (
-            <div className={styles.taxonActions}>
-              <Agree
-                agreeWith={{
-                  identificationId: item.determinationIdentificationId,
-                  predictionId: item.determinationPredictionId,
-                }}
-                buttonTheme={ButtonTheme.Success}
-                occurrenceId={item.id}
-                taxonId={item.determinationTaxon.id}
-              />
-              <Tooltip content={translate(STRING.SUGGEST_ID)}>
-                <IconButton
-                  icon={IconType.ShieldAlert}
-                  onClick={() =>
-                    navigate(detailsRoute, {
-                      state: {
-                        defaultTab: TABS.IDENTIFICATION,
-                        suggestIdOpen: true,
-                      },
-                    })
-                  }
-                />
-              </Tooltip>
-            </div>
-          )}
+          <span className={styles.scoreCellLabel}>
+            {item.determinationScoreLabel}
+          </span>
         </div>
       </BasicTableCell>
     </div>

@@ -22,26 +22,15 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
-  get firstAppearanceTimestamp(): string {
-    // Return the timestamp of the first image where this occurrence appeared, in ISO format
-    return this._occurrence.first_appearance_timestamp
+  get createdAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._occurrence.created_at),
+    })
   }
 
   get dateLabel(): string {
     return getFormatedDateString({
       date: new Date(this.firstAppearanceTimestamp),
-    })
-  }
-
-  get timeLabel(): string {
-    return getFormatedTimeString({
-      date: new Date(this.firstAppearanceTimestamp),
-    })
-  }
-
-  get createdAtLabel(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._occurrence.created_at),
     })
   }
 
@@ -83,16 +72,25 @@ export class Occurrence {
     return _.round(this._occurrence.determination_score, 4)
   }
 
+  get determinationScoreLabel(): string {
+    return this.determinationScore.toFixed(2)
+  }
+
   get determinationTaxon(): Taxon {
     return this._determinationTaxon
   }
 
-  get determinationVerifiedBy(): string | undefined {
-    return this._occurrence.determination_details.identification?.user?.name
-  }
-
   get determinationVerified(): boolean {
     return !!this._occurrence.determination_details.identification?.user
+  }
+
+  get determinationVerifiedBy() {
+    const verifiedBy =
+      this._occurrence.determination_details.identification?.user
+
+    return verifiedBy
+      ? { id: `${verifiedBy.id}`, name: verifiedBy.name }
+      : undefined
   }
 
   get durationLabel(): string {
@@ -101,6 +99,11 @@ export class Occurrence {
 
   get displayName(): string {
     return `${this.determinationTaxon.name} #${this.id}`
+  }
+
+  get firstAppearanceTimestamp(): string {
+    // Return the timestamp of the first image where this occurrence appeared, in ISO format
+    return this._occurrence.first_appearance_timestamp
   }
 
   get id(): string {
@@ -121,6 +124,13 @@ export class Occurrence {
 
   get sessionLabel(): string {
     return this._occurrence.event.name
+  }
+
+  get timeLabel(): string {
+    return getFormatedTimeString({
+      date: new Date(this.firstAppearanceTimestamp),
+      options: { second: true },
+    })
   }
 
   get userPermissions(): UserPermission[] {

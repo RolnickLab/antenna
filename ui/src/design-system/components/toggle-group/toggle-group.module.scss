@@ -1,0 +1,48 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.root {
+  display: flex;
+  gap: 2px;
+  border: 1px solid $color-neutral-100;
+  background-color: $color-generic-white;
+  box-sizing: border-box;
+  border-radius: 6px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+
+  &[data-state='on'] {
+    background-color: $color-neutral-600;
+  }
+
+  &:hover {
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px $color-generic-black;
+  }
+}
+
+.itemWrapper {
+  &:first-child {
+    .item {
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+    }
+  }
+
+  &:last-child {
+    .item {
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+    }
+  }
+}

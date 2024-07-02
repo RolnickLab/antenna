@@ -122,9 +122,12 @@ export const CapturePicker = ({
             <CaptureRow
               key={capture.id}
               capture={{
-                details: `${capture.numDetections} ${translate(
-                  STRING.FIELD_LABEL_DETECTIONS
-                )}`,
+                details:
+                  capture.numDetections > 0
+                    ? `${capture.numDetections} ${translate(
+                        STRING.FIELD_LABEL_DETECTIONS
+                      )}`
+                    : undefined,
                 scale: capture.numDetections / detectionsMaxCount,
                 timeLabel: capture.timeLabel,
               }}

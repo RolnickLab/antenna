@@ -17,10 +17,9 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
 ) => [
   {
     id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    sortField: 'updated_at',
+    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
-      padding: '16px 32px 16px 50px',
+      textAlign: TextAlign.Center,
     },
     renderCell: (item: Session, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
@@ -32,6 +31,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
       return (
         <ImageTableCell
           images={item.exampleCaptures}
+          total={item.numImages}
           to={detailsRoute}
           theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
         />

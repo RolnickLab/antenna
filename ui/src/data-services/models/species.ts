@@ -40,4 +40,8 @@ export class Species extends Taxon {
   get score(): number {
     return this._species.best_determination_score
   }
+
+  get scoreLabel(): string {
+    return this.score.toFixed(2)
+  }
 }

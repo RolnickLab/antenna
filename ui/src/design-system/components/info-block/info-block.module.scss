@@ -23,5 +23,12 @@
 
   &.link {
     color: $color-primary-1-600;
+    font-weight: 600;
+  }
+
+  &.bubble {
+    @include bubble-label();
+    display: inline-flex;
+    margin-top: 4px;
   }
 }

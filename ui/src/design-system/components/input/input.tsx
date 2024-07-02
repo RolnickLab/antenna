@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react'
 import { Link } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
 import { IconType } from '../icon/icon'
 import { Tooltip } from '../tooltip/tooltip'
@@ -20,9 +21,11 @@ interface InputProps {
   error?: string
   label: string
   name: string
+  noArrows?: boolean
   placeholder?: string
-  value?: string | number
+  step?: number
   type?: 'text' | 'number' | 'password'
+  value?: string | number
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   onFocus?: (e: FocusEvent<HTMLInputElement>) => void
@@ -36,6 +39,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       error,
       label,
       name,
+      noArrows,
+      step = 'any',
       type: initialType,
       ...rest
     } = props
@@ -68,12 +73,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             autoComplete="on"
             className={classNames(styles.input, {
               [styles.password]: initialType === 'password',
+              [styles.noArrows]: noArrows,
             })}
             disabled={disabled}
             id={name}
             name={name}
             ref={forwardedRef}
-            step={type === 'number' ? 'any' : undefined}
+            step={type === 'number' ? step : undefined}
             type={type}
             {...rest}
           />
@@ -114,7 +120,7 @@ export const InputValue = ({
 }) => {
   const value =
     _value === undefined
-      ? 'N/A'
+      ? translate(STRING.VALUE_NOT_AVAILABLE)
       : _.isNumber(_value)
       ? _value.toLocaleString()
       : _value
