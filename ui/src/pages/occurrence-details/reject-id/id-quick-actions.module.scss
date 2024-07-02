@@ -1,0 +1,30 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.wrapper {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  min-width: 180px;
+  box-sizing: border-box;
+}
+
+.section {
+  .title {
+    display: block;
+    @include paragraph-small();
+    font-weight: 600;
+    color: $color-neutral-500;
+    margin-bottom: 16px;
+  }
+
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+.idButton {
+  justify-content: flex-start;
+}

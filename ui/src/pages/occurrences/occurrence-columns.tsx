@@ -14,7 +14,8 @@ import {
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
-import { RejectId } from 'pages/occurrence-details/reject-id/reject-id'
+
+import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -218,9 +219,9 @@ const TaxonCell = ({
                   })
                 }
               />
-              <RejectId
+              <IdQuickActions
                 occurrenceId={item.id}
-                occurrenceTaxonId={item.determinationTaxon.id}
+                occurrenceTaxon={item.determinationTaxon}
               />
             </div>
           )}

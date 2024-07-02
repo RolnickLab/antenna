@@ -25,7 +25,7 @@ import { Agree } from './agree/agree'
 import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
-import { RejectId } from './reject-id/reject-id'
+import { IdQuickActions } from './reject-id/id-quick-actions'
 import { SuggestId } from './suggest-id/suggest-id'
 
 export const TABS = {
@@ -173,9 +173,9 @@ export const OccurrenceDetails = ({
                   suggestIdInputRef?.current?.focus()
                 }}
               />
-              <RejectId
+              <IdQuickActions
                 occurrenceId={occurrence.id}
-                occurrenceTaxonId={occurrence.determinationTaxon.id}
+                occurrenceTaxon={occurrence.determinationTaxon}
                 containerRef={containerRef}
               />
             </>
