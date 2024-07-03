@@ -49,6 +49,7 @@ const Content = ({
       side={side}
       sideOffset={6}
       style={style}
+      collisionPadding={{ bottom: 64 }}
     >
       {children}
       {!hideClose && (
