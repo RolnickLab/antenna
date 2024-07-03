@@ -5,11 +5,12 @@
   display: flex;
   gap: 16px;
   padding: 20px;
-  min-width: 180px;
   box-sizing: border-box;
 }
 
 .section {
+  min-width: 120px;
+
   .title {
     display: block;
     @include paragraph-small();
