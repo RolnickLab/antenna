@@ -35,7 +35,6 @@ import RadixTrash from './assets/radix/trash.svg?react'
 import RadixUpdate from './assets/radix/update.svg?react'
 import Sessions from './assets/sessions.svg?react'
 import Settings from './assets/settings.svg?react'
-import ShieldAlert from './assets/shield-alert.svg?react'
 import ShieldCheck from './assets/shield-check.svg?react'
 import Sort from './assets/sort.svg?react'
 import Species from './assets/species.svg?react'
@@ -75,7 +74,6 @@ export enum IconType {
   RadixUpdate = 'radix-update',
   Sessions = 'sessions',
   Settings = 'settings',
-  ShieldAlert = 'shield-alert',
   ShieldCheck = 'shield-check',
   Sort = 'sort',
   Species = 'species',
@@ -127,7 +125,6 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.RadixUpdate]: RadixUpdate,
   [IconType.Sessions]: Sessions,
   [IconType.Settings]: Settings,
-  [IconType.ShieldAlert]: ShieldAlert,
   [IconType.ShieldCheck]: ShieldCheck,
   [IconType.Sort]: Sort,
   [IconType.Species]: Species,
