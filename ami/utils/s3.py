@@ -52,6 +52,14 @@ def without_trailing_slash(s: str):
     return s.rstrip("/")
 
 
+def with_leading_slash(s: str):
+    return s if s.startswith("/") else f"/{s}"
+
+
+def without_leading_slash(s: str):
+    return s.lstrip("/")
+
+
 def split_uri(s3_uri: str):
     """
     Split S3 URI into bucket and prefix
@@ -66,6 +74,16 @@ def split_uri(s3_uri: str):
     bucket, *prefix = path.split("/")
     prefix = "/".join(prefix)
     return bucket, prefix
+
+
+def join_path(*parts: str) -> str:
+    """
+    Join a list of strings so that there is a single slash between each part,
+    a trailing slash at the end, and a leading slash at the beginning.
+    """
+    parts = tuple(str(p).strip("/") for p in parts)
+    path = "/".join(parts)
+    return f"/{path}/"
 
 
 def get_session(config: S3Config) -> boto3.session.Session:
@@ -193,15 +211,15 @@ def count_files_paginated(config: S3Config) -> int:
 
 
 def list_files(
-    config: S3Config, limit: int | None = 100000, subdir: str | None = None, regex_filter: str | None = None
+    config: S3Config,
+    limit: int | None = 100000,
+    subdir: str | None = None,
+    regex_filter: str | None = None,
 ) -> typing.Generator[ObjectSummary, typing.Any, None]:
     # @TODO raise a warning about potential cost for large buckets
     bucket = get_bucket(config)
-    if subdir:
-        full_prefix = urllib.parse.urljoin(config.prefix, subdir.lstrip("/")).strip("/")
-    else:
-        full_prefix = config.prefix.strip("/")
-    logger.info(f"Scanning {bucket.name}/{full_prefix}/")
+    full_prefix = make_full_prefix(config, subdir)
+    logger.debug(f"Scanning {make_full_prefix_uri(config, subdir, regex_filter)}")
     q = bucket.objects.filter(Prefix=full_prefix)
     if limit:
         objects = q.limit(limit).all()
@@ -220,21 +238,67 @@ def list_files(
         yield obj
 
 
-def make_full_prefix(config: S3Config, subdir: str | None = None) -> str:
-    if subdir:
-        full_prefix = urllib.parse.urljoin(config.prefix, subdir.lstrip("/")).strip("/")
-    else:
-        full_prefix = config.prefix.strip("/")
+def make_full_prefix(
+    config: S3Config, subdir: str | None = None, with_bucket: bool = False, leading_slash: bool = False
+) -> str:
+    full_prefix = pathlib.Path(config.prefix, subdir or "").as_posix()
+    if with_bucket:
+        full_prefix = pathlib.Path(config.bucket_name, full_prefix).as_posix()
+    if leading_slash:
+        full_prefix = with_leading_slash(full_prefix)
+    full_prefix = with_trailing_slash(full_prefix)
     return full_prefix
 
 
-def make_full_uri(config: S3Config, subdir: str | None = None, regex_filter: str | None = None) -> str:
-    full_prefix = make_full_prefix(config, subdir)
-    protocol = "s3://"
-    uri = urllib.parse.urljoin(protocol, full_prefix)
+def key_with_prefix(config: S3Config, key: str, subdir: str | None = None, leading_slash: bool = False) -> str:
+    """
+    Constructs the full key with prefix and subdir for an S3 object.
+    Supports checking if the prefix and subdir are already included in the key.
+
+    Args:
+        config (S3Config): The S3 configuration object.
+        key (str): The key of the S3 object.
+        subdir (str | None, optional): The subdirectory within the S3 bucket. Defaults to None.
+        leading_slash (bool, optional): Whether to include a leading slash in the prefix. Defaults to False.
+
+    Returns:
+        str: The full key with prefix for the S3 object.
+    """
+    full_prefix = make_full_prefix(config, subdir, leading_slash=leading_slash)
+
+    key = key.lstrip("/")
+
+    # Ensure the key starts with the full prefix and does not duplicate the prefix or subdir
+    if key.startswith(full_prefix.lstrip("/")):
+        return key
+    elif subdir:
+        subdir = subdir.strip("/")
+        key = key.split(subdir, 1)[-1]
+
+    full_key = pathlib.Path(full_prefix, key.lstrip("/")).as_posix()
+
+    return full_key
+
+
+def make_full_prefix_uri(config: S3Config, subdir: str | None = None, regex_filter: str | None = None) -> str:
+    full_prefix = make_full_prefix(config, subdir, with_bucket=True, leading_slash=False)
+    uri = f"s3://{full_prefix}"
     if regex_filter:
         uri = f"{uri}?regex={urllib.parse.quote_plus(regex_filter)}"
     return uri
+
+
+def make_full_key_uri(config: S3Config, key: str, subdir: str | None = None, with_protocol: bool = True) -> str:
+    """
+    Useful when you need the full S3 URI for a key or the full path to a key that includes the bucket name.
+    """
+    key = key_with_prefix(config, key, subdir)
+    if with_protocol:
+        full_key_uri = f"s3://{pathlib.Path(config.bucket_name, key).as_posix()}"
+    else:
+        full_key_uri = f"/{pathlib.Path(config.bucket_name, key).as_posix()}"
+
+    return full_key_uri
 
 
 @dataclass
@@ -250,6 +314,32 @@ class ConnectionTestResult:
     success: bool
 
 
+def filter_objects(
+    page_iterator, regex_filter: str | None = None
+) -> typing.Generator[ObjectTypeDef, typing.Any, None]:
+    """
+    Filter objects based on regex pattern and yield matching objects.
+    """
+    regex = re.compile(str(regex_filter)) if regex_filter else None
+    logger.debug(f"Filtering objects with regex: {regex}")
+
+    for page in page_iterator:
+        if "Contents" in page:
+            for obj in page["Contents"]:
+                assert "Key" in obj, f"Key is missing from object: {obj}"
+                logger.debug(f"Found {obj['Key']}")
+                if obj["Key"].endswith("/"):
+                    logger.debug(obj["Key"] + " is skipped because it is a folder")
+                    continue
+                if regex and not regex.search(str(obj["Key"])):
+                    logger.debug(f'{obj["Key"]} is skipped by regex filter: "{regex.pattern}"')
+                    continue
+                logger.debug(f"Yielding {obj['Key']}")
+                yield obj
+        else:
+            logger.debug("No Contents in page")
+
+
 def list_files_paginated(
     config: S3Config,
     subdir: str | None = None,
@@ -262,7 +352,7 @@ def list_files_paginated(
     """
     client = get_client(config)
     full_prefix = make_full_prefix(config, subdir)
-    full_uri = make_full_uri(config, subdir, regex_filter)
+    full_uri = make_full_prefix_uri(config, subdir, regex_filter)
     logger.info(f"Scanning {full_uri}")
     paginator: ListObjectsV2Paginator = client.get_paginator("list_objects_v2")
 
@@ -285,30 +375,6 @@ def list_files_paginated(
 
     # Use a separate generator for regex filtering
     return filter_objects(page_iterator, regex_filter)
-
-
-def filter_objects(
-    page_iterator, regex_filter: str | None = None
-) -> typing.Generator[ObjectTypeDef, typing.Any, None]:
-    """
-    Filter objects based on regex pattern and yield matching objects.
-    """
-    regex = re.compile(str(regex_filter)) if regex_filter else None
-
-    for page in page_iterator:
-        if "Contents" in page:
-            for obj in page["Contents"]:
-                assert "Key" in obj, f"Key is missing from object: {obj}"
-                if obj["Key"].endswith("/"):
-                    logger.debug(obj["Key"] + " is skipped because it is a folder")
-                    continue
-                if regex and not regex.match(obj["Key"]):
-                    logger.debug(obj["Key"] + " is skipped by regex filter")
-                    continue
-                logger.debug(f"Yielding {obj['Key']}")
-                yield obj
-        else:
-            logger.debug("No Contents in page")
 
 
 def test_connection(
@@ -373,20 +439,18 @@ def test_connection(
 
 def read_file(config: S3Config, key: str) -> bytes:
     bucket = get_bucket(config)
-    if config.prefix:
-        # Use path join to ensure there are no extra or missing slashes
-        key = pathlib.Path(config.prefix, key).as_posix()
+    key = key_with_prefix(config, key)
     obj = bucket.Object(key)
+    logger.debug(f"Reading file from {make_full_key_uri(config, obj.key)}")
     return obj.get()["Body"].read()
 
 
 def write_file(config: S3Config, key: str, body: bytes):
     bucket = get_bucket(config)
-    if config.prefix:
-        # Use path join to ensure there are no extra or missing slashes
-        key = pathlib.Path(config.prefix, key).as_posix()
+    key = key_with_prefix(config, key)
     obj = bucket.Object(key)
     obj.put(Body=body)
+    logger.debug(f"Uploaded file to {make_full_key_uri(config, obj.key)}")
     return obj
 
 
@@ -431,15 +495,16 @@ def public_url(config: S3Config, key: str):
     if not config.public_base_url:
         return get_presigned_url(config, key)
     else:
-        return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
+        # return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
+        return urllib.parse.urljoin(config.public_base_url, make_full_key_uri(config, key, with_protocol=False))
 
 
-def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24 * 7):
+def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24 * 7) -> str:
     """
     Generate a presigned URL for a given key.
     """
     cache_key = f"s3_presigned_url:{config.safe_hash()}:{key}"
-    url = cache.get(cache_key)
+    url = cache.get(cache_key, default=None)
     if not url:
         logger.debug(f"Fetching new presigned URL for: {cache_key}")
         client = get_client(config)
@@ -451,7 +516,7 @@ def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24
         cache.set(cache_key, url, timeout=expires_in)
     else:
         logger.debug(f"Got cached presigned URL for: {cache_key}")
-    return url
+    return str(url)
 
 
 # Methods to resize all images under a prefix
