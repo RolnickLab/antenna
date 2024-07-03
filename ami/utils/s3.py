@@ -359,6 +359,7 @@ def test_connection(
     start_time = time.time()
     latency = None
     prefix_exists = False
+    files_checked = 0
     first_file_found = None
     error_code = None
     error_message = None
@@ -367,7 +368,8 @@ def test_connection(
 
     try:
         # Determine max_keys based on whether a regex_filter is provided
-        max_keys = 1 if not regex_filter else None
+        max_keys = 1 if not regex_filter else 10000
+        files_checked = max_keys
 
         # Use list_files_paginated with appropriate max_keys
         file_generator = list_files_paginated(config, subdir, regex_filter, max_keys=max_keys)
@@ -398,6 +400,8 @@ def test_connection(
     first_file_key = first_file_found.get("Key") if first_file_found else None
     if first_file_key:
         first_file_url = public_url(config, first_file_key)
+    else:
+        first_file_url = None
 
     result = ConnectionTestResult(
         connection_successful=connection_successful,
@@ -406,6 +410,7 @@ def test_connection(
         total_time=total_time,
         error_message=error_message,
         error_code=error_code,
+        files_checked=files_checked,
         first_file_found=first_file_url,
         full_uri=full_uri,
     )

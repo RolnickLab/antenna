@@ -21,5 +21,6 @@ class ConnectionTestResult:
     total_time: float
     error_code: str | None
     error_message: str | None
+    files_checked: int
     first_file_found: str | None
     full_uri: str | None
