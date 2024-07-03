@@ -222,6 +222,7 @@ const TaxonCell = ({
               <IdQuickActions
                 occurrenceId={item.id}
                 occurrenceTaxon={item.determinationTaxon}
+                zIndex={1}
               />
             </div>
           )}

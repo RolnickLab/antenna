@@ -173,9 +173,9 @@ export const OccurrenceDetails = ({
                 }}
               />
               <IdQuickActions
+                containerRef={containerRef}
                 occurrenceId={occurrence.id}
                 occurrenceTaxon={occurrence.determinationTaxon}
-                containerRef={containerRef}
               />
             </>
           )}

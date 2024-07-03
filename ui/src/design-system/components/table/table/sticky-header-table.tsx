@@ -41,7 +41,7 @@ export const StickyHeaderTable = ({
           {children}
         </table>
       </div>
-      <div className={styles.tableContainer}>
+      <div className={styles.tableContainer} style={{ zIndex: 2 }}>
         <table ref={tableCloneRef} className={styles.tableClone} />
       </div>
     </>

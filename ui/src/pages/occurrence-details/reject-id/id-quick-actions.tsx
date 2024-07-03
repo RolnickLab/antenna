@@ -9,15 +9,17 @@ import { IdButton } from './id-button'
 import styles from './id-quick-actions.module.scss'
 
 interface RejectIdProps {
+  containerRef?: RefObject<HTMLDivElement>
   occurrenceId: string
   occurrenceTaxon: Taxon
-  containerRef?: RefObject<HTMLDivElement>
+  zIndex?: number
 }
 
 export const IdQuickActions = ({
+  containerRef,
   occurrenceId,
   occurrenceTaxon,
-  containerRef,
+  zIndex,
 }: RejectIdProps) => {
   const [open, setIsOpen] = useState(false)
 
@@ -47,6 +49,7 @@ export const IdQuickActions = ({
         align="start"
         side="right"
         container={containerRef?.current ?? undefined}
+        style={{ zIndex }}
       >
         <div className={styles.wrapper}>
           {sections.map((section, index) => {
