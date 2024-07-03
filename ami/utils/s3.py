@@ -395,6 +395,10 @@ def test_connection(
 
     total_time = time.time() - start_time
 
+    first_file_key = first_file_found.get("Key") if first_file_found else None
+    if first_file_key:
+        first_file_url = public_url(config, first_file_key)
+
     result = ConnectionTestResult(
         connection_successful=connection_successful,
         prefix_exists=prefix_exists,
@@ -402,7 +406,7 @@ def test_connection(
         total_time=total_time,
         error_message=error_message,
         error_code=error_code,
-        first_file_found=first_file_found.get("Key") if first_file_found else None,
+        first_file_found=first_file_url,
         full_uri=full_uri,
     )
     return result
