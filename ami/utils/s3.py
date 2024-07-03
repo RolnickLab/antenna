@@ -23,6 +23,8 @@ from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResou
 from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef, PaginatorConfigTypeDef
 from rich import print
 
+from .storages import ConnectionTestResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -265,17 +267,6 @@ def make_full_key_uri(config: S3Config, key: str, subdir: str | None = None, wit
     return full_key_uri
 
 
-@dataclass
-class ConnectionTestResult:
-    connection_successful: bool
-    prefix_exists: bool
-    latency: float
-    total_time: float
-    error_code: str | None
-    error_message: str | None
-    first_file_found: str | None
-
-
 def filter_objects(
     page_iterator, regex_filter: str | None = None
 ) -> typing.Generator[ObjectTypeDef, typing.Any, None]:
@@ -364,12 +355,15 @@ def test_connection(
     """
     Test the connection and return detailed statistics about the operation.
     """
+    connection_successful = False
     start_time = time.time()
     latency = None
     prefix_exists = False
     first_file_found = None
     error_code = None
     error_message = None
+
+    full_uri = make_full_prefix_uri(config, subdir, regex_filter)
 
     try:
         # Determine max_keys based on whether a regex_filter is provided
@@ -409,6 +403,7 @@ def test_connection(
         error_message=error_message,
         error_code=error_code,
         first_file_found=first_file_found.get("Key") if first_file_found else None,
+        full_uri=full_uri,
     )
     return result
 

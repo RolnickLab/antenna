@@ -909,10 +909,12 @@ class S3StorageSource(BaseModel):
 
         return ami.utils.s3.public_url(self.config, path)
 
-    def test_connection(self):
+    def test_connection(
+        self, subdir: str | None = None, regex_filter: str | None = None
+    ) -> ami.utils.s3.ConnectionTestResult:
         """Test the connection to the S3 bucket."""
 
-        return ami.utils.s3.test_connection(self.config)
+        return ami.utils.s3.test_connection(self.config, subdir=subdir, regex_filter=regex_filter)
 
     def save(self, *args, **kwargs):
         # If public_base_url has changed, update the urls for all source images
