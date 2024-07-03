@@ -267,6 +267,7 @@ def make_full_key_uri(config: S3Config, key: str, subdir: str | None = None, wit
     return full_key_uri
 
 
+# @TODO return information about the page & files checked, even if no file match the regex or the endswith check
 def filter_objects(
     page_iterator, regex_filter: str | None = None
 ) -> typing.Generator[ObjectTypeDef, typing.Any, None]:
