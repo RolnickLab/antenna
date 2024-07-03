@@ -45,40 +45,30 @@ class TestS3(TestCase):
     def test_connection_no_files(self):
         result = s3.test_connection(self.config)
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.files_scanned, 0)
-        self.assertEqual(result.first_file_key, None)
-        self.assertFalse(result.success)
+        self.assertEqual(result.first_file_found, None)
+        self.assertEqual(result.prefix_exists, False)
 
     def test_connection_with_files(self):
-        test_key, test_val = write_random_file(self.config)
+        test_key, _test_val = write_random_file(self.config)
         result = s3.test_connection(self.config)
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.files_scanned, 1)
-        self.assertEqual(result.first_file_key, test_key)
-        self.assertTrue(result.success)
-        print(result)
+        self.assertEqual(result.first_file_found, test_key)
 
     def test_connection_with_subdir(self):
         deployment_subdir = "subdir"
         key_prefix = f"{deployment_subdir}/test"
-        test_key, test_val = write_random_file(self.config, key_prefix=key_prefix)
-        print(f"Test key: {test_key}")
+        test_key, _test_val = write_random_file(self.config, key_prefix=key_prefix)
         result = s3.test_connection(self.config)
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.files_scanned, 1)
-        self.assertEqual(result.first_file_key, test_key)
-        self.assertTrue(result.success)
-        print(result)
+        self.assertEqual(result.first_file_found, test_key)
 
-    # Test connection with regex
     def test_connection_with_files_regex(self):
+        for _ in range(5):
+            write_random_file(self.config)
         test_key, test_val = write_random_file(self.config, key_prefix="quack")
         result = s3.test_connection(self.config, regex_filter="quack_")
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.files_scanned, 1)
-        self.assertEqual(result.first_file_key, test_key)
-        self.assertTrue(result.success)
-        print(result)
+        self.assertEqual(result.first_file_found, test_key)
 
     def test_write_and_count(self):
         count = s3.count_files(self.config)

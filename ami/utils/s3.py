@@ -124,42 +124,6 @@ def get_resource(config: S3Config) -> S3ServiceResource:
     return s3
 
 
-@dataclass
-class TestConnectionResponse:
-    success: bool
-    error_code: str | None = None
-    error_message: str | None = None
-
-
-def test_connection_depreciated(config: S3Config) -> TestConnectionResponse:
-    """
-    Test connection to S3 bucket.
-
-    Returns a tuple of (success, error_message)
-
-    @TODO consider testing latency here.
-    """
-    client = get_client(config)
-    try:
-        client.list_objects_v2(
-            Bucket=config.bucket_name,
-            MaxKeys=1,
-            Prefix=config.prefix,
-        )
-    except botocore.exceptions.ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code")
-        error_message = e.response.get("Error", {}).get("Message")
-        return TestConnectionResponse(False, error_code, error_message)
-    except botocore.exceptions.EndpointConnectionError as e:
-        return TestConnectionResponse(False, "EndpointConnectionError", str(e))
-    except botocore.exceptions.BotoCoreError as e:
-        return TestConnectionResponse(False, "BotoCoreError", str(e))
-    except Exception as e:
-        raise e
-    else:
-        return TestConnectionResponse(True)
-
-
 def list_buckets(config: S3Config) -> list[BucketTypeDef]:
     s3 = get_client(config)
     return s3.list_buckets().get("Buckets", [])
@@ -304,14 +268,12 @@ def make_full_key_uri(config: S3Config, key: str, subdir: str | None = None, wit
 @dataclass
 class ConnectionTestResult:
     connection_successful: bool
-    file_exists: bool
+    prefix_exists: bool
     latency: float
     total_time: float
-    files_scanned: int
     error_code: str | None
     error_message: str | None
-    first_file_key: str | None
-    success: bool
+    first_file_found: str | None
 
 
 def filter_objects(
@@ -377,6 +339,25 @@ def list_files_paginated(
     return filter_objects(page_iterator, regex_filter)
 
 
+def _handle_boto_error(e: Exception) -> tuple[str, str]:
+    """Handle different types of boto errors and return appropriate error code and message."""
+    if isinstance(e, botocore.exceptions.ClientError):
+        error_code = e.response.get("Error", {}).get("Code", "UnknownBotoError")
+        error_message = e.response.get("Error", {}).get("Message", str(e))
+    elif isinstance(e, botocore.exceptions.EndpointConnectionError):
+        error_code = "EndpointConnectionError"
+        error_message = str(e)
+    elif isinstance(e, botocore.exceptions.BotoCoreError):
+        error_code = e.__class__.__name__
+        error_message = str(e)
+    else:
+        error_code = "UnknownBotoError"
+        error_message = str(e)
+
+    logger.error(f"{error_code}: {error_message}")
+    return error_code, error_message
+
+
 def test_connection(
     config: S3Config, subdir: str | None = None, regex_filter: str | None = None
 ) -> ConnectionTestResult:
@@ -385,8 +366,9 @@ def test_connection(
     """
     start_time = time.time()
     latency = None
-    files_scanned = 0
-    first_file_key = None
+    prefix_exists = False
+    first_file_found = None
+    error_code = None
     error_message = None
 
     try:
@@ -400,41 +382,35 @@ def test_connection(
         first_response_time = time.time()
         latency = first_response_time - start_time
 
-        # Scan through the generator
-        for file in file_generator:
-            files_scanned += 1
-            if first_file_key is None and "Key" in file:
-                first_file_key = file["Key"]
-            if not regex_filter:
-                break  # If no regex, we only need the first file
+        first_file_found = next(file_generator, None)
 
         connection_successful = True
-        file_exists = files_scanned > 0
+        prefix_exists = first_file_found is not None  # In S3, a prefix only exists if there is at least one object
 
+    except (
+        botocore.exceptions.ClientError,
+        botocore.exceptions.EndpointConnectionError,
+        botocore.exceptions.BotoCoreError,
+    ) as e:
+        error_code, error_message = _handle_boto_error(e)
     except Exception as e:
-        connection_successful = False
-        file_exists = False
+        error_code = "UnknownError"
         error_message = str(e)
-        logger.error(f"Error testing connection: {error_message}")
-
-    if connection_successful and (regex_filter and files_scanned > 0) or (not regex_filter and file_exists):
-        success = True
-    else:
-        success = False
+        logger.error(f"Unknown error: {error_message}")
+        raise  # Re-raise the exception for unexpected errors
 
     total_time = time.time() - start_time
 
-    return ConnectionTestResult(
+    result = ConnectionTestResult(
         connection_successful=connection_successful,
-        file_exists=file_exists,
+        prefix_exists=prefix_exists,
         latency=latency if latency is not None else total_time,
         total_time=total_time,
-        files_scanned=files_scanned,
         error_message=error_message,
-        error_code=None,
-        first_file_key=first_file_key,
-        success=success,
+        error_code=error_code,
+        first_file_found=first_file_found.get("Key") if first_file_found else None,
     )
+    return result
 
 
 def read_file(config: S3Config, key: str) -> bytes:
