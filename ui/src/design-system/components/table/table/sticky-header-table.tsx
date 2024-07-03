@@ -32,7 +32,7 @@ export const StickyHeaderTable = ({
       // Destory the sticky header once the main table is unmounted.
       return () => sticky.destroy()
     }
-  }, [tableRef.current && tableCloneRef.current])
+  }, [tableRef.current, tableCloneRef.current, children])
 
   return (
     <>
