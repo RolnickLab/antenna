@@ -1,3 +1,4 @@
+import { AppliedFilters } from 'components/applied-filters/applied-filters'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
@@ -8,6 +9,7 @@ interface PageHeaderProps {
   subTitle: string
   isLoading?: boolean
   isFetching?: boolean
+  showAppliedFilters?: boolean
   children?: ReactNode
 }
 
@@ -16,6 +18,7 @@ export const PageHeader = ({
   subTitle,
   isLoading,
   isFetching,
+  showAppliedFilters,
   children,
 }: PageHeaderProps) => (
   <div className={styles.wrapper}>
@@ -25,6 +28,7 @@ export const PageHeader = ({
         <h2 className={styles.subTitle}>
           {isLoading ? `${translate(STRING.LOADING_DATA)}...` : subTitle}
         </h2>
+        {showAppliedFilters && <AppliedFilters />}
         {!isLoading && isFetching && <LoadingSpinner size={12} />}
       </div>
     </div>
