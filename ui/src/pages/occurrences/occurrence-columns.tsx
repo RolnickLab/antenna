@@ -203,13 +203,12 @@ const TaxonCell = ({
                   identificationId: item.determinationIdentificationId,
                   predictionId: item.determinationPredictionId,
                 }}
-                buttonTheme={ButtonTheme.Success}
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
               <Tooltip content={translate(STRING.SUGGEST_ID)}>
                 <IconButton
-                  icon={IconType.ShieldAlert}
+                  icon={IconType.RadixSearch}
                   onClick={() =>
                     navigate(detailsRoute, {
                       state: {

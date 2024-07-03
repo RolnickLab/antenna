@@ -160,13 +160,12 @@ export const OccurrenceDetails = ({
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,
                 }}
-                buttonTheme={ButtonTheme.Success}
                 occurrenceId={occurrence.id}
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
                 label={translate(STRING.SUGGEST_ID)}
-                icon={IconType.ShieldAlert}
+                icon={IconType.RadixSearch}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
