@@ -4,16 +4,18 @@ import { IconType } from 'design-system/components/icon/icon'
 import styles from './id-quick-actions.module.scss'
 
 interface IdButtonProps {
-  occurrenceId: string
   applied: boolean
+  details?: string
   label: string
+  occurrenceId: string
   value: string
 }
 
 export const IdButton = ({
-  occurrenceId,
   applied,
+  details,
   label,
+  occurrenceId,
   value,
 }: IdButtonProps) => {
   const { createIdentification, isLoading, isSuccess } =
@@ -22,6 +24,7 @@ export const IdButton = ({
   return (
     <Button
       label={label}
+      details={details}
       icon={isSuccess || applied ? IconType.RadixCheck : undefined}
       loading={isLoading}
       disabled={isSuccess || applied}
