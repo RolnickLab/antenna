@@ -1,6 +1,5 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { ButtonTheme } from 'design-system/components/button/button'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'

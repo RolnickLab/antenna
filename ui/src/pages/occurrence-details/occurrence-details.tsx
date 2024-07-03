@@ -7,7 +7,7 @@ import {
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
