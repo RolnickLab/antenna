@@ -51,7 +51,7 @@ const JobControls = ({ capture }: { capture?: Capture }) => {
 
   return (
     <div className={styles.jobControls}>
-      <div style={{ maxWidth: '100%', overflow: 'hidden' }}>
+      <div className={styles.pipelinesPickerContainer}>
         <PipelinesPicker
           value={selectedPipelineId}
           onValueChange={setSelectedPipelineId}

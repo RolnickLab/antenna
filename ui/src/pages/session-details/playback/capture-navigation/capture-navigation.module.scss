@@ -1,5 +1,6 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
 
 .buttonContainer {
   display: flex;
@@ -11,5 +12,13 @@
   span {
     @include label();
     color: $color-neutral-200;
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .buttonContainer {
+    span {
+      display: none;
+    }
   }
 }

@@ -29,36 +29,38 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   return (
     <div className={styles.wrapper}>
       <div className={styles.sidebar}>
-        {activeCaptureId && (
+        <div className={styles.sidebarContent}>
+          {activeCaptureId && (
+            <div className={styles.sidebarSection}>
+              <span className={styles.title}>Capture #{activeCaptureId}</span>
+              <CaptureDetails activeCaptureId={activeCaptureId} />
+            </div>
+          )}
           <div className={styles.sidebarSection}>
-            <span className={styles.title}>Capture #{activeCaptureId}</span>
-            <CaptureDetails activeCaptureId={activeCaptureId} />
+            <span className={styles.title}>View settings</span>
+            <ThresholdSlider />
           </div>
-        )}
-        <div className={styles.sidebarSection}>
-          <span className={styles.title}>View settings</span>
-          <ThresholdSlider />
-        </div>
-        {activeCaptureId && (
-          <div
-            className={styles.sidebarSection}
-            style={{
-              flexGrow: 1,
-              alignItems: 'flex-end',
-            }}
-          >
-            <CaptureNavigation
-              activeCaptureId={activeCaptureId}
-              captures={captures}
-              setActiveCaptureId={(captureId) => {
-                const capture = captures.find((c) => c.id === captureId)
-                if (capture) {
-                  setActiveCapture(capture)
-                }
+          {activeCaptureId && (
+            <div
+              className={styles.sidebarSection}
+              style={{
+                flexGrow: 1,
+                alignItems: 'flex-end',
               }}
-            />
-          </div>
-        )}
+            >
+              <CaptureNavigation
+                activeCaptureId={activeCaptureId}
+                captures={captures}
+                setActiveCaptureId={(captureId) => {
+                  const capture = captures.find((c) => c.id === captureId)
+                  if (capture) {
+                    setActiveCapture(capture)
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
       <div
         onMouseOver={() => setShowOverlay(true)}
