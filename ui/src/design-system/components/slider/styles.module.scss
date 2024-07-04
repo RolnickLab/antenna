@@ -70,7 +70,8 @@
   margin-top: 8px;
 }
 
-.playbackSlider {
+.scoreSlider,
+.timestampSlider {
   width: 100%;
   display: flex;
   gap: 16px;
@@ -127,6 +128,41 @@
       &.primary {
         background-color: $color-primary-2-500;
       }
+    }
+  }
+}
+
+.timestampSlider {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+
+  .labels {
+    display: flex;
+    justify-content: space-between;
+
+    .label {
+      color: $color-neutral-400;
+    }
+  }
+
+  .sliderRange {
+    background-color: $color-neutral-400;
+  }
+
+  .sliderTrack {
+    background-color: $color-neutral-400;
+  }
+
+  .sliderThumb {
+    width: 32px;
+    height: auto;
+    border-radius: 0;
+    background-color: transparent;
+    transform: translateY(calc(50% + 2px));
+
+    svg {
+      vertical-align: middle;
     }
   }
 }

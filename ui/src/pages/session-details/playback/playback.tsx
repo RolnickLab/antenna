@@ -1,6 +1,8 @@
 import { useInfiniteCaptures } from 'data-services/hooks/sessions/useInfiniteCaptures'
 import { SessionDetails } from 'data-services/models/session-details'
+import { TimestampSlider } from 'design-system/components/slider/timestamp-slider'
 import { useState } from 'react'
+import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { useThreshold } from 'utils/threshold/thresholdContext'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
@@ -70,7 +72,24 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           showOverlay={showOverlay}
         />
       </div>
-      <div className={styles.bottomBar} />
+      <div className={styles.bottomBar}>
+        <SessionSlider session={session} />
+      </div>
     </div>
+  )
+}
+
+const SessionSlider = ({ session }: { session: SessionDetails }) => {
+  const [value, setValue] = useState<number>(0)
+
+  return (
+    <TimestampSlider
+      labels={[
+        getFormatedTimeString({ date: session.endDate }),
+        getFormatedTimeString({ date: session.startDate }),
+      ]}
+      value={value}
+      onValueChange={setValue}
+    />
   )
 }
