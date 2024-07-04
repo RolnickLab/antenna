@@ -1,4 +1,5 @@
 import { useInfiniteCaptures } from 'data-services/hooks/sessions/useInfiniteCaptures'
+import { Capture } from 'data-services/models/capture'
 import { SessionDetails } from 'data-services/models/session-details'
 import { TimestampSlider } from 'design-system/components/slider/timestamp-slider'
 import { useState } from 'react'
@@ -75,23 +76,41 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         />
       </div>
       <div className={styles.bottomBar}>
-        <SessionSlider session={session} />
+        <SessionCapturesSlider
+          session={session}
+          activeCapture={activeCapture}
+        />
       </div>
     </div>
   )
 }
 
-const SessionSlider = ({ session }: { session: SessionDetails }) => {
-  const [value, setValue] = useState<number>(0)
+const SessionCapturesSlider = ({
+  session,
+  activeCapture,
+}: {
+  session: SessionDetails
+  activeCapture?: Capture
+}) => {
+  const valueLabel = activeCapture?.timeLabel
+
+  const value = activeCapture
+    ? ((activeCapture.date.getTime() - session.startDate.getTime()) /
+        (session.endDate.getTime() - session.startDate.getTime())) *
+      100
+    : 0
 
   return (
     <TimestampSlider
       labels={[
-        getFormatedTimeString({ date: session.endDate }),
         getFormatedTimeString({ date: session.startDate }),
+        getFormatedTimeString({ date: session.endDate }),
       ]}
       value={value}
-      onValueChange={setValue}
+      valueLabel={valueLabel}
+      onValueChange={() => {
+        /* TODO: Update active capture */
+      }}
     />
   )
 }

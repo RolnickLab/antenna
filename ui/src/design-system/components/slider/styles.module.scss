@@ -25,7 +25,10 @@
   height: 24px;
   padding-bottom: 28px;
   margin-bottom: 8px;
-  cursor: pointer;
+
+  &:not([data-disabled]) {
+    cursor: pointer;
+  }
 }
 
 .sliderTrack {
@@ -155,11 +158,19 @@
   }
 
   .sliderThumb {
-    width: 32px;
+    width: auto;
     height: auto;
     border-radius: 0;
     background-color: transparent;
     transform: translateY(calc(50% + 2px));
+    position: relative;
+
+    .label {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%) translateY(calc(-100% - 12px));
+    }
 
     svg {
       vertical-align: middle;

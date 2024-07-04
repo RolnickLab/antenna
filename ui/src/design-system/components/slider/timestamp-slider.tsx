@@ -5,20 +5,23 @@ import styles from './styles.module.scss'
 interface TimestampSliderProps {
   labels: string[]
   value: number
+  valueLabel?: string
   onValueChange: (value: number) => void
 }
 
 export const TimestampSlider = ({
   labels,
   value,
+  valueLabel,
   onValueChange,
 }: TimestampSliderProps) => (
   <div className={styles.timestampSlider}>
     <_Slider.Root
+      disabled
       className={styles.sliderRoot}
       min={0}
       max={100}
-      step={1}
+      step={0.01}
       value={[value]}
       onValueChange={(values) => onValueChange(values[0])}
     >
@@ -26,6 +29,7 @@ export const TimestampSlider = ({
         <_Slider.Range className={styles.sliderRange} />
       </_Slider.Track>
       <_Slider.Thumb className={styles.sliderThumb}>
+        {valueLabel && <span className={styles.label}>{valueLabel}</span>}
         <Dial />
       </_Slider.Thumb>
     </_Slider.Root>
