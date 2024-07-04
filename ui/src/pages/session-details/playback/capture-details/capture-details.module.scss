@@ -1,0 +1,10 @@
+.captureInfo {
+  display: flex;
+  gap: 16px;
+}
+
+.jobControls {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+}

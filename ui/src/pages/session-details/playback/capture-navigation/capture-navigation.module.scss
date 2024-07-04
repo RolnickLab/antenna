@@ -1,0 +1,15 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.buttonContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 16px;
+
+  span {
+    @include label();
+    color: $color-neutral-200;
+  }
+}

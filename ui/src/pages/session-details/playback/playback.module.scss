@@ -1,35 +1,36 @@
 @import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/variables.scss';
+@import 'src/design-system/variables/typography.scss';
 
 .wrapper {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.playbackFrame {
-  width: 80%;
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+  width: 300px;
+  background-color: $color-neutral-700;
+  padding: 16px;
 }
 
-.capturePicker {
-  width: 20%;
-  min-width: 320px;
+.sidebarSection {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+
+  .title {
+    display: block;
+    @include label();
+    color: $color-neutral-200;
+  }
+}
+
+.bottomBar {
+  grid-column: span 2;
   background-color: $color-neutral-800;
-  position: relative;
-}
-
-@media only screen and (max-width: $small-screen-breakpoint) {
-  .wrapper {
-    flex-direction: column;
-  }
-
-  .playbackFrame {
-    width: 100%;
-  }
-
-  .capturePicker {
-    width: 100%;
-    min-width: auto;
-    height: 240px;
-  }
+  height: 64px;
 }

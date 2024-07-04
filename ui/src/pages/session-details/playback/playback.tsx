@@ -2,23 +2,20 @@ import { useInfiniteCaptures } from 'data-services/hooks/sessions/useInfiniteCap
 import { SessionDetails } from 'data-services/models/session-details'
 import { useState } from 'react'
 import { useThreshold } from 'utils/threshold/thresholdContext'
-import { CapturePicker } from './capture-picker/capture-picker'
+import { CaptureDetails } from './capture-details/capture-details'
+import { CaptureNavigation } from './capture-navigation/capture-navigation'
 import { Frame } from './frame/frame'
-import { PlaybackControls } from './playback-controls/playback-controls'
 import styles from './playback.module.scss'
+import { ThresholdSlider } from './threshold-slider/threshold-slider'
 import { useActiveCapture, useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const { threshold } = useThreshold()
-  const {
-    captures = [],
-    fetchNextPage,
-    fetchPreviousPage,
-    isFetchingNextPage,
-    isFetchingPreviousPage,
-    hasNextPage,
-    hasPreviousPage,
-  } = useInfiniteCaptures(session.id, session.captureOffset, threshold)
+  const { captures = [] } = useInfiniteCaptures(
+    session.id,
+    session.captureOffset,
+    threshold
+  )
   const { activeCapture, setActiveCapture } = useActiveCapture(captures)
   const [showOverlay, setShowOverlay] = useState(false)
   const { activeCaptureId } = useActiveCaptureId()
@@ -29,43 +26,51 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.playbackFrame}>
-        <div
-          onMouseOver={() => setShowOverlay(true)}
-          onMouseOut={() => setShowOverlay(false)}
-        >
-          <Frame
-            src={activeCapture?.src}
-            width={activeCapture?.width ?? session.firstCapture.width}
-            height={activeCapture?.height ?? session.firstCapture.height}
-            detections={activeCapture?.detections ?? []}
-            showOverlay={showOverlay}
-          />
+      <div className={styles.sidebar}>
+        {activeCaptureId && (
+          <div className={styles.sidebarSection}>
+            <span className={styles.title}>Capture #{activeCaptureId}</span>
+            <CaptureDetails activeCaptureId={activeCaptureId} />
+          </div>
+        )}
+        <div className={styles.sidebarSection}>
+          <span className={styles.title}>View settings</span>
+          <ThresholdSlider />
         </div>
         {activeCaptureId && (
-          <PlaybackControls activeCaptureId={activeCaptureId} />
+          <div
+            className={styles.sidebarSection}
+            style={{
+              flexGrow: 1,
+              alignItems: 'flex-end',
+            }}
+          >
+            <CaptureNavigation
+              activeCaptureId={activeCaptureId}
+              captures={captures}
+              setActiveCaptureId={(captureId) => {
+                const capture = captures.find((c) => c.id === captureId)
+                if (capture) {
+                  setActiveCapture(capture)
+                }
+              }}
+            />
+          </div>
         )}
       </div>
-
-      <div className={styles.capturePicker}>
-        <CapturePicker
-          activeCaptureId={activeCapture?.id}
-          captures={captures}
-          detectionsMaxCount={session.detectionsMaxCount}
-          hasNext={hasNextPage}
-          hasPrev={hasPreviousPage}
-          isLoadingNext={isFetchingNextPage}
-          isLoadingPrev={isFetchingPreviousPage}
-          onNext={fetchNextPage}
-          onPrev={fetchPreviousPage}
-          setActiveCaptureId={(captureId) => {
-            const capture = captures.find((c) => c.id === captureId)
-            if (capture) {
-              setActiveCapture(capture)
-            }
-          }}
+      <div
+        onMouseOver={() => setShowOverlay(true)}
+        onMouseOut={() => setShowOverlay(false)}
+      >
+        <Frame
+          src={activeCapture?.src}
+          width={activeCapture?.width ?? session.firstCapture.width}
+          height={activeCapture?.height ?? session.firstCapture.height}
+          detections={activeCapture?.detections ?? []}
+          showOverlay={showOverlay}
         />
       </div>
+      <div className={styles.bottomBar} />
     </div>
   )
 }
