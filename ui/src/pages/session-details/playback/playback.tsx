@@ -1,6 +1,10 @@
 import { useInfiniteCaptures } from 'data-services/hooks/sessions/useInfiniteCaptures'
 import { Capture } from 'data-services/models/capture'
 import { SessionDetails } from 'data-services/models/session-details'
+import {
+  Checkbox,
+  CheckboxTheme,
+} from 'design-system/components/checkbox/checkbox'
 import { TimestampSlider } from 'design-system/components/slider/timestamp-slider'
 import { useState } from 'react'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
@@ -17,10 +21,10 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   const { captures = [] } = useInfiniteCaptures(
     session.id,
     session.captureOffset,
-    threshold
+    0
   )
   const { activeCapture, setActiveCapture } = useActiveCapture(captures)
-  const [showOverlay, setShowOverlay] = useState(false)
+  const [showDetections, setShowDetections] = useState(true)
   const { activeCaptureId } = useActiveCaptureId()
 
   if (!session.firstCapture) {
@@ -40,6 +44,13 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           <div className={styles.sidebarSection}>
             <span className={styles.title}>View settings</span>
             <ThresholdSlider />
+            <Checkbox
+              id="show-detections"
+              label="Show detections"
+              checked={showDetections}
+              onCheckedChange={setShowDetections}
+              theme={CheckboxTheme.Neutral}
+            />
           </div>
           {activeCaptureId && (
             <div
@@ -63,18 +74,14 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           )}
         </div>
       </div>
-      <div
-        onMouseOver={() => setShowOverlay(true)}
-        onMouseOut={() => setShowOverlay(false)}
-      >
-        <Frame
-          src={activeCapture?.src}
-          width={activeCapture?.width ?? session.firstCapture.width}
-          height={activeCapture?.height ?? session.firstCapture.height}
-          detections={activeCapture?.detections ?? []}
-          showOverlay={showOverlay}
-        />
-      </div>
+      <Frame
+        src={activeCapture?.src}
+        width={activeCapture?.width ?? session.firstCapture.width}
+        height={activeCapture?.height ?? session.firstCapture.height}
+        detections={activeCapture?.detections ?? []}
+        showDetections={showDetections}
+        threshold={threshold}
+      />
       <div className={styles.bottomBar}>
         <SessionCapturesSlider
           session={session}
@@ -109,7 +116,7 @@ const SessionCapturesSlider = ({
       value={value}
       valueLabel={valueLabel}
       onValueChange={() => {
-        /* TODO: Update active capture */
+        /* TODO: Update capture */
       }}
     />
   )
