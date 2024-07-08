@@ -342,7 +342,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
-  [STRING.NAV_ITEM_JOBS]: 'Status',
+  [STRING.NAV_ITEM_JOBS]: 'Jobs',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
   [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
   [STRING.NAV_ITEM_PROJECTS]: 'Projects',
