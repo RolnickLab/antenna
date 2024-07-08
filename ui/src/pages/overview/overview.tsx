@@ -94,10 +94,18 @@ export const Overview = () => {
           <StorageSources />
         </Tabs.Content>
         <Tabs.Content value="sites">
-          <Entities collection={API_ROUTES.SITES} type="site" />
+          <Entities
+            title={translate(STRING.TAB_ITEM_SITES)}
+            collection={API_ROUTES.SITES}
+            type="site"
+          />
         </Tabs.Content>
         <Tabs.Content value="devices">
-          <Entities collection={API_ROUTES.DEVICES} type="device" />
+          <Entities
+            title={translate(STRING.TAB_ITEM_DEVICES)}
+            collection={API_ROUTES.DEVICES}
+            type="device"
+          />
         </Tabs.Content>
       </Tabs.Root>
     </>

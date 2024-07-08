@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover'
-import { ReactNode } from 'react'
+import { CSSProperties, ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import styles from './popover.module.scss'
 
@@ -32,6 +32,7 @@ const Content = ({
   container,
   hideClose,
   side,
+  style,
 }: {
   align?: 'start' | 'center' | 'end'
   ariaCloselabel: string
@@ -39,6 +40,7 @@ const Content = ({
   container?: HTMLElement
   hideClose?: boolean
   side?: 'top' | 'right' | 'bottom' | 'left'
+  style?: CSSProperties
 }) => (
   <Popover.Portal container={container}>
     <Popover.Content
@@ -46,6 +48,8 @@ const Content = ({
       align={align}
       side={side}
       sideOffset={6}
+      style={style}
+      collisionPadding={{ bottom: 64 }}
     >
       {children}
       {!hideClose && (

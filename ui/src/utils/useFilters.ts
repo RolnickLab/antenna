@@ -6,7 +6,7 @@ const AVAILABLE_FILTERS = [
     field: 'deployment',
   },
   {
-    label: 'Occurrence Deployment',
+    label: 'Occurrence deployment',
     field: 'occurrences__deployment',
   },
   {
@@ -14,7 +14,7 @@ const AVAILABLE_FILTERS = [
     field: 'event',
   },
   {
-    label: 'Occurrence Session',
+    label: 'Occurrence session',
     field: 'occurrences__event',
   },
   {
@@ -37,16 +37,18 @@ export const useFilters = () => {
 
   const isActive = filters.some((filter) => filter.value?.length)
 
-  const clearAll = () => {
-    AVAILABLE_FILTERS.forEach((filter) => {
-      searchParams.delete(filter.field)
-    })
+  const clearFilter = (field: string) => {
+    AVAILABLE_FILTERS.filter((filter) => filter.field === field).forEach(
+      (filter) => {
+        searchParams.delete(filter.field)
+      }
+    )
     setSearchParams(searchParams)
   }
 
   return {
     filters,
     isActive,
-    clearAll,
+    clearFilter,
   }
 }

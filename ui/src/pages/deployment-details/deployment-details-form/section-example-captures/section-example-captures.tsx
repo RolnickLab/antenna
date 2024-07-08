@@ -50,7 +50,7 @@ export const SectionExampleCaptures = ({
   if (!deployment.createdAt) {
     return (
       <FormSection
-        title={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
+        title={translate(STRING.FIELD_LABEL_SAMPLE_CAPTURES)}
         description={translate(STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN)}
       />
     )
@@ -62,7 +62,7 @@ export const SectionExampleCaptures = ({
 
   return (
     <FormSection
-      title={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
+      title={translate(STRING.FIELD_LABEL_SAMPLE_CAPTURES)}
       description={CAPTURE_FIELD_DESCRIPTION}
     >
       <div className={styles.collection}>

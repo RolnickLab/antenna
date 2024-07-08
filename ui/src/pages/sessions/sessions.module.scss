@@ -1,43 +1,11 @@
 @import 'src/design-system/variables/variables.scss';
 
-.infoWrapper {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  gap: 16px;
-  z-index: 1;
-}
-
-.tableContent {
-  position: relative;
-  padding: 16px 0;
-}
-
 .galleryContent {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px 0;
-}
-
-.settingsWrapper {
-  position: absolute;
-  top: 30px;
-  left: 0;
-  z-index: 1;
-  transform: rotate(90deg);
+  padding-top: 32px;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .tableContent,
   .galleryContent {
-    padding: 0;
-  }
-
-  .settingsWrapper {
-    top: 14px;
+    padding-top: 16px;
   }
 }

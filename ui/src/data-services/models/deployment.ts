@@ -1,3 +1,4 @@
+import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
 
@@ -60,12 +61,14 @@ export class Deployment {
     return this._deployment.taxa_count
   }
 
-  get firstDate(): number {
-    return this._deployment.first_date
+  get firstDateLabel(): string {
+    return getFormatedDateString({
+      date: new Date(this._deployment.first_date),
+    })
   }
 
-  get lastDate(): number {
-    return this._deployment.last_date
+  get lastDateLabel(): string {
+    return getFormatedDateString({ date: new Date(this._deployment.last_date) })
   }
 
   get dataSourceDetails(): {

@@ -4,6 +4,7 @@ import { useRef } from 'react'
 import { TableHeader } from '../table-header/table-header'
 import tableHeaderStyles from '../table-header/table-header.module.scss'
 import { TableColumn, TableSortSettings } from '../types'
+import { StickyHeaderTable } from './sticky-header-table'
 import styles from './table.module.scss'
 import { useScrollFader } from './useScrollFader'
 
@@ -31,11 +32,11 @@ export const Table = <T extends { id: string }>({
   sortSettings,
   onSortSettingsChange,
 }: TableProps<T>) => {
-  const tableWrapperRef = useRef<HTMLDivElement>(null)
-  const showScrollFader = useScrollFader(tableWrapperRef, [
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+  const showScrollFader = useScrollFader(tableContainerRef, [
     items,
     columns,
-    tableWrapperRef.current,
+    tableContainerRef.current,
   ])
 
   const onSortClick = (column: TableColumn<T>) => {
@@ -59,41 +60,39 @@ export const Table = <T extends { id: string }>({
         [styles.white]: backgroundTheme === TableBackgroundTheme.White,
       })}
     >
-      <div ref={tableWrapperRef} className={styles.tableWrapper}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <TableHeader
-                  key={column.id}
-                  column={column}
-                  sortable={sortable}
-                  sortSettings={sortSettings}
-                  visuallyHidden={column.visuallyHidden}
-                  onSortClick={() => onSortClick(column)}
-                />
-              ))}
-              <th
-                aria-hidden="true"
-                className={tableHeaderStyles.tableHeader}
-                style={{ width: '100%' }}
+      <StickyHeaderTable tableContainerRef={tableContainerRef}>
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <TableHeader
+                key={column.id}
+                column={column}
+                sortable={sortable}
+                sortSettings={sortSettings}
+                visuallyHidden={column.visuallyHidden}
+                onSortClick={() => onSortClick(column)}
               />
-            </tr>
-          </thead>
-          <tbody className={classNames({ [styles.loading]: isLoading })}>
-            {items.map((item, rowIndex) => (
-              <tr key={item.id}>
-                {columns.map((column, columnIndex) => (
-                  <td key={column.id}>
-                    {column.renderCell(item, rowIndex, columnIndex)}
-                  </td>
-                ))}
-                <td aria-hidden="true" />
-              </tr>
             ))}
-          </tbody>
-        </table>
-      </div>
+            <th
+              aria-hidden="true"
+              className={tableHeaderStyles.tableHeader}
+              style={{ width: '100%' }}
+            />
+          </tr>
+        </thead>
+        <tbody className={classNames({ [styles.loading]: isLoading })}>
+          {items.map((item, rowIndex) => (
+            <tr key={item.id}>
+              {columns.map((column, columnIndex) => (
+                <td key={column.id}>
+                  {column.renderCell(item, rowIndex, columnIndex)}
+                </td>
+              ))}
+              <td aria-hidden="true" />
+            </tr>
+          ))}
+        </tbody>
+      </StickyHeaderTable>
       {isLoading && (
         <div className={styles.loadingWrapper}>
           <LoadingSpinner />
@@ -103,7 +102,7 @@ export const Table = <T extends { id: string }>({
         className={classNames(styles.overflowFader, {
           [styles.visible]: showScrollFader,
         })}
-      ></div>
+      />
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import * as Portal from '@radix-ui/react-portal'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import classNames from 'classnames'
@@ -33,6 +34,8 @@ import styles from './app.module.scss'
 
 const queryClient = new QueryClient()
 
+const INTRO_CONTAINER_ID = 'intro'
+
 export const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
@@ -41,7 +44,9 @@ export const App = () => {
           <BreadcrumbContextProvider>
             <ReactQueryDevtools initialIsOpen={false} />
             <div className={styles.wrapper}>
-              <Header />
+              <div id={INTRO_CONTAINER_ID}>
+                <Header />
+              </div>
               <Routes>
                 <Route
                   path="/"
@@ -152,7 +157,9 @@ const ProjectContainer = () => {
 
   return (
     <>
-      <Menu />
+      <Portal.Root container={document.getElementById(INTRO_CONTAINER_ID)}>
+        <Menu />
+      </Portal.Root>
       <main className={styles.main}>
         <div className={styles.content}>
           <ErrorBoundary>

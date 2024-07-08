@@ -7,7 +7,7 @@ import {
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
@@ -25,8 +25,8 @@ import { Agree } from './agree/agree'
 import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
+import { IdQuickActions } from './reject-id/id-quick-actions'
 import { SuggestId } from './suggest-id/suggest-id'
-import { RejectId } from './reject-id/reject-id'
 
 export const TABS = {
   FIELDS: 'fields',
@@ -160,23 +160,22 @@ export const OccurrenceDetails = ({
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,
                 }}
-                buttonTheme={ButtonTheme.Success}
                 occurrenceId={occurrence.id}
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
                 label={translate(STRING.SUGGEST_ID)}
-                icon={IconType.ShieldAlert}
+                icon={IconType.RadixSearch}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
                   suggestIdInputRef?.current?.focus()
                 }}
               />
-              <RejectId
-                occurrenceId={occurrence.id}
-                occurrenceTaxonId={occurrence.determinationTaxon.id}
+              <IdQuickActions
                 containerRef={containerRef}
+                occurrenceId={occurrence.id}
+                occurrenceTaxon={occurrence.determinationTaxon}
               />
             </>
           )}

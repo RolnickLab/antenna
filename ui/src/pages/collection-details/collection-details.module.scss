@@ -1,25 +1,11 @@
 @import 'src/design-system/variables/variables.scss';
 
-.fetchInfoWrapper {
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
-.tableContent {
-  position: relative;
-  padding: 16px 0;
-}
-
 .galleryContent {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px 0;
+  padding-top: 32px;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .tableContent,
   .galleryContent {
-    padding: 0;
+    padding-top: 16px;
   }
 }
