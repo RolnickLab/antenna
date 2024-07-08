@@ -161,6 +161,8 @@ export enum STRING {
 
   /* OTHER */
   ALGORITHMS,
+  APPLY_ID,
+  APPLY_ID_SHORT,
   CLOSE,
   COLUMNS,
   CONNECTED,
@@ -360,6 +362,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* OTHER */
   [STRING.ALGORITHMS]: 'Algorithms',
+  [STRING.APPLY_ID]: 'Apply ID',
+  [STRING.APPLY_ID_SHORT]: 'Apply',
   [STRING.CLOSE]: 'Close',
   [STRING.COLUMNS]: 'Columns',
   [STRING.CONNECTED]: 'Connected',
