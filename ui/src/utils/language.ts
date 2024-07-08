@@ -159,6 +159,16 @@ export enum STRING {
   FAILED,
   DONE,
 
+  /* TOOLTIPS */
+  TOOLTIP_COLLECTION,
+  TOOLTIP_DEPLOYMENT,
+  TOOLTIP_DEVICE_TYPE,
+  TOOLTIP_OCCURRENCE,
+  TOOLTIP_PIPELINE,
+  TOOLTIP_SESSION,
+  TOOLTIP_SITE,
+  TOOLTIP_STORAGE,
+
   /* OTHER */
   ALGORITHMS,
   APPLY_ID,
@@ -359,6 +369,24 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REVOKED]: 'Canceled',
   [STRING.FAILED]: 'Failed',
   [STRING.DONE]: 'Done',
+
+  /* TOOLTIPS */
+  [STRING.TOOLTIP_COLLECTION]:
+    'A collection is a group of captures. A collection contains all or some captures in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
+  [STRING.TOOLTIP_DEPLOYMENT]:
+    'A deployment is defined as one monitoring station.',
+  [STRING.TOOLTIP_DEVICE_TYPE]:
+    'A device type is the type of equipment used for monitoring, for example an AMI system. One or many deployments can be connected to a device type.',
+  [STRING.TOOLTIP_OCCURRENCE]:
+    'An occurrence is a group of detections of one individual. One occurrence consists of one or many detections.',
+  [STRING.TOOLTIP_PIPELINE]:
+    'A pipeline is a set of algorithms used for processing. When a processing job is registered, a pipeline is picked. This list defines the pipeline options available.',
+  [STRING.TOOLTIP_SESSION]:
+    'A session is a fixed period of time of monitoring for one deployment. The period is typically one night.',
+  [STRING.TOOLTIP_SITE]:
+    'A site is a physical place where monitoring is taking place. One or many deployments can be connected to a site.',
+  [STRING.TOOLTIP_STORAGE]:
+    'A storage is a place where captures are kept, for example a S3 bucket. One or many deployments can be connected to a storage.',
 
   /* OTHER */
   [STRING.ALGORITHMS]: 'Algorithms',

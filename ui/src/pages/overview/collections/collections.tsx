@@ -38,6 +38,7 @@ export const Collections = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_COLLECTION)}
       >
         <NewEntityDialog
           collection={API_ROUTES.COLLECTIONS}

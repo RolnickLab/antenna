@@ -94,6 +94,7 @@ export const Overview = () => {
             title={translate(STRING.TAB_ITEM_STORAGE)}
             collection={API_ROUTES.STORAGE}
             type="storage"
+            tooltip={translate(STRING.TOOLTIP_STORAGE)}
           />
         </Tabs.Content>
         <Tabs.Content value="sites">
@@ -101,6 +102,7 @@ export const Overview = () => {
             title={translate(STRING.TAB_ITEM_SITES)}
             collection={API_ROUTES.SITES}
             type="site"
+            tooltip={translate(STRING.TOOLTIP_SITE)}
           />
         </Tabs.Content>
         <Tabs.Content value="devices">
@@ -108,6 +110,7 @@ export const Overview = () => {
             title={translate(STRING.TAB_ITEM_DEVICES)}
             collection={API_ROUTES.DEVICES}
             type="device"
+            tooltip={translate(STRING.TOOLTIP_DEVICE_TYPE)}
           />
         </Tabs.Content>
       </Tabs.Root>
