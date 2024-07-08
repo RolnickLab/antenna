@@ -119,7 +119,7 @@ export const InputValue = ({
   to?: string
 }) => {
   const value =
-    _value === undefined
+    _value === undefined || _value === ''
       ? translate(STRING.VALUE_NOT_AVAILABLE)
       : _.isNumber(_value)
       ? _value.toLocaleString()
@@ -132,7 +132,7 @@ export const InputValue = ({
           {value}
         </Link>
       ) : (
-        <span className={styles.value}>{value}</span>
+        <span className={styles.value}>{value ?? STRING}</span>
       )}
     </InputContent>
   )

@@ -10,10 +10,21 @@ export const useSyncStorage = () => {
   const queryClient = useQueryClient()
 
   const { mutateAsync, isLoading, isSuccess, error } = useMutation({
-    mutationFn: (id: string) =>
-      axios.post(`${API_URL}/${API_ROUTES.STORAGE}/${id}/test/`, undefined, {
-        headers: getAuthHeader(user),
-      }),
+    mutationFn: (params: {
+      id: string
+      subDir?: string
+      regexFilter?: string
+    }) =>
+      axios.post<{ full_uri: string }>(
+        `${API_URL}/${API_ROUTES.STORAGE}/${params.id}/test/`,
+        {
+          subdir: params.subDir,
+          regexFilter: params.regexFilter,
+        },
+        {
+          headers: getAuthHeader(user),
+        }
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.STORAGE])
     },

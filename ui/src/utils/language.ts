@@ -388,7 +388,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CLOSE]: 'Close',
   [STRING.COLUMNS]: 'Columns',
   [STRING.CONNECTED]: 'Connected',
-  [STRING.CONNECTING]: 'Connecting',
+  [STRING.CONNECTING]: 'Connecting...',
   [STRING.ID_APPLIED]: 'ID applied',
   [STRING.LAST_UPDATED]: 'Last updated',
   [STRING.LOADING_DATA]: 'Loading data',

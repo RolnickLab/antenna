@@ -6,24 +6,32 @@ import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/
 import { STRING, translate } from 'utils/language'
 
 export const SyncStorage = ({
-  storageId: storageId,
+  regexFilter,
+  storageId,
+  subDir,
   updatedAt,
 }: {
+  regexFilter?: string
   storageId: string
+  subDir?: string
   updatedAt?: string
 }) => {
+  const [fullUri, setFullUri] = useState<string>()
   const { syncStorage, isLoading, isSuccess, error, validationError } =
     useSyncStorage()
+
   const [lastUpdated, setLastUpdated] = useState<Date>()
 
   const update = async () => {
-    await syncStorage(storageId)
+    setFullUri(undefined)
+    const result = await syncStorage({ id: storageId, subDir, regexFilter })
     setLastUpdated(new Date())
+    setFullUri(result.data.full_uri)
   }
 
   useEffect(() => {
     update()
-  }, [storageId, updatedAt])
+  }, [storageId, subDir, regexFilter, updatedAt])
 
   const status = (() => {
     if (isSuccess) {
@@ -52,6 +60,7 @@ export const SyncStorage = ({
 
   return (
     <ConnectionStatus
+      label={fullUri}
       status={status}
       onRefreshClick={update}
       tooltip={tooltip}

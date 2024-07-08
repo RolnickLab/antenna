@@ -77,17 +77,19 @@ export const SectionSourceImages = ({
               </InputContent>
             )}
           />
-          {deployment.dataSource?.id && (
-            <SyncStorage storageId={deployment.dataSource?.id} />
-          )}
-        </FormRow>
-        <FormRow>
           <FormField
             name="dataSourceSubdir"
             control={control}
             config={config}
           />
           <FormField name="dataSourceRegex" control={control} config={config} />
+          {deployment.dataSource?.id && (
+            <SyncStorage
+              storageId={deployment.dataSource.id}
+              subDir={deployment.dataSourceSubdir}
+              regexFilter={deployment.dataSourceRegex}
+            />
+          )}
         </FormRow>
       </FormSection>
       <SectionDataSourceCaptures deployment={deployment} />

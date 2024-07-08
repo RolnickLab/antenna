@@ -29,10 +29,12 @@ const statusInfo: {
 }
 
 export const ConnectionStatus = ({
+  label,
   status,
   onRefreshClick,
   tooltip,
 }: {
+  label?: string
   status: Status
   onRefreshClick: () => void
   tooltip?: string
@@ -43,7 +45,7 @@ export const ConnectionStatus = ({
     <div className={styles.wrapper}>
       <div className={styles.titleRow}>
         <div className={styles.titleRowContent}>
-          <span>{translate(STRING.FIELD_LABEL_CONNECTION_STATUS)}</span>
+          <span>Connection URI</span>
           <div className={styles.buttonContainer}>
             <IconButton
               icon={IconType.RadixUpdate}
@@ -63,7 +65,7 @@ export const ConnectionStatus = ({
                 <Icon size={10} type={info.icon} theme={IconTheme.Dark} />
               )}
             </div>
-            <span>{info.label}</span>
+            <span>{label ?? info.label}</span>
           </div>
         </Tooltip>
       </div>
