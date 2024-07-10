@@ -5,21 +5,29 @@ import { APIValidationError } from 'data-services/types'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
+interface ResponseData {
+  connection_successful: boolean
+  error_code: number | null
+  error_message: string | null
+  files_checked: number
+  first_file_found: string | null
+  full_uri: string
+  latency: number
+  prefix_exists: boolean
+  total_time: number
+}
+
 export const useSyncStorage = () => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
-  const { mutateAsync, isLoading, isSuccess, error } = useMutation({
-    mutationFn: (params: {
-      id: string
-      subDir?: string
-      regexFilter?: string
-    }) =>
-      axios.post<{ full_uri: string }>(
+  const { data, mutateAsync, isLoading, isSuccess, error } = useMutation({
+    mutationFn: (params: { id: string; subdir?: string; regex?: string }) =>
+      axios.post<ResponseData>(
         `${API_URL}/${API_ROUTES.STORAGE}/${params.id}/test/`,
         {
-          subdir: params.subDir,
-          regexFilter: params.regexFilter,
+          ...(params.subdir ? { subdir: params.subdir } : {}),
+          ...(params.regex ? { regex_filter: params.regex } : {}),
         },
         {
           headers: getAuthHeader(user),
@@ -35,7 +43,9 @@ export const useSyncStorage = () => {
   if (error && error.response?.status === 400) {
     validationError = error.response?.data as APIValidationError
   }
+
   return {
+    data: data?.data,
     syncStorage: mutateAsync,
     isLoading,
     isSuccess,

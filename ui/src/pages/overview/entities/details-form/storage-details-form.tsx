@@ -11,7 +11,7 @@ import { StorageSource } from 'data-services/models/storage'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { Input, LockedInput } from 'design-system/components/input/input'
-import { SyncStorage } from 'pages/overview/storage/storage-actions'
+import { ConnectionStatus } from 'pages/overview/storage/connection-status'
 import { useState } from 'react'
 import {
   ControllerFieldState,
@@ -172,14 +172,14 @@ export const StorageDetailsForm = ({
             )}
           />
         </FormRow>
-        <FormRow>
-          {storage?.id && (
-            <SyncStorage
-              storageId={storage.id}
-              updatedAt={storage.updatedAtDetailed}
-            />
-          )}
-        </FormRow>
+      </FormSection>
+      <FormSection>
+        {storage?.id && (
+          <ConnectionStatus
+            storageId={storage.id}
+            updatedAt={storage.updatedAtDetailed}
+          />
+        )}
       </FormSection>
       <FormActions>
         <Button

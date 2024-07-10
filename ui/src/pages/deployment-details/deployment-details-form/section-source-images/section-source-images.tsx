@@ -14,7 +14,7 @@ import { Button } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { EntitiesPicker } from 'pages/overview/entities/entities-picker'
-import { SyncStorage } from 'pages/overview/storage/storage-actions'
+import { ConnectionStatus } from 'pages/overview/storage/connection-status'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
@@ -77,21 +77,26 @@ export const SectionSourceImages = ({
               </InputContent>
             )}
           />
+        </FormRow>
+        <FormRow>
           <FormField
             name="dataSourceSubdir"
             control={control}
             config={config}
           />
           <FormField name="dataSourceRegex" control={control} config={config} />
-          {deployment.dataSource?.id && (
-            <SyncStorage
-              storageId={deployment.dataSource.id}
-              subDir={deployment.dataSourceSubdir}
-              regexFilter={deployment.dataSourceRegex}
-            />
-          )}
         </FormRow>
       </FormSection>
+      {deployment.dataSource?.id && (
+        <FormSection>
+          <ConnectionStatus
+            storageId={deployment.dataSource.id}
+            subdir={deployment.dataSourceSubdir}
+            regex={deployment.dataSourceRegex}
+            showDetails
+          />
+        </FormSection>
+      )}
       <SectionDataSourceCaptures deployment={deployment} />
       <SectionExampleCaptures deployment={deployment} />
       <FormActions>
@@ -130,13 +135,13 @@ const SectionDataSourceCaptures = ({
           label={translate(STRING.FIELD_LABEL_TOTAL_SIZE)}
           value={deployment.dataSourceDetails.totalSizeDisplay}
         />
-        <div>
-          <InputValue
-            label={translate(STRING.FIELD_LABEL_LAST_SYNCED)}
-            value={deployment.dataSourceDetails.lastChecked}
-          />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_LAST_SYNCED)}
+          value={deployment.dataSourceDetails.lastChecked}
+        />
+        <InputContent label="Sync with data source">
           <SyncDeploymentSourceImages deploymentId={deployment.id} />
-        </div>
+        </InputContent>
       </FormRow>
     </FormSection>
   )
