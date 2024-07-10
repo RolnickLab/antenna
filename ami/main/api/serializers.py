@@ -1281,8 +1281,8 @@ class StorageSourceSerializer(DefaultSerializer):
     secret_key = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
     # endpoint_url = serializers.URLField(required=False, allow_blank=True)
     # @TODO the endpoint needs to support host names without a TLD extension like "minio:9000"
-    endpoint_url = serializers.CharField(required=False, allow_blank=True)
-    public_base_url = serializers.URLField(required=False, allow_blank=True)
+    endpoint_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    public_base_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = S3StorageSource
@@ -1296,7 +1296,6 @@ class StorageSourceSerializer(DefaultSerializer):
             "secret_key",
             "endpoint_url",
             "public_base_url",
-            "use_presigned_urls",
             "project",
             "deployments_count",
             "total_files_indexed",

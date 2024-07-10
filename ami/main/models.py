@@ -841,9 +841,6 @@ class S3StorageSource(BaseModel):
     # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
-    use_presigned_urls = models.BooleanField(
-        default=True, help_text="Uncheck this option if your image URLs are public for faster loading."
-    )
 
     deployments: models.QuerySet["Deployment"]
 
@@ -1011,7 +1008,7 @@ class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
 
     path = models.CharField(max_length=255, blank=True)
-    public_base_url = models.CharField(max_length=255, blank=True)
+    public_base_url = models.CharField(max_length=255, blank=True, null=True)
     timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
@@ -1048,11 +1045,11 @@ class SourceImage(BaseModel):
         data_source = self.deployment.data_source if self.deployment and self.deployment.data_source else None
         if (
             data_source is not None
-            and data_source.use_presigned_urls
+            and not data_source.public_base_url
             and data_source.access_key
             and data_source.secret_key
         ):
-            return ami.utils.s3.get_presigned_url(self.deployment.data_source.config, key=self.path)
+            return ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
         else:
             return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
 
@@ -1528,7 +1525,10 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    # For type hints
     classifications: models.QuerySet["Classification"]
+    source_image_id: int
+    detection_algorithm_id: int
 
     # def bbox(self):
     #     return (

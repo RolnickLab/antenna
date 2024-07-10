@@ -207,12 +207,19 @@ def list_files(
 def make_full_prefix(
     config: S3Config, subdir: str | None = None, with_bucket: bool = False, leading_slash: bool = False
 ) -> str:
-    full_prefix = pathlib.Path(config.prefix, subdir or "").as_posix()
+    full_prefix = pathlib.Path(config.prefix, subdir or "")
     if with_bucket:
-        full_prefix = pathlib.Path(config.bucket_name, full_prefix).as_posix()
+        full_prefix = pathlib.Path(config.bucket_name, full_prefix)
+
+    full_prefix = full_prefix.as_posix()
     if leading_slash:
         full_prefix = with_leading_slash(full_prefix)
     full_prefix = with_trailing_slash(full_prefix)
+
+    # Fix for empty prefix that pathlib resolves to "./" which breaks in MinIO
+    if pathlib.Path(full_prefix) == pathlib.Path():
+        full_prefix = ""
+
     return full_prefix
 
 
@@ -296,9 +303,9 @@ def filter_objects(
 
 def list_files_paginated(
     config: S3Config,
+    limit: int | None = None,
     subdir: str | None = None,
     regex_filter: str | None = None,
-    max_keys: int | None = None,
     **paginator_params: typing.Any,
 ) -> typing.Generator[ObjectTypeDef, None, None]:
     """
@@ -318,8 +325,8 @@ def list_files_paginated(
 
     # Prepare pagination configuration
     pagination_config: PaginatorConfigTypeDef = {}
-    if max_keys is not None:
-        pagination_config["MaxItems"] = max_keys
+    if limit is not None:
+        pagination_config["MaxItems"] = limit
 
     # Update with any additional paginator parameters
     paginate_params.update(paginator_params)
@@ -369,11 +376,13 @@ def test_connection(
 
     try:
         # Determine max_keys based on whether a regex_filter is provided
-        max_keys = 1 if not regex_filter else 10000
-        files_checked = max_keys
+        limit = 1 if not regex_filter else 10000
+        files_checked = limit
 
         # Use list_files_paginated with appropriate max_keys
-        file_generator = list_files_paginated(config, subdir, regex_filter, max_keys=max_keys)
+        file_generator = list_files(
+            config, limit=limit, subdir=subdir, regex_filter=regex_filter
+        )  # , max_keys=max_keys)
 
         # Measure latency to first response
         first_response_time = time.time()
@@ -398,9 +407,8 @@ def test_connection(
 
     total_time = time.time() - start_time
 
-    first_file_key = first_file_found.get("Key") if first_file_found else None
-    if first_file_key:
-        first_file_url = public_url(config, first_file_key)
+    if first_file_found and first_file_found.key:
+        first_file_url = public_url(config, first_file_found.key)
     else:
         first_file_url = None
 
