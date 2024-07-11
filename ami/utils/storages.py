@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from storages.backends.s3boto3 import S3Boto3Storage
 
+IMAGE_FILE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff", "tif"]
+
 
 class StaticRootS3Boto3Storage(S3Boto3Storage):
     location = "static"

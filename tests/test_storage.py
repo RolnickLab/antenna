@@ -1,3 +1,4 @@
+import logging
 import random
 import string
 from urllib.parse import parse_qs, urlparse
@@ -9,9 +10,11 @@ from django.test import TestCase
 
 from ami.utils import s3
 
+logger = logging.getLogger(__name__)
+
 
 def write_random_file(config: s3.S3Config, key_prefix: str = "test") -> tuple[str, bytes]:
-    test_key = f"{key_prefix}_{random.randint(0, 99999)}.txt"
+    test_key = f"{key_prefix}{random.randint(0, 99999)}.jpg"
     test_val = "".join(random.choice(string.ascii_letters) for _ in range(10)).encode("utf-8")
     obj = s3.write_file(config, key=test_key, body=test_val)
     obj.wait_until_exists()
@@ -28,7 +31,7 @@ class TestS3(TestCase):
             prefix="test_prefix",
             # public_base_url="http://minio:9001",
         )
-        client = s3.get_client(self.config)
+        client = s3.get_s3_client(self.config)
         try:
             # Create bucket if it doesn't exist
             client.create_bucket(Bucket=self.config.bucket_name)
@@ -37,38 +40,100 @@ class TestS3(TestCase):
                 raise
 
     def tearDown(self) -> None:
-        client = s3.get_client(self.config)
-        for f in s3.list_files(self.config):
-            f.delete()
-        client.delete_bucket(Bucket=self.config.bucket_name)
+        bucket = s3.get_bucket(self.config)
+        bucket.objects.all().delete()
+        bucket.object_versions.delete()
+        bucket.delete()
 
     def test_connection_no_files(self):
         result = s3.test_connection(self.config)
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.first_file_found, None)
-        self.assertEqual(result.prefix_exists, False)
+        self.assertIsNone(result.first_file_found)
+        self.assertFalse(result.prefix_exists)
 
     def test_connection_with_files(self):
-        test_key, _test_val = write_random_file(self.config)
+        test_key, _test_val = write_random_file(self.config, key_prefix="apple_")
+        num_extra_files = 5
+        for _ in range(num_extra_files):
+            write_random_file(self.config)
         result = s3.test_connection(self.config)
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.first_file_found, test_key)
+        self.assertIsNotNone(result.first_file_found)
+        self.assertTrue(result.prefix_exists)
+        self.assertEqual(result.files_checked, 1)
+        first_file_path = str(urlparse(result.first_file_found).path)
+        full_key_path = s3.make_full_key_uri(self.config, test_key, with_protocol=False)
+        self.assertEqual(first_file_path, full_key_path)
+
+    def test_list_files_with_blank_key(self):
+        """
+        For some reason, the list_files function returns nothing
+        if there is a blank key (an object without a name).
+        """
+        for _ in range(5):
+            write_random_file(self.config)
+
+        obj = s3.write_file(self.config, key="", body=b"")
+        obj.wait_until_exists()
+
+        result = s3.test_connection(self.config)
+        self.assertTrue(result.connection_successful)
+
+        issue_is_fixed = False
+
+        if issue_is_fixed:
+            self.assertEqual(result.files_checked, 1)
+            self.assertIsNotNone(result.first_file_found)
+            self.assertTrue(result.prefix_exists)
+
+        else:
+            self.assertEqual(result.files_checked, 0)
+            self.assertIsNone(result.first_file_found)
+            self.assertFalse(result.prefix_exists)
 
     def test_connection_with_subdir(self):
-        deployment_subdir = "subdir"
+        deployment_subdir = "test_subdir"
         key_prefix = f"{deployment_subdir}/test"
         test_key, _test_val = write_random_file(self.config, key_prefix=key_prefix)
         result = s3.test_connection(self.config)
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.first_file_found, test_key)
+        self.assertTrue(result.prefix_exists)
+        self.assertEqual(result.files_checked, 1)
+        self.assertIsNotNone(result.first_file_found)
+        first_file_path = str(urlparse(result.first_file_found).path)
+        full_key_path = s3.make_full_key_uri(self.config, test_key, with_protocol=False)
+        self.assertEqual(first_file_path, full_key_path)
+
+    def test_connection_with_subdir_no_match(self):
+        write_random_file(self.config)
+        result = s3.test_connection(self.config, subdir="random_subdir_3534353564")
+        self.assertTrue(result.connection_successful)
+        self.assertIsNone(result.first_file_found)
+        self.assertFalse(result.prefix_exists)
+        self.assertEqual(result.files_checked, 0)
 
     def test_connection_with_files_regex(self):
-        for _ in range(5):
-            write_random_file(self.config)
-        test_key, test_val = write_random_file(self.config, key_prefix="quack")
+        num_unmatched_files = 5
+        for _ in range(num_unmatched_files):
+            write_random_file(self.config, key_prefix="apple_")
+        test_key, test_val = write_random_file(self.config, key_prefix="quack_")
         result = s3.test_connection(self.config, regex_filter="quack_")
         self.assertTrue(result.connection_successful)
-        self.assertEqual(result.first_file_found, test_key)
+        self.assertTrue(result.prefix_exists)
+        self.assertIsNotNone(result.first_file_found)
+        self.assertEqual(result.files_checked, num_unmatched_files + 1)
+        first_file_path = str(urlparse(result.first_file_found).path)
+        full_key_path = s3.make_full_key_uri(self.config, test_key, with_protocol=False)
+        self.assertEqual(first_file_path, full_key_path)
+
+    def test_connection_with_files_regex_no_match(self):
+        num_unmatched_files = 5
+        for _ in range(num_unmatched_files):
+            write_random_file(self.config, key_prefix="apple_")
+        result = s3.test_connection(self.config, regex_filter="quack_")
+        self.assertTrue(result.connection_successful)
+        self.assertIsNone(result.first_file_found)
+        self.assertEqual(result.files_checked, num_unmatched_files)
 
     def test_write_and_count(self):
         count = s3.count_files(self.config)
