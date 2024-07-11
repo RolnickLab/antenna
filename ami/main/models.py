@@ -419,11 +419,14 @@ class Deployment(BaseModel):
             job.update_progress()
             job.save()
 
-        for obj in ami.utils.s3.list_files_paginated(
+        for obj, file_index in ami.utils.s3.list_files_paginated(
             s3_config,
             subdir=self.data_source_subdir,
             regex_filter=self.data_source_regex,
         ):
+            logger.debug(f"Processing file {file_index}: {obj}")
+            if not obj:
+                continue
             source_image = _create_source_image_for_sync(deployment, obj)
             if source_image:
                 total_files += 1
