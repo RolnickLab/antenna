@@ -78,13 +78,6 @@ export const ConnectionStatus = ({
       return data?.error_message || translate(STRING.UNKNOWN_ERROR)
     }
 
-    // Show info about sub directory
-    if (subdir || regex) {
-      if (data?.connection_successful && !data.prefix_exists) {
-        return `Connection was successful but the prefix was not recognized.`
-      }
-    }
-
     if (lastUpdated) {
       return `${translate(STRING.LAST_UPDATED)} ${getFormatedDateTimeString({
         date: lastUpdated,

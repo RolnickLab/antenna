@@ -486,7 +486,13 @@ def test_connection(
         connection_successful = True
         prefix_exists = first_file_found is not None  # In S3, a prefix only exists if there is at least one object
 
-    # Catch "NoSuchKey" error when the access key is invalid
+        if num_files_checked == 0:
+            error_code = "NoFilesFound"
+            error_message = "No files found at the specified location."
+        elif num_files_checked > 0 and first_file_found is None:
+            error_code = "NoMatchingFilesFound"
+            error_message = "No files found at the specified location that match the provided regex filter."
+
     except (
         botocore.exceptions.ClientError,
         botocore.exceptions.EndpointConnectionError,
@@ -500,6 +506,7 @@ def test_connection(
 
     total_time = time.time() - start_time
 
+    # If a file was found, get the public URL
     if first_file_found:
         assert "Key" in first_file_found, f"Key is missing from object: {first_file_found}"
         first_file_url = public_url(config, first_file_found["Key"])
