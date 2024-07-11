@@ -874,7 +874,7 @@ class S3StorageSource(BaseModel):
     def list_files(self, limit=None):
         """Recursively list files in the bucket/prefix."""
 
-        return ami.utils.s3.list_files_paginated(self.config)
+        return ami.utils.s3.list_files_paginated(self.config, limit=limit)
 
     def count_files(self):
         """Count & save the number of files in the bucket/prefix."""
@@ -887,7 +887,7 @@ class S3StorageSource(BaseModel):
     def calculate_size(self):
         """Calculate the total size and count of all files in the bucket/prefix."""
 
-        sizes = [obj["Size"] for obj in self.list_files()]  # type: ignore
+        sizes = [obj["Size"] for obj, _num_files_checked in self.list_files() if obj]  # type: ignore
         size = sum(sizes)
         count = len(sizes)
         self.total_size = size

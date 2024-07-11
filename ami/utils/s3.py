@@ -201,9 +201,9 @@ def list_files(
     limit: int | None = 100000,
     subdir: str | None = None,
     regex_filter: str | None = None,
-) -> typing.Generator[ObjectSummary, typing.Any, None]:
+) -> typing.Generator[tuple[ObjectSummary | None, int], typing.Any, None]:
     """
-    Recursively list files in a bucket, with optional limit and regex filter.
+    "Recursively" list files in a bucket, with optional limit and regex filter.
 
     Returns an ObjectSummary object.
     """
@@ -218,10 +218,13 @@ def list_files(
         objects = q.all()
     bucket_iter = objects
     regex = _compile_regex_filter(regex_filter)
-    for obj in bucket_iter:
+    num_files_checked = 0
+    for num_files_checked, obj in enumerate(bucket_iter):
+        num_files_checked += 1
         if _filter_single_key(obj.key, regex):
             logger.debug(f"Yielding {obj.key}")
-            yield obj
+            yield obj, num_files_checked
+    yield None, num_files_checked
 
 
 def list_files_paginated(
@@ -230,7 +233,7 @@ def list_files_paginated(
     subdir: str | None = None,
     regex_filter: str | None = None,
     **paginator_params: typing.Any,
-) -> typing.Generator[ObjectTypeDef, None, None]:
+) -> typing.Generator[tuple[ObjectTypeDef | None, int], typing.Any, None]:
     """
     List files in a bucket, with pagination to increase performance.
 
@@ -261,16 +264,20 @@ def list_files_paginated(
 
     regex = _compile_regex_filter(regex_filter)
 
-    for page in page_iterator:
+    num_files_checked = 0
+    for i, page in enumerate(page_iterator):
         if "Contents" in page:
             for obj in page["Contents"]:
+                num_files_checked += 1
                 assert "Key" in obj, f"Key is missing from object: {obj}"
                 logger.debug(f"Found {obj['Key']}")
                 if _filter_single_key(obj["Key"], regex):
                     logger.debug(f"Yielding {obj['Key']}")
-                    yield obj
+                    yield obj, num_files_checked
         else:
             logger.debug("No Contents in page")
+
+    yield None, num_files_checked
 
 
 def make_full_prefix(
@@ -372,7 +379,7 @@ def test_connection(
     start_time = time.time()
     latency = None
     prefix_exists = False
-    files_checked = 0
+    num_files_checked = 0
     first_file_found = None
     error_code = None
     error_message = None
@@ -382,10 +389,9 @@ def test_connection(
     try:
         # Determine max_keys based on whether a regex_filter is provided
         limit = 1 if not regex_filter else 10000
-        files_checked = limit
 
         # Use list_files_paginated with appropriate max_keys
-        file_generator = list_files(
+        file_generator = list_files_paginated(
             config, limit=limit, subdir=subdir, regex_filter=regex_filter
         )  # , max_keys=max_keys)
 
@@ -393,7 +399,7 @@ def test_connection(
         first_response_time = time.time()
         latency = first_response_time - start_time
 
-        first_file_found = next(file_generator, None)
+        first_file_found, num_files_checked = next(file_generator, (None, 0))
 
         connection_successful = True
         prefix_exists = first_file_found is not None  # In S3, a prefix only exists if there is at least one object
@@ -412,8 +418,9 @@ def test_connection(
 
     total_time = time.time() - start_time
 
-    if first_file_found and first_file_found.key:
-        first_file_url = public_url(config, first_file_found.key)
+    if first_file_found:
+        assert "Key" in first_file_found, f"Key is missing from object: {first_file_found}"
+        first_file_url = public_url(config, first_file_found["Key"])
     else:
         first_file_url = None
 
@@ -424,7 +431,7 @@ def test_connection(
         total_time=total_time,
         error_message=error_message,
         error_code=error_code,
-        files_checked=files_checked,
+        files_checked=num_files_checked,
         first_file_found=first_file_url,
         full_uri=full_uri,
     )
@@ -569,6 +576,7 @@ def test():
         for deployment in deployments:
             # print("\t\tFile Count:", count_files(deployment))
 
-            for file in list_files(config, limit=1):
-                print(file)
-                print("\t\t\tSample:", public_url(config, file.key))
+            for file, _ in list_files(config, limit=1):
+                if file:
+                    print(file)
+                    print("\t\t\tSample:", public_url(config, file.key))
