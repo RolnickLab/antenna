@@ -1,6 +1,7 @@
 import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
+import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -96,9 +97,10 @@ export const Occurrences = () => {
         <Table
           items={occurrences}
           isLoading={isLoading}
-          columns={columns(projectId as string).filter(
-            (column) => !!columnSettings[column.id]
-          )}
+          columns={columns(
+            projectId as string,
+            selectedItems.length === 0
+          ).filter((column) => !!columnSettings[column.id])}
           sortable
           sortSettings={sort}
           selectable
@@ -113,6 +115,12 @@ export const Occurrences = () => {
         </div>
       )}
       <PageFooter>
+        {selectedItems.length ? (
+          <BulkActionBar
+            selectedItems={selectedItems}
+            onClear={() => setSelectedItems([])}
+          />
+        ) : null}
         {occurrences?.length ? (
           <PaginationBar
             pagination={pagination}
