@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios, { AxiosError } from 'axios'
 import { API_ROUTES, API_URL } from 'data-services/constants'
-import { APIValidationError } from 'data-services/types'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
@@ -26,7 +25,7 @@ export const useSyncStorage = () => {
       axios.post<ResponseData>(
         `${API_URL}/${API_ROUTES.STORAGE}/${params.id}/test/`,
         {
-          ...(params.subdir ? { subdir: params.subdir } : {}),
+          ...(params.subdir !== undefined ? { subdir: params.subdir } : {}),
           ...(params.regex ? { regex_filter: params.regex } : {}),
         },
         {
@@ -41,7 +40,7 @@ export const useSyncStorage = () => {
 
   let validationError = null
   if (error && error.response?.status === 400) {
-    validationError = error.response?.data as APIValidationError
+    validationError = error.response?.data as { [key: string]: string }[]
   }
 
   return {

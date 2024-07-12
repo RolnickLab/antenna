@@ -71,7 +71,10 @@ export const ConnectionStatus = ({
   const details = (() => {
     // Show error info from request info
     if (error) {
-      return validationError?.detail || translate(STRING.UNKNOWN_ERROR)
+      if (Object.keys(validationError ?? []).includes('subdir')) {
+        return 'Please provide a valid sub directory.'
+      }
+      return translate(STRING.UNKNOWN_ERROR)
     }
 
     // Show error info from response data

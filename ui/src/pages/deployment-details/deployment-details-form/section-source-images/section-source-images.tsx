@@ -91,7 +91,7 @@ export const SectionSourceImages = ({
         {deployment.dataSource?.id && (
           <ConnectionStatus
             storageId={deployment.dataSource.id}
-            subdir={deployment.dataSourceSubdir}
+            subdir={deployment.dataSourceSubdir ?? ''}
             regex={deployment.dataSourceRegex}
             showDetails
             onConnectionChange={setIsConnected}
