@@ -1,6 +1,5 @@
 import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { ButtonTheme } from 'design-system/components/button/button'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
@@ -213,13 +212,12 @@ const TaxonCell = ({
                   identificationId: item.determinationIdentificationId,
                   predictionId: item.determinationPredictionId,
                 }}
-                buttonTheme={ButtonTheme.Success}
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
               <Tooltip content={translate(STRING.SUGGEST_ID)}>
                 <IconButton
-                  icon={IconType.ShieldAlert}
+                  icon={IconType.RadixSearch}
                   onClick={() =>
                     navigate(detailsRoute, {
                       state: {
@@ -233,6 +231,7 @@ const TaxonCell = ({
               <IdQuickActions
                 occurrenceId={item.id}
                 occurrenceTaxon={item.determinationTaxon}
+                zIndex={1}
               />
             </div>
           )}

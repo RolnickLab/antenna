@@ -9,27 +9,38 @@ import { IdButton } from './id-button'
 import styles from './id-quick-actions.module.scss'
 
 interface RejectIdProps {
+  containerRef?: RefObject<HTMLDivElement>
   occurrenceId: string
   occurrenceTaxon: Taxon
-  containerRef?: RefObject<HTMLDivElement>
+  zIndex?: number
 }
 
 export const IdQuickActions = ({
+  containerRef,
   occurrenceId,
   occurrenceTaxon,
-  containerRef,
+  zIndex,
 }: RejectIdProps) => {
   const [open, setIsOpen] = useState(false)
 
-  const sections = [
+  const sections: {
+    title: string
+    options: { label: string; details?: string; value: string }[]
+  }[] = [
     {
       title: translate(STRING.APPLY_ID),
-      options: [...occurrenceTaxon.ranks].reverse().map(({ id, rank }) => ({
-        label: `${translate(STRING.APPLY_ID_SHORT)} ${rank.toLowerCase()}`,
-        value: id,
-      })),
+      options: [...occurrenceTaxon.ranks]
+        .reverse()
+        .map(({ id, name, rank }) => ({
+          label: name,
+          details: rank,
+          value: id,
+        })),
     },
-    { title: translate(STRING.REJECT_ID), options: REJECT_OPTIONS },
+    {
+      title: translate(STRING.REJECT_ID),
+      options: REJECT_OPTIONS,
+    },
   ]
 
   useEffect(() => {
@@ -47,6 +58,7 @@ export const IdQuickActions = ({
         align="start"
         side="right"
         container={containerRef?.current ?? undefined}
+        style={{ zIndex }}
       >
         <div className={styles.wrapper}>
           {sections.map((section, index) => {
@@ -65,6 +77,7 @@ export const IdQuickActions = ({
                       applied={occurrenceTaxon.id === option.value}
                       label={option.label}
                       value={option.value}
+                      details={option.details}
                     />
                   ))}
                 </div>

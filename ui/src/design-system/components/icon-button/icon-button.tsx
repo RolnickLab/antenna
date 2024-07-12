@@ -20,6 +20,7 @@ export enum IconButtonTheme {
 }
 
 interface IconButtonProps {
+  customClass?: string
   disabled?: boolean
   icon: IconType
   iconTransform?: string
@@ -33,6 +34,7 @@ interface IconButtonProps {
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ ...props }, forwardedRef) => {
     const {
+      customClass,
       disabled,
       icon,
       iconTransform,
@@ -60,22 +62,26 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     return (
       <button
         ref={forwardedRef}
-        className={classNames(styles.iconButton, {
-          // Shape
-          [styles.square]: shape === IconButtonShape.Square,
-          [styles.round]: shape === IconButtonShape.Round,
-          [styles.roundLarge]: shape === IconButtonShape.RoundLarge,
+        className={classNames(
+          styles.iconButton,
+          {
+            // Shape
+            [styles.square]: shape === IconButtonShape.Square,
+            [styles.round]: shape === IconButtonShape.Round,
+            [styles.roundLarge]: shape === IconButtonShape.RoundLarge,
 
-          // Theme
-          [styles.neutral]: theme === IconButtonTheme.Neutral,
-          [styles.plain]: theme === IconButtonTheme.Plain,
-          [styles.primary]: theme === IconButtonTheme.Primary,
-          [styles.success]: theme === IconButtonTheme.Success,
-          [styles.error]: theme === IconButtonTheme.Error,
+            // Theme
+            [styles.neutral]: theme === IconButtonTheme.Neutral,
+            [styles.plain]: theme === IconButtonTheme.Plain,
+            [styles.primary]: theme === IconButtonTheme.Primary,
+            [styles.success]: theme === IconButtonTheme.Success,
+            [styles.error]: theme === IconButtonTheme.Error,
 
-          // Other
-          [styles.disabled]: disabled,
-        })}
+            // Other
+            [styles.disabled]: disabled,
+          },
+          customClass
+        )}
         disabled={disabled}
         onClick={(e) => {
           if (loading) {

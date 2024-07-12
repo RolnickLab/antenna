@@ -1,4 +1,3 @@
-import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
@@ -69,6 +68,7 @@ export const Occurrences = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        showAppliedFilters
       >
         <ToggleGroup
           items={[
@@ -86,7 +86,6 @@ export const Occurrences = () => {
           value={selectedView}
           onValueChange={setSelectedView}
         />
-        <FilterSettings />
         <ColumnSettings
           columns={columns(projectId as string)}
           columnSettings={columnSettings}

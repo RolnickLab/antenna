@@ -32,7 +32,7 @@ export const StickyHeaderTable = ({
       // Destory the sticky header once the main table is unmounted.
       return () => sticky.destroy()
     }
-  }, [tableRef.current && tableCloneRef.current])
+  }, [tableRef.current, tableCloneRef.current, children])
 
   return (
     <>
@@ -41,7 +41,7 @@ export const StickyHeaderTable = ({
           {children}
         </table>
       </div>
-      <div className={styles.tableContainer}>
+      <div className={styles.tableContainer} style={{ zIndex: 2 }}>
         <table ref={tableCloneRef} className={styles.tableClone} />
       </div>
     </>

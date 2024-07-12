@@ -1,4 +1,3 @@
-import { FilterSettings } from 'components/filter-settings/filter-settings'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -50,6 +49,7 @@ export const Species = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        showAppliedFilters
       >
         <ToggleGroup
           items={[
@@ -67,7 +67,6 @@ export const Species = () => {
           value={selectedView}
           onValueChange={setSelectedView}
         />
-        <FilterSettings />
       </PageHeader>
       {selectedView === 'table' && (
         <Table
