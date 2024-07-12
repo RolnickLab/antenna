@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios, { AxiosError } from 'axios'
 import { API_ROUTES, API_URL } from 'data-services/constants'
+import { APIValidationError } from 'data-services/types'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
@@ -16,7 +17,7 @@ interface ResponseData {
   total_time: number
 }
 
-export const useSyncStorage = () => {
+export const useTestStorageConnection = () => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
@@ -40,12 +41,12 @@ export const useSyncStorage = () => {
 
   let validationError = null
   if (error && error.response?.status === 400) {
-    validationError = error.response?.data as { [key: string]: string }[]
+    validationError = error.response?.data as APIValidationError
   }
 
   return {
     data: data?.data,
-    syncStorage: mutateAsync,
+    testStorageConnection: mutateAsync,
     isLoading,
     isSuccess,
     error,

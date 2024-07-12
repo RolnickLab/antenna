@@ -1,5 +1,5 @@
 import { FormRow } from 'components/form/layout/layout'
-import { useSyncStorage } from 'data-services/hooks/storage-sources/useSyncStorage'
+import { useTestStorageConnection } from 'data-services/hooks/storage-sources/useTestStorageConnection'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import * as Wizard from 'design-system/components/wizard/wizard'
@@ -25,12 +25,12 @@ export const ConnectionStatus = ({
   updatedAt?: string
   onConnectionChange?: (isConnected: boolean) => void
 }) => {
-  const { data, syncStorage, isLoading, error, validationError } =
-    useSyncStorage()
+  const { data, testStorageConnection, isLoading, error, validationError } =
+    useTestStorageConnection()
   const [lastUpdated, setLastUpdated] = useState<Date>()
 
   const update = async () => {
-    await syncStorage({ id: storageId, subdir, regex })
+    await testStorageConnection({ id: storageId, subdir, regex })
     setLastUpdated(new Date())
   }
 
@@ -71,9 +71,14 @@ export const ConnectionStatus = ({
   const details = (() => {
     // Show error info from request info
     if (error) {
-      if (Object.keys(validationError ?? []).includes('subdir')) {
+      if (validationError?.detail) {
+        return validationError.detail
+      }
+
+      if (Object.keys(error.response?.data ?? []).includes('subdir')) {
         return 'Please provide a valid sub directory.'
       }
+
       return translate(STRING.UNKNOWN_ERROR)
     }
 
