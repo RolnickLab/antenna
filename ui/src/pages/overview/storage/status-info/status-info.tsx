@@ -21,7 +21,6 @@ const statusInfo: {
 }
 
 export const StatusInfo = ({
-  label,
   status,
   tooltip,
 }: {
@@ -40,7 +39,6 @@ export const StatusInfo = ({
               <Icon size={10} type={info.icon} theme={IconTheme.Dark} />
             )}
           </div>
-          <span>{label}</span>
         </div>
       </Tooltip>
     </div>

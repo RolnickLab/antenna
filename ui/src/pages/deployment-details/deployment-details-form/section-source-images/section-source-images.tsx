@@ -86,17 +86,15 @@ export const SectionSourceImages = ({
           />
           <FormField name="dataSourceRegex" control={control} config={config} />
         </FormRow>
-      </FormSection>
-      {deployment.dataSource?.id && (
-        <FormSection>
+        {deployment.dataSource?.id && (
           <ConnectionStatus
             storageId={deployment.dataSource.id}
             subdir={deployment.dataSourceSubdir}
             regex={deployment.dataSourceRegex}
             showDetails
           />
-        </FormSection>
-      )}
+        )}
+      </FormSection>
       <SectionDataSourceCaptures deployment={deployment} />
       <SectionExampleCaptures deployment={deployment} />
       <FormActions>

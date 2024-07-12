@@ -29,11 +29,7 @@ export const Tooltip = ({
   return (
     <_Tooltip.Provider>
       <_Tooltip.Root delayDuration={delayDuration} open={open}>
-        <_Tooltip.Trigger
-          asChild
-          ref={triggerRef}
-          onClick={(event) => event.preventDefault()}
-        >
+        <_Tooltip.Trigger asChild ref={triggerRef}>
           {children}
         </_Tooltip.Trigger>
         <_Tooltip.Portal>
