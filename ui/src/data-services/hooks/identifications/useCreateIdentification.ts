@@ -3,16 +3,7 @@ import axios from 'axios'
 import { API_ROUTES, API_URL } from 'data-services/constants'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
-
-interface IdentificationFieldValues {
-  agreeWith?: {
-    identificationId?: string
-    predictionId?: string
-  }
-  occurrenceId: string
-  taxonId: string
-  comment?: string
-}
+import { IdentificationFieldValues } from './types'
 
 const convertToServerFieldValues = (
   fieldValues: IdentificationFieldValues

@@ -21,6 +21,7 @@ import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
+import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
@@ -118,7 +119,13 @@ export const Occurrences = () => {
           <BulkActionBar
             selectedItems={selectedItems}
             onClear={() => setSelectedItems([])}
-          />
+          >
+            <OccurrenceActions
+              occurrences={occurrences?.filter((occurrence) =>
+                selectedItems.includes(occurrence.id)
+              )}
+            />
+          </BulkActionBar>
         ) : null}
         {occurrences?.length ? (
           <PaginationBar
