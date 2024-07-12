@@ -1,40 +1,44 @@
-import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
+import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
+import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { useMemo } from 'react'
 import styles from './id-quick-actions.module.scss'
 
 interface IdButtonProps {
-  applied: boolean
   details?: string
   label: string
-  occurrenceId: string
-  value: string
+  occurrenceIds: string[]
+  taxonId: string
 }
 
 export const IdButton = ({
-  applied,
   details,
   label,
-  occurrenceId,
-  value,
+  occurrenceIds,
+  taxonId,
 }: IdButtonProps) => {
-  const { createIdentification, isLoading, isSuccess } =
-    useCreateIdentification()
+  const identificationParams: IdentificationFieldValues[] = useMemo(
+    () =>
+      occurrenceIds.map((occurrenceId) => ({
+        occurrenceId,
+        taxonId,
+      })),
+    [occurrenceIds, taxonId]
+  )
+
+  const { createIdentifications, isLoading, isSuccess } =
+    useCreateIdentifications(identificationParams)
 
   return (
     <Button
       label={label}
       details={details}
-      icon={isSuccess || applied ? IconType.RadixCheck : undefined}
+      icon={isSuccess ? IconType.RadixCheck : undefined}
       loading={isLoading}
-      disabled={isSuccess || applied}
+      disabled={isSuccess}
       customClass={styles.idButton}
-      onClick={() =>
-        createIdentification({
-          occurrenceId,
-          taxonId: value,
-        })
-      }
+      onClick={() => createIdentifications()}
     />
   )
 }

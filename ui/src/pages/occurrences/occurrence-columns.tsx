@@ -177,7 +177,6 @@ export const columns: (
 const TaxonCell = ({
   item,
   projectId,
-  showQuickActions,
 }: {
   item: Occurrence
   projectId: string
@@ -204,7 +203,7 @@ const TaxonCell = ({
           <Link to={detailsRoute}>
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
-          {showQuickActions && canUpdate && (
+          {canUpdate && (
             <div className={styles.taxonActions}>
               <Agree
                 agreed={agreed}
@@ -229,8 +228,8 @@ const TaxonCell = ({
                 />
               </Tooltip>
               <IdQuickActions
-                occurrenceId={item.id}
-                occurrenceTaxon={item.determinationTaxon}
+                occurrenceIds={[item.id]}
+                occurrenceTaxons={[item.determinationTaxon]}
                 zIndex={1}
               />
             </div>

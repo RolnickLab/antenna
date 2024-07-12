@@ -3,6 +3,7 @@ import { useCreateIdentifications } from 'data-services/hooks/identifications/us
 import { Occurrence } from 'data-services/models/occurrence'
 import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
@@ -31,7 +32,17 @@ export const OccurrenceActions = ({
     return null
   }
 
-  return <Agree allAgreed={allAgreed} occurrences={occurrences} />
+  return (
+    <>
+      <Agree allAgreed={allAgreed} occurrences={occurrences} />
+      <IdQuickActions
+        occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
+        occurrenceTaxons={occurrences.map(
+          (occurrence) => occurrence.determinationTaxon
+        )}
+      />
+    </>
+  )
 }
 
 const Agree = ({

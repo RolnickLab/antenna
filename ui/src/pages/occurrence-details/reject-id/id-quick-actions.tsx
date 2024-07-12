@@ -10,15 +10,15 @@ import styles from './id-quick-actions.module.scss'
 
 interface RejectIdProps {
   containerRef?: RefObject<HTMLDivElement>
-  occurrenceId: string
-  occurrenceTaxon: Taxon
+  occurrenceIds: string[]
+  occurrenceTaxons: Taxon[]
   zIndex?: number
 }
 
 export const IdQuickActions = ({
   containerRef,
-  occurrenceId,
-  occurrenceTaxon,
+  occurrenceIds = [],
+  occurrenceTaxons = [],
   zIndex,
 }: RejectIdProps) => {
   const [open, setIsOpen] = useState(false)
@@ -29,8 +29,14 @@ export const IdQuickActions = ({
   }[] = [
     {
       title: translate(STRING.APPLY_ID),
-      options: [...occurrenceTaxon.ranks]
+      options: [
+        ...occurrenceTaxons.map((occurrenceTaxon) => occurrenceTaxon.ranks),
+      ]
+        .flat()
         .reverse()
+        .filter(
+          (obj1, i, arr) => arr.findIndex((obj2) => obj2.id === obj1.id) === i
+        )
         .map(({ id, name, rank }) => ({
           label: name,
           details: rank,
@@ -46,7 +52,7 @@ export const IdQuickActions = ({
   useEffect(() => {
     // Close popover after taxon update
     setIsOpen(false)
-  }, [occurrenceTaxon.id])
+  }, [occurrenceTaxons[0]?.id])
 
   return (
     <Popover.Root open={open} onOpenChange={setIsOpen}>
@@ -73,10 +79,9 @@ export const IdQuickActions = ({
                   {section.options.map((option) => (
                     <IdButton
                       key={option.value}
-                      occurrenceId={occurrenceId}
-                      applied={occurrenceTaxon.id === option.value}
+                      occurrenceIds={occurrenceIds}
                       label={option.label}
-                      value={option.value}
+                      taxonId={option.value}
                       details={option.details}
                     />
                   ))}
