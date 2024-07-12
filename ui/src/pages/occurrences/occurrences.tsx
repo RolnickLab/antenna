@@ -30,6 +30,7 @@ export const Occurrences = () => {
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
+    batch: true,
     snapshots: true,
     id: true,
     date: true,
@@ -45,6 +46,7 @@ export const Occurrences = () => {
   })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
+  const [selectedItems, setSelectedItems] = useState<string[]>([])
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -99,6 +101,9 @@ export const Occurrences = () => {
           )}
           sortable
           sortSettings={sort}
+          selectable
+          selectedItems={selectedItems}
+          onSelectedItemsChange={setSelectedItems}
           onSortSettingsChange={setSort}
         />
       )}

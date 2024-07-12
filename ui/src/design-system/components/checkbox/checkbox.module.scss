@@ -18,7 +18,8 @@
     box-shadow: 0 0 0 2px $color-generic-black;
   }
 
-  &[data-state='checked'] {
+  &[data-state='checked'],
+  &[data-state='indeterminate'] {
     background-color: $color-neutral-600;
     border-color: $color-neutral-600;
   }
