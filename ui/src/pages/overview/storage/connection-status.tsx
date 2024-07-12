@@ -16,12 +16,14 @@ export const ConnectionStatus = ({
   storageId,
   subdir,
   updatedAt,
+  onConnectionChange,
 }: {
   regex?: string
   showDetails?: boolean
   storageId: string
   subdir?: string
   updatedAt?: string
+  onConnectionChange?: (isConnected: boolean) => void
 }) => {
   const { data, syncStorage, isLoading, error, validationError } =
     useSyncStorage()
@@ -31,10 +33,6 @@ export const ConnectionStatus = ({
     await syncStorage({ id: storageId, subdir, regex })
     setLastUpdated(new Date())
   }
-
-  useEffect(() => {
-    update()
-  }, [storageId, subdir, regex, updatedAt])
 
   const status = (() => {
     if (data?.connection_successful) {
@@ -88,6 +86,14 @@ export const ConnectionStatus = ({
       })}`
     }
   })()
+
+  useEffect(() => {
+    update()
+  }, [storageId, subdir, regex, updatedAt])
+
+  useEffect(() => {
+    onConnectionChange?.(status === Status.Connected)
+  }, [status])
 
   return (
     <div className={styles.connectionStatus}>

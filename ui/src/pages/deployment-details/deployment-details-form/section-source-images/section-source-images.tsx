@@ -15,7 +15,7 @@ import { InputContent, InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { EntitiesPicker } from 'pages/overview/entities/entities-picker'
 import { ConnectionStatus } from 'pages/overview/storage/connection-status'
-import { useContext } from 'react'
+import { useContext, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
@@ -49,6 +49,8 @@ export const SectionSourceImages = ({
   })
 
   useSyncSectionStatus(Section.SourceImages, control)
+
+  const [isConnected, setIsConnected] = useState(false)
 
   return (
     <form
@@ -92,10 +94,14 @@ export const SectionSourceImages = ({
             subdir={deployment.dataSourceSubdir}
             regex={deployment.dataSourceRegex}
             showDetails
+            onConnectionChange={setIsConnected}
           />
         )}
       </FormSection>
-      <SectionDataSourceCaptures deployment={deployment} />
+      <SectionDataSourceCaptures
+        deployment={deployment}
+        isConnected={isConnected}
+      />
       <SectionExampleCaptures deployment={deployment} />
       <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
@@ -106,8 +112,10 @@ export const SectionSourceImages = ({
 
 const SectionDataSourceCaptures = ({
   deployment,
+  isConnected,
 }: {
   deployment: DeploymentDetails
+  isConnected: boolean
 }) => {
   if (!deployment?.dataSource?.id) {
     return (
@@ -138,7 +146,10 @@ const SectionDataSourceCaptures = ({
           value={deployment.dataSourceDetails.lastChecked}
         />
         <InputContent label="Sync with data source">
-          <SyncDeploymentSourceImages deploymentId={deployment.id} />
+          <SyncDeploymentSourceImages
+            deploymentId={deployment.id}
+            isConnected={isConnected}
+          />
         </InputContent>
       </FormRow>
     </FormSection>
