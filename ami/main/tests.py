@@ -610,28 +610,47 @@ class TestIdentification(APITestCase):
 
 class TestMovingSourceImages(TestCase):
     previous_subdir = "test/old_subdir"
+    prev_sub_subdir_1 = previous_subdir + "/2022"
+    prev_sub_subdir_2 = previous_subdir + "/2023"
     new_subdir = "test/new_subdir"
+    new_sub_subdir_1 = new_subdir + "/2022"
+    new_sub_subdir_2 = new_subdir + "/2023"
+    other_subdir = "test/other_subdir"
+    images_per_dir = 10
 
     def setUp(self) -> None:
         project, deployment = setup_test_project()
-        create_captures(deployment=deployment, subdir=self.previous_subdir)
+        create_captures(
+            deployment=deployment, subdir=self.prev_sub_subdir_1, num_nights=1, images_per_night=self.images_per_dir
+        )
+        create_captures(
+            deployment=deployment, subdir=self.prev_sub_subdir_2, num_nights=1, images_per_night=self.images_per_dir
+        )
+        create_captures(
+            deployment=deployment, subdir=self.other_subdir, num_nights=1, images_per_night=self.images_per_dir
+        )
         group_images_into_events(deployment=deployment)
         self.project = project
         self.deployment = deployment
         return super().setUp()
 
+    def test_audit_subdirs(self):
+        counts = self.deployment.audit_subdir_of_captures()
+        expected_counts = {
+            self.prev_sub_subdir_1: self.images_per_dir,
+            self.prev_sub_subdir_2: self.images_per_dir,
+            self.other_subdir: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)
+
     def test_update_subdir(self):
-        captures = self.deployment.captures.all()
+        # Move all images to a new subdirectory
+        self.deployment.update_subdir_of_captures(new_subdir=self.new_subdir, previous_subdir=self.previous_subdir)
 
-        all_paths = map(pathlib.Path, captures.values_list("path", flat=True))
-        first_path = next(all_paths)
-        # Ensure all paths are in the same directory
-        self.assertEqual(set(map(lambda p: p.parent, all_paths)), {first_path.parent})
-
-        previous_subdir = str(first_path.parent)
-        self.assertEqual(self.previous_subdir, previous_subdir)
-        new_subdir = self.new_subdir
-        logger.info(f"Moving {captures.count()} images from '{previous_subdir}' to '{new_subdir}'")
-
-        # Move all images to a new subdirectory)
-        self.deployment.update_subdir_of_captures(new_subdir=new_subdir, previous_subdir=previous_subdir)
+        counts = self.deployment.audit_subdir_of_captures()
+        expected_counts = {
+            self.new_sub_subdir_1: self.images_per_dir,
+            self.new_sub_subdir_2: self.images_per_dir,
+            self.other_subdir: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)

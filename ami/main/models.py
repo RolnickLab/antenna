@@ -3,6 +3,7 @@ import datetime
 import functools
 import hashlib
 import logging
+import pathlib
 import textwrap
 import time
 import typing
@@ -468,6 +469,22 @@ class Deployment(BaseModel):
             job.update_progress()
 
         return total_files
+
+    def audit_subdir_of_captures(self):
+        """
+        Review the subdirs of all captures that belong to this deployment.
+
+        Group all captures by their subdir and count the number of captures in each group.
+        """
+
+        # Check the path of all captures that belong to this deployment
+        captures = SourceImage.objects.filter(deployment=self)
+
+        def get_subdir(path: str):
+            return str(pathlib.Path(path).parent)
+
+        subdir_counts = collections.Counter(get_subdir(capture.path) for capture in captures)
+        return subdir_counts
 
     def update_subdir_of_captures(self, previous_subdir: str, new_subdir: str):
         """
