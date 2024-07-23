@@ -1,4 +1,6 @@
 import datetime
+import logging
+import pathlib
 import uuid
 
 from django.db import connection
@@ -20,6 +22,8 @@ from ami.main.models import (
 )
 from ami.users.models import User
 
+logger = logging.getLogger(__name__)
+
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     if reuse:
@@ -33,7 +37,11 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
 
 
 def create_captures(
-    deployment: Deployment, num_nights: int = 3, images_per_night: int = 3, interval_minutes: int = 10
+    deployment: Deployment,
+    num_nights: int = 3,
+    images_per_night: int = 3,
+    interval_minutes: int = 10,
+    subdir: str = "test",
 ):
     # Create some images over a few monitoring nights
     first_night = datetime.datetime.now()
@@ -41,10 +49,11 @@ def create_captures(
     created = []
     for night in range(num_nights):
         for i in range(images_per_night):
+            path = pathlib.Path(subdir) / f"{night}_{i}.jpg"
             img = SourceImage.objects.create(
                 deployment=deployment,
                 timestamp=first_night + datetime.timedelta(days=night, minutes=i * interval_minutes),
-                path=f"test/{night}_{i}.jpg",
+                path=path,
             )
             created.append(img)
 
@@ -597,3 +606,32 @@ class TestIdentification(APITestCase):
         self.assertEqual(occurrence.determination, new_taxon)
         identification = Identification.objects.get(pk=response.json()["id"])
         self.assertEqual(identification.comment, comment)
+
+
+class TestMovingSourceImages(TestCase):
+    previous_subdir = "test/old_subdir"
+    new_subdir = "test/new_subdir"
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_captures(deployment=deployment, subdir=self.previous_subdir)
+        group_images_into_events(deployment=deployment)
+        self.project = project
+        self.deployment = deployment
+        return super().setUp()
+
+    def test_update_subdir(self):
+        captures = self.deployment.captures.all()
+
+        all_paths = map(pathlib.Path, captures.values_list("path", flat=True))
+        first_path = next(all_paths)
+        # Ensure all paths are in the same directory
+        self.assertEqual(set(map(lambda p: p.parent, all_paths)), {first_path.parent})
+
+        previous_subdir = str(first_path.parent)
+        self.assertEqual(self.previous_subdir, previous_subdir)
+        new_subdir = self.new_subdir
+        logger.info(f"Moving {captures.count()} images from '{previous_subdir}' to '{new_subdir}'")
+
+        # Move all images to a new subdirectory)
+        self.deployment.update_subdir_of_captures(new_subdir=new_subdir, previous_subdir=previous_subdir)

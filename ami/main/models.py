@@ -469,6 +469,46 @@ class Deployment(BaseModel):
 
         return total_files
 
+    def update_subdir_of_captures(self, previous_subdir: str, new_subdir: str):
+        """
+        Update the relative directory in the path of all captures that belong to this deployment in a single query.
+
+        This is useful when moving images to a new location in the data source. It is not run
+        automatically when the deployment's data source configuration is updated. But admins can
+        run it manually from the Django shell or a maintenance script.
+
+        Reminder: the public_base_url includes the path that precedes the subdir within the full file path.
+
+        Warning: this is essentially a find & replace operation on the path field of SourceImage objects.
+        """
+
+        # Sanitize the subdir strings. Ensure that they end with a slash. This is are only protection against
+        # accidentally modifying the filename.
+        # Relative paths are stored without a leading slash.
+        previous_subdir = previous_subdir.strip("/") + "/"
+        new_subdir = new_subdir.strip("/") + "/"
+
+        # Update the path of all captures that belong to this deployment
+        captures = SourceImage.objects.filter(deployment=self, path__startswith=previous_subdir)
+        logger.info(f"Updating subdir of {captures.count()} captures from '{previous_subdir}' to '{new_subdir}'")
+        previous_count = captures.count()
+        captures.update(
+            path=models.functions.Replace(
+                models.F("path"),
+                models.Value(previous_subdir),
+                models.Value(new_subdir),
+            )
+        )
+        # Re-query the captures to ensure the path has been updated
+        unchanged_count = SourceImage.objects.filter(deployment=self, path__startswith=previous_subdir).count()
+        changed_count = SourceImage.objects.filter(deployment=self, path__startswith=new_subdir).count()
+
+        if unchanged_count:
+            raise ValueError(f"{unchanged_count} captures were not updated to new subdir: {new_subdir}")
+
+        if changed_count != previous_count:
+            raise ValueError(f"Only {changed_count} captures were updated to new subdir: {new_subdir}")
+
     def update_children(self):
         """
         Update all attribute on all child objects that should be equal to their deployment values.
