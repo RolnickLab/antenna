@@ -635,11 +635,20 @@ class TestMovingSourceImages(TestCase):
         return super().setUp()
 
     def test_audit_subdirs(self):
-        counts = self.deployment.audit_subdir_of_captures()
+        counts = self.deployment.audit_subdir_of_captures(ignore_deepest=False)
         expected_counts = {
             self.prev_sub_subdir_1: self.images_per_dir,
             self.prev_sub_subdir_2: self.images_per_dir,
             self.other_subdir: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)
+
+    def test_audit_subdirs_ignore_date_folder(self):
+        counts = self.deployment.audit_subdir_of_captures(ignore_deepest=True)
+        other_subdir_truncated = self.other_subdir.rsplit("/", 1)[0]
+        expected_counts = {
+            self.previous_subdir: self.images_per_dir * 2,
+            other_subdir_truncated: self.images_per_dir,
         }
         self.assertDictEqual(dict(counts), expected_counts)
 

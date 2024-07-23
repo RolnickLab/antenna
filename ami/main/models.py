@@ -3,7 +3,6 @@ import datetime
 import functools
 import hashlib
 import logging
-import pathlib
 import textwrap
 import time
 import typing
@@ -470,21 +469,43 @@ class Deployment(BaseModel):
 
         return total_files
 
-    def audit_subdir_of_captures(self):
+    def audit_subdir_of_captures(self, ignore_deepest=False) -> dict[str, int]:
         """
-        Review the subdirs of all captures that belong to this deployment.
+        Review the subdirs of all captures that belong to this deployment in an efficient query.
 
         Group all captures by their subdir and count the number of captures in each group.
+        `ignore_deepest` will exclude the deepest subdir from the audit (usually the date folder)
         """
 
-        # Check the path of all captures that belong to this deployment
-        captures = SourceImage.objects.filter(deployment=self)
+        class SubdirExtractAll(models.Func):
+            function = "REGEXP_REPLACE"
+            template = "%(function)s(%(expressions)s, '/[^/]*$', '')"
 
-        def get_subdir(path: str):
-            return str(pathlib.Path(path).parent)
+        class SubdirExtractParent(models.Func):
+            # Attempts failed to dynamically set the depth of the last directories to ignore.
+            # so this is a hardcoded version that ignores the last one directory.
+            # this is useful for ignoring the date folder in the path.
+            function = "REGEXP_REPLACE"
+            template = "%(function)s(%(expressions)s, '/[^/]*/[^/]*$', '')"
 
-        subdir_counts = collections.Counter(get_subdir(capture.path) for capture in captures)
-        return subdir_counts
+        extract_func = SubdirExtractParent if ignore_deepest else SubdirExtractAll
+
+        subdirs_audit = (
+            self.captures.annotate(
+                subdir=models.Case(
+                    models.When(path__contains="/", then=extract_func(models.F("path"))),
+                    default=models.Value(""),
+                    output_field=models.CharField(),
+                )
+            )
+            .values("subdir")
+            .annotate(count=models.Count("id"))
+            .exclude(subdir="")
+            .order_by("-count")
+        )
+
+        # Convert QuerySet to dictionary
+        return {item["subdir"]: item["count"] for item in subdirs_audit}
 
     def update_subdir_of_captures(self, previous_subdir: str, new_subdir: str):
         """
