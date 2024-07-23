@@ -15,10 +15,12 @@ export const Entities = ({
   title,
   collection,
   type,
+  tooltip,
 }: {
   title: string
   collection: string
   type: string
+  tooltip?: string
 }) => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
@@ -48,6 +50,7 @@ export const Entities = ({
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={tooltip}
       >
         <NewEntityDialog collection={collection} type={type} />
       </PageHeader>
