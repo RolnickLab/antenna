@@ -172,8 +172,6 @@ export const StorageDetailsForm = ({
             )}
           />
         </FormRow>
-      </FormSection>
-      <FormSection>
         {storage?.id && (
           <ConnectionStatus
             storageId={storage.id}

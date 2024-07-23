@@ -17,7 +17,7 @@ interface ResponseData {
   total_time: number
 }
 
-export const useSyncStorage = () => {
+export const useTestStorageConnection = () => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
@@ -26,7 +26,7 @@ export const useSyncStorage = () => {
       axios.post<ResponseData>(
         `${API_URL}/${API_ROUTES.STORAGE}/${params.id}/test/`,
         {
-          ...(params.subdir ? { subdir: params.subdir } : {}),
+          ...(params.subdir !== undefined ? { subdir: params.subdir } : {}),
           ...(params.regex ? { regex_filter: params.regex } : {}),
         },
         {
@@ -46,7 +46,7 @@ export const useSyncStorage = () => {
 
   return {
     data: data?.data,
-    syncStorage: mutateAsync,
+    testStorageConnection: mutateAsync,
     isLoading,
     isSuccess,
     error,

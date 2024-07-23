@@ -1,11 +1,14 @@
 import { FormRow } from 'components/form/layout/layout'
-import { useSyncStorage } from 'data-services/hooks/storage-sources/useSyncStorage'
+import { useTestStorageConnection } from 'data-services/hooks/storage-sources/useTestStorageConnection'
 import { InputContent, InputValue } from 'design-system/components/input/input'
-import { Status } from 'pages/deployment-details/connection-status/types'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import * as Wizard from 'design-system/components/wizard/wizard'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { StatusInfo } from './status-info/status-info'
+import { Status } from './status-info/types'
+import styles from './storage.module.scss'
 
 export const ConnectionStatus = ({
   regex,
@@ -13,25 +16,23 @@ export const ConnectionStatus = ({
   storageId,
   subdir,
   updatedAt,
+  onConnectionChange,
 }: {
   regex?: string
   showDetails?: boolean
   storageId: string
   subdir?: string
   updatedAt?: string
+  onConnectionChange?: (isConnected: boolean) => void
 }) => {
-  const { data, syncStorage, isLoading, error, validationError } =
-    useSyncStorage()
+  const { data, testStorageConnection, isLoading, error, validationError } =
+    useTestStorageConnection()
   const [lastUpdated, setLastUpdated] = useState<Date>()
 
   const update = async () => {
-    await syncStorage({ id: storageId, subdir, regex })
+    await testStorageConnection({ id: storageId, subdir, regex })
     setLastUpdated(new Date())
   }
-
-  useEffect(() => {
-    update()
-  }, [storageId, subdir, regex, updatedAt])
 
   const status = (() => {
     if (data?.connection_successful) {
@@ -67,10 +68,18 @@ export const ConnectionStatus = ({
     return translate(STRING.NOT_CONNECTED)
   })()
 
-  const tooltip = (() => {
+  const details = (() => {
     // Show error info from request info
     if (error) {
-      return validationError?.detail || translate(STRING.UNKNOWN_ERROR)
+      if (validationError?.detail) {
+        return validationError.detail
+      }
+
+      if (Object.keys(error.response?.data ?? []).includes('subdir')) {
+        return 'Please provide a valid sub directory.'
+      }
+
+      return translate(STRING.UNKNOWN_ERROR)
     }
 
     // Show error info from response data
@@ -86,25 +95,62 @@ export const ConnectionStatus = ({
     }
   })()
 
+  useEffect(() => {
+    update()
+  }, [storageId, subdir, regex, updatedAt])
+
+  useEffect(() => {
+    onConnectionChange?.(status === Status.Connected)
+  }, [status])
+
   return (
-    <FormRow>
-      <InputContent label="Connection status">
-        <StatusInfo label={label} status={status} tooltip={tooltip} />
-      </InputContent>
-      <InputValue label="Full URI" value={data?.full_uri} />
-      {showDetails && (
-        <>
-          <InputValue label="Latency" value={data?.latency} />
-          <InputValue label="Files checked" value={data?.files_checked} />
-          {data?.first_file_found && (
-            <InputContent label="First file found">
-              <a href={data?.first_file_found} rel="noreferrer" target="_blank">
-                <img style={{ maxWidth: '100%' }} src={data.first_file_found} />
-              </a>
-            </InputContent>
-          )}
-        </>
-      )}
-    </FormRow>
+    <div className={styles.connectionStatus}>
+      <Wizard.Root className={styles.wizardRoot}>
+        <Wizard.Item value="connection-status">
+          <Wizard.Trigger
+            title={label}
+            className={styles.wizardTrigger}
+            showToggle
+          >
+            <StatusInfo label={label} status={status} tooltip={details} />
+          </Wizard.Trigger>
+          <Wizard.Content className={styles.wizardContent}>
+            <FormRow>
+              <InputValue label="Connection details" value={details} />
+              <InputValue label="Full URI" value={data?.full_uri} />
+              <InputValue label="Latency (s)" value={data?.latency} />
+              <InputValue label="Total time (s)" value={data?.total_time} />
+              {showDetails ? (
+                <>
+                  {data?.first_file_found ? (
+                    <InputContent label="First file found">
+                      <Tooltip content={data.first_file_found}>
+                        <a
+                          href={data.first_file_found}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <img
+                            alt=""
+                            className={styles.firstFileFound}
+                            src={data.first_file_found}
+                          />
+                        </a>
+                      </Tooltip>
+                    </InputContent>
+                  ) : (
+                    <InputValue label="First file found" />
+                  )}
+                  <InputValue
+                    label="Files checked"
+                    value={data?.files_checked}
+                  />
+                </>
+              ) : null}
+            </FormRow>
+          </Wizard.Content>
+        </Wizard.Item>
+      </Wizard.Root>
+    </div>
   )
 }
