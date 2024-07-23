@@ -9,10 +9,11 @@ import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
 
+const FALLBACK_RATIO = 16 / 9
 interface FrameProps {
   src?: string
-  width: number
-  height: number
+  width: number | null
+  height: number | null
   detections: CaptureDetection[]
   showOverlay?: boolean
 }
@@ -24,6 +25,10 @@ export const Frame = ({
   detections,
   showOverlay,
 }: FrameProps) => {
+  const [naturalSize, setNaturalSize] = useState<{
+    width: number
+    height: number
+  }>()
   const imageRef = useRef<HTMLImageElement>(null)
   const [isLoading, setIsLoading] = useState<boolean>()
   const [rendeOverlay, setRenderOverlay] = useState<boolean>()
@@ -32,11 +37,26 @@ export const Frame = ({
     if (!imageRef.current) {
       return
     }
+
     setIsLoading(true)
+    setNaturalSize(undefined)
+
     if (src) {
       imageRef.current.src = src
-      imageRef.current.onload = () => setIsLoading(false)
-      imageRef.current.onerror = () => setIsLoading(false)
+      imageRef.current.onload = () => {
+        if (imageRef.current?.width && imageRef.current.height) {
+          setNaturalSize({
+            width: imageRef.current.naturalWidth,
+            height: imageRef.current.naturalHeight,
+          })
+        }
+        setIsLoading(false)
+      }
+
+      imageRef.current.onerror = () => {
+        setNaturalSize(undefined)
+        setIsLoading(false)
+      }
     }
   }, [src])
 
@@ -52,22 +72,43 @@ export const Frame = ({
         const boxWidth = boxRight - boxLeft
         const boxHeight = boxBottom - boxTop
 
+        const _width = naturalSize?.width ?? width
+        const _height = naturalSize?.height ?? height
+
+        if (!_width || !_height) {
+          return result
+        }
+
         result[detection.id] = {
-          width: `${(boxWidth / width) * 100}%`,
-          height: `${(boxHeight / height) * 100}%`,
-          top: `${(boxTop / height) * 100}%`,
-          left: `${(boxLeft / width) * 100}%`,
+          width: `${(boxWidth / _width) * 100}%`,
+          height: `${(boxHeight / _height) * 100}%`,
+          top: `${(boxTop / _height) * 100}%`,
+          left: `${(boxLeft / _width) * 100}%`,
         }
 
         return result
       }, {}),
-    [width, height, detections]
+    [width, height, naturalSize, detections]
   )
+
+  const ratio = useMemo(() => {
+    if (naturalSize) {
+      return naturalSize.width / naturalSize.height
+    }
+
+    if (width && height) {
+      return width / height
+    }
+
+    return FALLBACK_RATIO
+  }, [width, height, naturalSize])
 
   return (
     <div
       className={classNames(styles.wrapper)}
-      style={{ paddingBottom: `${(height / width) * 100}%` }}
+      style={{
+        paddingBottom: `${(1 / ratio) * 100}%`,
+      }}
     >
       <img ref={imageRef} className={styles.image} />
       <div
