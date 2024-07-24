@@ -168,7 +168,7 @@ class DeploymentViewSet(DefaultViewSet):
                 deployment=deployment,
                 project=deployment.project,
             )
-            job.progress.add_stage(DataStorageSyncJob.key)
+            job.progress.add_stage(DataStorageSyncJob.name)
             job.enqueue()
             msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
             logger.info(msg)

@@ -278,7 +278,7 @@ AnyJobType = typing.TypeVar("AnyJobType", bound=JobType)
 
 
 class MLJob(JobType):
-    name = "ML Pipeline"
+    name = "ML pipeline"
     key = "ml"
 
     @classmethod
@@ -415,12 +415,13 @@ class MLJob(JobType):
 
 
 class DataStorageSyncJob(JobType):
-    name = "Data Storage Sync"
+    name = "Data storage sync"
     key = "data_storage_sync"
 
     @classmethod
     def setup(cls, job: "Job", save=True):
         job.progress = job.progress or default_job_progress
+        job.progress.add_stage(name=cls.name)
 
         if save:
             job.save()
@@ -433,6 +434,7 @@ class DataStorageSyncJob(JobType):
         This is meant to be called by an async task, not directly.
         """
 
+        job.progress.add_stage_param(cls.key, "Total Files", "")
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -470,7 +472,8 @@ class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
 
-    def run(self, job: "Job"):
+    @classmethod
+    def run(cls, job: "Job"):
         job.logger.error(f"Unknown job type '{job.job_type()}'")
         job.update_status(JobState.UNKNOWN)
         job.save()
