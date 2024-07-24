@@ -464,6 +464,7 @@ class Deployment(BaseModel):
             job.update_progress()
 
         self.save()
+        self.update_calculated_fields(save=True)
 
         if job:
             job.progress.update_stage("Update deployment cache", progress=1)
