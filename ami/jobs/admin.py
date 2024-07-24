@@ -19,6 +19,7 @@ class JobAdmin(AdminBase):
         "started_at",
         "finished_at",
         "duration",
+        "get_job_type_display",
     )
 
     @admin.action()
@@ -26,6 +27,10 @@ class JobAdmin(AdminBase):
         for job in queryset:
             job.enqueue()
         self.message_user(request, f"Queued {queryset.count()} job(s).")
+
+    @admin.display(description="Job Type")
+    def get_job_type_display(self, obj: Job) -> str:
+        return obj.job_type().name
 
     actions = [enqueue_jobs]
 

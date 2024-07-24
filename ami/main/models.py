@@ -460,11 +460,13 @@ class Deployment(BaseModel):
         if job:
             job.logger.info("Saving and recalculating sessions for deployment")
             job.progress.update_stage(job.job_type().key, progress=1)
-            job.progress.add_stage("save_and_regroup")
+            job.progress.add_stage("Update deployment cache")
             job.update_progress()
+
         self.save()
+
         if job:
-            job.progress.update_stage("save_and_regroup", progress=1)
+            job.progress.update_stage("Update deployment cache", progress=1)
             job.update_progress()
 
         return total_files

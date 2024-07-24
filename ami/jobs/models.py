@@ -78,9 +78,6 @@ def python_slugify(value: str) -> str:
     return slugify(value, allow_unicode=False).replace("-", "_")
 
 
-ML_API_ENDPOINT = "http://host.docker.internal:2000/pipeline/process/"
-
-
 class JobProgressSummary(pydantic.BaseModel):
     """Summary of all stages of a job"""
 
@@ -116,17 +113,26 @@ class JobProgress(pydantic.BaseModel):
     errors: list[str] = []
     logs: list[str] = []
 
+    def get_stage_key(self, name: str) -> str:
+        return python_slugify(name)
+
     def add_stage(self, name: str) -> JobProgressStageDetail:
-        stage = JobProgressStageDetail(
-            key=python_slugify(name),
-            name=name,
-        )
-        self.stages.append(stage)
-        return stage
+        key = self.get_stage_key(name)
+        try:
+            return self.get_stage(key)
+        except ValueError:
+            stage = JobProgressStageDetail(
+                key=key,
+                name=name,
+            )
+            self.stages.append(stage)
+            return stage
 
     def get_stage(self, stage_key: str) -> JobProgressStageDetail:
         for stage in self.stages:
             if stage.key == stage_key:
+                if stage.name == stage.key:
+                    raise ValueError(f"Job stage with key '{stage_key}' has no name")
                 return stage
         raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
 
@@ -139,30 +145,35 @@ class JobProgress(pydantic.BaseModel):
 
     def add_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
-        param = ConfigurableStageParam(
-            name=name,
-            key=python_slugify(name),
-            value=value,
-        )
-        stage.params.append(param)
-        return param
+        try:
+            return self.get_stage_param(stage_key, self.get_stage_key(name))
+        except ValueError:
+            param = ConfigurableStageParam(
+                name=name,
+                key=self.get_stage_key(name),
+                value=value,
+            )
+            stage.params.append(param)
+            return param
 
     def add_or_update_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
         try:
-            param = self.get_stage_param(stage_key, python_slugify(name))
+            param = self.get_stage_param(stage_key, self.get_stage_key(name))
             param.value = value
             return param
         except ValueError:
             return self.add_stage_param(stage_key, name, value)
 
-    def update_stage(self, stage_key: str, **stage_parameters) -> JobProgressStageDetail | None:
+    def update_stage(self, stage_key_or_name: str, **stage_parameters) -> JobProgressStageDetail | None:
         """ "
         Update the parameters of a stage of the job.
 
         Will update parameters that are direct attributes of the stage,
         or parameters that are in the stage's params list.
+
+        This is the preferred method to update a stage's parameters.
         """
-        stage_key = python_slugify(stage_key)  # Allow both title or key to be used for lookup
+        stage_key = self.get_stage_key(stage_key_or_name)  # Allow both title or key to be used for lookup
         stage = self.get_stage(stage_key)
 
         if stage.key == stage_key:
@@ -410,7 +421,6 @@ class DataStorageSyncJob(JobType):
     @classmethod
     def setup(cls, job: "Job", save=True):
         job.progress = job.progress or default_job_progress
-        job.progress.add_stage_param(cls.key, "Total Images", "")
 
         if save:
             job.save()
@@ -434,7 +444,7 @@ class DataStorageSyncJob(JobType):
                 cls.key,
                 status=JobState.STARTED,
                 progress=0,
-                total_images=0,
+                total_files=0,
             )
             job.save()
 
@@ -453,6 +463,16 @@ class DataStorageSyncJob(JobType):
 
         job.update_progress()
         job.finished_at = datetime.datetime.now()
+        job.save()
+
+
+class UnknownJobType(JobType):
+    name = "Unknown"
+    key = "unknown"
+
+    def run(self, job: "Job"):
+        job.logger.error(f"Unknown job type '{job.job_type()}'")
+        job.update_status(JobState.UNKNOWN)
         job.save()
 
 
@@ -520,16 +540,16 @@ class Job(BaseModel):
         This is a temporary way to determine the type of job.
         @TODO rework Job classes and background tasks.
         """
+        if self.pipeline:
+            return MLJob
+
         try:
             self.progress.get_stage(DataStorageSyncJob.key)
             return DataStorageSyncJob
         except ValueError:
             pass
 
-        if self.pipeline:
-            return MLJob
-
-        raise ValueError("Could not determine job type")
+        return UnknownJobType
 
     def enqueue(self):
         """
@@ -628,9 +648,15 @@ class Job(BaseModel):
             total_progress = 1
         else:
             for stage in self.progress.stages:
-                if stage.status == JobState.SUCCESS and stage.progress < 1:
+                if stage.progress > 0 and stage.status == JobState.CREATED:
+                    # Update any stages that have started but are still in the CREATED state
+                    stage.status = JobState.STARTED
+                elif stage.status == JobState.SUCCESS and stage.progress < 1:
                     # Update any stages that are complete but have a progress less than 1
                     stage.progress = 1
+                elif stage.progress == 1 and stage.status == JobState.STARTED:
+                    # Update any stages that are complete but are still in the STARTED state
+                    stage.status = JobState.SUCCESS
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
 
         self.progress.summary.progress = total_progress
