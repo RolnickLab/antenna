@@ -15,6 +15,11 @@ export enum JobStatus {
   Unknown = 'unknown',
 }
 
+export type JobType = {
+  name: string
+  key: string
+}
+
 export class Job {
   protected readonly _job: ServerJob
 
@@ -73,6 +78,10 @@ export class Job {
 
   get project(): string {
     return this._job.project.name
+  }
+
+  get jobType(): JobType {
+    return this._job.job_type
   }
 
   get status(): JobStatus {

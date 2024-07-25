@@ -25,6 +25,10 @@
 
   &[data-state='open'] {
     color: $color-neutral-800;
+
+    .toggle {
+      transform: rotate(-180deg);
+    }
   }
 
   .extra {
@@ -36,6 +40,18 @@
     left: 0;
     width: 64px;
     height: 100%;
+  }
+
+  .toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 64px;
+    height: 100%;
+    transition: transform 250ms ease-in-out;
   }
 }
 

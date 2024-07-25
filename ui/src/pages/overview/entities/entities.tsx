@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { columns } from './entities-columns'
 import { NewEntityDialog } from './new-entity-dialog'
 
@@ -28,14 +29,13 @@ export const Entities = ({
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { entities, total, isLoading, isFetching, error } = useEntities(
-    collection,
-    {
+  const { entities, userPermissions, total, isLoading, isFetching, error } =
+    useEntities(collection, {
       projectId,
       pagination,
       sort,
-    }
-  )
+    })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
     return <Error />
@@ -52,7 +52,7 @@ export const Entities = ({
         isFetching={isFetching}
         tooltip={tooltip}
       >
-        <NewEntityDialog collection={collection} type={type} />
+        {canCreate && <NewEntityDialog collection={collection} type={type} />}
       </PageHeader>
       <Table
         items={entities}

@@ -97,6 +97,7 @@ def regroup_events(deployment_id: int) -> None:
         logger.info(f"{deployment } now has {len(events)} events")
     else:
         logger.error(f"Deployment with id {deployment_id} not found")
+    deployment.update_calculated_fields(save=True)
 
 
 @celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)

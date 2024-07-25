@@ -11,6 +11,7 @@ import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
 import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
+import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
 
 export const Overview = () => {
@@ -90,12 +91,7 @@ export const Overview = () => {
           <Pipelines />
         </Tabs.Content>
         <Tabs.Content value="storage">
-          <Entities
-            title={translate(STRING.TAB_ITEM_STORAGE)}
-            collection={API_ROUTES.STORAGE}
-            type="storage"
-            tooltip={translate(STRING.TOOLTIP_STORAGE)}
-          />
+          <StorageSources />
         </Tabs.Content>
         <Tabs.Content value="sites">
           <Entities
