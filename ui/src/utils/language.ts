@@ -356,7 +356,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_PROCESS_NOW_TOOLTIP]:
     'Process this single image with presets',
   [STRING.MESSAGE_RESULT_RANGE]:
-    'Showing {{start}}-{{end}} of {{total}} results',
+    'Showing {{start}}-{{end}} of {{total}} result(s)',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
@@ -428,7 +428,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.SELECT_COLUMNS]: 'Select columns',
-  [STRING.RESULTS]: '{{total}} results',
+  [STRING.RESULTS]: '{{total}} result(s)',
   [STRING.STAGES]: 'Stages',
   [STRING.SUMMARY]: 'Summary',
   [STRING.UNKNOWN]: 'Unknown',
