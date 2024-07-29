@@ -1,12 +1,6 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-.fetchInfoWrapper {
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
 .connectionStatus {
   .wizardRoot {
     border-width: 1px !important;
