@@ -1,6 +1,6 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { API_ROUTES } from 'data-services/constants'
 import { useStorageSources } from 'data-services/hooks/storage-sources/useStorageSources'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
@@ -8,14 +8,17 @@ import { Error } from 'pages/error/error'
 import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { columns } from './storage-columns'
-import styles from './storage.module.scss'
 
 export const StorageSources = () => {
   const { projectId } = useParams()
-  const [sort, setSort] = useState<TableSortSettings>()
+  const [sort, setSort] = useState<TableSortSettings | undefined>({
+    field: 'created_at',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
   const { items, userPermissions, total, isLoading, isFetching, error } =
     useStorageSources({
@@ -31,11 +34,20 @@ export const StorageSources = () => {
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <PageHeader
+        title={translate(STRING.TAB_ITEM_STORAGE)}
+        subTitle={translate(STRING.RESULTS, {
+          total,
+        })}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_STORAGE)}
+      >
+        {canCreate && (
+          <NewEntityDialog collection={API_ROUTES.STORAGE} type="storage" />
+        )}
+      </PageHeader>
+
       <Table
         items={items}
         isLoading={isLoading}
@@ -51,9 +63,6 @@ export const StorageSources = () => {
           setPage={setPage}
         />
       ) : null}
-      {canCreate && (
-        <NewEntityDialog collection={API_ROUTES.STORAGE} type="storage" />
-      )}
     </>
   )
 }
