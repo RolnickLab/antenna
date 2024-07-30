@@ -1,12 +1,16 @@
 import { AppliedFilters } from 'components/applied-filters/applied-filters'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
+import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
+import { IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
+import { Tooltip } from '../tooltip/tooltip'
 import styles from './page-header.module.scss'
 
 interface PageHeaderProps {
   title: string
   subTitle: string
+  tooltip?: string
   isLoading?: boolean
   isFetching?: boolean
   showAppliedFilters?: boolean
@@ -16,6 +20,7 @@ interface PageHeaderProps {
 export const PageHeader = ({
   title,
   subTitle,
+  tooltip,
   isLoading,
   isFetching,
   showAppliedFilters,
@@ -23,7 +28,14 @@ export const PageHeader = ({
 }: PageHeaderProps) => (
   <div className={styles.wrapper}>
     <div>
-      <h1 className={styles.title}>{title}</h1>
+      <div className={styles.row} style={{ gap: '4px' }}>
+        <h1 className={styles.title}>{title}</h1>
+        {tooltip ? (
+          <Tooltip content={tooltip}>
+            <IconButton icon={IconType.Info} theme={IconButtonTheme.Plain} />
+          </Tooltip>
+        ) : null}
+      </div>
       <div className={styles.row}>
         <h2 className={styles.subTitle}>
           {isLoading ? `${translate(STRING.LOADING_DATA)}...` : subTitle}

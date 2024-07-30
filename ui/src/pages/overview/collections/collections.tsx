@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { columns } from './collection-columns'
 
 export const Collections = () => {
@@ -19,11 +20,13 @@ export const Collections = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { collections, total, isLoading, isFetching, error } = useCollections({
-    projectId,
-    pagination,
-    sort,
-  })
+  const { collections, userPermissions, total, isLoading, isFetching, error } =
+    useCollections({
+      projectId,
+      pagination,
+      sort,
+    })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
     return <Error />
@@ -38,11 +41,14 @@ export const Collections = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_COLLECTION)}
       >
-        <NewEntityDialog
-          collection={API_ROUTES.COLLECTIONS}
-          type="collection"
-        />
+        {canCreate && (
+          <NewEntityDialog
+            collection={API_ROUTES.COLLECTIONS}
+            type="collection"
+          />
+        )}
       </PageHeader>
       <Table
         items={collections}

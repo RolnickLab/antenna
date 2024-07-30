@@ -9,10 +9,11 @@ from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
-from rest_framework import viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,6 +22,7 @@ from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.utils.requests import get_active_classification_threshold
+from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
     Classification,
@@ -150,6 +152,30 @@ class DeploymentViewSet(DefaultViewSet):
             return DeploymentListSerializer
         else:
             return DeploymentSerializer
+
+    @action(detail=True, methods=["post"], name="sync")
+    def sync(self, _request, pk=None) -> Response:
+        """
+        Queue a task to sync data from the deployment's data source.
+        """
+        deployment: Deployment = self.get_object()
+        if deployment and deployment.data_source:
+            # queued_task = tasks.sync_source_images.delay(deployment.pk)
+            from ami.jobs.models import DataStorageSyncJob, Job
+
+            job = Job.objects.create(
+                name=f"Sync captures for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+            )
+            job.progress.add_stage(DataStorageSyncJob.name)
+            job.enqueue()
+            msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
+            logger.info(msg)
+            assert deployment.project
+            return Response({"job_id": job.pk, "project_id": deployment.project.pk})
+        else:
+            raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
 
 
 class EventViewSet(DefaultViewSet):
@@ -877,6 +903,11 @@ class DeviceViewSet(DefaultViewSet):
     ]
 
 
+class StorageSourceConnectionTestSerializer(serializers.Serializer):
+    subdir = serializers.CharField(required=False, allow_null=True)
+    regex_filter = serializers.CharField(required=False, allow_null=True)
+
+
 class StorageSourceViewSet(DefaultViewSet):
     """
     API endpoint that allows storage sources to be viewed or edited.
@@ -890,3 +921,33 @@ class StorageSourceViewSet(DefaultViewSet):
         "updated_at",
         "name",
     ]
+
+    @action(detail=True, methods=["post"], name="test", serializer_class=StorageSourceConnectionTestSerializer)
+    def test(self, request: Request, pk=None) -> Response:
+        """
+        Test the connection to the storage source.
+        """
+        storage_source: S3StorageSource = self.get_object()
+        if not storage_source:
+            return Response({"detail": "Storage source not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result: ConnectionTestResult = storage_source.test_connection(
+            subdir=serializer.validated_data.get("subdir"),
+            regex_filter=serializer.validated_data.get("regex_filter"),
+        )
+        if result.connection_successful:
+            return Response(
+                status=200,
+                data=result.__dict__,  # @TODO Consider using a serializer and annotating this for the OpenAPI schema
+            )
+        else:
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST,
+                data={
+                    "detail": result.error_message,
+                    "code": result.error_code,
+                },
+            )

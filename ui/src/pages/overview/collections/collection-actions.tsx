@@ -16,6 +16,17 @@ export const PopulateCollection = ({
         label={translate(STRING.QUEUED)}
         icon={IconType.RadixClock}
         theme={ButtonTheme.Neutral}
+        disabled={true}
+      />
+    )
+  }
+
+  if (isSuccess) {
+    return (
+      <Button
+        label={translate(STRING.QUEUED)}
+        icon={IconType.RadixClock}
+        theme={ButtonTheme.Neutral}
       />
     )
   }

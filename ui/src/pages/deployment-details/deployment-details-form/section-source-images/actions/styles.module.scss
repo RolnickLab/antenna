@@ -1,0 +1,9 @@
+@import 'src/design-system/variables/variables.scss';
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.wrapper {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

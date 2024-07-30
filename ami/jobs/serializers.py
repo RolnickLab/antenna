@@ -24,6 +24,11 @@ class JobProjectNestedSerializer(DefaultSerializer):
         ]
 
 
+class JobTypeSerializer(serializers.Serializer):
+    name = serializers.CharField(read_only=True)
+    key = serializers.SlugField(read_only=True)
+
+
 class JobListSerializer(DefaultSerializer):
     delay = serializers.IntegerField()
     project = JobProjectNestedSerializer(read_only=True)
@@ -32,6 +37,7 @@ class JobListSerializer(DefaultSerializer):
     source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
+    job_type = JobTypeSerializer(read_only=True)
 
     project_id = serializers.PrimaryKeyRelatedField(
         label="Project",
@@ -103,6 +109,7 @@ class JobListSerializer(DefaultSerializer):
             "finished_at",
             "duration",
             "progress",
+            "job_type",
             # "duration",
             # "duration_label",
             # "progress_label",

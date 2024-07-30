@@ -5,7 +5,7 @@ import styles from './tooltip.module.scss'
 
 interface TooltipProps {
   children: ReactNode
-  content: string
+  content?: string
   delayDuration?: number
   frame?: HTMLElement | null
   open?: boolean
@@ -22,14 +22,14 @@ export const Tooltip = ({
 }: TooltipProps) => {
   const triggerRef = useRef(null)
 
+  if (!content) {
+    return <>{children}</>
+  }
+
   return (
     <_Tooltip.Provider>
       <_Tooltip.Root delayDuration={delayDuration} open={open}>
-        <_Tooltip.Trigger
-          asChild
-          ref={triggerRef}
-          onClick={(event) => event.preventDefault()}
-        >
+        <_Tooltip.Trigger asChild ref={triggerRef}>
           {children}
         </_Tooltip.Trigger>
         <_Tooltip.Portal>

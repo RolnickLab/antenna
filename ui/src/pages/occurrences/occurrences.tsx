@@ -70,6 +70,7 @@ export const Occurrences = () => {
         isLoading={isLoading}
         isFetching={isFetching}
         showAppliedFilters
+        tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
       >
         <ToggleGroup
           items={[

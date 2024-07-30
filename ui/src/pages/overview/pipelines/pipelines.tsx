@@ -36,6 +36,7 @@ export const Pipelines = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_PIPELINE)}
       />
       <Table
         items={pipelines}

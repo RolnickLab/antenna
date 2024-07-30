@@ -57,6 +57,7 @@ export const Sessions = () => {
         isLoading={isLoading}
         isFetching={isFetching}
         showAppliedFilters
+        tooltip={translate(STRING.TOOLTIP_SESSION)}
       >
         <ToggleGroup
           items={[
