@@ -7,6 +7,7 @@ interface TimestampSliderProps {
   value: number
   valueLabel?: string
   onValueChange: (value: number) => void
+  onValueCommit: (value: number) => void
 }
 
 export const TimestampSlider = ({
@@ -14,16 +15,17 @@ export const TimestampSlider = ({
   value,
   valueLabel,
   onValueChange,
+  onValueCommit,
 }: TimestampSliderProps) => (
   <div className={styles.timestampSlider}>
     <_Slider.Root
-      disabled
       className={styles.sliderRoot}
       min={0}
       max={100}
       step={0.01}
       value={[value]}
       onValueChange={(values) => onValueChange(values[0])}
+      onValueCommit={(values) => onValueCommit(values[0])}
     >
       <_Slider.Track className={styles.sliderTrack}>
         <_Slider.Range className={styles.sliderRange} />

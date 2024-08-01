@@ -7,7 +7,7 @@ import { useMemo } from 'react'
 import { User } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 
-const PER_PAGE = 200
+const PER_PAGE = 1000
 
 const convertServerRecord = (record: ServerCapture) => new Capture(record)
 
