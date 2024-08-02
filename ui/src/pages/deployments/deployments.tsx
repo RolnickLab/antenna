@@ -36,6 +36,7 @@ export const Deployments = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
         {canCreate ? <NewDeploymentDialog /> : null}
       </PageHeader>

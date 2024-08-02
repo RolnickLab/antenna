@@ -32,6 +32,9 @@ export enum STRING {
   SUBMIT,
   SUGGEST_ID,
   SUGGEST_ID_SHORT,
+  SYNC,
+  TEST,
+  TEST_CONNECTION,
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
@@ -54,6 +57,7 @@ export enum STRING {
   FIELD_LABEL_COMMENT,
   FIELD_LABEL_CONNECTION_STATUS,
   FIELD_LABEL_CREATED_AT,
+  FIELD_LABEL_DATA_SOURCE_CAPTURES,
   FIELD_LABEL_DATE,
   FIELD_LABEL_DATE_OBSERVED,
   FIELD_LABEL_DELAY,
@@ -69,6 +73,7 @@ export enum STRING {
   FIELD_LABEL_ID,
   FIELD_LABEL_IMAGE,
   FIELD_LABEL_ICON,
+  FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
   FIELD_LABEL_LOCATION,
   FIELD_LABEL_LOGS,
@@ -99,6 +104,8 @@ export enum STRING {
   FIELD_LABEL_TIME,
   FIELD_LABEL_TIME_OBSERVED,
   FIELD_LABEL_TIMESTAMP,
+  FIELD_LABEL_TOTAL_FILES,
+  FIELD_LABEL_TOTAL_SIZE,
   FIELD_LABEL_TRAINING_IMAGES,
   FIELD_LABEL_FIRST_DATE,
   FIELD_LABEL_LAST_DATE,
@@ -109,10 +116,12 @@ export enum STRING {
   /* MESSAGE */
   MESSAGE_CAPTURE_FILENAME,
   MESSAGE_CAPTURE_LIMIT,
+  MESSAGE_CAPTURE_SYNC_HIDDEN,
   MESSAGE_CAPTURE_TOO_MANY,
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
   MESSAGE_CHANGE_PASSWORD,
   MESSAGE_COULD_NOT_SAVE,
+  MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DELETE_CONFIRM,
   MESSAGE_HAS_ACCOUNT,
   MESSAGE_IMAGE_FORMAT,
@@ -159,8 +168,20 @@ export enum STRING {
   FAILED,
   DONE,
 
+  /* TOOLTIPS */
+  TOOLTIP_COLLECTION,
+  TOOLTIP_DEPLOYMENT,
+  TOOLTIP_DEVICE_TYPE,
+  TOOLTIP_OCCURRENCE,
+  TOOLTIP_PIPELINE,
+  TOOLTIP_SESSION,
+  TOOLTIP_SITE,
+  TOOLTIP_STORAGE,
+
   /* OTHER */
   ALGORITHMS,
+  APPLY_ID,
+  APPLY_ID_SHORT,
   CLOSE,
   COLUMNS,
   CONNECTED,
@@ -180,6 +201,7 @@ export enum STRING {
   STAGES,
   SUMMARY,
   UNKNOWN,
+  UNKNOWN_ERROR,
   UPDATING_DATA,
   USER_INFO,
   VERIFIED_BY,
@@ -220,6 +242,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
+  [STRING.SYNC]: 'Sync',
+  [STRING.TEST]: 'Test',
+  [STRING.TEST_CONNECTION]: 'Test Connection',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
@@ -229,10 +254,11 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
+  [STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES]: 'Deployment captures',
   [STRING.FIELD_LABEL_DATE]: 'Date',
   [STRING.FIELD_LABEL_DATE_OBSERVED]: 'Date observed',
   [STRING.FIELD_LABEL_DELAY]: 'Delay',
-  [STRING.FIELD_LABEL_DEVICE]: 'Device Type',
+  [STRING.FIELD_LABEL_DEVICE]: 'Device type',
   [STRING.FIELD_LABEL_DEPLOYMENT]: 'Deployment',
   [STRING.FIELD_LABEL_DESCRIPTION]: 'Description',
   [STRING.FIELD_LABEL_DETECTIONS]: 'Detections',
@@ -244,6 +270,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
+  [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
   [STRING.FIELD_LABEL_LOGS]: 'Logs',
@@ -263,7 +290,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
-  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample captures',
+  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Deployment sample captures',
   [STRING.FIELD_LABEL_SCORE]: 'Score',
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
   [STRING.FIELD_LABEL_SPECIES]: 'Species',
@@ -274,6 +301,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_TIME]: 'Local time',
   [STRING.FIELD_LABEL_TIME_OBSERVED]: 'Local time observed',
   [STRING.FIELD_LABEL_TIMESTAMP]: 'Timestamp',
+  [STRING.FIELD_LABEL_TOTAL_FILES]: 'Total files',
+  [STRING.FIELD_LABEL_TOTAL_SIZE]: 'Total size',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
@@ -298,14 +327,18 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} example captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} sample captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+  [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
+    'Deployment must be created before syncing captures.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
     'To upload more than {{numCaptures}} images you must configure a data source.',
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
-    'Deployment must be saved before uploading captures.',
+    'Deployment must be created before uploading captures.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
     'Contact an administrator to change your email or password.',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
+  [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
+    'A data source must be configured and saved before syncing captures.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
@@ -323,14 +356,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_PROCESS_NOW_TOOLTIP]:
     'Process this single image with presets',
   [STRING.MESSAGE_RESULT_RANGE]:
-    'Showing {{start}}-{{end}} of {{total}} results',
+    'Showing {{start}}-{{end}} of {{total}} result(s)',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
-  [STRING.NAV_ITEM_JOBS]: 'Status',
+  [STRING.NAV_ITEM_JOBS]: 'Jobs',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
   [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
   [STRING.NAV_ITEM_PROJECTS]: 'Projects',
@@ -358,12 +391,32 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FAILED]: 'Failed',
   [STRING.DONE]: 'Done',
 
+  /* TOOLTIPS */
+  [STRING.TOOLTIP_COLLECTION]:
+    'A collection is a group of captures. A collection contains all or some captures in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
+  [STRING.TOOLTIP_DEPLOYMENT]:
+    'A deployment is defined as one monitoring station.',
+  [STRING.TOOLTIP_DEVICE_TYPE]:
+    'A device type is the type of equipment used for monitoring, for example an AMI system. One or many deployments can be connected to a device type.',
+  [STRING.TOOLTIP_OCCURRENCE]:
+    'An occurrence is a group of detections of one individual. One occurrence consists of one or many detections.',
+  [STRING.TOOLTIP_PIPELINE]:
+    'A pipeline is a set of algorithms used for processing. When a processing job is registered, a pipeline is picked. This list defines the pipeline options available.',
+  [STRING.TOOLTIP_SESSION]:
+    'A session is a fixed period of time of monitoring for one deployment. The period is typically one night.',
+  [STRING.TOOLTIP_SITE]:
+    'A site is a physical place where monitoring is taking place. One or many deployments can be connected to a site.',
+  [STRING.TOOLTIP_STORAGE]:
+    'A storage is a place where captures are kept, for example a S3 bucket. One or many deployments can be connected to a storage.',
+
   /* OTHER */
   [STRING.ALGORITHMS]: 'Algorithms',
+  [STRING.APPLY_ID]: 'Apply ID',
+  [STRING.APPLY_ID_SHORT]: 'Apply',
   [STRING.CLOSE]: 'Close',
   [STRING.COLUMNS]: 'Columns',
   [STRING.CONNECTED]: 'Connected',
-  [STRING.CONNECTING]: 'Connecting',
+  [STRING.CONNECTING]: 'Connecting...',
   [STRING.ID_APPLIED]: 'ID applied',
   [STRING.LAST_UPDATED]: 'Last updated',
   [STRING.LOADING_DATA]: 'Loading data',
@@ -375,10 +428,11 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.SELECT_COLUMNS]: 'Select columns',
-  [STRING.RESULTS]: '{{total}} results',
+  [STRING.RESULTS]: '{{total}} result(s)',
   [STRING.STAGES]: 'Stages',
   [STRING.SUMMARY]: 'Summary',
   [STRING.UNKNOWN]: 'Unknown',
+  [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UPDATING_DATA]: 'Updating data',
   [STRING.USER_INFO]: 'User info',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',

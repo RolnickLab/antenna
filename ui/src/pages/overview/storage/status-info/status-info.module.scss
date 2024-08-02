@@ -1,36 +1,13 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-.titleRow {
-  display: flex;
-  margin-bottom: 4px;
-}
-
-.titleRowContent {
-  display: inline-flex;
-  position: relative;
-
-  span {
-    @include paragraph-small();
-    font-weight: 600;
-    color: $color-neutral-800;
-  }
-}
-
-.buttonContainer {
-  position: absolute;
-  right: -4px;
-  top: 50%;
-  transform: translate(100%, -50%);
-}
-
-.infoRow {
+.wrapper {
   display: flex;
   align-items: center;
   height: 38px;
 }
 
-.infoRowContent {
+.content {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -52,6 +29,7 @@
   border-radius: 50%;
   border-width: 2px;
   border-style: solid;
+  flex-shrink: 0;
 
   &.notConnected {
     border-color: $color-destructive-500;

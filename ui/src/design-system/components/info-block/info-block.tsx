@@ -32,7 +32,9 @@ export const InfoBlock = ({ fields }: { fields: Field[] }) => (
               </span>
             </Link>
           ) : (
-            <span className={styles.fieldValue}>{value}</span>
+            <span className={styles.fieldValue}>
+              {value ?? translate(STRING.VALUE_NOT_AVAILABLE)}
+            </span>
           )}
         </p>
       )

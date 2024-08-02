@@ -27,7 +27,7 @@ export class Entity {
     })
   }
 
-  get description(): string {
+  get description(): string | undefined {
     return this._data.description
   }
 
@@ -46,6 +46,17 @@ export class Entity {
 
     return getFormatedDateTimeString({
       date: new Date(this._data.updated_at),
+    })
+  }
+
+  get updatedAtDetailed(): string | undefined {
+    if (!this._data.updated_at) {
+      return undefined
+    }
+
+    return getFormatedDateTimeString({
+      date: new Date(this._data.updated_at),
+      options: { second: true },
     })
   }
 }

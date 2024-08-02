@@ -17,6 +17,7 @@ from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
+from django.template.defaultfilters import filesizeformat
 
 import ami.tasks
 import ami.utils
@@ -24,6 +25,9 @@ from ami.base.models import BaseModel
 from ami.main import charts
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -299,6 +303,7 @@ class Deployment(BaseModel):
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
     # @TODO consider sharing only the "data source auth/config" then a one-to-one config for each deployment
+    # Or a pydantic model with nested attributes about each data source relationship
     data_source = models.ForeignKey(
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
@@ -390,7 +395,13 @@ class Deployment(BaseModel):
             uri = None
         return uri
 
-    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False) -> int:
+    def data_source_total_size_display(self) -> str:
+        if self.data_source_total_size is None:
+            return filesizeformat(0)
+        else:
+            return filesizeformat(self.data_source_total_size)
+
+    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False, job: "Job | None" = None) -> int:
         """Import images from the deployment's data source"""
 
         deployment = self
@@ -403,11 +414,19 @@ class Deployment(BaseModel):
         django_batch_size = batch_size
         sql_batch_size = 1000
 
-        for obj in ami.utils.s3.list_files_paginated(
+        if job:
+            job.logger.info(f"Syncing captures for deployment {deployment}")
+            job.update_progress()
+            job.save()
+
+        for obj, file_index in ami.utils.s3.list_files_paginated(
             s3_config,
             subdir=self.data_source_subdir,
             regex_filter=self.data_source_regex,
         ):
+            logger.debug(f"Processing file {file_index}: {obj}")
+            if not obj:
+                continue
             source_image = _create_source_image_for_sync(deployment, obj)
             if source_image:
                 total_files += 1
@@ -419,19 +438,117 @@ class Deployment(BaseModel):
                     deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
                 )
                 source_images = []
+                if job:
+                    job.logger.info(f"Processed {total_files} files")
+                    job.progress.update_stage(job.job_type().key, total_files=total_files)
+                    job.update_progress()
 
         if source_images:
             # Insert/update the last batch
             _insert_or_update_batch_for_sync(
                 deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
             )
+        if job:
+            job.logger.info(f"Processed {total_files} files")
+            job.progress.update_stage(job.job_type().key, total_files=total_files)
+            job.update_progress()
 
         _compare_totals_for_sync(deployment, total_files)
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
+
+        if job:
+            job.logger.info("Saving and recalculating sessions for deployment")
+            job.progress.update_stage(job.job_type().key, progress=1)
+            job.progress.add_stage("Update deployment cache")
+            job.update_progress()
+
         self.save()
+        self.update_calculated_fields(save=True)
+
+        if job:
+            job.progress.update_stage("Update deployment cache", progress=1)
+            job.update_progress()
 
         return total_files
+
+    def audit_subdir_of_captures(self, ignore_deepest=False) -> dict[str, int]:
+        """
+        Review the subdirs of all captures that belong to this deployment in an efficient query.
+
+        Group all captures by their subdir and count the number of captures in each group.
+        `ignore_deepest` will exclude the deepest subdir from the audit (usually the date folder)
+        """
+
+        class SubdirExtractAll(models.Func):
+            function = "REGEXP_REPLACE"
+            template = "%(function)s(%(expressions)s, '/[^/]*$', '')"
+
+        class SubdirExtractParent(models.Func):
+            # Attempts failed to dynamically set the depth of the last directories to ignore.
+            # so this is a hardcoded version that ignores the last one directory.
+            # this is useful for ignoring the date folder in the path.
+            function = "REGEXP_REPLACE"
+            template = "%(function)s(%(expressions)s, '/[^/]*/[^/]*$', '')"
+
+        extract_func = SubdirExtractParent if ignore_deepest else SubdirExtractAll
+
+        subdirs_audit = (
+            self.captures.annotate(
+                subdir=models.Case(
+                    models.When(path__contains="/", then=extract_func(models.F("path"))),
+                    default=models.Value(""),
+                    output_field=models.CharField(),
+                )
+            )
+            .values("subdir")
+            .annotate(count=models.Count("id"))
+            .exclude(subdir="")
+            .order_by("-count")
+        )
+
+        # Convert QuerySet to dictionary
+        return {item["subdir"]: item["count"] for item in subdirs_audit}
+
+    def update_subdir_of_captures(self, previous_subdir: str, new_subdir: str):
+        """
+        Update the relative directory in the path of all captures that belong to this deployment in a single query.
+
+        This is useful when moving images to a new location in the data source. It is not run
+        automatically when the deployment's data source configuration is updated. But admins can
+        run it manually from the Django shell or a maintenance script.
+
+        Reminder: the public_base_url includes the path that precedes the subdir within the full file path.
+
+        Warning: this is essentially a find & replace operation on the path field of SourceImage objects.
+        """
+
+        # Sanitize the subdir strings. Ensure that they end with a slash. This is are only protection against
+        # accidentally modifying the filename.
+        # Relative paths are stored without a leading slash.
+        previous_subdir = previous_subdir.strip("/") + "/"
+        new_subdir = new_subdir.strip("/") + "/"
+
+        # Update the path of all captures that belong to this deployment
+        captures = SourceImage.objects.filter(deployment=self, path__startswith=previous_subdir)
+        logger.info(f"Updating subdir of {captures.count()} captures from '{previous_subdir}' to '{new_subdir}'")
+        previous_count = captures.count()
+        captures.update(
+            path=models.functions.Replace(
+                models.F("path"),
+                models.Value(previous_subdir),
+                models.Value(new_subdir),
+            )
+        )
+        # Re-query the captures to ensure the path has been updated
+        unchanged_count = SourceImage.objects.filter(deployment=self, path__startswith=previous_subdir).count()
+        changed_count = SourceImage.objects.filter(deployment=self, path__startswith=new_subdir).count()
+
+        if unchanged_count:
+            raise ValueError(f"{unchanged_count} captures were not updated to new subdir: {new_subdir}")
+
+        if changed_count != previous_count:
+            raise ValueError(f"Only {changed_count} captures were updated to new subdir: {new_subdir}")
 
     def update_children(self):
         """
@@ -801,7 +918,7 @@ class S3StorageSource(BaseModel):
     access_key = models.TextField()
     secret_key = models.TextField()
     endpoint_url = models.CharField(max_length=255, blank=True, null=True)
-    public_base_url = models.CharField(max_length=255, blank=True)
+    public_base_url = models.CharField(max_length=255, blank=True, null=True)
     total_size = models.BigIntegerField(null=True, blank=True)
     total_files = models.BigIntegerField(null=True, blank=True)
     last_checked = models.DateTimeField(null=True, blank=True)
@@ -812,7 +929,7 @@ class S3StorageSource(BaseModel):
     deployments: models.QuerySet["Deployment"]
 
     @property
-    def config(self):
+    def config(self) -> ami.utils.s3.S3Config:
         return ami.utils.s3.S3Config(
             bucket_name=self.bucket,
             prefix=self.prefix,
@@ -822,10 +939,26 @@ class S3StorageSource(BaseModel):
             public_base_url=self.public_base_url,
         )
 
+    def deployments_count(self) -> int:
+        return self.deployments.count()
+
+    def total_files_indexed(self) -> int:
+        return self.deployments.aggregate(total_files=models.Sum("data_source_total_files"))["total_files"]
+
+    @functools.cache
+    def total_size_indexed(self) -> int:
+        return self.deployments.aggregate(total_size=models.Sum("data_source_total_size"))["total_size"]
+
+    def total_size_indexed_display(self) -> str:
+        return filesizeformat(self.total_size_indexed())
+
+    def total_captures_indexed(self) -> int:
+        return self.deployments.aggregate(total_captures=models.Sum("captures_count"))["total_captures"]
+
     def list_files(self, limit=None):
         """Recursively list files in the bucket/prefix."""
 
-        return ami.utils.s3.list_files_paginated(self.config)
+        return ami.utils.s3.list_files_paginated(self.config, limit=limit)
 
     def count_files(self):
         """Count & save the number of files in the bucket/prefix."""
@@ -838,7 +971,7 @@ class S3StorageSource(BaseModel):
     def calculate_size(self):
         """Calculate the total size and count of all files in the bucket/prefix."""
 
-        sizes = [obj["Size"] for obj in self.list_files()]  # type: ignore
+        sizes = [obj["Size"] for obj, _num_files_checked in self.list_files() if obj]  # type: ignore
         size = sum(sizes)
         count = len(sizes)
         self.total_size = size
@@ -856,6 +989,13 @@ class S3StorageSource(BaseModel):
         """Return the public URL for the given path."""
 
         return ami.utils.s3.public_url(self.config, path)
+
+    def test_connection(
+        self, subdir: str | None = None, regex_filter: str | None = None
+    ) -> ami.utils.s3.ConnectionTestResult:
+        """Test the connection to the S3 bucket."""
+
+        return ami.utils.s3.test_connection(self.config, subdir=subdir, regex_filter=regex_filter)
 
     def save(self, *args, **kwargs):
         # If public_base_url has changed, update the urls for all source images
@@ -952,7 +1092,7 @@ class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
 
     path = models.CharField(max_length=255, blank=True)
-    public_base_url = models.CharField(max_length=255, blank=True)
+    public_base_url = models.CharField(max_length=255, blank=True, null=True)
     timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
@@ -982,11 +1122,20 @@ class SourceImage(BaseModel):
         on the source image. If the deployment's data source changes, the URLs
         for all source images will be updated.
 
-        @TODO use signed URLs if necessary.
         @TODO add support for thumbnail URLs here?
         @TODO consider if we ever need to access the original image directly!
         """
-        return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
+        # Get presigned URL if access keys are configured
+        data_source = self.deployment.data_source if self.deployment and self.deployment.data_source else None
+        if (
+            data_source is not None
+            and not data_source.public_base_url
+            and data_source.access_key
+            and data_source.secret_key
+        ):
+            return ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+        else:
+            return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
 
     # backwards compatibility
     url = public_url
@@ -1465,7 +1614,10 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    # For type hints
     classifications: models.QuerySet["Classification"]
+    source_image_id: int
+    detection_algorithm_id: int
 
     # def bbox(self):
     #     return (

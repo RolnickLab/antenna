@@ -79,7 +79,7 @@ export class Capture {
     return this._detections
   }
 
-  get height(): number {
+  get height(): number | null {
     return this._capture.height
   }
 
@@ -114,7 +114,7 @@ export class Capture {
     return new Date(this._capture.timestamp)
   }
 
-  get width(): number {
+  get width(): number | null {
     return this._capture.width
   }
 }

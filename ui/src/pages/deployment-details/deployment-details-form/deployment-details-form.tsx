@@ -55,6 +55,8 @@ export const DeploymentDetailsForm = ({
       [Section.SourceImages]: {
         values: {
           dataSourceId: deployment.dataSource?.id,
+          dataSourceSubdir: deployment.dataSourceSubdir,
+          dataSourceRegex: deployment.dataSourceRegex,
         },
         isValid: startValid,
       },
