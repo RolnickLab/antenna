@@ -1190,6 +1190,34 @@ class EventSerializer(DefaultSerializer):
         return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
 
 
+class EventTimelineSourceImageSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        fields = ["id", "details"]
+
+
+class EventTimelineIntervalSerializer(serializers.Serializer):
+    start = serializers.DateTimeField()
+    end = serializers.DateTimeField()
+    first_capture = EventTimelineSourceImageSerializer(allow_null=True)
+    captures_count = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+
+
+class EventTimelineMetaSerializer(serializers.Serializer):
+    total_intervals = serializers.IntegerField()
+    resolution_minutes = serializers.IntegerField()
+    max_detections = serializers.IntegerField()
+    min_detections = serializers.IntegerField()
+    timeline_start = serializers.DateTimeField()
+    timeline_end = serializers.DateTimeField()
+
+
+class EventTimelineSerializer(serializers.Serializer):
+    data = EventTimelineIntervalSerializer(many=True)
+    meta = EventTimelineMetaSerializer()
+
+
 class StorageStatusSerializer(serializers.Serializer):
     data_source = serializers.CharField(max_length=200)
 

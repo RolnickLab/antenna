@@ -1064,21 +1064,26 @@ class SourceImage(BaseModel):
         ]
 
 
-def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None) -> int:
+def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None, null_only=False) -> int:
     """
     Update the detection count for all source images using a bulk update query.
 
     @TODO Needs testing.
     """
     qs = qs or SourceImage.objects.all()
+    if null_only:
+        qs = qs.filter(detections_count__isnull=True)
+
     subquery = models.Subquery(
         Detection.objects.filter(source_image_id=models.OuterRef("pk"))
         .values("source_image_id")
         .annotate(count=models.Count("id"))
-        .values("count")
+        .values("count"),
+        output_field=models.IntegerField(),
     )
     start_time = time.time()
-    num_updated = qs.annotate(count=subquery).update(detections_count=models.F("count"))
+    # Use Coalesce to default to 0 instead of NULL
+    num_updated = qs.update(detections_count=models.functions.Coalesce(subquery, models.Value(0)))
     end_time = time.time()
     elapsed_time = end_time - start_time
     logger.info(f"Updated detection counts for {num_updated} source images in {elapsed_time:.2f} seconds")
