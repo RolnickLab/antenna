@@ -61,6 +61,9 @@ export class Capture {
   get dateTimeLabel(): string {
     return getFormatedDateTimeString({
       date: new Date(this._capture.timestamp),
+      options: {
+        second: true,
+      },
     })
   }
 
