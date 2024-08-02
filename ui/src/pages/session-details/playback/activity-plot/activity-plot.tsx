@@ -1,3 +1,4 @@
+import { SessionDetails } from 'data-services/models/session-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
@@ -10,9 +11,11 @@ const tooltipBgColor = '#ffffff'
 const tooltipBorderColor = '#222426'
 
 export const ActivityPlot = ({
+  session,
   timeline,
   setActiveCaptureId,
 }: {
+  session: SessionDetails
   timeline: TimelineTick[]
   setActiveCaptureId: (captureId: string) => void
 }) => {
@@ -61,6 +64,7 @@ export const ActivityPlot = ({
               showticklabels: false,
               zeroline: false,
               fixedrange: true,
+              range: [session.startDate, session.endDate],
             },
             hoverlabel: {
               bgcolor: tooltipBgColor,

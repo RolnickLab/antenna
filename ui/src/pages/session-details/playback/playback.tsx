@@ -80,6 +80,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
       />
       <div className={styles.bottomBar}>
         <ActivityPlot
+          session={session}
           timeline={timeline}
           setActiveCaptureId={setActiveCaptureId}
         />
