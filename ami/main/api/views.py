@@ -201,7 +201,9 @@ class EventViewSet(DefaultViewSet):
         including intervals where no source images were captured, along with meta information.
         """
         event = self.get_object()
-        resolution_minutes = int(request.query_params.get("resolution_minutes", 10))
+        resolution_minutes = IntegerField(required=False, min_value=1).clean(
+            request.query_params.get("resolution_minutes", 1)
+        )
         resolution = datetime.timedelta(minutes=resolution_minutes)
 
         source_images = (
