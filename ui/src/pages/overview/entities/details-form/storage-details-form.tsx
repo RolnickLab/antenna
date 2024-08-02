@@ -82,11 +82,12 @@ export const StorageDetailsForm = ({
     setFocus,
   } = useForm<StorageFormValues>({
     defaultValues: {
-      name: entity?.name,
+      access_key: storage?.accessKey,
+      name: storage?.name,
       bucket: storage?.bucket,
       public_base_url: storage?.publicBaseUrl,
       endpoint_url: storage?.endpointUrl,
-      // Access key and secret key are not returned by the API
+      // Secret access key is not returned by the API
     },
     mode: 'onChange',
   })
@@ -145,18 +146,11 @@ export const StorageDetailsForm = ({
           />
         </FormRow>
         <FormRow>
-          <FormController
+          <FormField
             name="access_key"
+            type="text"
+            config={config}
             control={control}
-            config={config.access_key}
-            render={({ field, fieldState }) => (
-              <SecretKeyInput
-                entityCreated={!!storage?.createdAt}
-                field={field}
-                fieldState={fieldState}
-                onEditStart={() => setTimeout(() => setFocus(field.name))}
-              />
-            )}
           />
           <FormController
             name="secret_key"
