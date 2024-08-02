@@ -20,7 +20,9 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   const { threshold } = useThreshold()
   const { timeline = [] } = useSessionTimeline(session.id)
   const [showDetections, setShowDetections] = useState(true)
-  const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId()
+  const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
+    session.firstCapture?.id
+  )
   const { capture: activeCapture } = useCaptureDetails(
     activeCaptureId as string
   )
