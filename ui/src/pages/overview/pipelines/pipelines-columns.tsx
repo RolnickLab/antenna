@@ -6,6 +6,11 @@ import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
   {
+    id: 'id',
+    name: translate(STRING.FIELD_LABEL_ID),
+    renderCell: (item: Pipeline) => <BasicTableCell value={item.id} />,
+  },
+  {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
