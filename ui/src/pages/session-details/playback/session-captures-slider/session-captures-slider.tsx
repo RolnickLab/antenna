@@ -23,11 +23,7 @@ export const SessionCapturesSlider = ({
 
   useEffect(() => {
     if (activeCapture) {
-      setValue(
-        activeCapture
-          ? dateToValue({ date: activeCapture.date, startDate, endDate })
-          : 0
-      )
+      setValue(dateToValue({ date: activeCapture.date, startDate, endDate }))
     }
   }, [activeCapture])
 
@@ -50,8 +46,13 @@ export const SessionCapturesSlider = ({
           // Update active capture based on date
           const targetDate = valueToDate({ value, startDate, endDate })
           const captureId = findClosestCaptureId(timeline, targetDate)
-          if (captureId) {
+
+          if (captureId && activeCapture?.id !== captureId) {
             setActiveCaptureId(captureId)
+          } else if (activeCapture) {
+            setValue(
+              dateToValue({ date: activeCapture.date, startDate, endDate })
+            )
           }
         }}
       />
