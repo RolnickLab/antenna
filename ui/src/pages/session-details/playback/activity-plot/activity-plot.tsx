@@ -28,6 +28,8 @@ export const ActivityPlot = ({
             {
               x: timeline.map((timelineTick) => timelineTick.startDate),
               y: timeline.map((timelineTick) => timelineTick.numDetections),
+              text: timeline.map((timelineTick) => timelineTick.tooltip),
+              hovertemplate: '%{text}<extra></extra>',
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
