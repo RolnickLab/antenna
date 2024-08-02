@@ -36,7 +36,7 @@ export const ActivityPlot = ({
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
-              line: { color: lineColor, width: 1, shape: 'spline' },
+              line: { color: lineColor, width: 1 },
             },
           ]}
           layout={{
