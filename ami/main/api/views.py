@@ -39,6 +39,7 @@ from ..models import (
     SourceImageCollection,
     SourceImageUpload,
     Taxon,
+    update_detection_counts,
 )
 from .serializers import (
     ClassificationSerializer,
@@ -206,9 +207,13 @@ class EventViewSet(DefaultViewSet):
         )
         resolution = datetime.timedelta(minutes=resolution_minutes)
 
-        source_images = (
-            SourceImage.objects.filter(event=event).order_by("timestamp").values("id", "timestamp", "detections_count")
-        )
+        qs = SourceImage.objects.filter(event=event)
+
+        # Bulk update all source images where detections_count is null
+        # There should be few of these. @TODO move this?
+        update_detection_counts(qs=qs, null_only=True)
+
+        source_images = qs.order_by("timestamp").values("id", "timestamp", "detections_count")
 
         start_time = event.start
         end_time = event.end or timezone.now()
@@ -234,7 +239,7 @@ class EventViewSet(DefaultViewSet):
                 if interval_data["first_capture"] is None:
                     interval_data["first_capture"] = SourceImage(pk=image["id"])
                 interval_data["captures_count"] += 1
-                interval_data["detections_count"] += image["detections_count"]
+                interval_data["detections_count"] += image["detections_count"] or 0
                 image_index += 1
 
             max_detections = max(max_detections, interval_data["detections_count"])
