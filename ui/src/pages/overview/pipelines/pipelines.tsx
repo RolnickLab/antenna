@@ -14,7 +14,7 @@ export const Pipelines = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'created_at',
-    order: 'desc',
+    order: 'asc',
   })
   const { pagination, setPage } = usePagination()
   const { pipelines, total, isLoading, isFetching, error } = usePipelines({
