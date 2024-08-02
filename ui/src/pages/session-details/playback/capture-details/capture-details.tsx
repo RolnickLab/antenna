@@ -1,4 +1,3 @@
-import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
 import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
@@ -18,22 +17,19 @@ import { CaptureInfo } from './capture-info/capture-info'
 import { CaptureJob } from './capture-job/capture-job'
 
 export const CaptureDetails = ({
-  activeCaptureId,
+  capture,
+  captureId,
 }: {
-  activeCaptureId: string
+  capture?: Capture
+  captureId: string
 }) => {
-  const { capture, isFetching } = useCaptureDetails(activeCaptureId as string)
   const [showJobControls, setShowJobControls] = useState(false)
 
   return (
     <>
       <div className={styles.captureInfo}>
         <CaptureInfo capture={capture} />
-        <StarButton
-          capture={capture}
-          captureFetching={isFetching}
-          captureId={activeCaptureId as string}
-        />
+        <StarButton capture={capture} captureId={captureId} />
         <IconButton
           icon={IconType.ToggleDown}
           iconTransform={showJobControls ? 'rotate(-180deg)' : undefined}

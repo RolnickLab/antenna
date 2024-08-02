@@ -1,28 +1,34 @@
 import { Capture } from 'data-services/models/capture'
+import { SessionDetails } from 'data-services/models/session-details'
+import { TimelineTick } from 'data-services/models/timeline-tick'
 import { TimestampSlider } from 'design-system/components/slider/timestamp-slider'
 import { useEffect, useState } from 'react'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
-import { dateToValue, findClosestCapture, valueToDate } from './utils'
+import { dateToValue, findClosestCaptureId, valueToDate } from './utils'
 
 export const SessionCapturesSlider = ({
-  captures,
+  session,
+  timeline,
   activeCapture,
-  setActiveCapture,
+  setActiveCaptureId,
 }: {
-  captures: Capture[]
+  session: SessionDetails
+  timeline: TimelineTick[]
   activeCapture?: Capture
-  setActiveCapture: (capture: Capture) => void
+  setActiveCaptureId: (captireId: string) => void
 }) => {
   const [value, setValue] = useState(0)
-  const startDate = captures[0].date
-  const endDate = captures[captures.length - 1].date
+  const startDate = session.startDate
+  const endDate = session.endDate
 
   useEffect(() => {
-    setValue(
-      activeCapture
-        ? dateToValue({ date: activeCapture.date, startDate, endDate })
-        : 0
-    )
+    if (activeCapture) {
+      setValue(
+        activeCapture
+          ? dateToValue({ date: activeCapture.date, startDate, endDate })
+          : 0
+      )
+    }
   }, [activeCapture])
 
   return (
@@ -43,9 +49,9 @@ export const SessionCapturesSlider = ({
         onValueCommit={(value) => {
           // Update active capture based on date
           const targetDate = valueToDate({ value, startDate, endDate })
-          const capture = findClosestCapture(captures, targetDate)
-          if (capture) {
-            setActiveCapture(capture)
+          const captureId = findClosestCaptureId(timeline, targetDate)
+          if (captureId) {
+            setActiveCaptureId(captureId)
           }
         }}
       />

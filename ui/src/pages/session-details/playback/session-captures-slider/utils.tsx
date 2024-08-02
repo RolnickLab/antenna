@@ -1,20 +1,23 @@
-import { Capture } from 'data-services/models/capture'
+import { TimelineTick } from 'data-services/models/timeline-tick'
 
-export const findClosestCapture = (captures: Capture[], targetDate: Date) => {
-  let closestCapture: Capture | undefined
+export const findClosestCaptureId = (
+  timeline: TimelineTick[],
+  targetDate: Date
+) => {
+  let closestCaptureId: string | undefined
   let smallestDifference = Infinity
 
-  captures.forEach((capture) => {
-    const captureDate = capture.date
-    const difference = Math.abs(captureDate.getTime() - targetDate.getTime())
+  timeline.forEach((timelineTick) => {
+    const tickDate = timelineTick.startDate
+    const difference = Math.abs(tickDate.getTime() - targetDate.getTime())
 
-    if (difference < smallestDifference) {
+    if (timelineTick.firstCaptureId && difference < smallestDifference) {
       smallestDifference = difference
-      closestCapture = capture
+      closestCaptureId = timelineTick.firstCaptureId
     }
   })
 
-  return closestCapture
+  return closestCaptureId
 }
 
 export const dateToValue = ({

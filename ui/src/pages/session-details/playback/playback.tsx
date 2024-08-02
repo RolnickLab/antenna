@@ -1,4 +1,5 @@
-import { useInfiniteCaptures } from 'data-services/hooks/sessions/useInfiniteCaptures'
+import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
+import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
 import {
   Checkbox,
@@ -13,18 +14,16 @@ import { Frame } from './frame/frame'
 import styles from './playback.module.scss'
 import { SessionCapturesSlider } from './session-captures-slider/session-captures-slider'
 import { ThresholdSlider } from './threshold-slider/threshold-slider'
-import { useActiveCapture, useActiveCaptureId } from './useActiveCapture'
+import { useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const { threshold } = useThreshold()
-  const { captures = [] } = useInfiniteCaptures(
-    session.id,
-    session.captureOffset,
-    0
-  )
-  const { activeCapture, setActiveCapture } = useActiveCapture(captures)
+  const { timeline = [] } = useSessionTimeline(session.id)
   const [showDetections, setShowDetections] = useState(true)
-  const { activeCaptureId } = useActiveCaptureId()
+  const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId()
+  const { capture: activeCapture } = useCaptureDetails(
+    activeCaptureId as string
+  )
 
   if (!session.firstCapture) {
     return null
@@ -37,7 +36,10 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           {activeCaptureId && (
             <div className={styles.sidebarSection}>
               <span className={styles.title}>Capture #{activeCaptureId}</span>
-              <CaptureDetails activeCaptureId={activeCaptureId} />
+              <CaptureDetails
+                capture={activeCapture}
+                captureId={activeCaptureId}
+              />
             </div>
           )}
           <div className={styles.sidebarSection}>
@@ -61,13 +63,8 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             >
               <CaptureNavigation
                 activeCaptureId={activeCaptureId}
-                captures={captures}
-                setActiveCaptureId={(captureId) => {
-                  const capture = captures.find((c) => c.id === captureId)
-                  if (capture) {
-                    setActiveCapture(capture)
-                  }
-                }}
+                captures={[]}
+                setActiveCaptureId={setActiveCaptureId}
               />
             </div>
           )}
@@ -82,12 +79,16 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         threshold={threshold}
       />
       <div className={styles.bottomBar}>
-        <ActivityPlot captures={captures} setActiveCapture={setActiveCapture} />
-        {captures.length && (
+        <ActivityPlot
+          timeline={timeline}
+          setActiveCaptureId={setActiveCaptureId}
+        />
+        {timeline.length && (
           <SessionCapturesSlider
-            captures={captures}
+            session={session}
+            timeline={timeline}
             activeCapture={activeCapture}
-            setActiveCapture={setActiveCapture}
+            setActiveCaptureId={setActiveCaptureId}
           />
         )}
       </div>

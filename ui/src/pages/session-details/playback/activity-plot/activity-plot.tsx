@@ -1,4 +1,4 @@
-import { Capture } from 'data-services/models/capture'
+import { TimelineTick } from 'data-services/models/timeline-tick'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
@@ -10,11 +10,11 @@ const tooltipBgColor = '#ffffff'
 const tooltipBorderColor = '#222426'
 
 export const ActivityPlot = ({
-  captures,
-  setActiveCapture,
+  timeline,
+  setActiveCaptureId,
 }: {
-  captures: Capture[]
-  setActiveCapture: (capture: Capture) => void
+  timeline: TimelineTick[]
+  setActiveCaptureId: (captureId: string) => void
 }) => {
   const containerRef = useRef(null)
   const width = useDynamicPlotWidth(containerRef)
@@ -26,12 +26,12 @@ export const ActivityPlot = ({
           style={{ display: 'block' }}
           data={[
             {
-              x: captures.map((capture) => capture.date),
-              y: captures.map((capture) => capture.numDetections),
+              x: timeline.map((timelineTick) => timelineTick.startDate),
+              y: timeline.map((timelineTick) => timelineTick.numDetections),
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
-              line: { color: lineColor, width: 1 },
+              line: { color: lineColor, width: 1, shape: 'spline' },
             },
           ]}
           layout={{
@@ -74,11 +74,11 @@ export const ActivityPlot = ({
             displayModeBar: false,
           }}
           onClick={(data) => {
-            const captureIndex = data.points[0].pointIndex
-            const capture = captures[captureIndex]
+            const timelineTickIndex = data.points[0].pointIndex
+            const timelineTick = timeline[timelineTickIndex]
 
-            if (capture) {
-              setActiveCapture(capture)
+            if (timelineTick?.firstCaptureId) {
+              setActiveCaptureId(timelineTick.firstCaptureId)
             }
           }}
         />
