@@ -25,6 +25,11 @@ export class TimelineTick {
     return this._timelineTick.detections_count ?? 0
   }
 
+  get numCaptures(): number {
+    return this._timelineTick.captures_count ?? 0
+  }
+  j
+
   get startDate(): Date {
     return new Date(this._timelineTick.start)
   }
@@ -46,6 +51,6 @@ export class TimelineTick {
       },
     })
 
-    return `(${timespanString}, ${this.numDetections})`
+    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Detections: ${this.numDetections}`
   }
 }
