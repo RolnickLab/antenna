@@ -1166,7 +1166,7 @@ class SourceImage(BaseModel):
             logger.error(msg)
         return timestamp
 
-    def next_capture_in_event_id(self) -> int | None:
+    def event_next_capture_id(self) -> int | None:
         """
         Return the next capture in the event.
 
@@ -1177,13 +1177,44 @@ class SourceImage(BaseModel):
         """
         return None
 
-    def prev_capture_in_event_id(self) -> int | None:
+    def event_prev_capture_id(self) -> int | None:
         """
         Return the previous capture in the event.
 
         This will be populated by the query in the ViewSet but here is the query for reference:
         return SourceImage.objects.filter(
         event=self.event, timestamp__lt=self.timestamp).order_by("-timestamp").values("id").first()
+        """
+        return None
+
+    def event_current_capture_index(self) -> int | None:
+        """
+        Return the index of the current capture in the event.
+
+        This will be populated by the query in the ViewSet but here is the query for reference:
+        return SourceImage.objects.filter(
+        event=self.event, timestamp__lt=self.timestamp).count()
+        or using window functions:
+        return SourceImage.objects.filter(
+            event=self.event, timestamp__lt=self.timestamp).annotate(
+            index=models.Window(
+            expression=models.functions.RowNumber(),
+            order_by=models.F("timestamp").desc(),
+        )
+        ).values("index").first()
+        """
+        return None
+
+    def event_total_captures(self) -> int | None:
+        """
+        Return the total number of captures in the event.
+
+        This will be populated by the query in the ViewSet but here is the query for reference:
+        return SourceImage.objects.filter(event=self.event).count()
+
+        These values are used to help navigate between images in the event.
+
+        @TODO Can we remove these methods? Seems to be a requirement for DRF serializers.
         """
         return None
 

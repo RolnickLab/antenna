@@ -407,6 +407,13 @@ class SourceImageViewSet(DefaultViewSet):
         return queryset
 
     def add_adjacent_captures(self, queryset: QuerySet) -> QuerySet:
+        """
+        These are helpful for the frontend to navigate between captures in the same event.
+
+        However they likely belong in the EventViewSet, or another endpoint.
+        @TODO Consider a custom endpoint for capture details specific to the Session Detail view.
+        """
+
         # Subquery for the next image
         next_image = (
             SourceImage.objects.filter(event=models.OuterRef("event"), timestamp__gt=models.OuterRef("timestamp"))
@@ -421,9 +428,27 @@ class SourceImageViewSet(DefaultViewSet):
             .values("id")[:1]
         )
 
+        # Subquery for the current capture's index
+        index_subquery = (
+            SourceImage.objects.filter(event=models.OuterRef("event"), timestamp__lte=models.OuterRef("timestamp"))
+            .values("event")
+            .annotate(index=models.Count("id"))
+            .values("index")
+        )
+
+        # Subquery for the total captures in the event
+        total_subquery = (
+            SourceImage.objects.filter(event=models.OuterRef("event"))
+            .values("event")
+            .annotate(total=models.Count("id"))
+            .values("total")
+        )
+
         return queryset.annotate(
-            next_capture_in_event_id=models.Subquery(next_image, output_field=models.IntegerField()),
-            prev_capture_in_event_id=models.Subquery(previous_image, output_field=models.IntegerField()),
+            event_next_capture_id=models.Subquery(next_image, output_field=models.IntegerField()),
+            event_prev_capture_id=models.Subquery(previous_image, output_field=models.IntegerField()),
+            event_current_capture_index=models.Subquery(index_subquery, output_field=models.IntegerField()),
+            event_total_captures=models.Subquery(total_subquery, output_field=models.IntegerField()),
         )
 
     @action(detail=True, methods=["post"], name="star")
