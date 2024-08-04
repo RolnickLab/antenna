@@ -77,7 +77,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           timeline={timeline}
           setActiveCaptureId={setActiveCaptureId}
         />
-        {timeline.length && (
+        {timeline.length > 0 && (
           <SessionCapturesSlider
             session={session}
             timeline={timeline}
