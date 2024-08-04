@@ -216,6 +216,8 @@ class EventViewSet(DefaultViewSet):
         qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             captures_count=models.Count("captures", distinct=True),
+            detections_count=models.Count("captures__detections", distinct=True),
+            # occurrences_count is calculated in a model method because it requires a classification threshold. @TODO
             duration=models.F("end") - models.F("start"),
         ).select_related("deployment", "project")
 
