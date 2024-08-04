@@ -206,11 +206,6 @@ const FrameDetections = ({
           return null
         }
 
-        // TODO: Temporary solution, update when score value is avaible
-        const regex = /\((\d+)%\)/
-        const match = detection.label.match(regex)
-        const score = match ? parseInt(match[1], 10) / 100 : undefined
-
         return (
           <Tooltip
             key={detection.id}
@@ -230,7 +225,8 @@ const FrameDetections = ({
               style={style}
               className={classNames(styles.detection, {
                 [styles.active]: isActive,
-                [styles.meetsThreshold]: score && score >= threshold,
+                [styles.meetsThreshold]:
+                  detection.score && detection.score >= threshold,
                 [styles.clickable]: !!detection.occurrenceId,
               })}
               onClick={() => {
