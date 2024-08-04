@@ -34,6 +34,16 @@ const makeDetectionLabel = (detection: CaptureDetection) => {
   return detection.id
 }
 
+const makeDetectionScoreLabel = (detection: CaptureDetection) => {
+  // This score label is the confidence of the best & most recent classification of the detection's occurrence
+  // There will also be a score for the localization of the detection as well.
+  const occurrence: DetectionOccurrence | undefined = detection.occurrence
+  if (occurrence && occurrence.determination_score) {
+    return occurrence.determination_score
+  }
+  return 0
+}
+
 export class Capture {
   protected readonly _capture: ServerCapture
   private readonly _detections: CaptureDetection[] = []
@@ -48,7 +58,7 @@ export class Capture {
             bbox: detection.bbox,
             id: `${detection.id}`,
             label: makeDetectionLabel(detection),
-            score: detection.score,
+            score: makeDetectionScoreLabel(detection),
             occurrenceId: detection.occurrence
               ? `${detection.occurrence.id}`
               : undefined,
