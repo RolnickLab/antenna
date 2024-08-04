@@ -28,7 +28,6 @@ export class TimelineTick {
   get numCaptures(): number {
     return this._timelineTick.captures_count ?? 0
   }
-  j
 
   get startDate(): Date {
     return new Date(this._timelineTick.start)
