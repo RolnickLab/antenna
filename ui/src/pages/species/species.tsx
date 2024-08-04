@@ -101,7 +101,7 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { species, isLoading } = useSpeciesDetails(id, projectId)
+  const { species, isLoading, error } = useSpeciesDetails(id, projectId)
 
   useEffect(() => {
     setDetailBreadcrumb(species ? { title: species.name } : undefined)
@@ -126,6 +126,7 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {species ? <SpeciesDetails species={species} /> : null}
       </Dialog.Content>
