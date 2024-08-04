@@ -1,4 +1,4 @@
-import { Capture } from 'data-services/models/capture'
+import { CaptureDetails } from 'data-services/models/capture-details'
 import {
   IconButton,
   IconButtonShape,
@@ -9,29 +9,21 @@ import { useEffect } from 'react'
 import styles from './capture-navigation.module.scss'
 
 export const CaptureNavigation = ({
-  activeCaptureId,
-  captures,
+  activeCapture,
   setActiveCaptureId,
 }: {
-  activeCaptureId?: string
-  captures: Capture[]
+  activeCapture: CaptureDetails
   setActiveCaptureId: (captureId: string) => void
 }) => {
-  const activeCaptureIndex = captures.findIndex(
-    (capture) => capture.id === activeCaptureId
-  )
-
   const goToPrev = () => {
-    const prevCapture = captures[activeCaptureIndex - 1]
-    if (prevCapture) {
-      setActiveCaptureId(prevCapture.id)
+    if (activeCapture.prevCaptureId) {
+      setActiveCaptureId(activeCapture.prevCaptureId)
     }
   }
 
   const goToNext = () => {
-    const nextCapture = captures[activeCaptureIndex + 1]
-    if (nextCapture) {
-      setActiveCaptureId(nextCapture.id)
+    if (activeCapture.nextCaptureId) {
+      setActiveCaptureId(activeCapture.nextCaptureId)
     }
   }
 
@@ -52,27 +44,25 @@ export const CaptureNavigation = ({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [goToPrev, goToNext])
 
-  if (!captures.length) {
-    return null
-  }
-
   return (
-    <div className={styles.buttonContainer}>
+    <div className={styles.wrapper}>
       <IconButton
         icon={IconType.ToggleLeft}
         shape={IconButtonShape.RoundLarge}
         theme={IconButtonTheme.Neutral}
-        disabled={activeCaptureIndex - 1 < 0}
+        disabled={!activeCapture.prevCaptureId}
         onClick={goToPrev}
       />
-      <span>
-        {activeCaptureIndex + 1} / {captures.length}
-      </span>
+      {activeCapture && (
+        <span>
+          {activeCapture.currentIndex} / {activeCapture.totalCaptures}
+        </span>
+      )}
       <IconButton
         icon={IconType.ToggleRight}
         shape={IconButtonShape.RoundLarge}
         theme={IconButtonTheme.Neutral}
-        disabled={activeCaptureIndex + 1 > captures.length - 1}
+        disabled={!activeCapture.nextCaptureId}
         onClick={goToNext}
       />
     </div>

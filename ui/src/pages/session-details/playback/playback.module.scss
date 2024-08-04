@@ -40,6 +40,12 @@
   }
 }
 
+.captureNavigationWrapper {
+  display: flex;
+  align-items: flex-start;
+  height: 48px;
+}
+
 .bottomBar {
   grid-column: span 2;
   background-color: $color-neutral-800;

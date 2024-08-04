@@ -55,21 +55,6 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
               theme={CheckboxTheme.Neutral}
             />
           </div>
-          {activeCaptureId && (
-            <div
-              className={styles.sidebarSection}
-              style={{
-                flexGrow: 1,
-                alignItems: 'flex-end',
-              }}
-            >
-              <CaptureNavigation
-                activeCaptureId={activeCaptureId}
-                captures={[]}
-                setActiveCaptureId={setActiveCaptureId}
-              />
-            </div>
-          )}
         </div>
       </div>
       <Frame
@@ -81,6 +66,14 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         threshold={threshold}
       />
       <div className={styles.bottomBar}>
+        <div className={styles.captureNavigationWrapper}>
+          {activeCapture && (
+            <CaptureNavigation
+              activeCapture={activeCapture}
+              setActiveCaptureId={setActiveCaptureId}
+            />
+          )}
+        </div>
         <ActivityPlot
           session={session}
           timeline={timeline}
