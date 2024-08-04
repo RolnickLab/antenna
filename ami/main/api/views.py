@@ -366,14 +366,8 @@ class SourceImageViewSet(DefaultViewSet):
         return queryset
 
     def prefetch_detections(self, queryset: QuerySet) -> QuerySet:
-        classification_threshold = get_active_classification_threshold(self.request)
-
-        if classification_threshold is not None:
-            prefetch_queryset = Detection.objects.filter(
-                occurrence__detections__classifications__score__gte=classification_threshold
-            )
-        else:
-            prefetch_queryset = Detection.objects.all()
+        # Return all detections for source images, let frontend filter them
+        prefetch_queryset = Detection.objects.all()
 
         related_detections = Prefetch(
             "detections",
