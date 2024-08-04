@@ -1,35 +1,59 @@
 @import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 @import 'src/design-system/variables/variables.scss';
 
 .wrapper {
-  display: flex;
+  display: grid;
+  grid-template-columns: 300px 1fr;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.playbackFrame {
-  width: 80%;
+.sidebar {
+  background-color: $color-neutral-700;
+  position: relative;
 }
 
-.capturePicker {
-  width: 20%;
-  min-width: 320px;
+.sidebarContent {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.sidebarSection {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+
+  .title {
+    display: block;
+    @include label();
+    color: $color-neutral-200;
+  }
+}
+
+.captureNavigationWrapper {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.bottomBar {
+  grid-column: span 2;
   background-color: $color-neutral-800;
-  position: relative;
+  padding: 32px;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .wrapper {
-    flex-direction: column;
-  }
-
-  .playbackFrame {
-    width: 100%;
-  }
-
-  .capturePicker {
-    width: 100%;
-    min-width: auto;
-    height: 240px;
+    grid-template-columns: 200px 1fr;
   }
 }

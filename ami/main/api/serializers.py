@@ -856,6 +856,10 @@ class SourceImageSerializer(SourceImageListSerializer):
             "test_image",
             "jobs",
             "collections",
+            "event_next_capture_id",
+            "event_prev_capture_id",
+            "event_current_capture_index",
+            "event_total_captures",
         ]
 
 
@@ -1199,6 +1203,35 @@ class EventSerializer(DefaultSerializer):
 
     def get_taxa_count(self, obj):
         return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
+
+
+class EventTimelineSourceImageSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        fields = ["id", "details"]
+
+
+class EventTimelineIntervalSerializer(serializers.Serializer):
+    start = serializers.DateTimeField()
+    end = serializers.DateTimeField()
+    first_capture = EventTimelineSourceImageSerializer(allow_null=True)
+    captures_count = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+
+
+class EventTimelineMetaSerializer(serializers.Serializer):
+    total_intervals = serializers.IntegerField()
+    resolution_minutes = serializers.IntegerField()
+    max_detections = serializers.IntegerField()
+    min_detections = serializers.IntegerField()
+    total_detections = serializers.IntegerField()
+    timeline_start = serializers.DateTimeField()
+    timeline_end = serializers.DateTimeField()
+
+
+class EventTimelineSerializer(serializers.Serializer):
+    data = EventTimelineIntervalSerializer(many=True)  # type: ignore @TODO is `data` an existing property in DRF?
+    meta = EventTimelineMetaSerializer()
 
 
 class StorageStatusSerializer(serializers.Serializer):

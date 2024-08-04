@@ -7,6 +7,7 @@
   font-weight: 600;
   color: $color-neutral-800;
   margin-bottom: 4px;
+  white-space: nowrap;
 }
 
 .description {
@@ -25,7 +26,10 @@
   height: 24px;
   padding-bottom: 28px;
   margin-bottom: 8px;
-  cursor: pointer;
+
+  &:not([data-disabled]) {
+    cursor: pointer;
+  }
 }
 
 .sliderTrack {
@@ -70,7 +74,8 @@
   margin-top: 8px;
 }
 
-.playbackSlider {
+.scoreSlider,
+.timestampSlider {
   width: 100%;
   display: flex;
   gap: 16px;
@@ -102,7 +107,7 @@
   }
 
   .sliderRange {
-    background-color: $color-primary-2-500;
+    background-color: $color-success-500;
   }
 
   .sliderTrack {
@@ -125,8 +130,51 @@
       position: absolute;
 
       &.primary {
-        background-color: $color-primary-2-500;
+        background-color: $color-success-500;
       }
+    }
+  }
+}
+
+.timestampSlider {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+
+  .labels {
+    display: flex;
+    justify-content: space-between;
+
+    .label {
+      color: $color-neutral-400;
+    }
+  }
+
+  .sliderRange {
+    background-color: $color-neutral-400;
+  }
+
+  .sliderTrack {
+    background-color: $color-neutral-400;
+  }
+
+  .sliderThumb {
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background-color: transparent;
+    transform: translateY(calc(50% + 2px));
+    position: relative;
+
+    .label {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%) translateY(calc(-100% - 12px));
+    }
+
+    svg {
+      vertical-align: middle;
     }
   }
 }
