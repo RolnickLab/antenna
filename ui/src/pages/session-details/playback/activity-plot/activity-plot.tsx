@@ -3,12 +3,14 @@ import { TimelineTick } from 'data-services/models/timeline-tick'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
+
 const fontFamily = 'AzoSans, sans-serif'
+const lineColorCaptures = '#4e5051'
 const lineColorDetections = '#5f8ac6'
-const lineColorCaptures = '#4CAF50'
 const textColor = '#222426'
 const tooltipBgColor = '#ffffff'
 const tooltipBorderColor = '#222426'
+
 export const ActivityPlot = ({
   session,
   timeline,
@@ -33,7 +35,7 @@ export const ActivityPlot = ({
               hovertemplate: '%{text}<extra></extra>',
               fill: 'tozeroy',
               type: 'scatter',
-              mode: 'lines+markers',
+              mode: 'lines',
               line: { color: lineColorCaptures, width: 1 },
               name: 'Captures',
             },
@@ -50,7 +52,7 @@ export const ActivityPlot = ({
             },
           ]}
           layout={{
-            height: 200,
+            height: 100,
             width: width,
             paper_bgcolor: 'transparent',
             plot_bgcolor: 'transparent',

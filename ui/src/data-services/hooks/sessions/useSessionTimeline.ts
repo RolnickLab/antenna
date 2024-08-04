@@ -22,10 +22,7 @@ export const useSessionTimeline = (
   })
 
   const timeline = useMemo(
-    () =>
-      data?.data
-        .filter((record) => !!record.first_capture)
-        .map((record) => new TimelineTick(record)),
+    () => data?.data.map((record) => new TimelineTick(record)),
     [data]
   )
 
