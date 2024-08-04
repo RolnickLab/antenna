@@ -236,20 +236,37 @@ class EventViewSet(DefaultViewSet):
         qs = SourceImage.objects.filter(event=event)
 
         # Bulk update all source images where detections_count is null
-        # There should be few of these. @TODO move this?
         update_detection_counts(qs=qs, null_only=True)
 
-        source_images = qs.order_by("timestamp").values("id", "timestamp", "detections_count")
+        # Fetch aggregated data for efficiency
+        aggregates = qs.aggregate(
+            min_detections=models.Min("detections_count"),
+            max_detections=models.Max("detections_count"),
+            total_detections=models.Sum("detections_count"),
+            first_capture=models.Min("timestamp"),
+            last_capture=models.Max("timestamp"),
+        )
 
         start_time = event.start
         end_time = event.end or timezone.now()
-        current_time = start_time
-        timeline = []
-        max_detections = 0
-        min_detections = 0
 
+        # Adjust start and end times based on actual captures
+        if aggregates["first_capture"]:
+            start_time = max(start_time, aggregates["first_capture"])
+        if aggregates["last_capture"]:
+            end_time = min(end_time, aggregates["last_capture"])
+
+        source_images = list(
+            qs.filter(timestamp__range=(start_time, end_time))
+            .order_by("timestamp")
+            .values("id", "timestamp", "detections_count")
+        )
+
+        timeline = []
+        current_time = start_time
         image_index = 0
-        while current_time < end_time:
+
+        while current_time <= end_time:
             interval_end = min(current_time + resolution, end_time)
             interval_data = {
                 "start": current_time,
@@ -257,10 +274,9 @@ class EventViewSet(DefaultViewSet):
                 "first_capture": None,
                 "captures_count": 0,
                 "detections_count": 0,
-                "detections_count": 0,
             }
 
-            while image_index < len(source_images) and source_images[image_index]["timestamp"] < interval_end:
+            while image_index < len(source_images) and source_images[image_index]["timestamp"] <= interval_end:
                 image = source_images[image_index]
                 if interval_data["first_capture"] is None:
                     interval_data["first_capture"] = SourceImage(pk=image["id"])
@@ -268,10 +284,11 @@ class EventViewSet(DefaultViewSet):
                 interval_data["detections_count"] += image["detections_count"] or 0
                 image_index += 1
 
-            max_detections = max(max_detections, interval_data["detections_count"])
-            min_detections = min(min_detections, interval_data["detections_count"])
             timeline.append(interval_data)
             current_time = interval_end
+
+            if current_time >= end_time:
+                break
 
         serializer = EventTimelineSerializer(
             {
@@ -279,8 +296,9 @@ class EventViewSet(DefaultViewSet):
                 "meta": {
                     "total_intervals": len(timeline),
                     "resolution_minutes": resolution_minutes,
-                    "max_detections": max_detections,
-                    "min_detections": min_detections,
+                    "max_detections": aggregates["max_detections"] or 0,
+                    "min_detections": aggregates["min_detections"] or 0,
+                    "total_detections": aggregates["total_detections"] or 0,
                     "timeline_start": start_time,
                     "timeline_end": end_time,
                 },

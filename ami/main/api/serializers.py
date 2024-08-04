@@ -1222,12 +1222,13 @@ class EventTimelineMetaSerializer(serializers.Serializer):
     resolution_minutes = serializers.IntegerField()
     max_detections = serializers.IntegerField()
     min_detections = serializers.IntegerField()
+    total_detections = serializers.IntegerField()
     timeline_start = serializers.DateTimeField()
     timeline_end = serializers.DateTimeField()
 
 
 class EventTimelineSerializer(serializers.Serializer):
-    data = EventTimelineIntervalSerializer(many=True)
+    data = EventTimelineIntervalSerializer(many=True)  # type: ignore @TODO is `data` an existing property in DRF?
     meta = EventTimelineMetaSerializer()
 
 
