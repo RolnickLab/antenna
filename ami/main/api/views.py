@@ -216,10 +216,15 @@ class EventViewSet(DefaultViewSet):
         qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             captures_count=models.Count("captures", distinct=True),
-            detections_count=models.Count("captures__detections", distinct=True),
             # occurrences_count is calculated in a model method because it requires a classification threshold. @TODO
             duration=models.F("end") - models.F("start"),
         ).select_related("deployment", "project")
+
+        # Only get detections_count if its a detail view
+        if self.action == "retrieve":
+            qs = qs.annotate(detections_count=models.Count("captures__detections", distinct=True))
+            # Alternatively, we could sum the cached detections_count from the source images
+            # qs = qs.annotate(detections_count=models.Sum("captures__detections_count"))
 
         return qs
 
