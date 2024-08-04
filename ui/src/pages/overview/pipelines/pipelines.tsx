@@ -24,7 +24,7 @@ export const Pipelines = () => {
   })
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (

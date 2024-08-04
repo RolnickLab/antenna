@@ -53,7 +53,7 @@ export const Occurrences = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (

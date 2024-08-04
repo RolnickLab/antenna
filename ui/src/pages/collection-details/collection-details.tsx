@@ -50,7 +50,7 @@ export const CollectionDetails = () => {
   })
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (

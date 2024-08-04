@@ -33,7 +33,7 @@ export const Jobs = () => {
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (
