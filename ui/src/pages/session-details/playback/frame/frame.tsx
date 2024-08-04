@@ -15,7 +15,8 @@ interface FrameProps {
   width: number | null
   height: number | null
   detections: CaptureDetection[]
-  showOverlay?: boolean
+  showDetections?: boolean
+  threshold: number
 }
 
 export const Frame = ({
@@ -23,7 +24,8 @@ export const Frame = ({
   width,
   height,
   detections,
-  showOverlay,
+  showDetections,
+  threshold,
 }: FrameProps) => {
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -31,7 +33,7 @@ export const Frame = ({
   }>()
   const imageRef = useRef<HTMLImageElement>(null)
   const [isLoading, setIsLoading] = useState<boolean>()
-  const [rendeOverlay, setRenderOverlay] = useState<boolean>()
+  const [renderOverlay, setRenderOverlay] = useState<boolean>()
 
   useLayoutEffect(() => {
     if (!imageRef.current) {
@@ -113,11 +115,16 @@ export const Frame = ({
       <img ref={imageRef} className={styles.image} />
       <div
         className={classNames(styles.details, {
-          [styles.showOverlay]: showOverlay,
+          [styles.showOverlay]: showDetections,
         })}
       >
-        {rendeOverlay && <FrameOverlay boxStyles={boxStyles} />}
-        <FrameDetections detections={detections} boxStyles={boxStyles} />
+        {renderOverlay && <FrameOverlay boxStyles={boxStyles} />}
+        <FrameDetections
+          boxStyles={boxStyles}
+          detections={detections}
+          showDetections={showDetections}
+          threshold={threshold}
+        />
       </div>
       {isLoading && (
         <div className={styles.loadingWrapper}>
@@ -160,11 +167,15 @@ const FrameOverlay = ({
 )
 
 const FrameDetections = ({
-  detections,
   boxStyles,
+  detections,
+  showDetections,
+  threshold,
 }: {
-  detections: CaptureDetection[]
   boxStyles: { [key: number]: BoxStyle }
+  detections: CaptureDetection[]
+  showDetections?: boolean
+  threshold: number
 }) => {
   const { projectId } = useParams()
   const containerRef = useRef(null)
@@ -187,13 +198,13 @@ const FrameDetections = ({
       {Object.entries(boxStyles).map(([id, style]) => {
         const detection = detections.find((d) => d.id === id)
 
-        if (!detection) {
-          return null
-        }
-
-        const isActive = detection.occurrenceId
+        const isActive = detection?.occurrenceId
           ? activeOccurrences.includes(detection.occurrenceId)
           : false
+
+        if (!detection || (!showDetections && !isActive)) {
+          return null
+        }
 
         return (
           <Tooltip
@@ -213,8 +224,10 @@ const FrameDetections = ({
             <div
               style={style}
               className={classNames(styles.detection, {
-                [styles.clickable]: !!detection.occurrenceId,
                 [styles.active]: isActive,
+                [styles.meetsThreshold]:
+                  detection.score && detection.score >= threshold,
+                [styles.clickable]: !!detection.occurrenceId,
               })}
               onClick={() => {
                 if (detection.occurrenceId) {
