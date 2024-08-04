@@ -5,25 +5,39 @@ import {
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import styles from './capture-navigation.module.scss'
 
 export const CaptureNavigation = ({
   activeCapture,
   setActiveCaptureId,
 }: {
-  activeCapture: CaptureDetails
+  activeCapture?: CaptureDetails
   setActiveCaptureId: (captureId: string) => void
 }) => {
+  const [currentIndex, setCurrentIndex] = useState(activeCapture?.currentIndex)
+  const [totalCaptures, setTotalCaptures] = useState(
+    activeCapture?.totalCaptures
+  )
+
+  useEffect(() => {
+    if (activeCapture) {
+      setCurrentIndex(activeCapture.currentIndex)
+      setTotalCaptures(activeCapture.totalCaptures)
+    }
+  }, [activeCapture])
+
   const goToPrev = () => {
-    if (activeCapture.prevCaptureId) {
+    if (activeCapture?.prevCaptureId) {
       setActiveCaptureId(activeCapture.prevCaptureId)
+      setCurrentIndex(activeCapture.currentIndex - 1)
     }
   }
 
   const goToNext = () => {
-    if (activeCapture.nextCaptureId) {
+    if (activeCapture?.nextCaptureId) {
       setActiveCaptureId(activeCapture.nextCaptureId)
+      setCurrentIndex(activeCapture.currentIndex + 1)
     }
   }
 
@@ -50,19 +64,19 @@ export const CaptureNavigation = ({
         icon={IconType.ToggleLeft}
         shape={IconButtonShape.RoundLarge}
         theme={IconButtonTheme.Neutral}
-        disabled={!activeCapture.prevCaptureId}
+        disabled={!activeCapture?.prevCaptureId}
         onClick={goToPrev}
       />
-      {activeCapture && (
+      {totalCaptures && (
         <span>
-          {activeCapture.currentIndex} / {activeCapture.totalCaptures}
+          {currentIndex} / {totalCaptures}
         </span>
       )}
       <IconButton
         icon={IconType.ToggleRight}
         shape={IconButtonShape.RoundLarge}
         theme={IconButtonTheme.Neutral}
-        disabled={!activeCapture.nextCaptureId}
+        disabled={!activeCapture?.nextCaptureId}
         onClick={goToNext}
       />
     </div>

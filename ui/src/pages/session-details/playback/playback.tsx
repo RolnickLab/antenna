@@ -67,12 +67,10 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>
-          {activeCapture && (
-            <CaptureNavigation
-              activeCapture={activeCapture}
-              setActiveCaptureId={setActiveCaptureId}
-            />
-          )}
+          <CaptureNavigation
+            activeCapture={activeCapture}
+            setActiveCaptureId={setActiveCaptureId}
+          />
         </div>
         <ActivityPlot
           session={session}
