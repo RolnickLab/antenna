@@ -197,7 +197,7 @@ class EventViewSet(DefaultViewSet):
         "start__time",
         "captures_count",
         "detections_count",
-        "occurrences_count",
+        # "occurrences_count",
         "taxa_count",
         "duration",
     ]
