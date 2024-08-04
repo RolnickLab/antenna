@@ -856,6 +856,8 @@ class SourceImageSerializer(SourceImageListSerializer):
             "test_image",
             "jobs",
             "collections",
+            "next_capture_in_event_id",
+            "prev_capture_in_event_id",
         ]
 
 

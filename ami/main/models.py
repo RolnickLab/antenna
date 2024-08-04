@@ -1166,6 +1166,27 @@ class SourceImage(BaseModel):
             logger.error(msg)
         return timestamp
 
+    def next_capture_in_event_id(self) -> int | None:
+        """
+        Return the next capture in the event.
+
+        This should be populated by the query in the ViewSet
+        but here is the query for reference:
+        return SourceImage.objects.filter(
+        event=self.event, timestamp__gt=self.timestamp).order_by("timestamp").values("id").first()
+        """
+        return None
+
+    def prev_capture_in_event_id(self) -> int | None:
+        """
+        Return the previous capture in the event.
+
+        This will be populated by the query in the ViewSet but here is the query for reference:
+        return SourceImage.objects.filter(
+        event=self.event, timestamp__lt=self.timestamp).order_by("-timestamp").values("id").first()
+        """
+        return None
+
     def get_dimensions(self) -> tuple[int | None, int | None]:
         """Calculate the width and height of the original image."""
         if self.path and self.deployment and self.deployment.data_source:

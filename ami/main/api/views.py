@@ -293,56 +293,15 @@ class EventViewSet(DefaultViewSet):
 class SourceImageViewSet(DefaultViewSet):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
+
+    Standard list endpoint:
+    GET /captures/?event=1&limit=10&offset=0&ordering=-timestamp
+
+    Standard detail endpoint:
+    GET /captures/1/
     """
 
-    queryset = (
-        SourceImage.objects.select_related(
-            "event",
-            "deployment",
-        )
-        # .prefetch_related("jobs", "collections") # These are only needed in the detail view
-        .order_by("timestamp").all()
-    )
-
-    def get_queryset(self) -> QuerySet:
-        queryset = super().get_queryset()
-        has_detections = self.request.query_params.get("has_detections")
-        classification_threshold = get_active_classification_threshold(self.request)
-
-        if classification_threshold is not None:
-            prefetch_queryset = Detection.objects.filter(
-                occurrence__detections__classifications__score__gte=classification_threshold
-            )
-        else:
-            prefetch_queryset = Detection.objects.all()
-
-        related_detections = Prefetch(
-            "detections",
-            queryset=prefetch_queryset.select_related(
-                "occurrence",
-                "occurrence__determination",
-            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
-            to_attr="filtered_detections",
-        )
-
-        queryset = queryset.prefetch_related(related_detections)
-
-        if has_detections is not None:
-            has_detections = BooleanField(required=False).clean(has_detections)
-            queryset = (
-                queryset.annotate(
-                    has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
-                )
-                .filter(has_detections=has_detections)
-                .order_by(
-                    "?"
-                )  # Random order is here for our demo ML backend to limit the same images from being processed
-                # @TODO remove this when we have a real queue for the ML backend
-            )
-        return queryset
-
-    def get_serializer_context(self):
-        return {"request": self.request}
+    queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment", "deployment__project", "collections"]
@@ -365,12 +324,95 @@ class SourceImageViewSet(DefaultViewSet):
         else:
             return SourceImageSerializer
 
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+    def get_queryset(self) -> QuerySet:
+        queryset = super().get_queryset()
+
+        queryset.select_related(
+            "event",
+            "deployment",
+            "deployment__storage",
+        ).order_by("timestamp")
+
+        if self.action == "list":
+            # It's cumbersome to override the default list view, so customize the queryset here
+            queryset = self.filter_by_has_detections(queryset)
+            with_detections_default = False
+
+        elif self.action == "retrieve":
+            queryset = queryset.prefetch_related("jobs", "collections")
+            queryset = self.add_adjacent_captures(queryset)
+            with_detections_default = True
+
+        with_detections = self.request.query_params.get("with_detections", with_detections_default)
+        if with_detections is not None:
+            # Convert string to boolean
+            with_detections = BooleanField(required=False).clean(with_detections)
+
+        if with_detections:
+            queryset = self.prefetch_detections(queryset)
+
+        return queryset
+
+    def filter_by_has_detections(self, queryset: QuerySet) -> QuerySet:
+        has_detections = self.request.query_params.get("has_detections")
+        if has_detections is not None:
+            has_detections = BooleanField(required=False).clean(has_detections)
+            queryset = queryset.annotate(
+                has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+            ).filter(has_detections=has_detections)
+        return queryset
+
+    def prefetch_detections(self, queryset: QuerySet) -> QuerySet:
+        classification_threshold = get_active_classification_threshold(self.request)
+
+        if classification_threshold is not None:
+            prefetch_queryset = Detection.objects.filter(
+                occurrence__detections__classifications__score__gte=classification_threshold
+            )
+        else:
+            prefetch_queryset = Detection.objects.all()
+
+        related_detections = Prefetch(
+            "detections",
+            queryset=prefetch_queryset.select_related(
+                "occurrence",
+                "occurrence__determination",
+            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
+            to_attr="filtered_detections",
+        )
+
+        queryset = queryset.prefetch_related(related_detections)
+        return queryset
+
+    def add_adjacent_captures(self, queryset: QuerySet) -> QuerySet:
+        # Subquery for the next image
+        next_image = (
+            SourceImage.objects.filter(event=models.OuterRef("event"), timestamp__gt=models.OuterRef("timestamp"))
+            .order_by("timestamp")[:1]
+            .values("id")[:1]
+        )
+
+        # Subquery for the previous image
+        previous_image = (
+            SourceImage.objects.filter(event=models.OuterRef("event"), timestamp__lt=models.OuterRef("timestamp"))
+            .order_by("-timestamp")
+            .values("id")[:1]
+        )
+
+        return queryset.annotate(
+            next_capture_in_event_id=models.Subquery(next_image, output_field=models.IntegerField()),
+            prev_capture_in_event_id=models.Subquery(previous_image, output_field=models.IntegerField()),
+        )
+
     @action(detail=True, methods=["post"], name="star")
     def star(self, _request, pk=None) -> Response:
         """
         Add a source image to the project's starred images collection.
         """
-        source_image = self.get_object()
+        source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
             collection = SourceImageCollection.get_or_create_starred_collection(source_image.deployment.project)
             collection.images.add(source_image)
