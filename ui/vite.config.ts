@@ -25,7 +25,7 @@ export default defineConfig({
   },
   server: {
     open: true,
-    port: 3004,
+    port: 3000,
     proxy: {
       '/api': {
         // target: 'https://api.dev.insectai.org',
