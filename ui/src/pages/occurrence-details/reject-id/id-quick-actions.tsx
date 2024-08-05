@@ -29,7 +29,6 @@ export const IdQuickActions = ({
   const sections: {
     title: string
     options: { label: string; details?: string; value: string }[]
-    emptyLabel?: string
     subSections?: {
       title: string
       options: { label: string; details?: string; value: string }[]
@@ -42,10 +41,6 @@ export const IdQuickActions = ({
         details: rank,
         value: id,
       })),
-      emptyLabel:
-        occurrenceTaxons.length > 1
-          ? 'No common ranks found.'
-          : 'No options available.',
       subSections: recentIdentifications.length
         ? [
             {
@@ -58,7 +53,6 @@ export const IdQuickActions = ({
     {
       title: translate(STRING.REJECT_ID),
       options: REJECT_OPTIONS,
-      emptyLabel: 'No options available.',
     },
   ]
 
@@ -95,7 +89,7 @@ export const IdQuickActions = ({
                     />
                   ))
                 ) : (
-                  <span className={styles.info}>{section.emptyLabel}</span>
+                  <span className={styles.info}>No options available.</span>
                 )}
                 {section.subSections?.map((subSection, index) => (
                   <div key={index} className={styles.subSection}>

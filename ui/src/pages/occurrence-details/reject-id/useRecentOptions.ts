@@ -7,7 +7,7 @@ type IdentificationData = {
 }
 
 const RECENT_IDENTIFICATIONS_STORAGE_KEY = 'ami-recent-identifications'
-const DISPLAY_LIST_SIZE = 3
+const DISPLAY_LIST_SIZE = 1
 const STORAGE_LIST_SIZE = 5
 
 const getRecentIdentifications = () => {
@@ -52,7 +52,7 @@ export const useRecentIdentifications = () => {
     recentIdentifications: recentIdentifications.slice(0, DISPLAY_LIST_SIZE),
     addRecentIdentification: (identification: IdentificationData) => {
       if (REJECT_OPTIONS.some((o) => o.value === identification.value)) {
-        // Skip store identifications of type reject
+        // Filter out options of type reject
         return
       }
 
