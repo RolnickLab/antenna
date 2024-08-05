@@ -47,13 +47,16 @@ export const Occurrences = () => {
   })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
-  const [selectedItems, setSelectedItems] = useState<string[]>([])
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
     sort,
     filters,
   })
+  const [_selectedItems, setSelectedItems] = useState<string[]>([])
+  const selectedItems = _selectedItems.filter((id) =>
+    occurrences?.some((occurrence) => occurrence.id === id)
+  )
   const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
@@ -118,7 +121,9 @@ export const Occurrences = () => {
       <PageFooter>
         {selectedItems.length ? (
           <BulkActionBar
-            selectedItems={selectedItems}
+            selectedItems={selectedItems.filter((id) =>
+              occurrences?.some((occurrence) => occurrence.id === id)
+            )}
             onClear={() => setSelectedItems([])}
           >
             <OccurrenceActions
