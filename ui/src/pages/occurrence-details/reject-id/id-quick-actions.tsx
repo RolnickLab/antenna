@@ -7,6 +7,7 @@ import { STRING, translate } from 'utils/language'
 import { REJECT_OPTIONS } from './constants'
 import { IdButton } from './id-button'
 import styles from './id-quick-actions.module.scss'
+import { getCommonRanks } from './utils'
 
 interface RejectIdProps {
   containerRef?: RefObject<HTMLDivElement>
@@ -29,19 +30,11 @@ export const IdQuickActions = ({
   }[] = [
     {
       title: translate(STRING.APPLY_ID),
-      options: [
-        ...occurrenceTaxons.map((occurrenceTaxon) => occurrenceTaxon.ranks),
-      ]
-        .flat()
-        .reverse()
-        .filter(
-          (obj1, i, arr) => arr.findIndex((obj2) => obj2.id === obj1.id) === i
-        )
-        .map(({ id, name, rank }) => ({
-          label: name,
-          details: rank,
-          value: id,
-        })),
+      options: getCommonRanks(occurrenceTaxons).map(({ id, name, rank }) => ({
+        label: name,
+        details: rank,
+        value: id,
+      })),
     },
     {
       title: translate(STRING.REJECT_ID),
