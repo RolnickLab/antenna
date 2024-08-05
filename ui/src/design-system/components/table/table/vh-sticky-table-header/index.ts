@@ -1,5 +1,8 @@
 /**
  * This class is used for both table sticky header and horizontal scroll support on tables.
+ * Class has been modified to support click handling until https://github.com/archfz/vh-sticky-table-header/issues/10 is fixed.
+ *
+ * Original code: https://github.com/archfz/vh-sticky-table-header/blob/main/src/StickyTableHeader.ts
  */
 export default class StickyTableHeader {
   private sizeListener?: EventListener;
