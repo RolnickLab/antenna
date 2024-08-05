@@ -9,6 +9,7 @@ const Root = ({
   onOpenChange,
 }: {
   children: ReactNode
+
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) => (
@@ -30,6 +31,7 @@ const Content = ({
   ariaCloselabel,
   children,
   container,
+  disableOutsideClose,
   hideClose,
   side,
   style,
@@ -38,6 +40,7 @@ const Content = ({
   ariaCloselabel: string
   children: ReactNode
   container?: HTMLElement
+  disableOutsideClose?: boolean
   hideClose?: boolean
   side?: 'top' | 'right' | 'bottom' | 'left'
   style?: CSSProperties
@@ -50,6 +53,11 @@ const Content = ({
       sideOffset={6}
       style={style}
       collisionPadding={{ bottom: 64 }}
+      onInteractOutside={(e) => {
+        if (disableOutsideClose) {
+          e.preventDefault()
+        }
+      }}
     >
       {children}
       {!hideClose && (

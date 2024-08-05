@@ -1,3 +1,4 @@
+import { SUCCESS_TIMEOUT } from 'data-services/constants'
 import { useEffect, useState } from 'react'
 import { IdentificationFieldValues } from './types'
 import { useCreateIdentification } from './useCreateIdentification'
@@ -6,8 +7,12 @@ export const useCreateIdentifications = (
   params: IdentificationFieldValues[]
 ) => {
   const [results, setResults] = useState<PromiseSettledResult<any>[]>()
-  const { createIdentification, isLoading, isSuccess } =
-    useCreateIdentification()
+  const { createIdentification, isLoading, isSuccess, reset } =
+    useCreateIdentification(() => {
+      setTimeout(() => {
+        reset()
+      }, SUCCESS_TIMEOUT)
+    })
 
   const numRejected = results?.filter(
     (result) => result.status === 'rejected'
