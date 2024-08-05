@@ -18,7 +18,7 @@ export default class StickyTableHeader {
   private scrollParents: HTMLElement[];
   private header: HTMLTableRowElement;
   private lastElement: HTMLElement | null = null;
-  private lastElementRefresh: number | null = null;
+  private lastElementRefresh: NodeJS.Timeout | number | null = null;
   private top: { max: number | string; [key: number]: number | string };
 
   constructor(
@@ -217,6 +217,7 @@ export default class StickyTableHeader {
         window.getComputedStyle(document.getElementsByTagName('html')[0]).fontSize
       ) * rem;
     } else {
+      // eslint-disable-next-line no-console
       console.error('Unsupported size format for sticky table header displacement.');
       return 0;
     }
