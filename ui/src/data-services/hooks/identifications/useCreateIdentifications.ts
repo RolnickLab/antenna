@@ -16,7 +16,7 @@ export const useCreateIdentifications = (
   const error = numRejected
     ? results.length > 1
       ? `${numRejected}/${results.length} updates were rejected, please retry.`
-      : `The update was rejected, please retry.`
+      : 'The update was rejected, please retry.'
     : undefined
 
   useEffect(() => {
