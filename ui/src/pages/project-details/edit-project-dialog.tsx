@@ -3,6 +3,7 @@ import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
+import { Error } from 'pages/error/error'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { ProjectDetailsForm } from './project-details-form'
@@ -10,7 +11,7 @@ import styles from './styles.module.scss'
 
 export const EditProjectDialog = ({ id }: { id: string }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -19,7 +20,7 @@ export const EditProjectDialog = ({ id }: { id: string }) => {
       </Dialog.Trigger>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={!isLoaded}
+        isLoading={isLoading}
       >
         <Dialog.Header
           title={translate(STRING.ENTITY_EDIT, {
@@ -27,10 +28,7 @@ export const EditProjectDialog = ({ id }: { id: string }) => {
           })}
         />
         <div className={styles.content}>
-          <EditProjectDialogContent
-            id={id}
-            onLoaded={() => setIsLoaded(true)}
-          />
+          <EditProjectDialogContent id={id} onLoadingChange={setIsLoading} />
         </div>
       </Dialog.Content>
     </Dialog.Root>
@@ -39,12 +37,12 @@ export const EditProjectDialog = ({ id }: { id: string }) => {
 
 const EditProjectDialogContent = ({
   id,
-  onLoaded,
+  onLoadingChange,
 }: {
   id: string
-  onLoaded: () => void
+  onLoadingChange: (isLoading: boolean) => void
 }) => {
-  const { project, isLoading } = useProjectDetails(id)
+  const { project, isLoading, error: loadError } = useProjectDetails(id)
   const {
     updateProject,
     isLoading: isUpdateLoading,
@@ -53,14 +51,12 @@ const EditProjectDialogContent = ({
   } = useUpdateProject(id)
 
   useEffect(() => {
-    if (!isLoading) {
-      onLoaded()
-    }
+    onLoadingChange(isLoading)
   }, [isLoading])
 
   return (
     <div className={styles.content}>
-      {project && (
+      {project ? (
         <ProjectDetailsForm
           project={project}
           error={error}
@@ -68,7 +64,11 @@ const EditProjectDialogContent = ({
           isSuccess={isSuccess}
           onSubmit={(data) => updateProject(data)}
         />
-      )}
+      ) : loadError ? (
+        <div className={styles.errorContent}>
+          <Error error={error} />
+        </div>
+      ) : null}
     </div>
   )
 }

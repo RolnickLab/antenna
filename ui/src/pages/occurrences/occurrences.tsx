@@ -53,7 +53,7 @@ export const Occurrences = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (
@@ -125,7 +125,7 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { occurrence, isLoading } = useOccurrenceDetails(id)
+  const { occurrence, isLoading, error } = useOccurrenceDetails(id)
 
   useEffect(() => {
     setDetailBreadcrumb(
@@ -152,6 +152,7 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {occurrence ? <OccurrenceDetails occurrence={occurrence} /> : null}
       </Dialog.Content>

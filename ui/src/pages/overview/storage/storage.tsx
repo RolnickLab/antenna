@@ -29,7 +29,7 @@ export const StorageSources = () => {
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (

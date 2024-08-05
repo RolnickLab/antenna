@@ -33,7 +33,7 @@ export const Jobs = () => {
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (
@@ -74,7 +74,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { job, isLoading, isFetching } = useJobDetails(id)
+  const { job, isLoading, isFetching, error } = useJobDetails(id)
 
   useEffect(() => {
     setDetailBreadcrumb(job ? { title: job.name } : undefined)
@@ -97,6 +97,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {job ? (
           <JobDetails

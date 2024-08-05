@@ -3,6 +3,7 @@ import { usePipelineDetails } from 'data-services/hooks/pipelines/usePipelineDet
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
+import { Error } from 'pages/error/error'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { PipelineAlgorithms } from './pipeline-algorithms'
@@ -17,7 +18,7 @@ export const PipelineDetailsDialog = ({
   name: string
 }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -28,7 +29,7 @@ export const PipelineDetailsDialog = ({
       </Dialog.Trigger>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={!isLoaded}
+        isLoading={isLoading}
       >
         <Dialog.Header
           title={translate(STRING.ENTITY_DETAILS, {
@@ -36,7 +37,7 @@ export const PipelineDetailsDialog = ({
           })}
         />
         <div className={styles.content}>
-          <PipelineDetailsContent id={id} onLoaded={() => setIsLoaded(true)} />
+          <PipelineDetailsContent id={id} onLoadingChange={setIsLoading} />
         </div>
       </Dialog.Content>
     </Dialog.Root>
@@ -45,22 +46,20 @@ export const PipelineDetailsDialog = ({
 
 const PipelineDetailsContent = ({
   id,
-  onLoaded,
+  onLoadingChange,
 }: {
   id: string
-  onLoaded: () => void
+  onLoadingChange: (isLoading: boolean) => void
 }) => {
-  const { pipeline, isLoading } = usePipelineDetails(id)
+  const { pipeline, isLoading, error } = usePipelineDetails(id)
 
   useEffect(() => {
-    if (!isLoading) {
-      onLoaded()
-    }
+    onLoadingChange(isLoading)
   }, [isLoading])
 
   return (
     <>
-      {pipeline && (
+      {pipeline ? (
         <>
           <FormSection title={translate(STRING.SUMMARY)}>
             <FormRow>
@@ -103,7 +102,11 @@ const PipelineDetailsContent = ({
             </FormSection>
           )}
         </>
-      )}
+      ) : error ? (
+        <div className={styles.errorContent}>
+          <Error error={error} />
+        </div>
+      ) : null}
     </>
   )
 }

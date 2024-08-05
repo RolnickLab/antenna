@@ -12,7 +12,7 @@ import { STRING, translate } from 'utils/language'
 
 export const CaptureJobDialog = ({ id }: { id: string }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const { job, isLoading, isFetching } = useJobDetails(id)
+  const { job, isLoading, isFetching, error } = useJobDetails(id)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -29,6 +29,7 @@ export const CaptureJobDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {job ? (
           <JobDetails
