@@ -93,8 +93,10 @@ export class Occurrence {
       : undefined
   }
 
-  get durationLabel(): string {
-    return this._occurrence.duration_label
+  get durationLabel(): string | undefined {
+    return this._occurrence.duration_label?.length
+      ? this._occurrence.duration_label
+      : undefined
   }
 
   get displayName(): string {
