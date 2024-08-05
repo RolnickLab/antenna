@@ -174,8 +174,8 @@ export const OccurrenceDetails = ({
               />
               <IdQuickActions
                 containerRef={containerRef}
-                occurrenceId={occurrence.id}
-                occurrenceTaxon={occurrence.determinationTaxon}
+                occurrenceIds={[occurrence.id]}
+                occurrenceTaxons={[occurrence.determinationTaxon]}
               />
             </>
           )}

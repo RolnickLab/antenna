@@ -7,6 +7,10 @@ export class Collection extends Entity {
     super(entity)
   }
 
+  get canPopulate(): boolean {
+    return this.canUpdate && this._data.method !== 'starred'
+  }
+
   get method(): string {
     return this._data.method
   }

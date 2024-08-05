@@ -1,27 +1,31 @@
-import { useInfiniteCaptures } from 'data-services/hooks/sessions/useInfiniteCaptures'
+import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
+import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
+import {
+  Checkbox,
+  CheckboxTheme,
+} from 'design-system/components/checkbox/checkbox'
 import { useState } from 'react'
 import { useThreshold } from 'utils/threshold/thresholdContext'
-import { CapturePicker } from './capture-picker/capture-picker'
+import { ActivityPlot } from './activity-plot/activity-plot'
+import { CaptureDetails } from './capture-details/capture-details'
+import { CaptureNavigation } from './capture-navigation/capture-navigation'
 import { Frame } from './frame/frame'
-import { PlaybackControls } from './playback-controls/playback-controls'
 import styles from './playback.module.scss'
-import { useActiveCapture, useActiveCaptureId } from './useActiveCapture'
+import { SessionCapturesSlider } from './session-captures-slider/session-captures-slider'
+import { ThresholdSlider } from './threshold-slider/threshold-slider'
+import { useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const { threshold } = useThreshold()
-  const {
-    captures = [],
-    fetchNextPage,
-    fetchPreviousPage,
-    isFetchingNextPage,
-    isFetchingPreviousPage,
-    hasNextPage,
-    hasPreviousPage,
-  } = useInfiniteCaptures(session.id, session.captureOffset, threshold)
-  const { activeCapture, setActiveCapture } = useActiveCapture(captures)
-  const [showOverlay, setShowOverlay] = useState(false)
-  const { activeCaptureId } = useActiveCaptureId()
+  const { timeline = [] } = useSessionTimeline(session.id)
+  const [showDetections, setShowDetections] = useState(true)
+  const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
+    session.firstCapture?.id
+  )
+  const { capture: activeCapture } = useCaptureDetails(
+    activeCaptureId as string
+  )
 
   if (!session.firstCapture) {
     return null
@@ -29,42 +33,58 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.playbackFrame}>
-        <div
-          onMouseOver={() => setShowOverlay(true)}
-          onMouseOut={() => setShowOverlay(false)}
-        >
-          <Frame
-            src={activeCapture?.src}
-            width={activeCapture?.width ?? session.firstCapture.width}
-            height={activeCapture?.height ?? session.firstCapture.height}
-            detections={activeCapture?.detections ?? []}
-            showOverlay={showOverlay}
+      <div className={styles.sidebar}>
+        <div className={styles.sidebarContent}>
+          {activeCaptureId && (
+            <div className={styles.sidebarSection}>
+              <span className={styles.title}>Capture #{activeCaptureId}</span>
+              <CaptureDetails
+                capture={activeCapture}
+                captureId={activeCaptureId}
+              />
+            </div>
+          )}
+          <div className={styles.sidebarSection}>
+            <span className={styles.title}>View settings</span>
+            <ThresholdSlider />
+            <Checkbox
+              id="show-detections"
+              label="Show detections"
+              checked={showDetections}
+              onCheckedChange={setShowDetections}
+              theme={CheckboxTheme.Neutral}
+            />
+          </div>
+        </div>
+      </div>
+      <Frame
+        src={activeCapture?.src}
+        width={activeCapture?.width ?? session.firstCapture.width}
+        height={activeCapture?.height ?? session.firstCapture.height}
+        detections={activeCapture?.detections ?? []}
+        showDetections={showDetections}
+        threshold={threshold}
+      />
+      <div className={styles.bottomBar}>
+        <div className={styles.captureNavigationWrapper}>
+          <CaptureNavigation
+            activeCapture={activeCapture}
+            setActiveCaptureId={setActiveCaptureId}
           />
         </div>
-        {activeCaptureId && (
-          <PlaybackControls activeCaptureId={activeCaptureId} />
-        )}
-      </div>
-
-      <div className={styles.capturePicker}>
-        <CapturePicker
-          activeCaptureId={activeCapture?.id}
-          captures={captures}
-          detectionsMaxCount={session.detectionsMaxCount}
-          hasNext={hasNextPage}
-          hasPrev={hasPreviousPage}
-          isLoadingNext={isFetchingNextPage}
-          isLoadingPrev={isFetchingPreviousPage}
-          onNext={fetchNextPage}
-          onPrev={fetchPreviousPage}
-          setActiveCaptureId={(captureId) => {
-            const capture = captures.find((c) => c.id === captureId)
-            if (capture) {
-              setActiveCapture(capture)
-            }
-          }}
+        <ActivityPlot
+          session={session}
+          timeline={timeline}
+          setActiveCaptureId={setActiveCaptureId}
         />
+        {timeline.length > 0 && (
+          <SessionCapturesSlider
+            session={session}
+            timeline={timeline}
+            activeCapture={activeCapture}
+            setActiveCaptureId={setActiveCaptureId}
+          />
+        )}
       </div>
     </div>
   )

@@ -34,17 +34,21 @@
 .detection {
   position: absolute;
   box-sizing: border-box;
+  outline: 2px solid $color-destructive-500;
+  border-radius: 2px;
+
+  &.meetsThreshold {
+    outline: 2px solid $color-success-500;
+  }
+
+  &.active {
+    outline: 2px solid $color-primary-2-500;
+  }
 
   &.clickable {
     &:hover {
       cursor: pointer;
-      opacity: 1;
     }
-  }
-
-  &.active {
-    opacity: 1;
-    outline: 1px solid $color-success-500;
   }
 }
 

@@ -13,8 +13,8 @@ import { columns } from './pipelines-columns'
 export const Pipelines = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
-    field: 'created_at',
-    order: 'desc',
+    field: 'id',
+    order: 'asc',
   })
   const { pagination, setPage } = usePagination()
   const { pipelines, total, isLoading, isFetching, error } = usePipelines({
@@ -24,7 +24,7 @@ export const Pipelines = () => {
   })
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (

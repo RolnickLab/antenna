@@ -30,6 +30,7 @@ class PipelineViewSet(DefaultViewSet):
     queryset = Pipeline.objects.prefetch_related("algorithms").all()
     serializer_class = PipelineSerializer
     ordering_fields = [
+        "id",
         "name",
         "created_at",
         "updated_at",

@@ -1,40 +1,55 @@
-import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
-import { Button } from 'design-system/components/button/button'
+import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
+import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { useMemo } from 'react'
 import styles from './id-quick-actions.module.scss'
+import { useRecentIdentifications } from './useRecentOptions'
 
 interface IdButtonProps {
-  applied: boolean
   details?: string
   label: string
-  occurrenceId: string
-  value: string
+  occurrenceIds: string[]
+  taxonId: string
 }
 
 export const IdButton = ({
-  applied,
   details,
   label,
-  occurrenceId,
-  value,
+  occurrenceIds,
+  taxonId,
 }: IdButtonProps) => {
-  const { createIdentification, isLoading, isSuccess } =
-    useCreateIdentification()
+  const identificationParams: IdentificationFieldValues[] = useMemo(
+    () =>
+      occurrenceIds.map((occurrenceId) => ({
+        occurrenceId,
+        taxonId,
+      })),
+    [occurrenceIds, taxonId]
+  )
+
+  const { createIdentifications, isLoading, isSuccess, error } =
+    useCreateIdentifications(identificationParams)
+  const { addRecentIdentification } = useRecentIdentifications()
 
   return (
-    <Button
-      label={label}
-      details={details}
-      icon={isSuccess || applied ? IconType.RadixCheck : undefined}
-      loading={isLoading}
-      disabled={isSuccess || applied}
-      customClass={styles.idButton}
-      onClick={() =>
-        createIdentification({
-          occurrenceId,
-          taxonId: value,
-        })
-      }
-    />
+    <Tooltip content={error} contentStyle={{ zIndex: 3 }}>
+      <Button
+        customClass={styles.idButton}
+        details={details}
+        disabled={isSuccess}
+        icon={
+          isSuccess ? IconType.RadixCheck : error ? IconType.Error : undefined
+        }
+        label={label}
+        loading={isLoading}
+        theme={error ? ButtonTheme.Error : undefined}
+        onClick={() => {
+          addRecentIdentification({ label, details, value: taxonId })
+          createIdentifications()
+        }}
+      />
+    </Tooltip>
   )
 }

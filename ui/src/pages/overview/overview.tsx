@@ -23,7 +23,7 @@ export const Overview = () => {
   }>()
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   if (isLoading || !project) {

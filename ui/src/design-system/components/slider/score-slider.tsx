@@ -6,7 +6,7 @@ import { Tooltip } from '../tooltip/tooltip'
 import { getThumbInBoundsOffset } from './getThumbInBoundsOffset'
 import styles from './styles.module.scss'
 
-interface PlaybackSliderProps {
+interface ScoreSliderSliderProps {
   defaultValue: number
   label: string
   value: number
@@ -14,18 +14,18 @@ interface PlaybackSliderProps {
   onValueCommit: (value: number) => void
 }
 
-export const PlaybackSlider = ({
+export const ScoreSlider = ({
   defaultValue,
   label,
   value,
   onValueChange,
   onValueCommit,
-}: PlaybackSliderProps) => {
+}: ScoreSliderSliderProps) => {
   const [active, setActive] = useState(false)
   const percent = _.round(value * 100, 0)
 
   return (
-    <div className={styles.playbackSlider}>
+    <div className={styles.scoreSlider}>
       <span className={styles.label}>{label}</span>
       <_Slider.Root
         className={styles.sliderRoot}

@@ -16,7 +16,7 @@ export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { deployment, isLoading } = useDeploymentDetails(id)
+  const { deployment, isLoading, error } = useDeploymentDetails(id)
 
   useEffect(() => {
     setDetailBreadcrumb(deployment ? { title: deployment.name } : undefined)
@@ -41,6 +41,7 @@ export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {deployment ? (
           <DeploymentDetailsDialogContent deployment={deployment} />
