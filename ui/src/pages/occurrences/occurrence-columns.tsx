@@ -147,7 +147,9 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_DURATION),
     sortField: 'duration',
     renderCell: (item: Occurrence) => (
-      <BasicTableCell value={item.durationLabel} />
+      <BasicTableCell
+        value={item.durationLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
+      />
     ),
   },
   {
