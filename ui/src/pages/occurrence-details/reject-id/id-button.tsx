@@ -1,7 +1,8 @@
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
-import { Button } from 'design-system/components/button/button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useMemo } from 'react'
 import styles from './id-quick-actions.module.scss'
 
@@ -27,18 +28,23 @@ export const IdButton = ({
     [occurrenceIds, taxonId]
   )
 
-  const { createIdentifications, isLoading, isSuccess } =
+  const { createIdentifications, isLoading, isSuccess, error } =
     useCreateIdentifications(identificationParams)
 
   return (
-    <Button
-      label={label}
-      details={details}
-      icon={isSuccess ? IconType.RadixCheck : undefined}
-      loading={isLoading}
-      disabled={isSuccess}
-      customClass={styles.idButton}
-      onClick={() => createIdentifications()}
-    />
+    <Tooltip content={error} contentStyle={{ zIndex: 3 }}>
+      <Button
+        customClass={styles.idButton}
+        details={details}
+        disabled={isSuccess}
+        icon={
+          isSuccess ? IconType.RadixCheck : error ? IconType.Error : undefined
+        }
+        label={label}
+        loading={isLoading}
+        theme={error ? ButtonTheme.Error : undefined}
+        onClick={() => createIdentifications()}
+      />
+    </Tooltip>
   )
 }

@@ -40,6 +40,6 @@ export const useCreateIdentification = (onSuccess?: () => void) => {
     isLoading,
     isSuccess,
     reset,
-    error,
+    error: error ? 'The update was rejected, please retry.' : undefined,
   }
 }

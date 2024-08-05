@@ -1,8 +1,9 @@
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Occurrence } from 'data-services/models/occurrence'
-import { Button } from 'design-system/components/button/button'
+import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -75,7 +76,7 @@ const Agree = ({
     [occurrences]
   )
 
-  const { createIdentifications, isLoading, isSuccess } =
+  const { createIdentifications, isLoading, isSuccess, error } =
     useCreateIdentifications(agreeParams)
 
   if (isSuccess || allAgreed) {
@@ -89,10 +90,14 @@ const Agree = ({
   }
 
   return (
-    <Button
-      label={allAgreed ? translate(STRING.AGREED) : translate(STRING.AGREE)}
-      loading={isLoading}
-      onClick={createIdentifications}
-    />
+    <Tooltip content={error} contentStyle={{ zIndex: 3 }}>
+      <Button
+        icon={error ? IconType.Error : undefined}
+        label={translate(STRING.AGREE)}
+        loading={isLoading}
+        theme={error ? ButtonTheme.Error : undefined}
+        onClick={createIdentifications}
+      />
+    </Tooltip>
   )
 }
