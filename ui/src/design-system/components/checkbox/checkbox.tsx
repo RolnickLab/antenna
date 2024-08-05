@@ -11,37 +11,42 @@ export enum CheckboxTheme {
 }
 
 interface CheckboxProps {
-  id: string
+  checked?: boolean | 'indeterminate'
+  defaultChecked?: boolean
+  id?: string
   label?: string
   theme?: CheckboxTheme
-  checked?: boolean
   onCheckedChange?: (checked: boolean) => void
-  defaultChecked?: boolean
 }
 
 export const Checkbox = ({
+  checked,
+  defaultChecked,
   id,
   label,
   theme = CheckboxTheme.Default,
-  checked,
   onCheckedChange,
-  defaultChecked,
-}: CheckboxProps) => {
-  return (
-    <div className={styles.wrapper}>
-      <_Checkbox.Root
-        id={id}
-        className={classNames(styles.checkboxRoot, {
-          [styles.neutral]: theme === CheckboxTheme.Neutral,
-        })}
-        checked={checked}
-        defaultChecked={defaultChecked}
-        onCheckedChange={onCheckedChange}
-      >
-        <_Checkbox.Indicator className={styles.checkboxIndicator}>
+}: CheckboxProps) => (
+  <div className={styles.wrapper}>
+    <_Checkbox.Root
+      checked={checked}
+      className={classNames(styles.checkboxRoot, {
+        [styles.neutral]: theme === CheckboxTheme.Neutral,
+      })}
+      defaultChecked={defaultChecked}
+      id={id}
+      onCheckedChange={onCheckedChange}
+    >
+      <_Checkbox.Indicator className={styles.checkboxIndicator}>
+        {checked === true && (
           <Icon type={IconType.RadixCheck} theme={IconTheme.Light} />
-        </_Checkbox.Indicator>
-      </_Checkbox.Root>
+        )}
+        {checked === 'indeterminate' && (
+          <Icon type={IconType.RadixMinus} theme={IconTheme.Light} />
+        )}
+      </_Checkbox.Indicator>
+    </_Checkbox.Root>
+    {label && (
       <label
         htmlFor={id}
         className={classNames(styles.label, {
@@ -52,6 +57,6 @@ export const Checkbox = ({
       >
         {label}
       </label>
-    </div>
-  )
-}
+    )}
+  </div>
+)

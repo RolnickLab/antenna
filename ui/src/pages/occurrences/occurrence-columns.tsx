@@ -23,8 +23,12 @@ import { UserPermission } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import styles from './occurrences.module.scss'
 
-export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
-  projectId: string
+export const columns: (
+  projectId: string,
+  showQuickActions?: boolean
+) => TableColumn<Occurrence>[] = (
+  projectId: string,
+  showQuickActions?: boolean
 ) => [
   {
     id: 'snapshots',
@@ -56,7 +60,11 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
     name: translate(STRING.FIELD_LABEL_TAXON),
     sortField: 'determination__name',
     renderCell: (item: Occurrence) => (
-      <TaxonCell item={item} projectId={projectId} />
+      <TaxonCell
+        item={item}
+        projectId={projectId}
+        showQuickActions={showQuickActions}
+      />
     ),
   },
   {
@@ -171,9 +179,11 @@ export const columns: (projectId: string) => TableColumn<Occurrence>[] = (
 const TaxonCell = ({
   item,
   projectId,
+  showQuickActions,
 }: {
   item: Occurrence
   projectId: string
+  showQuickActions?: boolean
 }) => {
   const { userInfo } = useUserInfo()
   const navigate = useNavigate()
@@ -196,7 +206,7 @@ const TaxonCell = ({
           <Link to={detailsRoute}>
             <TaxonInfo taxon={item.determinationTaxon} />
           </Link>
-          {canUpdate && (
+          {showQuickActions && canUpdate && (
             <div className={styles.taxonActions}>
               <Agree
                 agreed={agreed}
@@ -221,8 +231,8 @@ const TaxonCell = ({
                 />
               </Tooltip>
               <IdQuickActions
-                occurrenceId={item.id}
-                occurrenceTaxon={item.determinationTaxon}
+                occurrenceIds={[item.id]}
+                occurrenceTaxons={[item.determinationTaxon]}
                 zIndex={1}
               />
             </div>

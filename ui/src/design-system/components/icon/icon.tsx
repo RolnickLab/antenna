@@ -23,6 +23,7 @@ import Error from './assets/radix/error.svg?react'
 import ExternalLink from './assets/radix/external-link.svg?react'
 import HeartFilled from './assets/radix/heart-filled.svg?react'
 import Heart from './assets/radix/heart.svg?react'
+import RadixMinus from './assets/radix/minus.svg?react'
 import Options from './assets/radix/options.svg?react'
 import Pencil from './assets/radix/pencil.svg?react'
 import Plus from './assets/radix/plus.svg?react'
@@ -68,6 +69,7 @@ export enum IconType {
   Plus = 'plus',
   RadixCheck = 'radix-check',
   RadixClock = 'radix-clock',
+  RadixMinus = 'radix-minus',
   RadixQuestionMark = 'radix-question-mark',
   RadixSearch = 'radix-search',
   RadixTrash = 'radix-trash',
@@ -119,6 +121,7 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.Plus]: Plus,
   [IconType.RadixCheck]: RadixCheck,
   [IconType.RadixClock]: RadixClock,
+  [IconType.RadixMinus]: RadixMinus,
   [IconType.RadixQuestionMark]: RadixQuestionMark,
   [IconType.RadixSearch]: RadixSearch,
   [IconType.RadixTrash]: RadixTrash,
