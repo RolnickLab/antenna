@@ -14,6 +14,10 @@
   border-radius: 4px;
   border: 1px solid $color-neutral-300;
 
+  &.neutral {
+    border-color: $color-neutral-600;
+  }
+
   &:focus-visible {
     box-shadow: 0 0 0 2px $color-generic-black;
   }
@@ -48,5 +52,9 @@
 
   &.alert {
     color: $color-alert-600;
+  }
+
+  &.neutral {
+    color: $color-neutral-200;
   }
 }

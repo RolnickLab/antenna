@@ -44,7 +44,7 @@ export const Sessions = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (
@@ -57,6 +57,7 @@ export const Sessions = () => {
         isLoading={isLoading}
         isFetching={isFetching}
         showAppliedFilters
+        tooltip={translate(STRING.TOOLTIP_SESSION)}
       >
         <ToggleGroup
           items={[

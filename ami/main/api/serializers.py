@@ -344,6 +344,10 @@ class DeploymentSerializer(DeploymentListSerializer):
         source="data_source",
         required=False,
     )
+    data_source_total_files = serializers.IntegerField(read_only=True)
+    data_source_total_size = serializers.IntegerField(read_only=True)
+    data_source_total_size_display = serializers.CharField(read_only=True)
+    data_source_last_checked = serializers.DateTimeField(read_only=True)
 
     class Meta(DeploymentListSerializer.Meta):
         fields = DeploymentListSerializer.Meta.fields + [
@@ -352,6 +356,13 @@ class DeploymentSerializer(DeploymentListSerializer):
             "research_site_id",
             "data_source",
             "data_source_id",
+            "data_source_uri",
+            "data_source_total_files",
+            "data_source_total_size",
+            "data_source_total_size_display",
+            "data_source_last_checked",
+            "data_source_subdir",
+            "data_source_regex",
             "description",
             "example_captures",
             # "capture_images",
@@ -845,6 +856,10 @@ class SourceImageSerializer(SourceImageListSerializer):
             "test_image",
             "jobs",
             "collections",
+            "event_next_capture_id",
+            "event_prev_capture_id",
+            "event_current_capture_index",
+            "event_total_captures",
         ]
 
 
@@ -1190,6 +1205,35 @@ class EventSerializer(DefaultSerializer):
         return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
 
 
+class EventTimelineSourceImageSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        fields = ["id", "details"]
+
+
+class EventTimelineIntervalSerializer(serializers.Serializer):
+    start = serializers.DateTimeField()
+    end = serializers.DateTimeField()
+    first_capture = EventTimelineSourceImageSerializer(allow_null=True)
+    captures_count = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+
+
+class EventTimelineMetaSerializer(serializers.Serializer):
+    total_intervals = serializers.IntegerField()
+    resolution_minutes = serializers.IntegerField()
+    max_detections = serializers.IntegerField()
+    min_detections = serializers.IntegerField()
+    total_detections = serializers.IntegerField()
+    timeline_start = serializers.DateTimeField()
+    timeline_end = serializers.DateTimeField()
+
+
+class EventTimelineSerializer(serializers.Serializer):
+    data = EventTimelineIntervalSerializer(many=True)  # type: ignore @TODO is `data` an existing property in DRF?
+    meta = EventTimelineMetaSerializer()
+
+
 class StorageStatusSerializer(serializers.Serializer):
     data_source = serializers.CharField(max_length=200)
 
@@ -1268,8 +1312,10 @@ class StorageSourceSerializer(DefaultSerializer):
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
     access_key = serializers.CharField(write_only=True, required=False)
     secret_key = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
-    endpoint_url = serializers.URLField()
-    public_base_url = serializers.URLField()
+    # endpoint_url = serializers.URLField(required=False, allow_blank=True)
+    # @TODO the endpoint needs to support host names without a TLD extension like "minio:9000"
+    endpoint_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    public_base_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = S3StorageSource
@@ -1284,8 +1330,11 @@ class StorageSourceSerializer(DefaultSerializer):
             "endpoint_url",
             "public_base_url",
             "project",
-            "total_files",
-            "total_size",
+            "deployments_count",
+            "total_files_indexed",
+            "total_size_indexed_display",
+            "total_size_indexed",
+            "total_captures_indexed",
             "last_checked",
             "created_at",
             "updated_at",

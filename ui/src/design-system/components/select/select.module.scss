@@ -46,6 +46,12 @@
     margin-bottom: 8px;
   }
 
+  span {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
   &[data-placeholder] {
     color: $color-neutral-500;
   }

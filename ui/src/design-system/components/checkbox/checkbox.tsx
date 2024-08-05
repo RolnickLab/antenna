@@ -7,6 +7,7 @@ export enum CheckboxTheme {
   Default = 'default',
   Success = 'success',
   Alert = 'alert',
+  Neutral = 'neutral',
 }
 
 interface CheckboxProps {
@@ -28,8 +29,10 @@ export const Checkbox = ({
 }: CheckboxProps) => (
   <div className={styles.wrapper}>
     <_Checkbox.Root
-      className={styles.checkboxRoot}
       checked={checked}
+      className={classNames(styles.checkboxRoot, {
+        [styles.neutral]: theme === CheckboxTheme.Neutral,
+      })}
       defaultChecked={defaultChecked}
       id={id}
       onCheckedChange={onCheckedChange}
@@ -49,6 +52,7 @@ export const Checkbox = ({
         className={classNames(styles.label, {
           [styles.success]: theme === CheckboxTheme.Success,
           [styles.alert]: theme === CheckboxTheme.Alert,
+          [styles.neutral]: theme === CheckboxTheme.Neutral,
         })}
       >
         {label}

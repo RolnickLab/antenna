@@ -1,0 +1,54 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
+
+.starButtonWrapper {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.infoWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jobControls {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.pipelinesPickerContainer {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.label {
+  display: block;
+  @include paragraph-xx-small();
+  text-transform: uppercase;
+  font-weight: 700;
+  color: $color-neutral-400;
+}
+
+.value {
+  display: block;
+  @include paragraph-x-small();
+  color: $color-neutral-200;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .jobControls {
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+  }
+
+  .pipelinesPickerContainer {
+    grid-column: span 2;
+  }
+}

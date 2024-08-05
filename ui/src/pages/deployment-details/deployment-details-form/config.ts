@@ -37,7 +37,13 @@ export const config: FormConfig = {
     },
   },
   dataSourceId: {
-    label: translate(STRING.FIELD_LABEL_DATA_SOURCE),
+    label: 'Storage',
+  },
+  dataSourceSubdir: {
+    label: 'Sub directory',
+  },
+  dataSourceRegex: {
+    label: 'Regex filter',
   },
   latitude: {
     label: translate(STRING.FIELD_LABEL_LATITUDE),

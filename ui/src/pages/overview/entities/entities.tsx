@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { columns } from './entities-columns'
 import { NewEntityDialog } from './new-entity-dialog'
 
@@ -15,10 +16,12 @@ export const Entities = ({
   title,
   collection,
   type,
+  tooltip,
 }: {
   title: string
   collection: string
   type: string
+  tooltip?: string
 }) => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
@@ -26,17 +29,16 @@ export const Entities = ({
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { entities, total, isLoading, isFetching, error } = useEntities(
-    collection,
-    {
+  const { entities, userPermissions, total, isLoading, isFetching, error } =
+    useEntities(collection, {
       projectId,
       pagination,
       sort,
-    }
-  )
+    })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (
@@ -48,8 +50,9 @@ export const Entities = ({
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={tooltip}
       >
-        <NewEntityDialog collection={collection} type={type} />
+        {canCreate && <NewEntityDialog collection={collection} type={type} />}
       </PageHeader>
       <Table
         items={entities}

@@ -12,7 +12,8 @@
   white-space: normal;
   text-align: center;
   z-index: 2;
-  max-width: 240px;
+  max-width: 320px;
+  word-break: break-word;
 
   .tooltipArrow {
     fill: $color-generic-white;

@@ -10,9 +10,13 @@
 }
 
 .dialogContent {
-  width: 480px;
+  width: 720px;
   max-width: 100%;
   box-sizing: border-box;
+
+  &.compact {
+    width: 420px;
+  }
 }
 
 .dialogTrigger {

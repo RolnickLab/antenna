@@ -24,7 +24,7 @@ export const Deployments = () => {
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (
@@ -36,6 +36,7 @@ export const Deployments = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
         {canCreate ? <NewDeploymentDialog /> : null}
       </PageHeader>

@@ -111,6 +111,10 @@ $dialog-padding-medium: 32px;
   }
 }
 
+.errorContent {
+  padding: 32px;
+}
+
 @media only screen and (max-width: $medium-screen-breakpoint) {
   .dialog {
     max-width: calc(100% - (2 * $dialog-padding-medium));

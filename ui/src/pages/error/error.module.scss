@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/variables.scss';
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
@@ -16,10 +15,4 @@
   background: $color-generic-white;
   border-radius: 8px;
   border: 1px solid $color-neutral-100;
-}
-
-@media only screen and (max-width: $small-screen-breakpoint) {
-  .wrapper {
-    margin: 32px 16px;
-  }
 }
