@@ -1,6 +1,6 @@
 import { ReactNode, RefObject, useLayoutEffect, useRef } from 'react'
-import { StickyTableHeader } from 'vh-sticky-table-header'
 import styles from './table.module.scss'
+import StickyTableHeader from './vh-sticky-table-header'
 
 /**
  * Help component to make it possible to combine sticky table header and horizontal scrolling.
