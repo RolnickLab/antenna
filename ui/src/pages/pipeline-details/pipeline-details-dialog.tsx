@@ -64,6 +64,16 @@ const PipelineDetailsContent = ({
           <FormSection title={translate(STRING.SUMMARY)}>
             <FormRow>
               <InputValue
+                label={translate(STRING.FIELD_LABEL_ID)}
+                value={pipeline.id}
+              />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_VERSION)}
+                value={pipeline.versionLabel}
+              />
+            </FormRow>
+            <FormRow>
+              <InputValue
                 label={translate(STRING.FIELD_LABEL_NAME)}
                 value={pipeline.name}
               />
@@ -72,12 +82,7 @@ const PipelineDetailsContent = ({
                 value={pipeline.description}
               />
             </FormRow>
-            <FormRow>
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_VERSION)}
-                value={pipeline.versionLabel}
-              />
-            </FormRow>
+
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_CREATED_AT)}
