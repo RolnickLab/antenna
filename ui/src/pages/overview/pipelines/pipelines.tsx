@@ -13,7 +13,7 @@ import { columns } from './pipelines-columns'
 export const Pipelines = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
-    field: 'created_at',
+    field: 'id',
     order: 'asc',
   })
   const { pagination, setPage } = usePagination()
