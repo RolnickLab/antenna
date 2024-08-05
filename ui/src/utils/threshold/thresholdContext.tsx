@@ -27,7 +27,7 @@ export const ThresholdContextProvider = ({
         defaultThreshold: DEFAULT_THRESHOLD,
         threshold,
         setThreshold: (value: number) => {
-          localStorage.setItem(THRESHOLD_STORAGE_KEY, `${threshold}`)
+          localStorage.setItem(THRESHOLD_STORAGE_KEY, `${value}`)
           setThreshold(value)
         },
       }}

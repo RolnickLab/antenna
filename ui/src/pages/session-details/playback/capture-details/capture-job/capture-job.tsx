@@ -10,7 +10,9 @@ export const CaptureJob = ({
   pipelineId?: string
 }) => (
   <>
-    <ProcessNow capture={capture} pipelineId={pipelineId} />
+    <div style={capture?.jobs.length ? undefined : { gridColumn: 'span 2' }}>
+      <ProcessNow capture={capture} pipelineId={pipelineId} />
+    </div>
     {capture?.jobs.length ? <CaptureJobDialog id={capture.jobs[0].id} /> : null}
   </>
 )

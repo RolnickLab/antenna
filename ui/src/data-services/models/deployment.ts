@@ -61,14 +61,18 @@ export class Deployment {
     return this._deployment.taxa_count
   }
 
-  get firstDateLabel(): string {
-    return getFormatedDateString({
-      date: new Date(this._deployment.first_date),
-    })
+  get firstDateLabel(): string | undefined {
+    return this.numImages
+      ? getFormatedDateString({
+          date: new Date(this._deployment.first_date),
+        })
+      : undefined
   }
 
-  get lastDateLabel(): string {
-    return getFormatedDateString({ date: new Date(this._deployment.last_date) })
+  get lastDateLabel(): string | undefined {
+    return this.numImages
+      ? getFormatedDateString({ date: new Date(this._deployment.last_date) })
+      : undefined
   }
 
   get dataSourceDetails(): {
