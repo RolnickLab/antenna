@@ -7,6 +7,7 @@ import { STRING, translate } from 'utils/language'
 import { REJECT_OPTIONS } from './constants'
 import { IdButton } from './id-button'
 import styles from './id-quick-actions.module.scss'
+import { useRecentIdentifications } from './useRecentOptions'
 import { getCommonRanks } from './utils'
 
 interface RejectIdProps {
@@ -23,10 +24,16 @@ export const IdQuickActions = ({
   zIndex,
 }: RejectIdProps) => {
   const [open, setIsOpen] = useState(false)
+  const { recentIdentifications } = useRecentIdentifications()
 
   const sections: {
     title: string
     options: { label: string; details?: string; value: string }[]
+    emptyLabel?: string
+    subSections?: {
+      title: string
+      options: { label: string; details?: string; value: string }[]
+    }[]
   }[] = [
     {
       title: translate(STRING.APPLY_ID),
@@ -35,10 +42,23 @@ export const IdQuickActions = ({
         details: rank,
         value: id,
       })),
+      emptyLabel:
+        occurrenceTaxons.length > 1
+          ? 'No common ranks found.'
+          : 'No options available.',
+      subSections: recentIdentifications.length
+        ? [
+            {
+              title: translate(STRING.RECENT),
+              options: recentIdentifications,
+            },
+          ]
+        : undefined,
     },
     {
       title: translate(STRING.REJECT_ID),
       options: REJECT_OPTIONS,
+      emptyLabel: 'No options available.',
     },
   ]
 
@@ -60,16 +80,12 @@ export const IdQuickActions = ({
         style={{ zIndex }}
       >
         <div className={styles.wrapper}>
-          {sections.map((section, index) => {
-            if (!section.options.length) {
-              return null
-            }
-
-            return (
-              <div key={index} className={styles.section}>
-                <span className={styles.title}>{section.title}</span>
-                <div className={styles.options}>
-                  {section.options.map((option) => (
+          {sections.map((section, index) => (
+            <div key={index} className={styles.section}>
+              <span className={styles.title}>{section.title}</span>
+              <div className={styles.options}>
+                {section.options.length ? (
+                  section.options.map((option) => (
                     <IdButton
                       key={option.value}
                       occurrenceIds={occurrenceIds}
@@ -77,11 +93,29 @@ export const IdQuickActions = ({
                       taxonId={option.value}
                       details={option.details}
                     />
-                  ))}
-                </div>
+                  ))
+                ) : (
+                  <span className={styles.info}>{section.emptyLabel}</span>
+                )}
+                {section.subSections?.map((subSection, index) => (
+                  <div key={index} className={styles.subSection}>
+                    <span className={styles.subTitle}>{subSection.title}</span>
+                    <div className={styles.options}>
+                      {subSection.options.map((option) => (
+                        <IdButton
+                          key={option.value}
+                          occurrenceIds={occurrenceIds}
+                          label={option.label}
+                          taxonId={option.value}
+                          details={option.details}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
       </Popover.Content>
     </Popover.Root>
