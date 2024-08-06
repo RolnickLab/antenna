@@ -60,25 +60,42 @@ def create_captures(
     return created
 
 
-def create_taxa(project: Project) -> TaxaList:
+TEST_TAXA_CSV_DATA = """
+id,name,rank,parent
+1,Lepidoptera,ORDER,
+2,Nymphalidae,FAMILY,Lepidoptera
+3,Vanessa,GENUS,Nymphalidae
+4,Vanessa atalanta,SPECIES,Vanessa
+5,Vanessa cardui,SPECIES,Vanessa
+6,Vanessa itea,SPECIES,Vanessa
+""".strip()
+
+
+def create_taxa(project: Project, csv_data: str = TEST_TAXA_CSV_DATA):
+    import csv
+    from io import StringIO
+
     taxa_list = TaxaList.objects.create(name="Test Taxa List")
     taxa_list.projects.add(project)
-    root, _created = Taxon.objects.get_or_create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
-    root.projects.add(project)
-    family_taxon, _ = Taxon.objects.get_or_create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
-    family_taxon.projects.add(project)
-    genus_taxon, _ = Taxon.objects.get_or_create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
-    genus_taxon.projects.add(project)
-    for species in ["Vanessa itea", "Vanessa cardui", "Vanessa atalanta"]:
+
+    def create_taxon(taxon_data: dict, parent=None):
         taxon, _ = Taxon.objects.get_or_create(
-            name=species,
-            defaults=dict(
-                parent=genus_taxon,
-                rank=TaxonRank.SPECIES.name,
-            ),
+            id=taxon_data["id"],
+            name=taxon_data["name"],
+            rank=taxon_data["rank"],
+            parent=parent,
         )
         taxon.projects.add(project)
-    taxa_list.taxa.set([root, family_taxon, genus_taxon])
+        taxa_list.taxa.add(taxon)
+
+        for child_data in taxon_data.get("children", []):
+            create_taxon(child_data, parent=taxon)
+        return taxon
+
+    reader = csv.DictReader(StringIO(csv_data.strip()))
+    for row in reader:
+        create_taxon(row)
+
     return taxa_list
 
 
@@ -486,6 +503,59 @@ class TestTaxonomy(TestCase):
         filter_ranks = [rank for rank in TaxonRank if rank != root.get_rank()]
         with self.assertRaises(ValueError):
             self._test_filtered_tree(filter_ranks)
+
+    def test_update_parents(self):
+        for taxon in Taxon.objects.all():
+            taxon.update_parents()
+            self._test_parents_json(taxon)
+
+    def test_update_all_parents(self):
+        from ami.main.models import Taxon
+
+        Taxon.objects.update_all_parents()
+
+        for taxon in Taxon.objects.exclude(parent=None):
+            self._test_parents_json(taxon)
+
+    def _test_parents_json(self, taxon):
+        from ami.main.models import TaxonParent
+
+        # Ensure all taxon have parents_json populated
+        self.assertGreater(
+            len(taxon.parents_json),
+            0,
+            f"Taxon {taxon} has no parents_json, even though it has the parent {taxon.parent}",
+        )
+
+        for parent_taxon in taxon.parents_json:
+            # Ensure all parents_json are TaxonParent objects
+            self.assertIsInstance(parent_taxon, TaxonParent)
+
+            # Ensure a parent rank is not the same as the taxon itself
+            self.assertNotEqual(taxon.rank, parent_taxon.rank)
+
+        # Ensure the order of all parents is correct
+        sorted_parents = sorted(taxon.parents_json, key=lambda x: x.rank)
+        self.assertListEqual(taxon.parents_json, sorted_parents)
+
+        # For each rank, test that it is lower than the previous rank
+        previous_rank = None
+        for parent in taxon.parents_json:
+            if previous_rank:
+                self.assertGreater(parent.rank, previous_rank)
+            previous_rank = parent.rank
+
+        # Ensure last item in parents_json is the taxon's direct parent
+        print(taxon, taxon.parent, taxon.parents_json)
+        direct_parent = taxon.parents_json[-1]
+        self.assertEqual(
+            direct_parent.id,
+            taxon.parent_id,
+            (
+                f"Taxon {taxon} has incorrect direct parent: {direct_parent.name} != {taxon.parent.name}. "
+                f"All parents: {taxon.parents_json}"
+            ),
+        )
 
 
 class TestTaxonomyViews(TestCase):
