@@ -2106,32 +2106,50 @@ class TaxaManager(models.Manager):
 
     def update_all_parents(self):
         """Efficiently update all parents for all taxa."""
-
         taxa = self.get_queryset().select_related("parent")
-
         logging.info(f"Updating the cached parent tree for {taxa.count()} taxa")
 
         # Build a dictionary of taxon parents
-        parents = {taxon: taxon.parent for taxon in taxa}
+        parents = {taxon.id: taxon.parent_id for taxon in taxa}
 
-        # Update all parents
-        for taxon, parent in parents.items():
-            logging.info(f"Updating parents for {taxon}")
+        # Precompute all parents in a single pass
+        all_parents = {}
+        for taxon_id in parents:
+            if taxon_id not in all_parents:
+                taxon_parents = []
+                current_id = taxon_id
+                while current_id in parents:
+                    current_id = parents[current_id]
+                    taxon_parents.append(current_id)
+                all_parents[taxon_id] = taxon_parents
 
-            taxon_parents = []
-            while parent:
-                taxon_parents.append(parent)
-                # If this is None, the parent is the root taxon, so we stop here.
-                parent = parents.get(parent)
-
-            # Convert the taxa to the JSON TaxonParent type
-            taxon_parents = [TaxonParent(id=t.pk, name=t.name, rank=TaxonRank(t.rank)) for t in taxon_parents]
-
-            # Sort the parents by rank (achievable because TaxonRank is an ordered enum)
+        # Prepare bulk update data
+        bulk_update_data = []
+        for taxon in taxa:
+            taxon_parents = all_parents[taxon.id]
+            parent_taxa = list(taxa.filter(id__in=taxon_parents))
+            taxon_parents = [
+                TaxonParent(
+                    id=taxon.id,
+                    name=taxon.name,
+                    rank=taxon.rank,
+                )
+                for taxon in parent_taxa
+            ]
             taxon_parents.sort(key=lambda t: t.rank)
 
-            taxon.parents_json = taxon_parents
-            taxon.save()
+            bulk_update_data.append(taxon)
+
+        # Perform bulk update
+        # with transaction.atomic():
+        #     self.bulk_update(bulk_update_data, ["parents_json"], batch_size=1000)
+        # There is a bug that causes the bulk update to fail with a custom JSONField
+        # https://code.djangoproject.com/ticket/35167
+        # So we have to update each taxon individually
+        for taxon in bulk_update_data:
+            taxon.save(update_fields=["parents_json"])
+
+        logging.info(f"Updated parents for {len(bulk_update_data)} taxa")
 
 
 class TaxonParent(pydantic.BaseModel):
@@ -2185,6 +2203,9 @@ class Taxon(BaseModel):
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
 
     objects: TaxaManager = TaxaManager()
+
+    # Type hints for auto-generated fields
+    parent_id: int | None
 
     def __str__(self) -> str:
         name_with_rank = f"{self.name} ({self.rank})"
