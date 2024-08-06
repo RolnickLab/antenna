@@ -20,8 +20,19 @@ export const TaxonRanks = ({
   getLink,
 }: TaxonRanksProps) => {
   const compactMode = compact && _ranks.length > 3
-  const mainRank = compactMode ? _ranks[0] : undefined
-  const ranks = compactMode ? _ranks.slice(-2) : _ranks
+  const mainRank = compactMode
+    ? _ranks.find((r) => r.rank === 'FAMILY')
+    : undefined
+  const ranks = compactMode
+    ? _ranks
+        .filter(
+          (r) =>
+            r.rank === 'SUBFAMILY' ||
+            r.rank === 'TRIBE' ||
+            r.rank === 'SUBTRIBE'
+        )
+        .slice(-2)
+    : _ranks
 
   return (
     <div
@@ -30,7 +41,9 @@ export const TaxonRanks = ({
       {mainRank && (
         <>
           <TaxonRank rank={mainRank} to={getLink?.(mainRank.id)} />
-          <span className={classNames(styles.rank, styles.divider)}>|</span>
+          {ranks.length ? (
+            <span className={classNames(styles.rank, styles.divider)}>|</span>
+          ) : null}
         </>
       )}
       {ranks.map((r, index) => (
