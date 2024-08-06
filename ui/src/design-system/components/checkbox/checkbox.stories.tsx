@@ -10,9 +10,9 @@ export default {
 
 export const Default: Meta = {
   args: {
+    checked: true,
     label: 'Lorem ipsum',
     id: 'checkbox',
     theme: CheckboxTheme.Default,
-    defaultChecked: true,
   },
 }
