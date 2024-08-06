@@ -1,6 +1,6 @@
 /**
- * This class is used for both table sticky header and horizontal scroll support on tables.
- * Class has been modified to support click handling until https://github.com/archfz/vh-sticky-table-header/issues/10 is fixed.
+ * This class is used for both sticky header and horizontal scroll support on tables.
+ * The class has been modified to fully support click handling until https://github.com/archfz/vh-sticky-table-header/issues/10 is fixed.
  *
  * Original code: https://github.com/archfz/vh-sticky-table-header/blob/main/src/StickyTableHeader.ts
  */
