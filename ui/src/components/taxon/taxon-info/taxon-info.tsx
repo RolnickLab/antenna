@@ -14,7 +14,7 @@ interface TaxonInfoProps {
   overridden?: boolean
   size?: TaxonInfoSize
   taxon: Taxon
-  getLink?: (taxonId: string) => string
+  getLink?: (taxonId: number) => string
 }
 
 export const TaxonInfo = ({

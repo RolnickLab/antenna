@@ -811,7 +811,7 @@ class TaxonViewSet(DefaultViewSet):
 
             raise NotFound(detail=str(e))
 
-        qs = qs.select_related("parent", "parent__parent")
+        qs = qs.select_related("parent")
 
         # @TODO this should check what the user has access to
         project_id = self.request.query_params.get("project")

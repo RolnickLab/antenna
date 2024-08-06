@@ -1,6 +1,7 @@
 import datetime
 
 from django.db.models import QuerySet
+from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
 from ami.base.serializers import DefaultSerializer, get_current_user, reverse_with_params
@@ -28,6 +29,7 @@ from ..models import (
     SourceImageCollection,
     SourceImageUpload,
     Taxon,
+    TaxonParent,
 )
 
 
@@ -406,24 +408,19 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         ]
 
 
-class TaxonParentNestedSerializer(TaxonNoParentNestedSerializer):
+class TaxonNestedSerializer(TaxonNoParentNestedSerializer):
+    """
+    Simple Taxon serializer with 1 level of nested parents.
+    """
+
     parent = TaxonNoParentNestedSerializer(read_only=True)
+    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
 
     class Meta(TaxonNoParentNestedSerializer.Meta):
         fields = TaxonNoParentNestedSerializer.Meta.fields + [
             "parent",
+            "parents",
         ]
-
-
-class TaxonNestedSerializer(TaxonParentNestedSerializer):
-    """
-    Simple Taxon serializer with 2 levels of nesting.
-    """
-
-    parent = TaxonParentNestedSerializer(read_only=True)
-
-    class Meta(TaxonParentNestedSerializer.Meta):
-        pass
 
 
 class TaxonSearchResultSerializer(TaxonNestedSerializer):
@@ -441,7 +438,7 @@ class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
     occurrence_images = serializers.SerializerMethodField()
-    parent = TaxonParentNestedSerializer(read_only=True)
+    parent = TaxonNestedSerializer(read_only=True)
 
     class Meta:
         model = Taxon
@@ -494,7 +491,8 @@ class TaxonListSerializer(DefaultSerializer):
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
-    parent = TaxonParentNestedSerializer(read_only=True)
+    parent = TaxonNoParentNestedSerializer(read_only=True)
+    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
 
     class Meta:
         model = Taxon
@@ -502,6 +500,7 @@ class CaptureTaxonSerializer(DefaultSerializer):
             "id",
             "name",
             "parent",
+            "parents",
             "rank",
             "details",
         ]
@@ -647,8 +646,10 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
-    parent = TaxonNestedSerializer(read_only=True)
+    parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
+    # parents = TaxonParentNestedSerializer(many=True, read_only=True, source="parents_json")
+    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
 
     class Meta:
         model = Taxon
@@ -658,6 +659,7 @@ class TaxonSerializer(DefaultSerializer):
             "rank",
             "parent",
             "parent_id",
+            "parents",
             "details",
             "occurrences_count",
             "detections_count",

@@ -9,6 +9,7 @@ import typing
 import urllib.parse
 from typing import Final, final  # noqa: F401
 
+import pydantic
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -18,6 +19,7 @@ from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
+from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
@@ -36,15 +38,15 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 
 
 class TaxonRank(OrderedEnum):
-    ORDER = "Order"
-    SUPERFAMILY = "Superfamily"
-    FAMILY = "Family"
-    SUBFAMILY = "Subfamily"
-    TRIBE = "Tribe"
-    SUBTRIBE = "Subtribe"
-    GENUS = "Genus"
-    SPECIES = "Species"
-    UNKNOWN = "Unknown"
+    ORDER = "ORDER"
+    SUPERFAMILY = "SUPERFAMILY"
+    FAMILY = "FAMILY"
+    SUBFAMILY = "SUBFAMILY"
+    TRIBE = "TRIBE"
+    SUBTRIBE = "SUBTRIBE"
+    GENUS = "GENUS"
+    SPECIES = "SPECIES"
+    UNKNOWN = "UNKNOWN"
 
 
 DEFAULT_RANKS = sorted(
@@ -2102,6 +2104,48 @@ class TaxaManager(models.Manager):
         assert root, "No root taxon found"
         return root
 
+    def update_all_parents(self):
+        """Efficiently update all parents for all taxa."""
+
+        taxa = self.get_queryset().select_related("parent")
+
+        logging.info(f"Updating the cached parent tree for {taxa.count()} taxa")
+
+        # Build a dictionary of taxon parents
+        parents = {taxon: taxon.parent for taxon in taxa}
+
+        # Update all parents
+        for taxon, parent in parents.items():
+            logging.info(f"Updating parents for {taxon}")
+
+            taxon_parents = []
+            while parent:
+                taxon_parents.append(parent)
+                # If this is None, the parent is the root taxon, so we stop here.
+                parent = parents.get(parent)
+
+            # Convert the taxa to the JSON TaxonParent type
+            taxon_parents = [TaxonParent(id=t.pk, name=t.name, rank=TaxonRank(t.rank)) for t in taxon_parents]
+
+            # Sort the parents by rank (achievable because TaxonRank is an ordered enum)
+            taxon_parents.sort(key=lambda t: t.rank)
+
+            taxon.parents_json = taxon_parents
+            taxon.save()
+
+
+class TaxonParent(pydantic.BaseModel):
+    """
+    Should contain all data needed for TaxonParentSerializer
+    """
+
+    id: int
+    name: str
+    rank: TaxonRank
+
+    class Config:
+        use_enum_values = True
+
 
 @final
 class Taxon(BaseModel):
@@ -2113,9 +2157,12 @@ class Taxon(BaseModel):
     parent = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="direct_children"
     )
-    # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
-    parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
-    # taxonomy = models.JSONField(null=True, blank=True)
+
+    # Examples how to query this JSON array field
+    # Taxon.objects.filter(parents_json__contains=[{"id": 1}])
+    # https://stackoverflow.com/a/53942463/966058
+    parents_json = SchemaField(list[TaxonParent], null=True, blank=True)
+
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
@@ -2244,15 +2291,16 @@ class Taxon(BaseModel):
         Populate the cached "parents" list by recursively following the "parent" field.
 
         @TODO this requires the parents' parents already being up-to-date, which may not always be the case.
-        @TODO parents could instead be a JSON field that is updated by a trigger on the database.
         """
 
         taxon = self
-        parents = [taxon.parent]
-        while parents[-1] is not None:
-            parents.append(parents[-1].parent)
-        parents = parents[:-1]
-        taxon.parents.set(parents)
+        parents = []
+        while taxon.parent is not None:
+            parents.append(TaxonParent(id=taxon.parent.id, name=taxon.parent.name, rank=taxon.parent.rank))
+            taxon = taxon.parent
+        # Sort parents by rank using ordered enum
+        parents = sorted(parents, key=lambda t: t.rank)
+        taxon.parents_json = parents
         if save:
             taxon.save()
 
@@ -2272,10 +2320,16 @@ class Taxon(BaseModel):
             models.Index(fields=["ordering", "name"]),
         ]
 
-    def save(self, *args, **kwargs):
-        """Update the display name before saving."""
+    def update_calculated_fields(self, save=False):
         self.display_name = self.get_display_name()
+        self.update_parents(save=False)
+        if save:
+            self.save(update_calculated_fields=False)
+
+    def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
+        if update_calculated_fields:
+            self.update_calculated_fields(save=True)
 
 
 @final
