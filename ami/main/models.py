@@ -2151,10 +2151,67 @@ class TaxaManager(models.Manager):
 
         logging.info(f"Updated parents for {len(bulk_update_data)} taxa")
 
+    def with_children(self):
+        qs = self.get_queryset()
+        # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
+
+        # example for single taxon:
+        taxon = Taxon.objects.get(pk=1)
+        taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
+        # add them to the queryset
+        qs = qs.annotate(children=models.Subquery(taxa.values("id")))
+        return qs
+
+    def with_occurrence_counts(self) -> models.QuerySet:
+        """
+        Count the number of occurrences for a taxon and all occurrences of the taxon's children.
+        """
+        qs = self.get_queryset()
+
+        # Subquery to get all child taxa IDs
+        import json
+
+        child_taxa = qs.filter(
+            parents_json__contains=models.Value(
+                json.dumps([{"id": models.OuterRef("pk")}]), output_field=models.JSONField()
+            )
+        ).values("pk")
+
+        # Debugging: Log the SQL for child_taxa
+        logger.info(f"SQL for child_taxa: {child_taxa.query}")
+
+        # Debugging: Count and log the number of child taxa
+        child_count = child_taxa.count()
+        logger.info(f"Number of child taxa found: {child_count}")
+
+        # Debugging: Log a sample of child taxa
+        sample_children = list(child_taxa[:5])
+        logger.info(f"Sample of child taxa: {sample_children}")
+
+        # Annotate with occurrence counts
+        qs = qs.annotate(
+            occurrences_count_bulk=models.Count(
+                "occurrences",
+                filter=models.Q(
+                    models.Q(occurrences__determination_id=models.F("pk"))
+                    | models.Q(occurrences__determination_id__in=models.Subquery(child_taxa))
+                ),
+                distinct=True,
+            )
+        )
+
+        # Debugging: Log the final SQL query
+        logger.info(f"Final SQL query: {qs.query}")
+
+        return qs
+
 
 class TaxonParent(pydantic.BaseModel):
     """
     Should contain all data needed for TaxonParentSerializer
+
+    Needs a custom encoder and decoder for for the TaxonRank enum
+    because it is an OrderedEnum and not a standard str Enum.
     """
 
     id: int
@@ -2162,7 +2219,7 @@ class TaxonParent(pydantic.BaseModel):
     rank: TaxonRank
 
     class Config:
-        use_enum_values = True
+        use_enum_values = False
 
 
 @final
@@ -2179,7 +2236,7 @@ class Taxon(BaseModel):
     # Examples how to query this JSON array field
     # Taxon.objects.filter(parents_json__contains=[{"id": 1}])
     # https://stackoverflow.com/a/53942463/966058
-    parents_json = SchemaField(list[TaxonParent], null=True, blank=True)
+    parents_json = SchemaField(list[TaxonParent], null=False, blank=True, default=list)
 
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
@@ -2192,7 +2249,6 @@ class Taxon(BaseModel):
 
     projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
-    children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
     lists: models.QuerySet["TaxaList"]
@@ -2234,12 +2290,23 @@ class Taxon(BaseModel):
         return self.direct_children.count()
 
     def num_children_recursive(self) -> int:
-        # @TODO how to do this with a single query?
-        return self.children.count() + sum(child.num_children_recursive() for child in self.children.all())
+        # Use the parents_json field to get all children
+        return Taxon.objects.filter(parents_json__contains=[{"id": self.pk}]).count()
 
     def occurrences_count(self) -> int:
         # return self.occurrences.count()
         return 0
+
+    def occurrences_count_recursive(self) -> int:
+        """
+        Use the parents_json field to get all children, count their occurrences and sum them.
+        """
+        return (
+            Taxon.objects.filter(models.Q(models.Q(parents_json__contains=[{"id": self.pk}]) | models.Q(id=self.pk)))
+            .annotate(occurrences_count=models.Count("occurrences"))
+            .aggregate(models.Sum("occurrences_count"))["occurrences_count__sum"]
+            or 0
+        )
 
     def detections_count(self) -> int:
         # return Detection.objects.filter(occurrence__determination=self).count()
@@ -2309,21 +2376,25 @@ class Taxon(BaseModel):
 
     def update_parents(self, save=True):
         """
-        Populate the cached "parents" list by recursively following the "parent" field.
+        Populate the cached `parents_json` list by recursively following the `parent` field.
 
-        @TODO this requires the parents' parents already being up-to-date, which may not always be the case.
+        @TODO this requires all of the taxon's parent taxa to have the `parent` attribute set correctly.
         """
 
-        taxon = self
+        current_taxon = self
         parents = []
-        while taxon.parent is not None:
-            parents.append(TaxonParent(id=taxon.parent.id, name=taxon.parent.name, rank=taxon.parent.rank))
-            taxon = taxon.parent
+        while current_taxon.parent is not None:
+            parents.append(
+                TaxonParent(id=current_taxon.parent.id, name=current_taxon.parent.name, rank=current_taxon.parent.rank)
+            )
+            current_taxon = current_taxon.parent
         # Sort parents by rank using ordered enum
         parents = sorted(parents, key=lambda t: t.rank)
-        taxon.parents_json = parents
+        self.parents_json = parents
         if save:
-            taxon.save()
+            self.save()
+
+        return parents
 
     class Meta:
         ordering = [
