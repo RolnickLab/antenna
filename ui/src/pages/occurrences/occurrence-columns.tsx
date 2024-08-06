@@ -204,7 +204,7 @@ const TaxonCell = ({
       <BasicTableCell>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
-            <TaxonInfo taxon={item.determinationTaxon} />
+            <TaxonInfo compact taxon={item.determinationTaxon} />
           </Link>
           {showQuickActions && canUpdate && (
             <div className={styles.taxonActions}>

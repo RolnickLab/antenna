@@ -51,7 +51,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
         })}
       >
         <BasicTableCell>
-          <TaxonInfo taxon={item} />
+          <TaxonInfo compact taxon={item} />
         </BasicTableCell>
       </Link>
     ),
