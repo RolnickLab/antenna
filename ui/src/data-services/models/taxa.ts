@@ -1,5 +1,5 @@
 export type ServerTaxon = {
-  id: number
+  id: string
   name: string
   rank: string
   parent?: ServerTaxon
@@ -7,11 +7,11 @@ export type ServerTaxon = {
 }
 
 export class Taxon {
-  readonly id: number
+  readonly id: string
   readonly name: string
   readonly parentId?: string
   readonly rank: string
-  readonly ranks: { id: number; name: string; rank: string }[]
+  readonly ranks: { id: string; name: string; rank: string }[]
 
   public constructor(taxon: ServerTaxon) {
     this.id = taxon.id

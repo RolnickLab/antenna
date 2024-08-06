@@ -6,11 +6,11 @@ import styles from './taxon-ranks.module.scss'
 
 interface TaxonRanksProps {
   ranks: {
-    id: number
+    id: string
     name: string
     rank: string
   }[]
-  getLink?: (taxonId: number) => string
+  getLink?: (taxonId: string) => string
 }
 
 export const TaxonRanks = ({ ranks, getLink }: TaxonRanksProps) => (
