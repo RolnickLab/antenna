@@ -26,7 +26,8 @@ export const StickyHeaderTable = ({
       const sticky = new StickyTableHeader(
         tableRef.current,
         tableCloneRef.current,
-        { max: 96 }
+        { max: 96 },
+        document.getElementById('app') ?? undefined
       )
 
       // Destory the sticky header once the main table is unmounted.

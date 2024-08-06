@@ -20,16 +20,19 @@ export default class StickyTableHeader {
   private lastElement: HTMLElement | null = null
   private lastElementRefresh: NodeJS.Timeout | number | null = null
   private top: { max: number | string; [key: number]: number | string }
+  private scrollContainer?: HTMLElement
 
   constructor(
     tableContainer: HTMLTableElement,
     cloneContainer: HTMLTableElement,
-    top?: { max: number | string; [key: number]: number | string }
+    top?: { max: number | string; [key: number]: number | string },
+    scrollContainer?: HTMLElement
   ) {
     const header = tableContainer.querySelector<HTMLTableRowElement>('thead')
     this.tableContainer = tableContainer
     this.cloneContainer = cloneContainer
     this.top = top || { max: 0 }
+    this.scrollContainer = scrollContainer
 
     if (!header || !this.tableContainer.parentNode) {
       throw new Error(
@@ -91,8 +94,11 @@ export default class StickyTableHeader {
       let containerRect = this.tableContainer.getBoundingClientRect()
       const cloneRect = this.cloneContainer.getBoundingClientRect()
       const bodyRect = document.body.getBoundingClientRect()
-      const currentScroll = window.scrollY
-      window.scrollTo({
+      const scrollElement = this.scrollContainer ?? window
+      const currentScroll = this.scrollContainer
+        ? this.scrollContainer.scrollTop
+        : window.scrollY
+      scrollElement.scrollTo({
         top: containerRect.y - bodyRect.y - this.getTop() - 60,
       })
 
@@ -105,7 +111,7 @@ export default class StickyTableHeader {
         const _element = originalTarget as HTMLElement
         _element.click()
       }
-      window.scrollTo({ top: currentScroll })
+      scrollElement.scrollTo({ top: currentScroll })
     }
     this.cloneContainer.addEventListener('click', this.clickListener)
   }
