@@ -1,5 +1,6 @@
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
+import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -20,6 +21,7 @@ import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
+import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
@@ -29,6 +31,7 @@ export const Occurrences = () => {
   const [columnSettings, setColumnSettings] = useState<{
     [id: string]: boolean
   }>({
+    batch: true,
     snapshots: true,
     id: true,
     date: true,
@@ -50,6 +53,10 @@ export const Occurrences = () => {
     sort,
     filters,
   })
+  const [_selectedItems, setSelectedItems] = useState<string[]>([])
+  const selectedItems = _selectedItems.filter((id) =>
+    occurrences?.some((occurrence) => occurrence.id === id)
+  )
   const { selectedView, setSelectedView } = useSelectedView('table')
 
   if (!isLoading && error) {
@@ -94,11 +101,15 @@ export const Occurrences = () => {
         <Table
           items={occurrences}
           isLoading={isLoading}
-          columns={columns(projectId as string).filter(
-            (column) => !!columnSettings[column.id]
-          )}
+          columns={columns(
+            projectId as string,
+            selectedItems.length === 0
+          ).filter((column) => !!columnSettings[column.id])}
           sortable
           sortSettings={sort}
+          selectable
+          selectedItems={selectedItems}
+          onSelectedItemsChange={setSelectedItems}
           onSortSettingsChange={setSort}
         />
       )}
@@ -108,6 +119,20 @@ export const Occurrences = () => {
         </div>
       )}
       <PageFooter>
+        {selectedItems.length ? (
+          <BulkActionBar
+            selectedItems={selectedItems.filter((id) =>
+              occurrences?.some((occurrence) => occurrence.id === id)
+            )}
+            onClear={() => setSelectedItems([])}
+          >
+            <OccurrenceActions
+              occurrences={occurrences?.filter((occurrence) =>
+                selectedItems.includes(occurrence.id)
+              )}
+            />
+          </BulkActionBar>
+        ) : null}
         {occurrences?.length ? (
           <PaginationBar
             pagination={pagination}

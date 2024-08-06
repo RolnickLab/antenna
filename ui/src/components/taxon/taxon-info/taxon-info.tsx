@@ -11,6 +11,7 @@ export enum TaxonInfoSize {
 }
 
 interface TaxonInfoProps {
+  compact?: boolean
   overridden?: boolean
   size?: TaxonInfoSize
   taxon: Taxon
@@ -18,6 +19,7 @@ interface TaxonInfoProps {
 }
 
 export const TaxonInfo = ({
+  compact,
   overridden,
   size,
   taxon,
@@ -40,7 +42,7 @@ export const TaxonInfo = ({
         <span className={nameClasses}>{taxon.name}</span>
       )}
       {taxon.ranks ? (
-        <TaxonRanks ranks={taxon.ranks} getLink={getLink} />
+        <TaxonRanks compact={compact} ranks={taxon.ranks} getLink={getLink} />
       ) : null}
     </div>
   )

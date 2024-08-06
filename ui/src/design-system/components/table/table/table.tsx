@@ -1,6 +1,9 @@
 import classNames from 'classnames'
+import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useRef } from 'react'
+import { BasicTableCell } from '../basic-table-cell/basic-table-cell'
 import { TableHeader } from '../table-header/table-header'
 import tableHeaderStyles from '../table-header/table-header.module.scss'
 import { TableColumn, TableSortSettings } from '../types'
@@ -15,21 +18,27 @@ export enum TableBackgroundTheme {
 
 interface TableProps<T> {
   backgroundTheme?: TableBackgroundTheme
+  columns: TableColumn<T>[]
   items?: T[]
   isLoading?: boolean
-  columns: TableColumn<T>[]
+  selectable?: boolean
+  selectedItems?: string[]
   sortable?: boolean
   sortSettings?: TableSortSettings
+  onSelectedItemsChange?: (selectedItems: string[]) => void
   onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
 }
 
 export const Table = <T extends { id: string }>({
   backgroundTheme = TableBackgroundTheme.Neutral,
+  columns,
   items = [],
   isLoading,
-  columns,
+  selectable,
+  selectedItems = [],
   sortable,
   sortSettings,
+  onSelectedItemsChange,
   onSortSettingsChange,
 }: TableProps<T>) => {
   const tableContainerRef = useRef<HTMLDivElement>(null)
@@ -63,6 +72,17 @@ export const Table = <T extends { id: string }>({
       <StickyHeaderTable tableContainerRef={tableContainerRef}>
         <thead>
           <tr>
+            {selectable && (
+              <th className={tableHeaderStyles.tableHeader}>
+                <div className={tableHeaderStyles.content}>
+                  <MultiSelectCheckbox
+                    items={items}
+                    selectedItems={selectedItems}
+                    onSelectedItemsChange={onSelectedItemsChange}
+                  />
+                </div>
+              </th>
+            )}
             {columns.map((column) => (
               <TableHeader
                 key={column.id}
@@ -83,6 +103,22 @@ export const Table = <T extends { id: string }>({
         <tbody className={classNames({ [styles.loading]: isLoading })}>
           {items.map((item, rowIndex) => (
             <tr key={item.id}>
+              {selectable && (
+                <td>
+                  <BasicTableCell>
+                    <Checkbox
+                      checked={selectedItems.includes(item.id)}
+                      onCheckedChange={(checked) => {
+                        onSelectedItemsChange?.(
+                          checked
+                            ? [...selectedItems, item.id]
+                            : selectedItems.filter((id) => id !== item.id)
+                        )
+                      }}
+                    />
+                  </BasicTableCell>
+                </td>
+              )}
               {columns.map((column, columnIndex) => (
                 <td key={column.id}>
                   {column.renderCell(item, rowIndex, columnIndex)}
@@ -104,5 +140,47 @@ export const Table = <T extends { id: string }>({
         })}
       />
     </div>
+  )
+}
+
+interface MultiSelectCheckboxProps<T> {
+  items: T[]
+  selectedItems?: string[]
+  onSelectedItemsChange?: (selectedItems: string[]) => void
+}
+
+const MultiSelectCheckbox = <T extends { id: string }>({
+  items = [],
+  selectedItems,
+  onSelectedItemsChange,
+}: MultiSelectCheckboxProps<T>) => {
+  const deselectAll = () => onSelectedItemsChange?.([])
+  const selectAll = () => onSelectedItemsChange?.(items.map((item) => item.id))
+
+  const checked = (() => {
+    if (!selectedItems?.length) {
+      return false
+    }
+    if (selectedItems?.length === items.length) {
+      return true
+    }
+    return 'indeterminate'
+  })()
+
+  return (
+    <Tooltip content={checked === true ? 'Deselect all' : 'Select all'}>
+      <div>
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(checked) => {
+            if (checked) {
+              selectAll()
+            } else {
+              deselectAll()
+            }
+          }}
+        />
+      </div>
+    </Tooltip>
   )
 }

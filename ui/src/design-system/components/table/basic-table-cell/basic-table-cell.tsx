@@ -30,7 +30,7 @@ export const BasicTableCell = ({
       })}
       style={{ textAlign, ...style }}
     >
-      {label && <span className={styles.label}>{label}</span>}
+      {label ? <span className={styles.label}>{label}</span> : null}
       {details &&
         details.map((detail, index) => (
           <span key={index} className={styles.details}>
