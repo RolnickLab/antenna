@@ -2219,6 +2219,9 @@ class TaxonParent(pydantic.BaseModel):
     rank: TaxonRank
 
     class Config:
+        # Make sure the TaxonRank is retrieved as an object and not a string
+        # so we can sort by rank. The DRF serializer will convert it to a string.
+        # just for the API responses.
         use_enum_values = False
 
 
