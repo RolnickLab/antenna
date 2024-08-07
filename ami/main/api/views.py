@@ -10,7 +10,7 @@ from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
-from rest_framework import serializers, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.filters import SearchFilter
@@ -615,6 +615,20 @@ class DetectionViewSet(DefaultViewSet):
     #             "detection_algorithm").all()
 
 
+class CustomDeterminationFilter(filters.BaseFilterBackend):
+    def filter_queryset(self, request, queryset, view):
+        determination_id = request.query_params.get("determination")
+        if determination_id:
+            try:
+                taxon = Taxon.objects.get(id=determination_id)
+                return queryset.filter(
+                    models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.id}])
+                )
+            except Taxon.DoesNotExist:
+                return queryset.none()  # or just return queryset if you prefer
+        return queryset
+
+
 class OccurrenceViewSet(DefaultViewSet):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -623,7 +637,9 @@ class OccurrenceViewSet(DefaultViewSet):
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
-    filterset_fields = ["event", "deployment", "determination", "project", "determination__rank"]
+    # filter_backends = [CustomDeterminationFilter, DjangoFilterBackend, NullsLastOrderingFilter, SearchFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [CustomDeterminationFilter]
+    filterset_fields = ["event", "deployment", "project", "determination__rank"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -670,6 +686,7 @@ class OccurrenceViewSet(DefaultViewSet):
                 .exclude(first_appearance_timestamp=None)  # This must come after annotations
                 .order_by("-determination_score")
             )
+
         else:
             qs = qs.prefetch_related(
                 Prefetch(
