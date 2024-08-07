@@ -901,6 +901,15 @@ class TaxonViewSet(DefaultViewSet):
 
         return qs
 
+    # def retrieve(self, request: Request, *args, **kwargs) -> Response:
+    #     """
+    #     Override the serializer to include the recursive occurrences count
+    #     """
+    #     taxon: Taxon = self.get_object()
+    #     taxon.occurrences_count = taxon.occurrences_count_recursive()  # type: ignore
+    #     response = Response(TaxonSerializer(taxon, context={"request": request}).data)
+    #     return response
+
 
 class ClassificationViewSet(DefaultViewSet):
     """
