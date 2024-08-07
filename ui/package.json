@@ -37,7 +37,6 @@
     "react-plotly.js": "^2.6.0",
     "react-router-dom": "^6.8.2",
     "typescript": "^4.4.2",
-    "vh-sticky-table-header": "^1.7.0",
     "vite": "^4.5.3",
     "vite-tsconfig-paths": "^4.2.1"
   },
