@@ -38,6 +38,7 @@ export const ActivityPlot = ({
               mode: 'lines',
               line: { color: lineColorCaptures, width: 1 },
               name: 'Captures',
+              yaxis: 'y', // This refers to the first `yaxis` property
             },
             {
               x: timeline.map((timelineTick) => timelineTick.startDate),
@@ -49,6 +50,7 @@ export const ActivityPlot = ({
               mode: 'lines',
               line: { color: lineColorDetections, width: 1 },
               name: 'Avg. Detections',
+              yaxis: 'y2', // This refers to the `yaxis2` property
             },
           ]}
           layout={{
@@ -64,11 +66,24 @@ export const ActivityPlot = ({
               pad: 0,
             },
             yaxis: {
+              // y-axis for captures
               showgrid: false,
               showticklabels: false,
               zeroline: false,
               rangemode: 'nonnegative',
               fixedrange: true,
+              side: 'left',
+            },
+            yaxis2: {
+              // y-axis for detections
+              showgrid: false,
+              showticklabels: false,
+              zeroline: false,
+              rangemode: 'nonnegative',
+              fixedrange: true,
+              range: [0, session.detectionsMaxCount],
+              side: 'right',
+              overlaying: 'y',
             },
             xaxis: {
               showline: true,
