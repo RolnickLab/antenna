@@ -41,14 +41,14 @@ export const ActivityPlot = ({
             },
             {
               x: timeline.map((timelineTick) => timelineTick.startDate),
-              y: timeline.map((timelineTick) => timelineTick.numDetections),
+              y: timeline.map((timelineTick) => timelineTick.avgDetections),
               text: timeline.map((timelineTick) => timelineTick.tooltip),
               hovertemplate: '%{text}<extra></extra>',
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
               line: { color: lineColorDetections, width: 1 },
-              name: 'Detections',
+              name: 'Avg. Detections',
             },
           ]}
           layout={{

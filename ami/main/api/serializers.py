@@ -1220,6 +1220,7 @@ class EventTimelineIntervalSerializer(serializers.Serializer):
     top_capture = EventTimelineSourceImageSerializer(allow_null=True)
     captures_count = serializers.IntegerField()
     detections_count = serializers.IntegerField()
+    detections_avg = serializers.IntegerField()
 
 
 class EventTimelineMetaSerializer(serializers.Serializer):

@@ -11,6 +11,7 @@ export type ServerTimelineTick = {
   } | null
   captures_count: number
   detections_count: number
+  detections_avg: number
 }
 
 export class TimelineTick {
@@ -26,6 +27,10 @@ export class TimelineTick {
 
   get numDetections(): number {
     return this._timelineTick.detections_count ?? 0
+  }
+
+  get avgDetections(): number {
+    return this._timelineTick.detections_avg ?? 0
   }
 
   get numCaptures(): number {
@@ -65,6 +70,6 @@ export class TimelineTick {
       },
     })
 
-    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Detections: ${this.numDetections}`
+    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Avg. Detections: ${this.avgDetections}`
   }
 }
