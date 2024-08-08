@@ -111,19 +111,19 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 
 export const InputValue = ({
   label,
-  value: _value,
+  value,
   to,
 }: {
   label: string
   value?: string | number
   to?: string
 }) => {
-  const value =
-    _value === undefined || _value === ''
+  const valueLabel =
+    value === undefined || value === ''
       ? translate(STRING.VALUE_NOT_AVAILABLE)
-      : _.isNumber(_value)
-      ? _value.toLocaleString()
-      : _value
+      : _.isNumber(value)
+      ? value.toLocaleString()
+      : value
 
   return (
     <InputContent label={label}>
@@ -132,7 +132,7 @@ export const InputValue = ({
           {value}
         </Link>
       ) : (
-        <span className={styles.value}>{value ?? STRING}</span>
+        <span className={styles.value}>{valueLabel}</span>
       )}
     </InputContent>
   )

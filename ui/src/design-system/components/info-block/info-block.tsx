@@ -17,6 +17,7 @@ export const InfoBlock = ({ fields }: { fields: Field[] }) => (
         field.value === undefined
           ? translate(STRING.VALUE_NOT_AVAILABLE)
           : field.value
+      const valueLabel = _.isNumber(value) ? value.toLocaleString() : value
 
       return (
         <p className={styles.field} key={index}>
@@ -28,13 +29,11 @@ export const InfoBlock = ({ fields }: { fields: Field[] }) => (
                   [styles.bubble]: _.isNumber(value),
                 })}
               >
-                {value}
+                {valueLabel}
               </span>
             </Link>
           ) : (
-            <span className={styles.fieldValue}>
-              {value ?? translate(STRING.VALUE_NOT_AVAILABLE)}
-            </span>
+            <span className={styles.fieldValue}>{valueLabel}</span>
           )}
         </p>
       )
