@@ -70,6 +70,6 @@ export class TimelineTick {
       },
     })
 
-    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Avg. Detections: ${this.avgDetections}`
+    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Avg. detections: ${this.avgDetections}`
   }
 }
