@@ -1,5 +1,6 @@
 import datetime
 import logging
+from statistics import mode
 
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
@@ -280,8 +281,10 @@ class EventViewSet(DefaultViewSet):
                 "start": current_time,
                 "end": interval_end,
                 "first_capture": None,
+                "top_capture": None,
                 "captures_count": 0,
                 "detections_count": 0,
+                "detection_counts": [],
             }
 
             while image_index < len(source_images) and source_images[image_index]["timestamp"] <= interval_end:
@@ -290,7 +293,15 @@ class EventViewSet(DefaultViewSet):
                     interval_data["first_capture"] = SourceImage(pk=image["id"])
                 interval_data["captures_count"] += 1
                 interval_data["detections_count"] += image["detections_count"] or 0
+                interval_data["detection_counts"] += [image["detections_count"]]
+                if image["detections_count"] >= max(interval_data["detection_counts"]):
+                    interval_data["top_capture"] = SourceImage(pk=image["id"])
                 image_index += 1
+
+            # Set a meaningful average detection count to display for the interval
+            # Remove zero values and calculate the mode
+            interval_data["detection_counts"] = [x for x in interval_data["detection_counts"] if x > 0]
+            interval_data["detections_avg"] = mode(interval_data["detection_counts"] or [0])
 
             timeline.append(interval_data)
             current_time = interval_end

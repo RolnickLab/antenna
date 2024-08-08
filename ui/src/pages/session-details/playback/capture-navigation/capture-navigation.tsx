@@ -69,7 +69,7 @@ export const CaptureNavigation = ({
       />
       {totalCaptures && (
         <span>
-          {currentIndex} / {totalCaptures}
+          {currentIndex?.toLocaleString()} / {totalCaptures.toLocaleString()}
         </span>
       )}
       <IconButton
