@@ -99,7 +99,7 @@ export const ActivityPlot = ({
               zeroline: false,
               rangemode: 'nonnegative',
               fixedrange: true,
-              range: [0, session.detectionsMaxCount],
+              range: [0, session.detectionsMaxCount ?? yAxisMax],
               side: 'right',
               overlaying: 'y',
             },
