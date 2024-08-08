@@ -22,6 +22,20 @@ export const ActivityPlot = ({
 }) => {
   const containerRef = useRef(null)
   const width = useDynamicPlotWidth(containerRef)
+
+  // Calculate the average number of captures
+  const avgCaptures =
+    timeline.reduce((sum, tick) => sum + tick.numCaptures, 0) / timeline.length
+
+  // Calculate the maximum deviation from the average
+  const maxDeviation = Math.max(
+    ...timeline.map((tick) => Math.abs(tick.numCaptures - avgCaptures))
+  )
+
+  // Set the y-axis range to be centered around the average
+  const yAxisMin = Math.max(0, avgCaptures - maxDeviation)
+  const yAxisMax = avgCaptures + maxDeviation
+
   return (
     <div style={{ margin: '0 14px -10px' }}>
       <div ref={containerRef}>
@@ -50,7 +64,7 @@ export const ActivityPlot = ({
               mode: 'lines',
               line: { color: lineColorDetections, width: 1 },
               name: 'Avg. Detections',
-              yaxis: 'y2', // This refers to the `yaxis2` property
+              yaxis: 'y2',
             },
           ]}
           layout={{
@@ -66,16 +80,15 @@ export const ActivityPlot = ({
               pad: 0,
             },
             yaxis: {
-              // y-axis for captures
               showgrid: false,
               showticklabels: false,
               zeroline: false,
               rangemode: 'nonnegative',
               fixedrange: true,
+              range: [yAxisMin, yAxisMax],
               side: 'left',
             },
             yaxis2: {
-              // y-axis for detections
               showgrid: false,
               showticklabels: false,
               zeroline: false,
