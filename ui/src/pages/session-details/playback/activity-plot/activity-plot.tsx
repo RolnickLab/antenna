@@ -10,6 +10,7 @@ const lineColorDetections = '#5f8ac6'
 const textColor = '#222426'
 const tooltipBgColor = '#ffffff'
 const tooltipBorderColor = '#222426'
+const gridLineColor = '#f36399'
 
 export const ActivityPlot = ({
   session,
@@ -43,7 +44,9 @@ export const ActivityPlot = ({
           style={{ display: 'block' }}
           data={[
             {
-              x: timeline.map((timelineTick) => timelineTick.startDate),
+              x: timeline.map(
+                (timelineTick) => new Date(timelineTick.startDate)
+              ),
               y: timeline.map((timelineTick) => timelineTick.numCaptures),
               text: timeline.map((timelineTick) => timelineTick.tooltip),
               hovertemplate: '%{text}<extra></extra>',
@@ -52,10 +55,12 @@ export const ActivityPlot = ({
               mode: 'lines',
               line: { color: lineColorCaptures, width: 1 },
               name: 'Captures',
-              yaxis: 'y', // This refers to the first `yaxis` property
+              yaxis: 'y',
             },
             {
-              x: timeline.map((timelineTick) => timelineTick.startDate),
+              x: timeline.map(
+                (timelineTick) => new Date(timelineTick.startDate)
+              ),
               y: timeline.map((timelineTick) => timelineTick.avgDetections),
               text: timeline.map((timelineTick) => timelineTick.tooltip),
               hovertemplate: '%{text}<extra></extra>',
@@ -99,12 +104,16 @@ export const ActivityPlot = ({
               overlaying: 'y',
             },
             xaxis: {
-              showline: true,
-              showgrid: false,
+              showline: false,
+              showgrid: true,
+              griddash: 'dot',
+              gridwidth: 1,
+              gridcolor: gridLineColor,
               showticklabels: false,
               zeroline: false,
               fixedrange: true,
-              range: [session.startDate, session.endDate],
+              range: [new Date(session.startDate), new Date(session.endDate)],
+              dtick: 3600000, // milliseconds in an hour
             },
             hoverlabel: {
               bgcolor: tooltipBgColor,
