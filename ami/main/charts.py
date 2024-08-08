@@ -261,7 +261,7 @@ def event_detections_per_hour(event_pk: int):
     }
 
 
-def event_top_taxa(event_pk: int):
+def event_top_taxa(event_pk: int, top_n: int = 10):
     # Horiziontal bar chart of top taxa
     Taxon = apps.get_model("main", "Taxon")
     top_taxa = (
@@ -269,7 +269,7 @@ def event_top_taxa(event_pk: int):
         .values("name")
         # .annotate(num_detections=models.Count("occurrences__detections"))
         .annotate(num_detections=models.Count("occurrences"))
-        .order_by("num_detections")
+        .order_by("-num_detections")[:top_n]
     )
 
     if top_taxa:

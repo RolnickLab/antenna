@@ -6,9 +6,8 @@ import {
   TaxonInfo,
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
-import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
@@ -21,10 +20,12 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
+import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
+import { IdQuickActions } from './reject-id/id-quick-actions'
 import { SuggestId } from './suggest-id/suggest-id'
 
 export const TABS = {
@@ -135,7 +136,7 @@ export const OccurrenceDetails = ({
             content={
               occurrence.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
-                    name: occurrence.determinationVerifiedBy as string,
+                    name: occurrence.determinationVerifiedBy?.name,
                   })
                 : translate(STRING.MACHINE_PREDICTION_SCORE, {
                     score: occurrence.determinationScore,
@@ -159,18 +160,22 @@ export const OccurrenceDetails = ({
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,
                 }}
-                buttonTheme={ButtonTheme.Success}
                 occurrenceId={occurrence.id}
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
                 label={translate(STRING.SUGGEST_ID)}
-                icon={IconType.ShieldAlert}
+                icon={IconType.RadixSearch}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
                   suggestIdInputRef?.current?.focus()
                 }}
+              />
+              <IdQuickActions
+                containerRef={containerRef}
+                occurrenceIds={[occurrence.id]}
+                occurrenceTaxons={[occurrence.determinationTaxon]}
               />
             </>
           )}

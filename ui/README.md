@@ -23,14 +23,17 @@ Now you can navigate to the following URL: http://localhost:3000
 
 ## Code style
 
-We use [Prettier](https://prettier.io/) as a code formatter. You can setup your code editor to auto format the code you write, based on the project config. There is also an option to run the following command from terminal:
+We use [Prettier](https://prettier.io/) as a code formatter. The project preferences are specified in `prettierrc.json`. If you are using Visual Stuido Code, the extension [Prettier - Code formatter](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) is recommended for auto formating in editor. There is also an option to run the following commands from terminal:
 
 ```bash
-# Auto formats all code in folder src
-yarn format
+# Check format for all code in folder src
+yarn format --check
+
+# Auto format all code in folder src
+yarn format --write
 ```
 
-We use [ESLint](https://eslint.org/) to find issues in the code. You can setup your code editor to highlight such issues, based on the project config. There is also an option to run the following command from terminal:
+We use [ESLint](https://eslint.org/) to find issues in the code. The project preferences are specified in `eslintrc.json`. If you are using Visual Stuido Code, the extension [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) is recommended for highlighting lint issues in editor. There is also an option to run the following command from terminal:
 
 ```bash
 # Run linter for all code in folder src

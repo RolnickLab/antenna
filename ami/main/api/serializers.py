@@ -1,6 +1,7 @@
 import datetime
 
 from django.db.models import QuerySet
+from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
 from ami.base.serializers import DefaultSerializer, get_current_user, reverse_with_params
@@ -28,6 +29,7 @@ from ..models import (
     SourceImageCollection,
     SourceImageUpload,
     Taxon,
+    TaxonParent,
 )
 
 
@@ -344,6 +346,10 @@ class DeploymentSerializer(DeploymentListSerializer):
         source="data_source",
         required=False,
     )
+    data_source_total_files = serializers.IntegerField(read_only=True)
+    data_source_total_size = serializers.IntegerField(read_only=True)
+    data_source_total_size_display = serializers.CharField(read_only=True)
+    data_source_last_checked = serializers.DateTimeField(read_only=True)
 
     class Meta(DeploymentListSerializer.Meta):
         fields = DeploymentListSerializer.Meta.fields + [
@@ -352,6 +358,13 @@ class DeploymentSerializer(DeploymentListSerializer):
             "research_site_id",
             "data_source",
             "data_source_id",
+            "data_source_uri",
+            "data_source_total_files",
+            "data_source_total_size",
+            "data_source_total_size_display",
+            "data_source_last_checked",
+            "data_source_subdir",
+            "data_source_regex",
             "description",
             "example_captures",
             # "capture_images",
@@ -395,24 +408,19 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         ]
 
 
-class TaxonParentNestedSerializer(TaxonNoParentNestedSerializer):
+class TaxonNestedSerializer(TaxonNoParentNestedSerializer):
+    """
+    Simple Taxon serializer with 1 level of nested parents.
+    """
+
     parent = TaxonNoParentNestedSerializer(read_only=True)
+    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
 
     class Meta(TaxonNoParentNestedSerializer.Meta):
         fields = TaxonNoParentNestedSerializer.Meta.fields + [
             "parent",
+            "parents",
         ]
-
-
-class TaxonNestedSerializer(TaxonParentNestedSerializer):
-    """
-    Simple Taxon serializer with 2 levels of nesting.
-    """
-
-    parent = TaxonParentNestedSerializer(read_only=True)
-
-    class Meta(TaxonParentNestedSerializer.Meta):
-        pass
 
 
 class TaxonSearchResultSerializer(TaxonNestedSerializer):
@@ -430,7 +438,7 @@ class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
     occurrence_images = serializers.SerializerMethodField()
-    parent = TaxonParentNestedSerializer(read_only=True)
+    parent = TaxonNestedSerializer(read_only=True)
 
     class Meta:
         model = Taxon
@@ -483,7 +491,8 @@ class TaxonListSerializer(DefaultSerializer):
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
-    parent = TaxonParentNestedSerializer(read_only=True)
+    parent = TaxonNoParentNestedSerializer(read_only=True)
+    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
 
     class Meta:
         model = Taxon
@@ -491,6 +500,7 @@ class CaptureTaxonSerializer(DefaultSerializer):
             "id",
             "name",
             "parent",
+            "parents",
             "rank",
             "details",
         ]
@@ -636,8 +646,10 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
-    parent = TaxonNestedSerializer(read_only=True)
+    parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
+    # parents = TaxonParentNestedSerializer(many=True, read_only=True, source="parents_json")
+    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
 
     class Meta:
         model = Taxon
@@ -647,6 +659,7 @@ class TaxonSerializer(DefaultSerializer):
             "rank",
             "parent",
             "parent_id",
+            "parents",
             "details",
             "occurrences_count",
             "detections_count",
@@ -845,6 +858,10 @@ class SourceImageSerializer(SourceImageListSerializer):
             "test_image",
             "jobs",
             "collections",
+            "event_next_capture_id",
+            "event_prev_capture_id",
+            "event_current_capture_index",
+            "event_total_captures",
         ]
 
 
@@ -1190,6 +1207,37 @@ class EventSerializer(DefaultSerializer):
         return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
 
 
+class EventTimelineSourceImageSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        fields = ["id", "details"]
+
+
+class EventTimelineIntervalSerializer(serializers.Serializer):
+    start = serializers.DateTimeField()
+    end = serializers.DateTimeField()
+    first_capture = EventTimelineSourceImageSerializer(allow_null=True)
+    top_capture = EventTimelineSourceImageSerializer(allow_null=True)
+    captures_count = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+    detections_avg = serializers.IntegerField()
+
+
+class EventTimelineMetaSerializer(serializers.Serializer):
+    total_intervals = serializers.IntegerField()
+    resolution_minutes = serializers.IntegerField()
+    max_detections = serializers.IntegerField()
+    min_detections = serializers.IntegerField()
+    total_detections = serializers.IntegerField()
+    timeline_start = serializers.DateTimeField()
+    timeline_end = serializers.DateTimeField()
+
+
+class EventTimelineSerializer(serializers.Serializer):
+    data = EventTimelineIntervalSerializer(many=True)  # type: ignore @TODO is `data` an existing property in DRF?
+    meta = EventTimelineMetaSerializer()
+
+
 class StorageStatusSerializer(serializers.Serializer):
     data_source = serializers.CharField(max_length=200)
 
@@ -1268,8 +1316,10 @@ class StorageSourceSerializer(DefaultSerializer):
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
     access_key = serializers.CharField(write_only=True, required=False)
     secret_key = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
-    endpoint_url = serializers.URLField()
-    public_base_url = serializers.URLField()
+    # endpoint_url = serializers.URLField(required=False, allow_blank=True)
+    # @TODO the endpoint needs to support host names without a TLD extension like "minio:9000"
+    endpoint_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    public_base_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = S3StorageSource
@@ -1284,8 +1334,11 @@ class StorageSourceSerializer(DefaultSerializer):
             "endpoint_url",
             "public_base_url",
             "project",
-            "total_files",
-            "total_size",
+            "deployments_count",
+            "total_files_indexed",
+            "total_size_indexed_display",
+            "total_size_indexed",
+            "total_captures_indexed",
             "last_checked",
             "created_at",
             "updated_at",

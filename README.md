@@ -139,3 +139,28 @@ pip install -r requirements/local.txt
     ```bash
     $ yarn start
     ```
+  
+[Further documentation about using Django within this compose setup](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html).
+
+
+## Project Data Storage
+
+Each project manages its own external data storage where the AMI Platform will index and process images. This is most typically a public or private S3 bucket at a cloud provider that is not AWS. For example
+the Swift object storage service at Compute Canada or a university's own storage service.
+
+To test the S3 storage backend locally, Minio is configured to run as part of the docker compose stack.
+
+To configure a project connect to the Minio service, you can use the following config:
+
+```
+Endpoint URL: http://minio:9000
+Access key: amistorage
+Secret access key: amistorage
+Public base URL: http://localhost:9000/ami/
+Bucket: ami
+```
+
+- Open the Minio web interface at http://localhost:9001 and login with the access key and secret access key.
+- Upload some test images to a subfolder in the `ami` bucket (one subfolder per deployment)
+- Give the bucket or folder anonymous access using the "Anonymous access" button in the Minio web interface.
+- You _can_ test private buckets and presigned URLs, but you will need to add an entry to your local /etc/hosts file to map the `minio` hostname to localhost.

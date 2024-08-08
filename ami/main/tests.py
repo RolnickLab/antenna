@@ -1,4 +1,6 @@
 import datetime
+import logging
+import pathlib
 import uuid
 
 from django.db import connection
@@ -20,6 +22,8 @@ from ami.main.models import (
 )
 from ami.users.models import User
 
+logger = logging.getLogger(__name__)
+
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     if reuse:
@@ -33,7 +37,11 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
 
 
 def create_captures(
-    deployment: Deployment, num_nights: int = 3, images_per_night: int = 3, interval_minutes: int = 10
+    deployment: Deployment,
+    num_nights: int = 3,
+    images_per_night: int = 3,
+    interval_minutes: int = 10,
+    subdir: str = "test",
 ):
     # Create some images over a few monitoring nights
     first_night = datetime.datetime.now()
@@ -41,10 +49,11 @@ def create_captures(
     created = []
     for night in range(num_nights):
         for i in range(images_per_night):
+            path = pathlib.Path(subdir) / f"{night}_{i}.jpg"
             img = SourceImage.objects.create(
                 deployment=deployment,
                 timestamp=first_night + datetime.timedelta(days=night, minutes=i * interval_minutes),
-                path=f"test/{night}_{i}.jpg",
+                path=path,
             )
             created.append(img)
 
@@ -602,3 +611,60 @@ class TestIdentification(APITestCase):
         self.assertEqual(occurrence.determination, new_taxon)
         identification = Identification.objects.get(pk=response.json()["id"])
         self.assertEqual(identification.comment, comment)
+
+
+class TestMovingSourceImages(TestCase):
+    previous_subdir = "test/old_subdir"
+    prev_sub_subdir_1 = previous_subdir + "/2022"
+    prev_sub_subdir_2 = previous_subdir + "/2023"
+    new_subdir = "test/new_subdir"
+    new_sub_subdir_1 = new_subdir + "/2022"
+    new_sub_subdir_2 = new_subdir + "/2023"
+    other_subdir = "test/other_subdir"
+    images_per_dir = 10
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_captures(
+            deployment=deployment, subdir=self.prev_sub_subdir_1, num_nights=1, images_per_night=self.images_per_dir
+        )
+        create_captures(
+            deployment=deployment, subdir=self.prev_sub_subdir_2, num_nights=1, images_per_night=self.images_per_dir
+        )
+        create_captures(
+            deployment=deployment, subdir=self.other_subdir, num_nights=1, images_per_night=self.images_per_dir
+        )
+        group_images_into_events(deployment=deployment)
+        self.project = project
+        self.deployment = deployment
+        return super().setUp()
+
+    def test_audit_subdirs(self):
+        counts = self.deployment.audit_subdir_of_captures(ignore_deepest=False)
+        expected_counts = {
+            self.prev_sub_subdir_1: self.images_per_dir,
+            self.prev_sub_subdir_2: self.images_per_dir,
+            self.other_subdir: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)
+
+    def test_audit_subdirs_ignore_date_folder(self):
+        counts = self.deployment.audit_subdir_of_captures(ignore_deepest=True)
+        other_subdir_truncated = self.other_subdir.rsplit("/", 1)[0]
+        expected_counts = {
+            self.previous_subdir: self.images_per_dir * 2,
+            other_subdir_truncated: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)
+
+    def test_update_subdir(self):
+        # Move all images to a new subdirectory
+        self.deployment.update_subdir_of_captures(new_subdir=self.new_subdir, previous_subdir=self.previous_subdir)
+
+        counts = self.deployment.audit_subdir_of_captures()
+        expected_counts = {
+            self.new_sub_subdir_1: self.images_per_dir,
+            self.new_sub_subdir_2: self.images_per_dir,
+            self.other_subdir: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)

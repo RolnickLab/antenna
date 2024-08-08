@@ -52,6 +52,10 @@
 
 .inputContainer {
   position: relative;
+
+  &:not(:last-child) {
+    margin-bottom: 8px;
+  }
 }
 
 .input {
@@ -69,10 +73,6 @@
 
   &.password {
     padding-right: 36px; /* To leave room for show/hide password button */
-  }
-
-  &:not(:last-child) {
-    margin-bottom: 8px;
   }
 
   &::placeholder {
@@ -100,6 +100,20 @@
   &:disabled {
     opacity: 0.5;
   }
+
+  &.noArrows {
+    /* Chrome, Safari, Edge, Opera */
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    /* Firefox */
+    &[type='number'] {
+      -moz-appearance: textfield;
+    }
+  }
 }
 
 .passwordButtonContainer {
@@ -113,4 +127,18 @@
   &:not(:last-child) {
     margin-bottom: 8px;
   }
+}
+
+.lockedInputContainer {
+  position: relative;
+}
+
+.editButtonContainer {
+  position: absolute;
+  top: -8px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }

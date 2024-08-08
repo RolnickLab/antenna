@@ -1,7 +1,7 @@
-import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
+import { useUserInfo } from 'utils/user/userInfoContext'
 import styles from './user-info-dialog.module.scss'
 import { UserInfoForm } from './user-info-form/user-info-form'
 

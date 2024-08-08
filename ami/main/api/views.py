@@ -1,4 +1,6 @@
+import datetime
 import logging
+from statistics import mode
 
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
@@ -9,10 +11,12 @@ from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
-from rest_framework import viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,6 +25,7 @@ from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.utils.requests import get_active_classification_threshold
+from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
     Classification,
@@ -38,6 +43,7 @@ from ..models import (
     SourceImageCollection,
     SourceImageUpload,
     Taxon,
+    update_detection_counts,
 )
 from .serializers import (
     ClassificationSerializer,
@@ -48,6 +54,7 @@ from .serializers import (
     DeviceSerializer,
     EventListSerializer,
     EventSerializer,
+    EventTimelineSerializer,
     IdentificationSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
@@ -101,7 +108,7 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
 
 
 class ProjectPagination(LimitOffsetPaginationWithPermissions):
-    default_limit = 20
+    default_limit = 40
 
 
 class ProjectViewSet(DefaultViewSet):
@@ -151,6 +158,30 @@ class DeploymentViewSet(DefaultViewSet):
         else:
             return DeploymentSerializer
 
+    @action(detail=True, methods=["post"], name="sync")
+    def sync(self, _request, pk=None) -> Response:
+        """
+        Queue a task to sync data from the deployment's data source.
+        """
+        deployment: Deployment = self.get_object()
+        if deployment and deployment.data_source:
+            # queued_task = tasks.sync_source_images.delay(deployment.pk)
+            from ami.jobs.models import DataStorageSyncJob, Job
+
+            job = Job.objects.create(
+                name=f"Sync captures for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+            )
+            job.progress.add_stage(DataStorageSyncJob.name)
+            job.enqueue()
+            msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
+            logger.info(msg)
+            assert deployment.project
+            return Response({"job_id": job.pk, "project_id": deployment.project.pk})
+        else:
+            raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
+
 
 class EventViewSet(DefaultViewSet):
     """
@@ -168,7 +199,7 @@ class EventViewSet(DefaultViewSet):
         "start__time",
         "captures_count",
         "detections_count",
-        "occurrences_count",
+        # "occurrences_count",
         "taxa_count",
         "duration",
     ]
@@ -187,65 +218,127 @@ class EventViewSet(DefaultViewSet):
         qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             captures_count=models.Count("captures", distinct=True),
+            # occurrences_count is calculated in a model method because it requires a classification threshold. @TODO
             duration=models.F("end") - models.F("start"),
         ).select_related("deployment", "project")
 
+        # Only get detections_count if its a detail view
+        if self.action == "retrieve":
+            qs = qs.annotate(detections_count=models.Count("captures__detections", distinct=True))
+            # Alternatively, we could sum the cached detections_count from the source images
+            # qs = qs.annotate(detections_count=models.Sum("captures__detections_count"))
+
         return qs
+
+    @action(detail=True, methods=["get"], name="timeline")
+    def timeline(self, request, pk=None):
+        """
+        Return a list of time intervals and the number of detections for each interval,
+        including intervals where no source images were captured, along with meta information.
+        """
+        event = self.get_object()
+        resolution_minutes = IntegerField(required=False, min_value=1).clean(
+            request.query_params.get("resolution_minutes", 1)
+        )
+        resolution = datetime.timedelta(minutes=resolution_minutes)
+
+        qs = SourceImage.objects.filter(event=event)
+
+        # Bulk update all source images where detections_count is null
+        update_detection_counts(qs=qs, null_only=True)
+
+        # Fetch aggregated data for efficiency
+        aggregates = qs.aggregate(
+            min_detections=models.Min("detections_count"),
+            max_detections=models.Max("detections_count"),
+            total_detections=models.Sum("detections_count"),
+            first_capture=models.Min("timestamp"),
+            last_capture=models.Max("timestamp"),
+        )
+
+        start_time = event.start
+        end_time = event.end or timezone.now()
+
+        # Adjust start and end times based on actual captures
+        if aggregates["first_capture"]:
+            start_time = max(start_time, aggregates["first_capture"])
+        if aggregates["last_capture"]:
+            end_time = min(end_time, aggregates["last_capture"])
+
+        source_images = list(
+            qs.filter(timestamp__range=(start_time, end_time))
+            .order_by("timestamp")
+            .values("id", "timestamp", "detections_count")
+        )
+
+        timeline = []
+        current_time = start_time
+        image_index = 0
+
+        while current_time <= end_time:
+            interval_end = min(current_time + resolution, end_time)
+            interval_data = {
+                "start": current_time,
+                "end": interval_end,
+                "first_capture": None,
+                "top_capture": None,
+                "captures_count": 0,
+                "detections_count": 0,
+                "detection_counts": [],
+            }
+
+            while image_index < len(source_images) and source_images[image_index]["timestamp"] <= interval_end:
+                image = source_images[image_index]
+                if interval_data["first_capture"] is None:
+                    interval_data["first_capture"] = SourceImage(pk=image["id"])
+                interval_data["captures_count"] += 1
+                interval_data["detections_count"] += image["detections_count"] or 0
+                interval_data["detection_counts"] += [image["detections_count"]]
+                if image["detections_count"] >= max(interval_data["detection_counts"]):
+                    interval_data["top_capture"] = SourceImage(pk=image["id"])
+                image_index += 1
+
+            # Set a meaningful average detection count to display for the interval
+            # Remove zero values and calculate the mode
+            interval_data["detection_counts"] = [x for x in interval_data["detection_counts"] if x > 0]
+            interval_data["detections_avg"] = mode(interval_data["detection_counts"] or [0])
+
+            timeline.append(interval_data)
+            current_time = interval_end
+
+            if current_time >= end_time:
+                break
+
+        serializer = EventTimelineSerializer(
+            {
+                "data": timeline,
+                "meta": {
+                    "total_intervals": len(timeline),
+                    "resolution_minutes": resolution_minutes,
+                    "max_detections": aggregates["max_detections"] or 0,
+                    "min_detections": aggregates["min_detections"] or 0,
+                    "total_detections": aggregates["total_detections"] or 0,
+                    "timeline_start": start_time,
+                    "timeline_end": end_time,
+                },
+            },
+            context={"request": request},
+        )
+        return Response(serializer.data)
 
 
 class SourceImageViewSet(DefaultViewSet):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
+
+    Standard list endpoint:
+    GET /captures/?event=1&limit=10&offset=0&ordering=-timestamp
+
+    Standard detail endpoint:
+    GET /captures/1/
     """
 
-    queryset = (
-        SourceImage.objects.select_related(
-            "event",
-            "deployment",
-        )
-        # .prefetch_related("jobs", "collections") # These are only needed in the detail view
-        .order_by("timestamp").all()
-    )
-
-    def get_queryset(self) -> QuerySet:
-        queryset = super().get_queryset()
-        has_detections = self.request.query_params.get("has_detections")
-        classification_threshold = get_active_classification_threshold(self.request)
-
-        if classification_threshold is not None:
-            prefetch_queryset = Detection.objects.filter(
-                occurrence__detections__classifications__score__gte=classification_threshold
-            )
-        else:
-            prefetch_queryset = Detection.objects.all()
-
-        related_detections = Prefetch(
-            "detections",
-            queryset=prefetch_queryset.select_related(
-                "occurrence",
-                "occurrence__determination",
-            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
-            to_attr="filtered_detections",
-        )
-
-        queryset = queryset.prefetch_related(related_detections)
-
-        if has_detections is not None:
-            has_detections = BooleanField(required=False).clean(has_detections)
-            queryset = (
-                queryset.annotate(
-                    has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
-                )
-                .filter(has_detections=has_detections)
-                .order_by(
-                    "?"
-                )  # Random order is here for our demo ML backend to limit the same images from being processed
-                # @TODO remove this when we have a real queue for the ML backend
-            )
-        return queryset
-
-    def get_serializer_context(self):
-        return {"request": self.request}
+    queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment", "deployment__project", "collections"]
@@ -268,12 +361,114 @@ class SourceImageViewSet(DefaultViewSet):
         else:
             return SourceImageSerializer
 
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+    def get_queryset(self) -> QuerySet:
+        queryset = super().get_queryset()
+        with_detections_default = False
+
+        queryset.select_related(
+            "event",
+            "deployment",
+            "deployment__storage",
+        ).order_by("timestamp")
+
+        if self.action == "list":
+            # It's cumbersome to override the default list view, so customize the queryset here
+            queryset = self.filter_by_has_detections(queryset)
+
+        elif self.action == "retrieve":
+            queryset = queryset.prefetch_related("jobs", "collections")
+            queryset = self.add_adjacent_captures(queryset)
+            with_detections_default = True
+
+        with_detections = self.request.query_params.get("with_detections", with_detections_default)
+        if with_detections is not None:
+            # Convert string to boolean
+            with_detections = BooleanField(required=False).clean(with_detections)
+
+        if with_detections:
+            queryset = self.prefetch_detections(queryset)
+
+        return queryset
+
+    def filter_by_has_detections(self, queryset: QuerySet) -> QuerySet:
+        has_detections = self.request.query_params.get("has_detections")
+        if has_detections is not None:
+            has_detections = BooleanField(required=False).clean(has_detections)
+            queryset = queryset.annotate(
+                has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+            ).filter(has_detections=has_detections)
+        return queryset
+
+    def prefetch_detections(self, queryset: QuerySet) -> QuerySet:
+        # Return all detections for source images, let frontend filter them
+        prefetch_queryset = Detection.objects.all()
+
+        related_detections = Prefetch(
+            "detections",
+            queryset=prefetch_queryset.select_related(
+                "occurrence",
+                "occurrence__determination",
+            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
+            to_attr="filtered_detections",
+        )
+
+        queryset = queryset.prefetch_related(related_detections)
+        return queryset
+
+    def add_adjacent_captures(self, queryset: QuerySet) -> QuerySet:
+        """
+        These are helpful for the frontend to navigate between captures in the same event.
+
+        However they likely belong in the EventViewSet, or another endpoint.
+        @TODO Consider a custom endpoint for capture details specific to the Session Detail view.
+        """
+
+        # Subquery for the next image
+        next_image = (
+            SourceImage.objects.filter(event=models.OuterRef("event"), timestamp__gt=models.OuterRef("timestamp"))
+            .order_by("timestamp")[:1]
+            .values("id")[:1]
+        )
+
+        # Subquery for the previous image
+        previous_image = (
+            SourceImage.objects.filter(event=models.OuterRef("event"), timestamp__lt=models.OuterRef("timestamp"))
+            .order_by("-timestamp")
+            .values("id")[:1]
+        )
+
+        # Subquery for the current capture's index
+        index_subquery = (
+            SourceImage.objects.filter(event=models.OuterRef("event"), timestamp__lte=models.OuterRef("timestamp"))
+            .values("event")
+            .annotate(index=models.Count("id"))
+            .values("index")
+        )
+
+        # Subquery for the total captures in the event
+        total_subquery = (
+            SourceImage.objects.filter(event=models.OuterRef("event"))
+            .values("event")
+            .annotate(total=models.Count("id"))
+            .values("total")
+        )
+
+        return queryset.annotate(
+            event_next_capture_id=models.Subquery(next_image, output_field=models.IntegerField()),
+            event_prev_capture_id=models.Subquery(previous_image, output_field=models.IntegerField()),
+            event_current_capture_index=models.Subquery(index_subquery, output_field=models.IntegerField()),
+            event_total_captures=models.Subquery(total_subquery, output_field=models.IntegerField()),
+        )
+
     @action(detail=True, methods=["post"], name="star")
     def star(self, _request, pk=None) -> Response:
         """
         Add a source image to the project's starred images collection.
         """
-        source_image = self.get_object()
+        source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
             collection = SourceImageCollection.get_or_create_starred_collection(source_image.deployment.project)
             collection.images.add(source_image)
@@ -565,7 +760,7 @@ class TaxonViewSet(DefaultViewSet):
         else:
             return TaxonSerializer
 
-    def filter_by_occurrence(self, queryset: QuerySet) -> tuple[QuerySet, bool]:
+    def filter_taxa_by_observed(self, queryset: QuerySet) -> tuple[QuerySet, bool]:
         """
         Filter taxa by when/where it has occurred.
 
@@ -583,19 +778,23 @@ class TaxonViewSet(DefaultViewSet):
 
         filter_active = any([occurrence_id, project_id, deployment_id, event_id])
 
-        if occurrence_id:
-            occurrence = Occurrence.objects.get(id=occurrence_id)
-            # This query does not need the same filtering as the others
-            return queryset.filter(occurrences=occurrence).distinct(), True
-        elif project_id:
-            project = Project.objects.get(id=project_id)
-            queryset = super().get_queryset().filter(occurrences__project=project)
-        elif deployment_id:
-            deployment = Deployment.objects.get(id=deployment_id)
-            queryset = super().get_queryset().filter(occurrences__deployment=deployment)
-        elif event_id:
-            event = Event.objects.get(id=event_id)
-            queryset = super().get_queryset().filter(occurrences__event=event)
+        try:
+            if occurrence_id:
+                occurrence = Occurrence.objects.get(id=occurrence_id)
+                # This query does not need the same filtering as the others
+                return queryset.filter(occurrences=occurrence).distinct(), True
+            elif project_id:
+                project = Project.objects.get(id=project_id)
+                queryset = super().get_queryset().filter(occurrences__project=project)
+            elif deployment_id:
+                deployment = Deployment.objects.get(id=deployment_id)
+                queryset = super().get_queryset().filter(occurrences__deployment=deployment)
+            elif event_id:
+                event = Event.objects.get(id=event_id)
+                queryset = super().get_queryset().filter(occurrences__event=event)
+        except exceptions.ObjectDoesNotExist as e:
+            # Raise a 404 if any of the related objects don't exist
+            raise NotFound(detail=str(e))
 
         # @TODO need to return the models.Q filter used, so we can use it for counts and related occurrences.
         return queryset, filter_active
@@ -619,17 +818,7 @@ class TaxonViewSet(DefaultViewSet):
 
         return queryset
 
-    def get_queryset(self) -> QuerySet:
-        qs = super().get_queryset()
-        try:
-            qs, filter_active = self.filter_by_occurrence(qs)
-        except exceptions.ObjectDoesNotExist as e:
-            from rest_framework.exceptions import NotFound
-
-            raise NotFound(detail=str(e))
-
-        qs = qs.select_related("parent", "parent__parent")
-
+    def get_occurrences_filters(self, queryset: QuerySet) -> tuple[QuerySet, models.Q]:
         # @TODO this should check what the user has access to
         project_id = self.request.query_params.get("project")
         taxon_occurrences_query = (
@@ -652,38 +841,59 @@ class TaxonViewSet(DefaultViewSet):
             taxon_occurrences_query = taxon_occurrences_query.filter(project=project_id)
             taxon_occurrences_count_filter &= models.Q(occurrences__project=project_id)
 
-        if self.action == "retrieve":
-            qs = qs.prefetch_related(Prefetch("occurrences", queryset=taxon_occurrences_query))
+        return taxon_occurrences_query, taxon_occurrences_count_filter
 
-        if filter_active:
-            qs = self.filter_by_classification_threshold(qs)
-            qs = qs.annotate(
-                occurrences_count=models.Count(
-                    "occurrences",
-                    filter=taxon_occurrences_count_filter,
-                    distinct=True,
-                ),
-                last_detected=models.Max("classifications__detection__timestamp"),
-            )
-
-        elif self.action == "list":
-            # If no filter don't return anything related to occurrences
-            # @TODO add a project_id filter to all request from the frontend
-            # event detail views should be filtered by project
-            qs = qs.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.none()))
-            qs = qs.annotate(
-                occurrences_count=models.Value(0),
-                # events_count=models.Value(0),
-                last_detected=models.Value(None, output_field=models.DateTimeField()),
-            )
-
+    def add_occurrence_counts(self, queryset: QuerySet, occurrences_count_filter: models.Q) -> QuerySet:
+        qs = queryset.annotate(
+            occurrences_count=models.Count(
+                "occurrences",
+                filter=occurrences_count_filter,
+                distinct=True,
+            ),
+            last_detected=models.Max("classifications__detection__timestamp"),
+        )
         return qs
 
-    # Override the main detail view to include occurrences
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+    def add_filtered_occurrences(self, queryset: QuerySet, occurrences_query: QuerySet) -> QuerySet:
+        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=occurrences_query))
+        return qs
+
+    def zero_occurrences(self, queryset: QuerySet) -> QuerySet:
+        """
+        Return a queryset with zero occurrences but compatible with the original queryset.
+        """
+        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.none()))
+        qs = qs.annotate(
+            occurrences_count=models.Value(0),
+            # events_count=models.Value(0),
+            last_detected=models.Value(None, output_field=models.DateTimeField()),
+        )
+        return qs
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+
+        occurrences_filter, occurrences_count_filter = self.get_occurrences_filters(qs)
+
+        qs = qs.select_related("parent")
+
+        if self.action == "retrieve":
+            qs = self.add_filtered_occurrences(qs, occurrences_filter)
+            qs = self.add_occurrence_counts(qs, occurrences_count_filter)
+
+        if self.action == "list":
+            qs, filter_active = self.filter_taxa_by_observed(qs)
+            if filter_active:
+                qs = self.filter_by_classification_threshold(qs)
+                qs = self.add_occurrence_counts(qs, occurrences_count_filter)
+            else:
+                # If no filter don't return anything related to occurrences
+                # in a list view.
+                # @TODO event detail views should be filtered by project
+                # @TODO check permissions to show project occurrences
+                qs = self.zero_occurrences(qs)
+
+        return qs
 
 
 class ClassificationViewSet(DefaultViewSet):
@@ -877,6 +1087,11 @@ class DeviceViewSet(DefaultViewSet):
     ]
 
 
+class StorageSourceConnectionTestSerializer(serializers.Serializer):
+    subdir = serializers.CharField(required=False, allow_null=True)
+    regex_filter = serializers.CharField(required=False, allow_null=True)
+
+
 class StorageSourceViewSet(DefaultViewSet):
     """
     API endpoint that allows storage sources to be viewed or edited.
@@ -890,3 +1105,33 @@ class StorageSourceViewSet(DefaultViewSet):
         "updated_at",
         "name",
     ]
+
+    @action(detail=True, methods=["post"], name="test", serializer_class=StorageSourceConnectionTestSerializer)
+    def test(self, request: Request, pk=None) -> Response:
+        """
+        Test the connection to the storage source.
+        """
+        storage_source: S3StorageSource = self.get_object()
+        if not storage_source:
+            return Response({"detail": "Storage source not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result: ConnectionTestResult = storage_source.test_connection(
+            subdir=serializer.validated_data.get("subdir"),
+            regex_filter=serializer.validated_data.get("regex_filter"),
+        )
+        if result.connection_successful:
+            return Response(
+                status=200,
+                data=result.__dict__,  # @TODO Consider using a serializer and annotating this for the OpenAPI schema
+            )
+        else:
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST,
+                data={
+                    "detail": result.error_message,
+                    "code": result.error_code,
+                },
+            )

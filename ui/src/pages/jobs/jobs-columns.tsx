@@ -31,24 +31,6 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     ),
   },
   {
-    id: 'created-at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    sortField: 'created_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.createdAt} />,
-  },
-  {
-    id: 'started-at',
-    name: translate(STRING.FIELD_LABEL_STARTED_AT),
-    sortField: 'started_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
-  },
-  {
-    id: 'finished-at',
-    name: translate(STRING.FIELD_LABEL_FINISHED_AT),
-    sortField: 'finished_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
-  },
-  {
     id: 'status',
     name: translate(STRING.FIELD_LABEL_STATUS),
     sortField: 'status',
@@ -75,6 +57,29 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
         />
       )
     },
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Job) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'started-at',
+    name: translate(STRING.FIELD_LABEL_STARTED_AT),
+    sortField: 'started_at',
+    renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
+  },
+  {
+    id: 'finished-at',
+    name: translate(STRING.FIELD_LABEL_FINISHED_AT),
+    sortField: 'finished_at',
+    renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
+  },
+  {
+    id: 'job-type',
+    name: 'Type',
+    renderCell: (item: Job) => <BasicTableCell value={item.jobType.name} />,
   },
   {
     id: 'actions',

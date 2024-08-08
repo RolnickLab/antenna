@@ -1,29 +1,29 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
+import { PageFooter } from 'design-system/components/page-footer/page-footer'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
 import _ from 'lodash'
 import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
 import { NewJobDialog } from 'pages/job-details/new-job-dialog'
-import { useContext, useEffect, useState } from 'react'
+import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
-import { columns } from './jobs-columns'
-import styles from './jobs.module.scss'
+import { useSort } from 'utils/useSort'
 import { UserPermission } from 'utils/user/types'
+import { columns } from './jobs-columns'
 
 export const Jobs = () => {
   const { projectId, id } = useParams()
   const { pagination, setPage } = usePagination()
-  const [sort, setSort] = useState<TableSortSettings>()
+  const { sort, setSort } = useSort({ field: 'created_at', order: 'desc' })
   const { jobs, userPermissions, total, isLoading, isFetching, error } =
     useJobs({
       projectId,
@@ -33,16 +33,21 @@ export const Jobs = () => {
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
+      <PageHeader
+        title={translate(STRING.NAV_ITEM_JOBS)}
+        subTitle={translate(STRING.RESULTS, {
+          total,
+        })}
+        isLoading={isLoading}
+        isFetching={isFetching}
+      >
+        {canCreate ? <NewJobDialog /> : null}
+      </PageHeader>
       <Table
         items={jobs}
         isLoading={isLoading}
@@ -51,18 +56,16 @@ export const Jobs = () => {
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
-      {jobs?.length ? (
-        <PaginationBar
-          pagination={pagination}
-          total={total}
-          setPage={setPage}
-        />
-      ) : null}
-      {!isLoading && id ? (
-        <JobDetailsDialog id={id} />
-      ) : canCreate ? (
-        <NewJobDialog />
-      ) : null}
+      <PageFooter>
+        {jobs?.length ? (
+          <PaginationBar
+            pagination={pagination}
+            total={total}
+            setPage={setPage}
+          />
+        ) : null}
+      </PageFooter>
+      {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
     </>
   )
 }
@@ -71,7 +74,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { job, isLoading, isFetching } = useJobDetails(id)
+  const { job, isLoading, isFetching, error } = useJobDetails(id)
 
   useEffect(() => {
     setDetailBreadcrumb(job ? { title: job.name } : undefined)
@@ -94,6 +97,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {job ? (
           <JobDetails

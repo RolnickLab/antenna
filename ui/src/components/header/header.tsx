@@ -39,11 +39,7 @@ export const Header = () => {
             <InfoDialog key={page.id} name={page.name} slug={page.slug} />
           ))}
         </div>
-        <Button
-          label={translate(STRING.SIGN_UP)}
-          theme={ButtonTheme.Plain}
-          onClick={() => navigate(APP_ROUTES.SIGN_UP)}
-        />
+
         {user.loggedIn ? (
           <>
             <Button
@@ -55,13 +51,20 @@ export const Header = () => {
             <UserInfoDialog />
           </>
         ) : (
-          <Button
-            label={translate(STRING.LOGIN)}
-            theme={ButtonTheme.Plain}
-            onClick={() =>
-              navigate(APP_ROUTES.LOGIN, { state: { to: location.pathname } })
-            }
-          />
+          <>
+            <Button
+              label={translate(STRING.SIGN_UP)}
+              theme={ButtonTheme.Plain}
+              onClick={() => navigate(APP_ROUTES.SIGN_UP)}
+            />
+            <Button
+              label={translate(STRING.LOGIN)}
+              theme={ButtonTheme.Plain}
+              onClick={() =>
+                navigate(APP_ROUTES.LOGIN, { state: { to: location.pathname } })
+              }
+            />
+          </>
         )}
       </div>
     </header>

@@ -78,7 +78,7 @@ export const MinimapControl = () => {
           doubleClickZoom={false}
           dragging={false}
           maxBounds={MAX_BOUNDS}
-          scrollWheelZoom={false}
+          scrollWheelZoom
           style={MINIMAP_STYLE}
           zoom={MINIMAP_ZOOM}
           zoomControl={false}

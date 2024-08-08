@@ -57,7 +57,7 @@ export const MultiMarkerMap = ({
       maxBounds={MAX_BOUNDS}
       minZoom={MIN_ZOOM}
       ref={mapRef}
-      scrollWheelZoom={false}
+      scrollWheelZoom
     >
       <TileLayer attribution={ATTRIBUTION} url={TILE_LAYER_URL} />
       {markers.map((marker, index) => (

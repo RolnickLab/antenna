@@ -19,8 +19,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
 ) => [
   {
     id: 'snapshot',
-    sortField: 'createdAt',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_IMAGE),
     renderCell: (item: Deployment, rowIndex: number) => {
       const isOddRow = rowIndex % 2 == 0
       const detailsRoute = getAppRoute({
@@ -69,7 +68,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numEvents} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -96,7 +95,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -114,7 +113,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { occurrences__deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -125,7 +124,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.firstDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.firstDateLabel} />
+    ),
   },
   {
     id: 'lastDate',
@@ -134,7 +135,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.lastDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.lastDateLabel} />
+    ),
   },
   {
     id: 'actions',

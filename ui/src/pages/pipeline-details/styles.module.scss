@@ -10,6 +10,7 @@
 .dialogTrigger {
   @include paragraph-medium();
   color: $color-primary-1-600;
+  font-weight: 600;
 
   &:hover {
     cursor: pointer;
@@ -24,4 +25,8 @@
 .tableContainer {
   max-width: 100%;
   overflow: hidden;
+}
+
+.errorContent {
+  padding: 32px;
 }

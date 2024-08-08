@@ -1,9 +1,13 @@
 import classNames from 'classnames'
+import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useRef } from 'react'
+import { BasicTableCell } from '../basic-table-cell/basic-table-cell'
 import { TableHeader } from '../table-header/table-header'
 import tableHeaderStyles from '../table-header/table-header.module.scss'
 import { TableColumn, TableSortSettings } from '../types'
+import { StickyHeaderTable } from './sticky-header-table'
 import styles from './table.module.scss'
 import { useScrollFader } from './useScrollFader'
 
@@ -14,28 +18,34 @@ export enum TableBackgroundTheme {
 
 interface TableProps<T> {
   backgroundTheme?: TableBackgroundTheme
+  columns: TableColumn<T>[]
   items?: T[]
   isLoading?: boolean
-  columns: TableColumn<T>[]
+  selectable?: boolean
+  selectedItems?: string[]
   sortable?: boolean
   sortSettings?: TableSortSettings
+  onSelectedItemsChange?: (selectedItems: string[]) => void
   onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
 }
 
 export const Table = <T extends { id: string }>({
   backgroundTheme = TableBackgroundTheme.Neutral,
+  columns,
   items = [],
   isLoading,
-  columns,
+  selectable,
+  selectedItems = [],
   sortable,
   sortSettings,
+  onSelectedItemsChange,
   onSortSettingsChange,
 }: TableProps<T>) => {
-  const tableWrapperRef = useRef<HTMLDivElement>(null)
-  const showScrollFader = useScrollFader(tableWrapperRef, [
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+  const showScrollFader = useScrollFader(tableContainerRef, [
     items,
     columns,
-    tableWrapperRef.current,
+    tableContainerRef.current,
   ])
 
   const onSortClick = (column: TableColumn<T>) => {
@@ -59,41 +69,66 @@ export const Table = <T extends { id: string }>({
         [styles.white]: backgroundTheme === TableBackgroundTheme.White,
       })}
     >
-      <div ref={tableWrapperRef} className={styles.tableWrapper}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <TableHeader
-                  key={column.id}
-                  column={column}
-                  sortable={sortable}
-                  sortSettings={sortSettings}
-                  visuallyHidden={column.visuallyHidden}
-                  onSortClick={() => onSortClick(column)}
-                />
-              ))}
-              <th
-                aria-hidden="true"
-                className={tableHeaderStyles.tableHeader}
-                style={{ width: '100%' }}
+      <StickyHeaderTable tableContainerRef={tableContainerRef}>
+        <thead>
+          <tr>
+            {selectable && (
+              <th className={tableHeaderStyles.tableHeader}>
+                <div className={tableHeaderStyles.content}>
+                  <MultiSelectCheckbox
+                    items={items}
+                    selectedItems={selectedItems}
+                    onSelectedItemsChange={onSelectedItemsChange}
+                  />
+                </div>
+              </th>
+            )}
+            {columns.map((column) => (
+              <TableHeader
+                key={column.id}
+                column={column}
+                sortable={sortable}
+                sortSettings={sortSettings}
+                visuallyHidden={column.visuallyHidden}
+                onSortClick={() => onSortClick(column)}
               />
-            </tr>
-          </thead>
-          <tbody className={classNames({ [styles.loading]: isLoading })}>
-            {items.map((item, rowIndex) => (
-              <tr key={item.id}>
-                {columns.map((column, columnIndex) => (
-                  <td key={column.id}>
-                    {column.renderCell(item, rowIndex, columnIndex)}
-                  </td>
-                ))}
-                <td aria-hidden="true" />
-              </tr>
             ))}
-          </tbody>
-        </table>
-      </div>
+            <th
+              aria-hidden="true"
+              className={tableHeaderStyles.tableHeader}
+              style={{ width: '100%' }}
+            />
+          </tr>
+        </thead>
+        <tbody className={classNames({ [styles.loading]: isLoading })}>
+          {items.map((item, rowIndex) => (
+            <tr key={item.id}>
+              {selectable && (
+                <td>
+                  <BasicTableCell>
+                    <Checkbox
+                      checked={selectedItems.includes(item.id)}
+                      onCheckedChange={(checked) => {
+                        onSelectedItemsChange?.(
+                          checked
+                            ? [...selectedItems, item.id]
+                            : selectedItems.filter((id) => id !== item.id)
+                        )
+                      }}
+                    />
+                  </BasicTableCell>
+                </td>
+              )}
+              {columns.map((column, columnIndex) => (
+                <td key={column.id}>
+                  {column.renderCell(item, rowIndex, columnIndex)}
+                </td>
+              ))}
+              <td aria-hidden="true" />
+            </tr>
+          ))}
+        </tbody>
+      </StickyHeaderTable>
       {isLoading && (
         <div className={styles.loadingWrapper}>
           <LoadingSpinner />
@@ -103,7 +138,49 @@ export const Table = <T extends { id: string }>({
         className={classNames(styles.overflowFader, {
           [styles.visible]: showScrollFader,
         })}
-      ></div>
+      />
     </div>
+  )
+}
+
+interface MultiSelectCheckboxProps<T> {
+  items: T[]
+  selectedItems?: string[]
+  onSelectedItemsChange?: (selectedItems: string[]) => void
+}
+
+const MultiSelectCheckbox = <T extends { id: string }>({
+  items = [],
+  selectedItems,
+  onSelectedItemsChange,
+}: MultiSelectCheckboxProps<T>) => {
+  const deselectAll = () => onSelectedItemsChange?.([])
+  const selectAll = () => onSelectedItemsChange?.(items.map((item) => item.id))
+
+  const checked = (() => {
+    if (!selectedItems?.length) {
+      return false
+    }
+    if (selectedItems?.length === items.length) {
+      return true
+    }
+    return 'indeterminate'
+  })()
+
+  return (
+    <Tooltip content={checked === true ? 'Deselect all' : 'Select all'}>
+      <div>
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(checked) => {
+            if (checked) {
+              selectAll()
+            } else {
+              deselectAll()
+            }
+          }}
+        />
+      </div>
+    </Tooltip>
   )
 }

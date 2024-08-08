@@ -10,6 +10,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
+import { useRecentIdentifications } from '../reject-id/useRecentOptions'
 import { StatusLabel } from '../status-label/status-label'
 import { TaxonSearch } from '../taxon-search/taxon-search'
 import styles from './suggest-id.module.scss'
@@ -29,9 +30,10 @@ export const SuggestId = ({
 }: SuggestIdProps) => {
   const { projectId } = useParams()
   const [taxon, setTaxon] = useState<Taxon>()
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState('')
   const { createIdentification, isLoading, error } =
     useCreateIdentification(onCancel)
+  const { addRecentIdentification } = useRecentIdentifications()
   const formError = error ? parseServerError(error)?.message : undefined
 
   return (
@@ -81,6 +83,11 @@ export const SuggestId = ({
               if (!taxon) {
                 return
               }
+              addRecentIdentification({
+                label: taxon.name,
+                details: taxon.rank,
+                value: taxon.id,
+              })
               createIdentification({
                 occurrenceId: occurrenceId,
                 taxonId: taxon.id,

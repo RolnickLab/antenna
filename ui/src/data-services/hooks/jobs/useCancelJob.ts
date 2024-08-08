@@ -12,6 +12,7 @@ export const useCancelJob = () => {
     mutationFn: (id: string) =>
       axios.post<{ id: number }>(
         `${API_URL}/${API_ROUTES.JOBS}/${id}/cancel/`,
+        undefined,
         {
           headers: getAuthHeader(user),
         }

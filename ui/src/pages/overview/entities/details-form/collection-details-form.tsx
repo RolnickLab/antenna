@@ -14,17 +14,16 @@ import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
-// import { MethodEnum } from 'schema'
 
 type CollectionFormValues = FormValues & {
-  method: string,
+  method: string
   kwargs: {
-    max_num: number | undefined,
-    minute_interval: number | undefined,
-    month_start: string | undefined,
-    month_end: string | undefined,
-    hour_start: number | undefined,
-    hour_end: number | undefined,
+    max_num: number | undefined
+    minute_interval: number | undefined
+    month_start: string | undefined
+    month_end: string | undefined
+    hour_start: number | undefined
+    hour_end: number | undefined
   }
 }
 
@@ -68,7 +67,6 @@ const config: FormConfig = {
   'kwargs.hour_end': {
     label: 'Latest hour',
   },
-
 }
 
 export const CollectionDetailsForm = ({
@@ -88,7 +86,7 @@ export const CollectionDetailsForm = ({
       name: entity?.name ?? '',
       description: entity?.description ?? '',
       method: collection?.method ?? editableSamplingMethods[0],
-      kwargs: collection?.kwargs ?? {}
+      kwargs: collection?.kwargs ?? {},
     },
     mode: 'onChange',
   })
@@ -101,9 +99,9 @@ export const CollectionDetailsForm = ({
         const processedKwargs = Object.fromEntries(
           Object.entries(values.kwargs).map(([key, value]) => [
             key,
-            value === "" ? null : value,
+            value === '' ? null : value,
           ])
-        );
+        )
 
         onSubmit({
           name: values.name,
@@ -112,7 +110,7 @@ export const CollectionDetailsForm = ({
             method: values.method,
             kwargs: processedKwargs,
           },
-        });
+        })
       })}
     >
       {errorMessage && (
@@ -124,7 +122,12 @@ export const CollectionDetailsForm = ({
       )}
       <FormSection>
         <FormRow>
-          <FormField name="name" type="text" config={config} control={control} />
+          <FormField
+            name="name"
+            type="text"
+            config={config}
+            control={control}
+          />
           <FormField
             name="description"
             type="text"
@@ -149,7 +152,6 @@ export const CollectionDetailsForm = ({
           />
         </FormRow>
         <FormRow>
-
           <FormField
             name="kwargs.month_start"
             type="number"

@@ -1,4 +1,5 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
+import { FormSection } from 'components/form/layout/layout'
 import { useDeleteCapture } from 'data-services/hooks/captures/useDeleteCapture'
 import { useUploadCapture } from 'data-services/hooks/captures/useUploadCapture'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
@@ -12,7 +13,6 @@ import {
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { InputContent } from 'design-system/components/input/input'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
@@ -49,8 +49,8 @@ export const SectionExampleCaptures = ({
 
   if (!deployment.createdAt) {
     return (
-      <InputContent
-        label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
+      <FormSection
+        title={translate(STRING.FIELD_LABEL_SAMPLE_CAPTURES)}
         description={translate(STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN)}
       />
     )
@@ -61,8 +61,8 @@ export const SectionExampleCaptures = ({
     CAPTURE_CONFIG.NUM_CAPTURES
 
   return (
-    <InputContent
-      label={translate(STRING.FIELD_LABEL_UPLOADED_CAPTURES)}
+    <FormSection
+      title={translate(STRING.FIELD_LABEL_SAMPLE_CAPTURES)}
       description={CAPTURE_FIELD_DESCRIPTION}
     >
       <div className={styles.collection}>
@@ -105,7 +105,7 @@ export const SectionExampleCaptures = ({
           </Card>
         )}
       </div>
-    </InputContent>
+    </FormSection>
   )
 }
 

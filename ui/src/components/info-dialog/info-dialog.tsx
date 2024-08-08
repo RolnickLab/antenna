@@ -7,7 +7,7 @@ import { useActivePage } from './useActivePage'
 
 export const InfoDialog = ({ name, slug }: { name: string; slug: string }) => {
   const { activePage, setActivePage } = useActivePage()
-  const { page, isLoading } = usePageDetails(slug)
+  const { page, isLoading, error } = usePageDetails(slug)
 
   return (
     <Dialog.Root
@@ -20,6 +20,7 @@ export const InfoDialog = ({ name, slug }: { name: string; slug: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         <Dialog.Header title={name} />
         {page ? (

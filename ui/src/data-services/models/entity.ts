@@ -15,7 +15,10 @@ export class Entity {
   }
 
   get canDelete(): boolean {
-    return this._data.user_permissions.includes(UserPermission.Delete)
+    return (
+      this._data.user_permissions.includes(UserPermission.Delete) ||
+      this.canUpdate // TODO: Skip when BE is returning correct permissions
+    )
   }
 
   get createdAt(): string {
@@ -24,7 +27,7 @@ export class Entity {
     })
   }
 
-  get description(): string {
+  get description(): string | undefined {
     return this._data.description
   }
 
@@ -43,6 +46,17 @@ export class Entity {
 
     return getFormatedDateTimeString({
       date: new Date(this._data.updated_at),
+    })
+  }
+
+  get updatedAtDetailed(): string | undefined {
+    if (!this._data.updated_at) {
+      return undefined
+    }
+
+    return getFormatedDateTimeString({
+      date: new Date(this._data.updated_at),
+      options: { second: true },
     })
   }
 }

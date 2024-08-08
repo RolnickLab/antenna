@@ -19,6 +19,14 @@
   &.primary {
     .label {
       color: $color-primary-1-600;
+      font-weight: 600;
+    }
+  }
+
+  &.bubble {
+    .label {
+      @include bubble-label();
+      display: inline-flex;
     }
   }
 }

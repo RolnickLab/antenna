@@ -3,11 +3,13 @@ export { CarouselTheme as ImageCellTheme } from '../image-carousel/types'
 export enum CellTheme {
   Default = 'default',
   Primary = 'primary',
+  Bubble = 'bubble',
 }
 
 export enum TextAlign {
   Left = 'left',
   Right = 'right',
+  Center = 'center',
 }
 
 export interface TableColumn<T> {

@@ -15,6 +15,7 @@ rich==13.5
 pydantic<2.0  # Less than 2.0 because of django pydantic field
 django-pydantic-field==0.2.11
 sentry-sdk==1.40.4  # https://github.com/getsentry/sentry-python
+django-cachalot
 
 # Django
 # ------------------------------------------------------------------------------
@@ -51,13 +52,13 @@ watchfiles==0.19.0  # https://github.com/samuelcolvin/watchfiles
 
 # Testing
 # ------------------------------------------------------------------------------
-mypy==1.4.1  # https://github.com/python/mypy
-django-stubs==4.2.2  # https://github.com/typeddjango/django-stubs
+mypy  # https://github.com/python/mypy
+django-stubs  # https://github.com/typeddjango/django-stubs
 boto3-stubs[s3,core]
-mypy_boto3_s3==1.28.19
-pytest==7.4.0  # https://github.com/pytest-dev/pytest
-pytest-sugar==0.9.7  # https://github.com/Frozenball/pytest-sugar
-djangorestframework-stubs==3.14.2  # https://github.com/typeddjango/djangorestframework-stubs
+mypy_boto3_s3
+pytest  # https://github.com/pytest-dev/pytest
+pytest-sugar  # https://github.com/Frozenball/pytest-sugar
+djangorestframework-stubs  # https://github.com/typeddjango/djangorestframework-stubs
 
 # Documentation
 # ------------------------------------------------------------------------------

@@ -3,7 +3,6 @@ import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-
 export const config: FormConfig = {
   name: {
     label: translate(STRING.FIELD_LABEL_NAME),
@@ -38,7 +37,13 @@ export const config: FormConfig = {
     },
   },
   dataSourceId: {
-    label: translate(STRING.FIELD_LABEL_DATA_SOURCE),
+    label: 'Storage',
+  },
+  dataSourceSubdir: {
+    label: 'Sub directory',
+  },
+  dataSourceRegex: {
+    label: 'Regex filter',
   },
   latitude: {
     label: translate(STRING.FIELD_LABEL_LATITUDE),

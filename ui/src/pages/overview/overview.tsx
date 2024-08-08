@@ -11,6 +11,7 @@ import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
 import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
+import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
 
 export const Overview = () => {
@@ -22,7 +23,7 @@ export const Overview = () => {
   }>()
 
   if (!isLoading && error) {
-    return <Error />
+    return <Error error={error} />
   }
 
   if (isLoading || !project) {
@@ -90,13 +91,23 @@ export const Overview = () => {
           <Pipelines />
         </Tabs.Content>
         <Tabs.Content value="storage">
-          <Entities collection={API_ROUTES.STORAGE} type="storage" />
+          <StorageSources />
         </Tabs.Content>
         <Tabs.Content value="sites">
-          <Entities collection={API_ROUTES.SITES} type="site" />
+          <Entities
+            title={translate(STRING.TAB_ITEM_SITES)}
+            collection={API_ROUTES.SITES}
+            type="site"
+            tooltip={translate(STRING.TOOLTIP_SITE)}
+          />
         </Tabs.Content>
         <Tabs.Content value="devices">
-          <Entities collection={API_ROUTES.DEVICES} type="device" />
+          <Entities
+            title={translate(STRING.TAB_ITEM_DEVICES)}
+            collection={API_ROUTES.DEVICES}
+            type="device"
+            tooltip={translate(STRING.TOOLTIP_DEVICE_TYPE)}
+          />
         </Tabs.Content>
       </Tabs.Root>
     </>

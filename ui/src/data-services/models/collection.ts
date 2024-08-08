@@ -3,9 +3,12 @@ import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
 import { Entity } from './entity'
 
 export class Collection extends Entity {
-
   public constructor(entity: ServerCollection) {
     super(entity)
+  }
+
+  get canPopulate(): boolean {
+    return this.canUpdate && this._data.method !== 'starred'
   }
 
   get method(): string {
@@ -13,7 +16,7 @@ export class Collection extends Entity {
   }
 
   get kwargs(): object {
-    return this._data.kwargs || {};
+    return this._data.kwargs || {}
   }
 
   get methodNameDisplay(): string {
@@ -33,5 +36,4 @@ export class Collection extends Entity {
   get numImages(): number | undefined {
     return this._data.source_image_count
   }
-
 }

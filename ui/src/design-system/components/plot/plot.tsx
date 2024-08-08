@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import _Plot from 'react-plotly.js'
 import styles from './plot.module.scss'
 import { PlotProps } from './types'
@@ -16,8 +17,11 @@ const Plot = ({
   orientation,
   type = 'bar',
   showRangeSlider,
+  hovertemplate,
 }: PlotProps) => (
-  <div className={styles.plot}>
+  <div
+    className={classNames(styles.plot, { [styles.round]: data.x.length >= 3 })}
+  >
     <_Plot
       data={[
         {
@@ -25,9 +29,12 @@ const Plot = ({
           type,
           x: data.x,
           y: data.y,
+          width:
+            orientation === 'h' ? undefined : data.x.length > 3 ? 1 / 3 : 1 / 6,
           marker: {
             color: markerColor,
           },
+          hovertemplate,
         },
       ]}
       config={{
@@ -74,6 +81,7 @@ const Plot = ({
           zeroline: false,
           tickvals: data.tickvals,
           ticktext: data.ticktext,
+          tickformat: 'd',
           automargin: true,
           ...(showRangeSlider
             ? {

@@ -14,6 +14,10 @@ export class CaptureDetails extends Capture {
     }
   }
 
+  get currentIndex(): number {
+    return this._capture.event_current_capture_index
+  }
+
   get hasJobInProgress(): boolean {
     return this._jobs.some(
       (job) =>
@@ -33,8 +37,20 @@ export class CaptureDetails extends Capture {
     return this._jobs
   }
 
+  get nextCaptureId(): string | undefined {
+    return this._capture.event_next_capture_id
+  }
+
+  get prevCaptureId(): string | undefined {
+    return this._capture.event_prev_capture_id
+  }
+
   get sizeLabel(): string {
     return `${this._capture.size} B`
+  }
+
+  get totalCaptures(): number {
+    return this._capture.event_total_captures
   }
 
   get url(): string {
