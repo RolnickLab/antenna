@@ -355,6 +355,7 @@ class SourceImageViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
+        with_detections_default = False
 
         queryset.select_related(
             "event",
@@ -365,7 +366,6 @@ class SourceImageViewSet(DefaultViewSet):
         if self.action == "list":
             # It's cumbersome to override the default list view, so customize the queryset here
             queryset = self.filter_by_has_detections(queryset)
-            with_detections_default = False
 
         elif self.action == "retrieve":
             queryset = queryset.prefetch_related("jobs", "collections")
