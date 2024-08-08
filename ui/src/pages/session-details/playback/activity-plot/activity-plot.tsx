@@ -68,7 +68,7 @@ export const ActivityPlot = ({
               type: 'scatter',
               mode: 'lines',
               line: { color: lineColorDetections, width: 1 },
-              name: 'Avg. Detections',
+              name: 'Avg. detections',
               yaxis: 'y2',
             },
           ]}
@@ -84,6 +84,7 @@ export const ActivityPlot = ({
               t: 0,
               pad: 0,
             },
+            // y-axis for captures
             yaxis: {
               showgrid: false,
               showticklabels: false,
@@ -93,13 +94,14 @@ export const ActivityPlot = ({
               range: [yAxisMin, yAxisMax],
               side: 'left',
             },
+            // y-axis for detections
             yaxis2: {
               showgrid: false,
               showticklabels: false,
               zeroline: false,
               rangemode: 'nonnegative',
               fixedrange: true,
-              range: [0, session.detectionsMaxCount ?? yAxisMax],
+              range: [0, Math.max(session.detectionsMaxCount ?? 0, 1)], // Ensure a minimum range of 1
               side: 'right',
               overlaying: 'y',
             },
