@@ -280,6 +280,7 @@ class EventViewSet(DefaultViewSet):
                 "start": current_time,
                 "end": interval_end,
                 "first_capture": None,
+                "top_capture": None,
                 "captures_count": 0,
                 "detections_count": 0,
             }

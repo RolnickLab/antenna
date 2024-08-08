@@ -1217,6 +1217,7 @@ class EventTimelineIntervalSerializer(serializers.Serializer):
     start = serializers.DateTimeField()
     end = serializers.DateTimeField()
     first_capture = EventTimelineSourceImageSerializer(allow_null=True)
+    top_capture = EventTimelineSourceImageSerializer(allow_null=True)
     captures_count = serializers.IntegerField()
     detections_count = serializers.IntegerField()
 

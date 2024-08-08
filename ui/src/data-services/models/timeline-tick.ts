@@ -6,6 +6,9 @@ export type ServerTimelineTick = {
   first_capture: {
     id: number
   } | null
+  top_capture: {
+    id: number
+  } | null
   captures_count: number
   detections_count: number
 }
@@ -39,6 +42,18 @@ export class TimelineTick {
     }
 
     return `${this._timelineTick.first_capture.id}`
+  }
+
+  get topCaptureId(): string | undefined {
+    if (!this._timelineTick.top_capture) {
+      return undefined
+    }
+
+    return `${this._timelineTick.top_capture.id}`
+  }
+
+  get representativeCaptureId(): string | undefined {
+    return this.topCaptureId ?? this.firstCaptureId
   }
 
   get tooltip(): string {

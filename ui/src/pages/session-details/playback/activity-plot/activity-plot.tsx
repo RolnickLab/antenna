@@ -95,8 +95,8 @@ export const ActivityPlot = ({
           onClick={(data) => {
             const timelineTickIndex = data.points[0].pointIndex
             const timelineTick = timeline[timelineTickIndex]
-            if (timelineTick?.firstCaptureId) {
-              setActiveCaptureId(timelineTick.firstCaptureId)
+            if (timelineTick?.representativeCaptureId) {
+              setActiveCaptureId(timelineTick.representativeCaptureId)
             }
           }}
         />
