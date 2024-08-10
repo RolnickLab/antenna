@@ -42,7 +42,7 @@ http://localhost:8000/admin/
 Generate OpenAPI schema
 
 ```bash
-docker-compose -f local.yml run --rm django python manage.py spectacular --api-version 'api' --format openapi --file ami-openapi-schema.yaml
+docker-compose run --rm django python manage.py spectacular --api-version 'api' --format openapi --file ami-openapi-schema.yaml
 ```
 
 Generate TypeScript types from OpenAPI schema
@@ -54,20 +54,20 @@ docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i 
 Generate diagram graph of Django models & relationships (Graphviz required)
 
 ```bash
-docker compose -f local.yml run --rm django python manage.py graph_models -a -o models.dot --dot
+docker compose run --rm django python manage.py graph_models -a -o models.dot --dot
 dot -Tsvg  models.dot > models.svg
 ```
 
 Run tests
 
 ```bash
-docker-compose -f local.yml run --rm django python manage.py test
+docker-compose run --rm django python manage.py test
 ```
 
 Run tests with a specific pattern in the test name
 
 ```bash
-docker-compose -f local.yml run --rm django python manage.py test -k pattern
+docker-compose run --rm django python manage.py test -k pattern
 ```
 
 Launch the Django shell:
@@ -76,14 +76,11 @@ Launch the Django shell:
 
 Install dependencies locally for IDE support (Intellisense, etc):
 
-````bash
+```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements/local.txt
-``## Quick Start
-
-
-    $ docker-compose up`
+```
 
 ## Dependencies
 
@@ -97,13 +94,11 @@ pip install -r requirements/local.txt
 - [Node.js](https://nodejs.org/en/download/)
 - [Yarn](https://yarnpkg.com/getting-started/install)
 
-### Frontend
-
 0. Change to the frontend directory:
 
    ```bash
    $ cd ui
-````
+   ```
 
 1. Install Node Version Manager:
 
