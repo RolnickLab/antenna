@@ -42,7 +42,7 @@ http://localhost:8000/admin/
 Generate OpenAPI schema
 
 ```bash
-docker-compose run --rm django python manage.py spectacular --api-version 'api' --format openapi --file ami-openapi-schema.yaml
+docker compose run --rm django python manage.py spectacular --api-version 'api' --format openapi --file ami-openapi-schema.yaml
 ```
 
 Generate TypeScript types from OpenAPI schema
@@ -61,13 +61,13 @@ dot -Tsvg  models.dot > models.svg
 Run tests
 
 ```bash
-docker-compose run --rm django python manage.py test
+docker compose run --rm django python manage.py test
 ```
 
 Run tests with a specific pattern in the test name
 
 ```bash
-docker-compose run --rm django python manage.py test -k pattern
+docker compose run --rm django python manage.py test -k pattern
 ```
 
 Launch the Django shell:
