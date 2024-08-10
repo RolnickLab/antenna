@@ -1,20 +1,19 @@
 # Automated Monitoring of Insects ML Platform
 
-Platform for processing and reviewing images from automated insect monitoring stations.
-
+Platform for processing and reviewing images from automated insect monitoring stations. Intended for collaborating on multi-deployment projects, maintaining metadata and orchestrating multiple machine learning pipelines for analysis.
 
 [![Black code style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
 ## Quick Start
 
-The project uses docker compose to run all backend services. To start the project, run the following command:
+The platform uses Docker Compose to run all services. To run all services locally, install Docker and run the following command:
 
-    $ docker-compose up
+    $ docker compose up
 
 Explore the API
+
 - Rest Framework: http://localhost:8000/api/v2/
 - OpenAPI / Swagger: http://localhost:8000/api/v2/docs/
-
 
 Install and run the frontend:
 
@@ -28,6 +27,7 @@ yarn start
 
 Visit http://localhost:3000/
 
+By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this.
 
 Create a super user account:
 
@@ -36,8 +36,6 @@ Create a super user account:
 Access the Django admin:
 
 http://localhost:8000/admin/
-
-
 
 ## Helpful Commands
 
@@ -72,76 +70,78 @@ Run tests with a specific pattern in the test name
 docker-compose -f local.yml run --rm django python manage.py test -k pattern
 ```
 
-
 Launch the Django shell:
 
     docker-compose exec django python manage.py shell
 
 Install dependencies locally for IDE support (Intellisense, etc):
 
-```bash
+````bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements/local.txt
-```
+``## Quick Start
 
+
+    $ docker-compose up`
 
 ## Dependencies
 
 ### Backend
+
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 
 ### Frontend
+
 - [Node.js](https://nodejs.org/en/download/)
 - [Yarn](https://yarnpkg.com/getting-started/install)
-
 
 ### Frontend
 
 0. Change to the frontend directory:
 
-    ```bash
-    $ cd ui
-    ```
+   ```bash
+   $ cd ui
+````
 
 1. Install Node Version Manager:
 
-    ```bash
-    $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-    ```
+   ```bash
+   $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+   ```
+
 2. Install Node.js:
 
-    ```bash
-    $ nvm install
-    ```
+   ```bash
+   $ nvm install
+   ```
 
 3. Install Yarn:
 
-    ```bash
-    $ npm install --global yarn
-    ```
+   ```bash
+   $ npm install --global yarn
+   ```
 
 4. Install the dependencies:
 
-    ```bash
-    $ yarn install
-    ```
+   ```bash
+   $ yarn install
+   ```
 
 5. Create a `.env` file in the `frontend` directory with the following content:
 
-    ```bash
-    REACT_APP_API_URL=http://localhost:8000
-    ```
+   ```bash
+   REACT_APP_API_URL=http://localhost:8000
+   ```
 
 6. Start the frontend:
 
-    ```bash
-    $ yarn start
-    ```
-  
-[Further documentation about using Django within this compose setup](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html).
+   ```bash
+   $ yarn start
+   ```
 
+[Further documentation about using Django within this compose setup](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html).
 
 ## Project Data Storage
 
