@@ -85,6 +85,7 @@ def create_taxa(project: Project) -> TaxaList:
 def create_occurrences(
     deployment: Deployment,
     num: int = 6,
+    taxon: Taxon | None = None,
 ):
     event = Event.objects.filter(deployment=deployment).first()
     if not event:
@@ -95,7 +96,7 @@ def create_occurrences(
         source_image = SourceImage.objects.filter(event=event).order_by("?").first()
         if not source_image:
             raise ValueError("No source images found for event")
-        taxon = Taxon.objects.filter(projects=deployment.project).order_by("?").first()
+        taxon = taxon or Taxon.objects.filter(projects=deployment.project).order_by("?").first()
         if not taxon:
             raise ValueError("No taxa found for project")
         detection = Detection.objects.create(
@@ -516,16 +517,32 @@ class TestTaxonomyViews(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
-    def test_taxa_list(self):
-        # This currently fails! @TODO investigate
+    def test_project_species_list(self):
+        """
+        Test that the taxa for a project (of species rank) are returned from the API
+        """
+        species_for_project = self.project_one.taxa.filter(rank=str(TaxonRank.SPECIES))
 
-        response = self.client.get("/api/v2/taxa/", {"project": self.project_one.pk})
-        taxa_for_project = self.project_one.taxa.all()
+        response = self.client.get(
+            "/api/v2/taxa/",
+            {
+                "project": self.project_one.pk,
+                "rank": str(TaxonRank.SPECIES),
+            },
+        )
         self.assertEqual(response.status_code, 200)
+
+        taxa_returned = response.json()["results"]
+
+        # Assert only species are returned
+        for taxon in taxa_returned:
+            self.assertEqual(taxon["rank"], str(TaxonRank.SPECIES))
+
         # Compare lists of taxa:
         self.assertListEqual(
-            [taxon.name for taxon in taxa_for_project],
-            [taxon["name"] for taxon in response.json()["results"]],
+            sorted([taxon.name for taxon in species_for_project]),
+            sorted([taxon["name"] for taxon in taxa_returned]),
+            "Expected taxa for project (list one) do not match taxa in API response (list two)",
         )
 
     def _test_taxa_for_project(self, project: Project):
