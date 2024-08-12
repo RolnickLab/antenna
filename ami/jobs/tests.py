@@ -3,7 +3,8 @@ from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
 from ami.jobs.models import Job, JobProgress, JobState
-from ami.main.models import Project
+from ami.main.models import Project, SourceImageCollection
+from ami.ml.models import Pipeline
 from ami.users.models import User
 
 # from rich import print
@@ -11,7 +12,16 @@ from ami.users.models import User
 
 class TestJobProgress(TestCase):
     def setUp(self):
-        self.project = Project.objects.create(name="Job test")
+        self.project = Project.objects.create(name="Test project")
+        self.source_image_collection = SourceImageCollection.objects.create(
+            name="Test collection",
+            project=self.project,
+        )
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML pipeline",
+            description="Test ML pipeline",
+        )
+        self.pipeline.projects.add(self.project)
 
     def test_create_job(self):
         job = Job.objects.create(project=self.project, name="Test job")
@@ -20,7 +30,13 @@ class TestJobProgress(TestCase):
         self.assertEqual(job.progress.stages, [])
 
     def test_create_job_with_delay(self):
-        job = Job.objects.create(project=self.project, name="Test job", delay=1)
+        job = Job.objects.create(
+            project=self.project,
+            name="Test job",
+            delay=1,
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
         self.assertEqual(job.progress.stages[0].key, "delay")
         self.assertEqual(job.progress.stages[0].progress, 0)
         self.assertEqual(job.progress.stages[0].status, JobState.CREATED)
@@ -45,7 +61,17 @@ class TestJobView(APITestCase):
 
     def setUp(self):
         self.project = Project.objects.create(name="Jobs Test Project")
-        self.job = Job.objects.create(project=self.project, name="Test job", delay=0)
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Test job",
+            delay=0,
+            pipeline=Pipeline.objects.create(name="Test pipeline"),
+            source_image_collection=SourceImageCollection.objects.create(
+                name="Test collection",
+                project=self.project,
+            ),
+        )
+
         self.user = User.objects.create_user(  # type: ignore
             email="testuser@insectai.org",
             is_staff=True,
@@ -82,9 +108,12 @@ class TestJobView(APITestCase):
         # request = self.factory.post(jobs_create_url, {"project": self.project.pk, "name": "Test job 2"})
         self.client.force_authenticate(user=self.user)
         job_data = {
-            "project_id": self.project.pk,
+            "project_id": self.job.project.pk,
             "name": "Test job 2",
+            "pipeline_id": self.job.pipeline.pk,  # type: ignore
+            "collection_id": self.job.source_image_collection.pk,  # type: ignore
             "delay": 0,
+            "start_now": False,
         }
         resp = self.client.post(jobs_create_url, job_data)
         self.client.force_authenticate(user=None)
@@ -94,7 +123,8 @@ class TestJobView(APITestCase):
         self.assertEqual(data["name"], "Test job 2")
         # self.assertEqual(data["progress"]["status"], "CREATED")
         progress = JobProgress(**data["progress"])
-        self.assertEqual(progress.summary.status, JobState.CREATED)
+
+        self.assertEqual(progress.summary.status, JobState.SUCCESS)
 
     def test_run_job(self):
         jobs_run_url = reverse_with_params("api:job-run", args=[self.job.pk], params={"no_async": True})
