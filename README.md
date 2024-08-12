@@ -143,3 +143,27 @@ Bucket: ami
 ## Email
 
 The local environment uses the `console` email backend. To view emails sent by the platform, check the console output (run the `docker compose logs -f django celeryworker` command).
+
+## Database
+
+The local environment uses a local PostgreSQL database in a Docker container.
+
+### Backup and Restore
+
+    docker compose run --rm postgres backup
+
+### Reset the database
+
+    docker compose run --rm django python manage.py reset_db
+
+### Show backups
+
+    docker compose run --rm postgres backups
+
+### Restore a backup
+
+    docker compose run --rm postgres restore <backup_file_name>
+
+### Load fixtures with test data
+
+    docker compose run --rm django python manage.py migrate
