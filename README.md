@@ -6,75 +6,92 @@ Platform for processing and reviewing images from automated insect monitoring st
 
 ## Quick Start
 
-The platform uses Docker Compose to run all services. To run all services locally, install Docker and run the following command:
+The platform uses Docker Compose to run all backend services. To run all services locally, install Docker and run the following command:
 
     $ docker compose up
 
 Explore the API
 
 - Rest Framework: http://localhost:8000/api/v2/
+- Access the Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger: http://localhost:8000/api/v2/docs/
 
 Install and run the frontend:
 
 ```bash
+# Enter into the ui directory
 cd ui
+# Install Node Version Manager
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+# Install required Node.js version
 nvm install
+# Install Yarn dependencies
 yarn install
+# Start the frontend
 yarn start
 ```
 
 Visit http://localhost:3000/
 
-By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this.
+_TODO! Make a pre-built frontend available in the Docker compose stack._
 
-Create a super user account:
+## Development
+
+### Frontend
+
+#### Dependencies
+
+- [Node.js](https://nodejs.org/en/download/)
+- [Yarn](https://yarnpkg.com/getting-started/install)
+
+#### Configuration
+
+By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
+
+### Backend
+
+#### Dependencies
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
+
+#### Helpful Commands
+
+##### Watch the logs of Django & the backend workers
+
+   docker compose logs -f django celeryworker
+
+##### Watch the logs of all services:
+
+    docker compose logs -f
+
+#####  Create a super user account:
 
     docker compose exec django python manage.py createsuperuser
 
-Access the Django admin:
 
-http://localhost:8000/admin/
 
-## Helpful Commands
-
-Generate OpenAPI schema
-
-```bash
-docker compose run --rm django python manage.py spectacular --api-version 'api' --format openapi --file ami-openapi-schema.yaml
-```
-
-Generate TypeScript types from OpenAPI schema
-
-```bash
-docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i /local/ami-openapi-schema.yaml -g typescript-axios -o /local/ui/src/api-schema.d.ts
-```
-
-Generate diagram graph of Django models & relationships (Graphviz required)
-
-```bash
-docker compose run --rm django python manage.py graph_models -a -o models.dot --dot
-dot -Tsvg  models.dot > models.svg
-```
-
-Run tests
+##### Run tests
 
 ```bash
 docker compose run --rm django python manage.py test
 ```
 
-Run tests with a specific pattern in the test name
+##### Run tests with a specific pattern in the test name
 
 ```bash
 docker compose run --rm django python manage.py test -k pattern
 ```
 
-Launch the Django shell:
+##### Launch the Django shell:
 
     docker-compose exec django python manage.py shell
 
-Install dependencies locally for IDE support (Intellisense, etc):
+    >>> from ami.main.models import SourceImage, Occurrence
+    >>> SourceImage.objects.all(project__name='myproject')
+
+##### Install backend dependencies locally for IDE support (Intellisense, etc):
 
 ```bash
 python -m venv venv
@@ -82,61 +99,24 @@ source venv/bin/activate
 pip install -r requirements/local.txt
 ```
 
-## Dependencies
+##### Generate OpenAPI schema
 
-### Backend
+```bash
+docker compose run --rm django python manage.py spectacular --api-version 'api' --format openapi --file ami-openapi-schema.yaml
+```
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
+##### Generate TypeScript types from OpenAPI schema
 
-### Frontend
+```bash
+docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i /local/ami-openapi-schema.yaml -g typescript-axios -o /local/ui/src/api-schema.d.ts
+```
 
-- [Node.js](https://nodejs.org/en/download/)
-- [Yarn](https://yarnpkg.com/getting-started/install)
+##### Generate diagram graph of Django models & relationships (Graphviz required)
 
-0. Change to the frontend directory:
-
-   ```bash
-   $ cd ui
-   ```
-
-1. Install Node Version Manager:
-
-   ```bash
-   $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-   ```
-
-2. Install Node.js:
-
-   ```bash
-   $ nvm install
-   ```
-
-3. Install Yarn:
-
-   ```bash
-   $ npm install --global yarn
-   ```
-
-4. Install the dependencies:
-
-   ```bash
-   $ yarn install
-   ```
-
-5. Create a `.env` file in the `frontend` directory with the following content:
-
-   ```bash
-   REACT_APP_API_URL=http://localhost:8000
-   ```
-
-6. Start the frontend:
-
-   ```bash
-   $ yarn start
-   ```
-
-[Further documentation about using Django within this compose setup](http://cookiecutter-django.readthedocs.io/en/latest/deployment-with-docker.html).
+```bash
+docker compose run --rm django python manage.py graph_models -a -o models.dot --dot
+dot -Tsvg  models.dot > models.svg
+```
 
 ## Project Data Storage
 
@@ -159,3 +139,7 @@ Bucket: ami
 - Upload some test images to a subfolder in the `ami` bucket (one subfolder per deployment)
 - Give the bucket or folder anonymous access using the "Anonymous access" button in the Minio web interface.
 - You _can_ test private buckets and presigned URLs, but you will need to add an entry to your local /etc/hosts file to map the `minio` hostname to localhost.
+
+## Email
+
+The local environment uses the `console` email backend. To view emails sent by the platform, check the console output (run the `docker compose logs -f django celeryworker` command).
