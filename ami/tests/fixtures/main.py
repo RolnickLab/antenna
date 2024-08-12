@@ -2,7 +2,17 @@ import datetime
 import pathlib
 import uuid
 
-from ami.main.models import Deployment, Detection, Event, Project, SourceImage, TaxaList, Taxon, TaxonRank
+from ami.main.models import (
+    Deployment,
+    Detection,
+    Event,
+    Project,
+    SourceImage,
+    SourceImageCollection,
+    TaxaList,
+    Taxon,
+    TaxonRank,
+)
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
@@ -36,6 +46,12 @@ def create_captures(
                 path=path,
             )
             created.append(img)
+
+    collection = SourceImageCollection.objects.create(
+        project=deployment.project,
+        name="Test Source Image Collection",
+    )
+    collection.images.set(created)
 
     return created
 
