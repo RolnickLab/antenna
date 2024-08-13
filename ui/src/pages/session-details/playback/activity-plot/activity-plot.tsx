@@ -10,6 +10,7 @@ const lineColorDetections = '#5f8ac6'
 const textColor = '#222426'
 const tooltipBgColor = '#ffffff'
 const tooltipBorderColor = '#222426'
+const gridLineColor = '#f36399'
 
 export const ActivityPlot = ({
   session,
@@ -22,6 +23,20 @@ export const ActivityPlot = ({
 }) => {
   const containerRef = useRef(null)
   const width = useDynamicPlotWidth(containerRef)
+
+  // Calculate the average number of captures
+  const avgCaptures =
+    timeline.reduce((sum, tick) => sum + tick.numCaptures, 0) / timeline.length
+
+  // Calculate the maximum deviation from the average
+  const maxDeviation = Math.max(
+    ...timeline.map((tick) => Math.abs(tick.numCaptures - avgCaptures))
+  )
+
+  // Set the y-axis range to be centered around the average
+  const yAxisMin = Math.max(0, avgCaptures - maxDeviation)
+  const yAxisMax = avgCaptures + maxDeviation
+
   return (
     <div style={{ margin: '0 14px -10px' }}>
       <div ref={containerRef}>
@@ -29,7 +44,9 @@ export const ActivityPlot = ({
           style={{ display: 'block' }}
           data={[
             {
-              x: timeline.map((timelineTick) => timelineTick.startDate),
+              x: timeline.map(
+                (timelineTick) => new Date(timelineTick.startDate)
+              ),
               y: timeline.map((timelineTick) => timelineTick.numCaptures),
               text: timeline.map((timelineTick) => timelineTick.tooltip),
               hovertemplate: '%{text}<extra></extra>',
@@ -38,17 +55,21 @@ export const ActivityPlot = ({
               mode: 'lines',
               line: { color: lineColorCaptures, width: 1 },
               name: 'Captures',
+              yaxis: 'y',
             },
             {
-              x: timeline.map((timelineTick) => timelineTick.startDate),
-              y: timeline.map((timelineTick) => timelineTick.numDetections),
+              x: timeline.map(
+                (timelineTick) => new Date(timelineTick.startDate)
+              ),
+              y: timeline.map((timelineTick) => timelineTick.avgDetections),
               text: timeline.map((timelineTick) => timelineTick.tooltip),
               hovertemplate: '%{text}<extra></extra>',
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
               line: { color: lineColorDetections, width: 1 },
-              name: 'Detections',
+              name: 'Avg. detections',
+              yaxis: 'y2',
             },
           ]}
           layout={{
@@ -63,20 +84,38 @@ export const ActivityPlot = ({
               t: 0,
               pad: 0,
             },
+            // y-axis for captures
             yaxis: {
               showgrid: false,
               showticklabels: false,
               zeroline: false,
               rangemode: 'nonnegative',
               fixedrange: true,
+              range: [yAxisMin, yAxisMax],
+              side: 'left',
             },
-            xaxis: {
-              showline: true,
+            // y-axis for detections
+            yaxis2: {
               showgrid: false,
               showticklabels: false,
               zeroline: false,
+              rangemode: 'nonnegative',
               fixedrange: true,
-              range: [session.startDate, session.endDate],
+              range: [0, Math.max(session.detectionsMaxCount ?? 0, 1)], // Ensure a minimum range of 1
+              side: 'right',
+              overlaying: 'y',
+            },
+            xaxis: {
+              showline: false,
+              showgrid: true,
+              griddash: 'dot',
+              gridwidth: 1,
+              gridcolor: gridLineColor,
+              showticklabels: false,
+              zeroline: false,
+              fixedrange: true,
+              range: [new Date(session.startDate), new Date(session.endDate)],
+              dtick: 3600000, // milliseconds in an hour
             },
             hoverlabel: {
               bgcolor: tooltipBgColor,
@@ -95,8 +134,8 @@ export const ActivityPlot = ({
           onClick={(data) => {
             const timelineTickIndex = data.points[0].pointIndex
             const timelineTick = timeline[timelineTickIndex]
-            if (timelineTick?.firstCaptureId) {
-              setActiveCaptureId(timelineTick.firstCaptureId)
+            if (timelineTick?.representativeCaptureId) {
+              setActiveCaptureId(timelineTick.representativeCaptureId)
             }
           }}
         />

@@ -116,6 +116,8 @@ COLLECTFAST_STRATEGY = "collectfast.strategies.boto3.Boto3Strategy"
 # EMAIL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#default-from-email
+EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
+
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
     default="Automated Monitoring of Insects ML Platform <noreply@app.insectai.org>",

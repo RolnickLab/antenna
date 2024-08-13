@@ -34,6 +34,7 @@ import styles from './app.module.scss'
 
 const queryClient = new QueryClient()
 
+const APP_CONTAINER_ID = 'app'
 const INTRO_CONTAINER_ID = 'intro'
 
 export const App = () => {
@@ -43,7 +44,7 @@ export const App = () => {
         <UserInfoContextProvider>
           <BreadcrumbContextProvider>
             <ReactQueryDevtools initialIsOpen={false} />
-            <div className={styles.wrapper}>
+            <div id={APP_CONTAINER_ID} className={styles.wrapper}>
               <div id={INTRO_CONTAINER_ID}>
                 <Header />
               </div>
