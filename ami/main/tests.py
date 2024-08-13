@@ -569,15 +569,16 @@ class TestTaxonomyViews(TestCase):
     def test_recursive_occurrence_count_from_manager(self):
         from ami.main.models import Taxon
 
-        taxa_with_counts = Taxon.objects.with_occurrence_counts()
-        for taxon in taxa_with_counts:
-            occurrence_count_total = taxon.occurrences_count_recursive()
-            self.assertEqual(occurrence_count_total, taxon.occurrences_count)
+        with self.assertRaises(NotImplementedError):
+            taxa_with_counts = Taxon.objects.with_occurrence_counts()
+            for taxon in taxa_with_counts:
+                occurrence_count_total = taxon.occurrences_count_recursive()
+                self.assertEqual(occurrence_count_total, taxon.occurrences_count)
 
-        for taxon in taxa_with_counts:
-            occurrence_count_direct = taxon.occurrences.count()
-            occurrence_count_total = taxon.occurrences_count_recursive()
-            self.assertEqual(occurrence_count_total, occurrence_count_direct)
+            for taxon in taxa_with_counts:
+                occurrence_count_direct = taxon.occurrences.count()
+                occurrence_count_total = taxon.occurrences_count_recursive()
+                self.assertEqual(occurrence_count_total, occurrence_count_direct)
 
 
 class TestIdentification(APITestCase):

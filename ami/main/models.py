@@ -2165,45 +2165,15 @@ class TaxaManager(models.Manager):
     def with_occurrence_counts(self) -> models.QuerySet:
         """
         Count the number of occurrences for a taxon and all occurrences of the taxon's children.
+
+        @TODO Try a recursive CTE in a raw SQL query,
+        or count the occurrences in a separate query and attach them to the Taxon objects.
         """
-        qs = self.get_queryset()
 
-        # Subquery to get all child taxa IDs
-        import json
-
-        child_taxa = qs.filter(
-            parents_json__contains=models.Value(
-                json.dumps([{"id": models.OuterRef("pk")}]), output_field=models.JSONField()
-            )
-        ).values("pk")
-
-        # Debugging: Log the SQL for child_taxa
-        logger.info(f"SQL for child_taxa: {child_taxa.query}")
-
-        # Debugging: Count and log the number of child taxa
-        child_count = child_taxa.count()
-        logger.info(f"Number of child taxa found: {child_count}")
-
-        # Debugging: Log a sample of child taxa
-        sample_children = list(child_taxa[:5])
-        logger.info(f"Sample of child taxa: {sample_children}")
-
-        # Annotate with occurrence counts
-        qs = qs.annotate(
-            occurrences_count_bulk=models.Count(
-                "occurrences",
-                filter=models.Q(
-                    models.Q(occurrences__determination_id=models.F("pk"))
-                    | models.Q(occurrences__determination_id__in=models.Subquery(child_taxa))
-                ),
-                distinct=True,
-            )
+        raise NotImplementedError(
+            "Occurrence counts can not be calculated in a subquery with the current JSONField schema. "
+            "Fetch them per taxon."
         )
-
-        # Debugging: Log the final SQL query
-        logger.info(f"Final SQL query: {qs.query}")
-
-        return qs
 
 
 class TaxonParent(pydantic.BaseModel):
