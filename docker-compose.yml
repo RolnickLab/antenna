@@ -35,6 +35,8 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/postgres/Dockerfile
+    ports:
+      - "5444:5432"
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
       - ami_local_postgres_data_backups:/backups
