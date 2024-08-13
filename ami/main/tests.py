@@ -7,8 +7,8 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
 from ami.main.models import Event, Occurrence, Project, Taxon, TaxonRank, group_images_into_events
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
+from tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 
 logger = logging.getLogger(__name__)
 
