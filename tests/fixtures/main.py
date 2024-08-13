@@ -83,6 +83,44 @@ def create_taxa(project: Project) -> TaxaList:
     return taxa_list
 
 
+TEST_TAXA_CSV_DATA = """
+id,name,rank,parent_id
+1,Lepidoptera,ORDER,
+2,Nymphalidae,FAMILY,1
+3,Vanessa,GENUS,2
+4,Vanessa atalanta,SPECIES,3
+5,Vanessa cardui,SPECIES,3
+6,Vanessa itea,SPECIES,3
+""".strip()
+
+
+def create_taxa_from_csv(project: Project, csv_data: str = TEST_TAXA_CSV_DATA):
+    import csv
+    from io import StringIO
+
+    taxa_list = TaxaList.objects.create(name="Test Taxa List")
+    taxa_list.projects.add(project)
+
+    def create_taxon(taxon_data: dict, parent=None):
+        taxon, _ = Taxon.objects.get_or_create(
+            id=taxon_data["id"],
+            name=taxon_data["name"],
+            rank=taxon_data["rank"],
+            parent_id=taxon_data["parent_id"] or None,
+        )
+        taxon.projects.add(project)
+        taxa_list.taxa.add(taxon)
+        taxon.save(update_calculated_fields=True)
+
+        return taxon
+
+    reader = csv.DictReader(StringIO(csv_data.strip()))
+    for row in reader:
+        create_taxon(row)
+
+    return taxa_list
+
+
 def create_occurrences(
     deployment: Deployment,
     num: int = 6,

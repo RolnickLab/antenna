@@ -1,7 +1,6 @@
 import datetime
 
 from django.db.models import QuerySet
-from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
 from ami.base.serializers import DefaultSerializer, get_current_user, reverse_with_params
@@ -29,7 +28,6 @@ from ..models import (
     SourceImageCollection,
     SourceImageUpload,
     Taxon,
-    TaxonParent,
 )
 
 
@@ -408,13 +406,22 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         ]
 
 
+class TaxonParentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    rank = serializers.SerializerMethodField()
+
+    def get_rank(self, obj):
+        return obj.rank.value
+
+
 class TaxonNestedSerializer(TaxonNoParentNestedSerializer):
     """
     Simple Taxon serializer with 1 level of nested parents.
     """
 
     parent = TaxonNoParentNestedSerializer(read_only=True)
-    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
 
     class Meta(TaxonNoParentNestedSerializer.Meta):
         fields = TaxonNoParentNestedSerializer.Meta.fields + [
@@ -492,7 +499,7 @@ class TaxonListSerializer(DefaultSerializer):
 
 class CaptureTaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
-    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Taxon
@@ -649,7 +656,7 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     # parents = TaxonParentNestedSerializer(many=True, read_only=True, source="parents_json")
-    parents = SchemaField(list[TaxonParent], source="parents_json", read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
 
     class Meta:
         model = Taxon

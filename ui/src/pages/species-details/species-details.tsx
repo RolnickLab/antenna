@@ -42,7 +42,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
     },
     {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
-      value: species.numOccurrences,
+      value: species.numOccurrences || 'View all',
       to: getAppRoute({
         to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
         filters: { determination: species.id },

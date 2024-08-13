@@ -378,6 +378,68 @@ class TestTaxonomy(TestCase):
         with self.assertRaises(ValueError):
             self._test_filtered_tree(filter_ranks)
 
+    def test_update_parents(self):
+        for taxon in Taxon.objects.all():
+            taxon.update_parents(save=True)
+            taxon.refresh_from_db()
+            self._test_parents_json(taxon)
+
+    def test_update_all_parents(self):
+        from ami.main.models import Taxon
+
+        Taxon.objects.update_all_parents()
+
+        for taxon in Taxon.objects.exclude(parent=None):
+            self._test_parents_json(taxon)
+
+    def _test_parents_json(self, taxon):
+        from ami.main.models import TaxonParent, TaxonRank
+
+        # Ensure all taxon have parents_json populated
+        if taxon.parent:
+            self.assertGreater(
+                len(taxon.parents_json),
+                0,
+                f"Taxon {taxon} has no parents_json, even though it has the parent {taxon.parent}",
+            )
+        else:
+            self.assertEqual(
+                len(taxon.parents_json),
+                0,
+                f"Taxon {taxon} has parents_json, even though it has no parent",
+            )
+
+        for parent_taxon in taxon.parents_json:
+            # Ensure all parents_json are TaxonParent objects
+            self.assertIsInstance(parent_taxon, TaxonParent)
+            self.assertIsInstance(parent_taxon.rank, TaxonRank)
+
+            # Ensure a parent rank is not the same as the taxon itself
+            self.assertNotEqual(taxon.rank, parent_taxon.rank)
+
+        # Ensure the order of all parents is correct
+        sorted_parents = sorted(taxon.parents_json, key=lambda x: x.rank)
+        self.assertListEqual(taxon.parents_json, sorted_parents)
+
+        # For each rank, test that it is lower than the previous rank
+        previous_rank = None
+        for parent in taxon.parents_json:
+            if previous_rank:
+                self.assertGreater(parent.rank, previous_rank)
+            previous_rank = parent.rank
+
+        # Ensure last item in parents_json is the taxon's direct parent
+        if taxon.parent:
+            direct_parent = taxon.parents_json[-1]
+            self.assertEqual(
+                direct_parent.id,
+                taxon.parent_id,
+                (
+                    f"Taxon {taxon} has incorrect direct parent: {direct_parent.name} != {taxon.parent.name}. "
+                    f"All parents: {taxon.parents_json}"
+                ),
+            )
+
 
 class TestTaxonomyViews(TestCase):
     def setUp(self) -> None:
@@ -474,6 +536,49 @@ class TestTaxonomyViews(TestCase):
         response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], taxon.name)
+
+    def test_recursive_occurrence_counts_single(self):
+        # First, assert that we have taxa with parents and occurrences
+        from ami.main.models import Taxon
+
+        taxa = Taxon.objects.exclude(parent=None).filter(occurrences__isnull=False)
+        self.assertGreater(taxa.count(), 0)
+        for taxon in taxa:
+            occurrence_count_direct = taxon.occurrences.count()
+            occurrence_count_total = taxon.occurrences_count_recursive()
+            self.assertGreaterEqual(occurrence_count_total, occurrence_count_direct)
+
+            # Manually add up the occurrences for each taxon and its children, recursively:
+            def _count_occurrences_recursive(taxon):
+                count = taxon.occurrences.count()
+                for child in taxon.direct_children.all():
+                    count += _count_occurrences_recursive(child)
+                return count
+
+            manual_count = _count_occurrences_recursive(taxon)
+            self.assertEqual(occurrence_count_total, manual_count)
+
+        # The top level test taxa should have all occurrences
+        top_level_taxa = Taxon.objects.root()
+        count = top_level_taxa.occurrences_count_recursive()
+        self.assertGreater(count, 0)
+        project_ids = top_level_taxa.projects.values_list("id", flat=True)
+        total_occurrences = Occurrence.objects.filter(project__in=project_ids).count()
+        self.assertEqual(count, total_occurrences)
+
+    def test_recursive_occurrence_count_from_manager(self):
+        from ami.main.models import Taxon
+
+        with self.assertRaises(NotImplementedError):
+            taxa_with_counts = Taxon.objects.with_occurrence_counts()
+            for taxon in taxa_with_counts:
+                occurrence_count_total = taxon.occurrences_count_recursive()
+                self.assertEqual(occurrence_count_total, taxon.occurrences_count)
+
+            for taxon in taxa_with_counts:
+                occurrence_count_direct = taxon.occurrences.count()
+                occurrence_count_total = taxon.occurrences_count_recursive()
+                self.assertEqual(occurrence_count_total, occurrence_count_direct)
 
 
 class TestIdentification(APITestCase):
