@@ -376,11 +376,11 @@ class MLJob(JobType):
                     job.logger.info(f"Sent image batch {i} of {len(chunks)} ({request})")
                     # Wait for request to hit callback, with a timeout
                     timer = 0
-                    while not request.response_data and timer < 10:
+                    while not request.response_data and timer < 20:
                         job.logger.info(f"Waiting for callback to request {request}")
                         request.refresh_from_db()
-                        time.sleep(0.1)
-                        timer += 0.1
+                        time.sleep(1)
+                        timer += 1
 
                 except Exception as e:
                     # Log error about image batch and continue
@@ -389,6 +389,7 @@ class MLJob(JobType):
 
                 else:
                     if request.response_data:
+                        job.logger.info(f"Received response callback!! for request {request}")
                         num_detections = sum([len(img.detections) for img in request.response_data.data])
                         total_detections += num_detections
 

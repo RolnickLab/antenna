@@ -52,10 +52,15 @@ class PipelineCallbackView(APIView):
     API endpoint that allows pipelines to be executed.
     """
 
+    authentication_classes = []  # disables authentication
+    permission_classes = []  # disables permission
+
     def post(self, request, *args, **kwargs):
         import pydantic
 
         from ami.ml.schemas.v2 import PipelineCallbackResponse
+
+        print(f"Received pipeline results callback: {request.data}")
 
         # Parse the request into a PipelineCallbackResponse
         try:
@@ -64,6 +69,7 @@ class PipelineCallbackView(APIView):
         except pydantic.ValidationError as e:
             return Response(e.errors(), status=status.HTTP_400_BAD_REQUEST)
         else:
+            print(f"Received valid pipeline results callback: {response}")
             # Ensure request ID is valid and the token is correct
             try:
                 token = request.headers["Authorization"]
@@ -72,17 +78,21 @@ class PipelineCallbackView(APIView):
                 return Response("Missing authorization header", status=status.HTTP_401_UNAUTHORIZED)
 
             try:
-                pipeline_request = PipelineAsyncRequestRecord(pk=response.pipelineRequestId, token=token)
+                pipeline_request = PipelineAsyncRequestRecord(
+                    pipeline_request_id=response.pipelineRequestId, token=token
+                )
             except PipelineAsyncRequestRecord.DoesNotExist:
                 return Response("Invalid pipeline request ID", status=status.HTTP_400_BAD_REQUEST)
             else:
+                logger.info(f"Received pipeline results callback: {request.data}")
                 pipeline_response = PipelineCallbackResponse(**request.data)
                 pipeline_request.response_data = pipeline_response
                 pipeline_request.status = PipelineAsyncRequestStatus.COMPLETED
                 pipeline_request.save()
+                pipeline_request.save_results()
                 # @TODO Send signal to process the pipeline results
 
             logger.info(f"Received pipeline results callback: {response}")
             # Format and print the response to the console
-            print(response.model_dump_json(indent=2))
+            logger.info(response.json(indent=2))
             return Response(status=status.HTTP_200_OK)

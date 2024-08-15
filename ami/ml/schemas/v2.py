@@ -39,9 +39,9 @@ class CnnFeatures(BaseModel):
 
 
 class DetectionCallbackResponse(BaseModel):
-    id: str
-    cropUrl: str
-    version: StageVersion
+    id: str | None
+    cropUrl: str | None
+    version: StageVersion | None
     boundingBox: BoundingBox
     classifications: typing.Sequence[ClassificationCallbackResponse]
     cnnFeatures: CnnFeatures | None = None
@@ -57,7 +57,7 @@ class StageResponseInformation(BaseModel):
 class SourceImageResponse(BaseModel):
     sourceImageId: str
     sourceImageUrl: str
-    eventId: str
+    eventId: str | None
     stages: typing.Sequence[StageResponseInformation]
     detections: typing.Sequence[DetectionCallbackResponse]
 

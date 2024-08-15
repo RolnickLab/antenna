@@ -3,7 +3,7 @@ from django.contrib import admin
 from ami.main.admin import AdminBase
 
 from .models.algorithm import Algorithm
-from .models.pipeline import Pipeline
+from .models.pipeline import Pipeline, PipelineAsyncRequestRecord
 
 
 @admin.register(Algorithm)
@@ -57,3 +57,24 @@ class PipelineAdmin(AdminBase):
         # See https://pypi.org/project/django-json-widget/
         # models.JSONField: {"widget": JSONInput},
     }
+
+
+@admin.register(PipelineAsyncRequestRecord)
+class PipelineAsyncRequestRecordAdmin(AdminBase):
+    list_display = [
+        "pipeline_request_id",
+        "job",
+        "status",
+        "created_at",
+        "updated_at",
+    ]
+    search_fields = [
+        "job__id",
+        "status",
+    ]
+    ordering = [
+        "status",
+    ]
+    list_filter = [
+        "status",
+    ]

@@ -34,7 +34,7 @@ from ..schemas.v2 import (
     PipelineConfig,
 )
 from ..schemas.v2 import SourceImageRequest as SourceImageRequestAsync
-from ..schemas.v2 import SourceImageResponse, StageConfig
+from ..schemas.v2 import StageConfig
 from .algorithm import Algorithm
 
 logger = logging.getLogger(__name__)
@@ -58,9 +58,10 @@ class PipelineAsyncRequestRecord(BaseModel):
     # endpoint_url = models.URLField()  # Doesn't work with docker hostnames
     endpoint_url = models.CharField(max_length=1024)
     token = models.CharField(max_length=1024)
+    callback_url = models.CharField(max_length=1024)
     job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, related_name="pipeline_requests", null=True)
     source_images = models.ManyToManyField(SourceImage, related_name="pipeline_requests")
-    config_data = SchemaField(PipelineConfig)
+    config_data = SchemaField(PipelineConfig, null=True, blank=True)
     response_data = SchemaField(PipelineCallbackResponse, null=True, blank=True)
     status = models.CharField(
         choices=PipelineAsyncRequestStatus.choices, default=PipelineAsyncRequestStatus.UNKNOWN, max_length=32
@@ -76,6 +77,11 @@ class PipelineAsyncRequestRecord(BaseModel):
 
         self.token = secrets.token_urlsafe(32)
         return self.token
+
+    def save_results(self):
+        if self.response_data:
+            job_id = self.job.pk if self.job else None
+            save_async_results(self.response_data, job_id=job_id)
 
     def save(self, *args, **kwargs):
         if not self.token:
@@ -176,7 +182,7 @@ def collect_images(
 
 
 def initiate_async_pipeline_request(
-    pipeline_choice: str,
+    pipeline: "Pipeline",
     endpoint_url: str,
     callback_url: str,
     images: typing.Iterable[SourceImage],
@@ -197,7 +203,7 @@ def initiate_async_pipeline_request(
             ),
             StageConfig(
                 stage="CLASSIFICATION",
-                stageImplementation="flatbug",
+                stageImplementation="mcc24",
             ),
         ]
     )
@@ -205,9 +211,10 @@ def initiate_async_pipeline_request(
     request = PipelineAsyncRequestRecord.objects.create(
         job_id=job_id,
         endpoint_url=endpoint_url,
-        source_images=images,
         config_data=pipeline_config,
+        callback_url=callback_url,
     )
+    request.source_images.set(images)
     if job:
         job.logger.info(f"Created async pipeline request {request} with {len(images)} images")
 
@@ -238,9 +245,14 @@ def initiate_async_pipeline_request(
     )
     logger.info(f"Sending async pipeline request to {endpoint_url}")
 
-    resp = requests.post(endpoint_url, json=request_data.dict())
+    # Add authorization header
+    headers = {
+        "Authorization": f"{pipeline.endpoint_token}",
+    }
+    resp = requests.post(endpoint_url, json=request_data.dict(), headers=headers)
     resp.raise_for_status()
     resp_data = PipelineAsyncRequestResponse(**resp.json())
+    print(f"INITIATED ASYNC PIPELINE REQUEST: {resp_data}")
     request.pipeline_request_id = resp_data.requestId
     request.status = PipelineAsyncRequestStatus.SENT
     request.save()
@@ -301,9 +313,7 @@ def _timestamp_to_datetime(timestamp: int) -> datetime.datetime:
     return now() + datetime.timedelta(seconds=timestamp)
 
 
-def save_async_results(
-    response: PipelineCallbackResponse, results: list[SourceImageResponse], job_id: int | None = None
-):
+def save_async_results(response: PipelineCallbackResponse, job_id: int | None = None):
     """
     Save results from an asynchronous ML pipeline API response.
     """
@@ -311,6 +321,7 @@ def save_async_results(
     job = None
     algorithms_used = set()
     source_images = set()
+    results = response.data
 
     if job_id:
         from ami.jobs.models import Job
@@ -343,12 +354,14 @@ def save_async_results(
                     existing_detection.save()
                 detection = existing_detection
             else:
+                stage_info = stage_data.get(stage_name, None)
+                timestamp = stage_info.timestamp if stage_info else None
                 new_detection = Detection.objects.create(
                     source_image=source_image,
                     bbox=[bbox.x1, bbox.y1, bbox.x2, bbox.y2],
                     timestamp=source_image.timestamp,
                     path=detection_resp.cropUrl or "",
-                    detection_time=stage_data[stage_name].timestamp,
+                    detection_time=timestamp,
                     detection_algorithm=algorithm,
                 )
                 new_detection.save()
@@ -591,6 +604,7 @@ class Pipeline(BaseModel):
     )
     projects = models.ManyToManyField("main.Project", related_name="pipelines")
     endpoint_url = models.URLField(null=True, blank=True)
+    endpoint_token = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         ordering = ["name", "version"]
@@ -632,9 +646,9 @@ class Pipeline(BaseModel):
         # Right now we only have one callback URL for all pipelines
         # @TODO add URL path kwargs for pipeline slug and job ID
         # Or put the pipeline request ID right in the URL?
-        path = reverse("pipeline-callback")
+        path = reverse("api:pipeline-callback")
         # @TODO get base URL from view request?
-        base_url = settings.BASE_URL
+        base_url = settings.PUBLIC_BASE_URL
 
         callback_url = urljoin(base_url, path)
         return callback_url
@@ -648,7 +662,7 @@ class Pipeline(BaseModel):
             raise ValueError("No endpoint URL configured for this pipeline")
         return initiate_async_pipeline_request(
             endpoint_url=self.endpoint_url,
-            pipeline_choice=self.slug,
+            pipeline=self,
             images=images,
             job_id=job_id,
             callback_url=self.get_callback_url(),

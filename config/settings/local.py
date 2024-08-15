@@ -21,7 +21,15 @@ ALLOWED_HOSTS = [
     "0.0.0.0",
     "127.0.0.1",
     "api.dev.insectai.org",
+    "*",
 ]
+
+PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", default=None)
+if PUBLIC_BASE_URL:
+    import urllib.parse
+
+    PUBLIC_BASE_HOSTNAME = urllib.parse.urlparse(PUBLIC_BASE_URL).hostname
+    ALLOWED_HOSTS.append(PUBLIC_BASE_HOSTNAME)
 
 # CACHES
 # ------------------------------------------------------------------------------
