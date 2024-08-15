@@ -361,24 +361,37 @@ class MLJob(JobType):
             )
 
             total_detections = 0
-            total_classifications = 0
+            requests_sent = []
 
             CHUNK_SIZE = 4  # Keep it low to see more progress updates
             chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
 
             for i, chunk in enumerate(chunks):
                 try:
-                    results = job.pipeline.process_images(
+                    request = job.pipeline.process_images_async(
                         images=chunk,
                         job_id=job.pk,
                     )
+                    requests_sent.append(request)
+                    job.logger.info(f"Sent image batch {i} of {len(chunks)} ({request})")
+                    # Wait for request to hit callback, with a timeout
+                    timer = 0
+                    while not request.response_data and timer < 10:
+                        job.logger.info(f"Waiting for callback to request {request}")
+                        request.refresh_from_db()
+                        time.sleep(0.1)
+                        timer += 0.1
+
                 except Exception as e:
                     # Log error about image batch and continue
-                    job.logger.error(f"Failed to process image batch {i} of {len(chunks)}: {e}")
+                    job.logger.error(f"Failed to send image batch {i} of {len(chunks)}: {e}")
                     continue
 
-                total_detections += len(results.detections)
-                total_classifications += len([c for d in results.detections for c in d.classifications])
+                else:
+                    if request.response_data:
+                        num_detections = sum([len(img.detections) for img in request.response_data.data])
+                        total_detections += num_detections
+
                 job.progress.update_stage(
                     "process",
                     status=JobState.STARTED,
@@ -386,15 +399,6 @@ class MLJob(JobType):
                     processed=(i + 1) * CHUNK_SIZE,
                     remaining=image_count - (i + 1) * CHUNK_SIZE,
                     detections=total_detections,
-                    classifications=total_classifications,
-                )
-                job.save()
-                objects = job.pipeline.save_results(results=results, job_id=job.pk)
-                job.progress.update_stage(
-                    "results",
-                    status=JobState.STARTED,
-                    progress=(i + 1) / len(chunks),
-                    objects_created=len(objects),
                 )
                 job.update_progress()
                 job.save()

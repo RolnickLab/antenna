@@ -54,6 +54,7 @@ urlpatterns = [
     path("auth/", include("djoser.urls.authtoken")),
     path("status/summary/", views.SummaryView.as_view(), name="status-summary"),
     path("status/storage/", views.StorageStatus.as_view(), name="status-storage"),
+    path("ml/pipelines/callback", ml_views.PipelineCallbackView.as_view(), name="pipeline-callback"),
 ]
 
 
