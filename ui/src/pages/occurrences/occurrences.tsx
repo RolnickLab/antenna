@@ -100,7 +100,7 @@ export const Occurrences = () => {
       {selectedView === 'table' && (
         <Table
           items={occurrences}
-          isLoading={isLoading}
+          isLoading={!id && isLoading}
           columns={columns(
             projectId as string,
             selectedItems.length === 0
@@ -115,7 +115,10 @@ export const Occurrences = () => {
       )}
       {selectedView === 'gallery' && (
         <div className={styles.galleryContent}>
-          <OccurrenceGallery occurrences={occurrences} isLoading={isLoading} />
+          <OccurrenceGallery
+            occurrences={occurrences}
+            isLoading={!id && isLoading}
+          />
         </div>
       )}
       <PageFooter>
@@ -141,7 +144,7 @@ export const Occurrences = () => {
           />
         ) : null}
       </PageFooter>
-      {!isLoading && id ? <OccurrenceDetailsDialog id={id} /> : null}
+      {id ? <OccurrenceDetailsDialog id={id} /> : null}
     </>
   )
 }

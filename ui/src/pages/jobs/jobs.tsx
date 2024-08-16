@@ -50,7 +50,7 @@ export const Jobs = () => {
       </PageHeader>
       <Table
         items={jobs}
-        isLoading={isLoading}
+        isLoading={!id && isLoading}
         columns={columns(projectId as string)}
         sortable
         sortSettings={sort}
@@ -65,7 +65,7 @@ export const Jobs = () => {
           />
         ) : null}
       </PageFooter>
-      {!isLoading && id ? <JobDetailsDialog id={id} /> : null}
+      {id ? <JobDetailsDialog id={id} /> : null}
     </>
   )
 }
