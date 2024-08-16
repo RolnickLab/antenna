@@ -58,13 +58,13 @@ const DeploymentDetailsDialogContent = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false)
   const { updateDeployment, isLoading, error } = useUpdateDeployment(
-    deployment?.id
+    deployment.id
   )
 
   useEffect(() => {
     // Reset to view mode when a new deployment is selected
     setIsEditing(false)
-  }, [deployment?.id])
+  }, [deployment.id])
 
   return (
     <>
