@@ -45,7 +45,21 @@ export const SectionExampleCaptures = ({
 }: {
   deployment: DeploymentDetails
 }) => {
-  const [files, setFiles] = useState<File[]>([])
+  const [addQueue, setAddQueue] = useState<
+    { file: File; id: string | undefined; uploaded?: boolean }[]
+  >([])
+
+  useEffect(() => {
+    // Remove items from queue when deployment capture data is updated, to free memory
+    setAddQueue((prev) =>
+      prev.filter(({ id }) => {
+        const deploymentHasCapture = deployment.exampleCaptures.some(
+          (exampleCapture) => exampleCapture.id === id
+        )
+        return !deploymentHasCapture
+      })
+    )
+  }, [deployment.exampleCaptures])
 
   if (!deployment.createdAt) {
     return (
@@ -57,7 +71,7 @@ export const SectionExampleCaptures = ({
   }
 
   const canUpload =
-    deployment.exampleCaptures.length + files.length <
+    deployment.exampleCaptures.length + addQueue.length <
     CAPTURE_CONFIG.NUM_CAPTURES
 
   return (
@@ -74,15 +88,38 @@ export const SectionExampleCaptures = ({
           />
         ))}
 
-        {files.map((file, index) => (
-          <AddedExampleCapture
-            key={index}
-            deploymentId={deployment.id}
-            file={file}
-            index={deployment.exampleCaptures.length + index}
-            onUploaded={() => setFiles(files.filter((f) => f !== file))}
-          />
-        ))}
+        {addQueue
+          .filter(({ id }) => {
+            // Only render queue items that are not part of deployment captures
+            const deploymentHasCapture = deployment.exampleCaptures.some(
+              (exampleCapture) => exampleCapture.id === id
+            )
+            return !deploymentHasCapture
+          })
+          .map(({ file }, index) => (
+            <AddedExampleCapture
+              key={file.name}
+              deploymentId={deployment.id}
+              file={file}
+              index={deployment.exampleCaptures.length + index}
+              onCancel={() => {
+                // Remove item from queue
+                setAddQueue((prev) => prev.filter(({ file }) => file !== file))
+              }}
+              onSuccess={(id: string) => {
+                // Update queue item with upload status
+                setAddQueue((prev) =>
+                  prev.map((item) => {
+                    if (item.file === file) {
+                      item.id = id
+                      item.uploaded = true
+                    }
+                    return item
+                  })
+                )
+              }}
+            />
+          ))}
 
         {canUpload && (
           <Card>
@@ -98,9 +135,19 @@ export const SectionExampleCaptures = ({
                   theme={IconButtonTheme.Success}
                 />
               )}
-              onChange={(newFiles) =>
-                setFiles([...files, ...Array.from(newFiles ?? [])])
-              }
+              onChange={(newFiles) => {
+                if (!newFiles) {
+                  return
+                }
+
+                setAddQueue((prev) => [
+                  ...prev,
+                  ...Array.from(newFiles).map((file) => ({
+                    file,
+                    id: undefined,
+                  })),
+                ])
+              }}
             />
           </Card>
         )}
@@ -135,18 +182,18 @@ const ExampleCapture = ({ id, src }: { id: string; src: string }) => (
 
 const AddedExampleCapture = ({
   deploymentId,
-  index,
   file,
-  onUploaded,
+  index,
+  onCancel,
+  onSuccess,
 }: {
   deploymentId: string
-  file: File
   index: number
-  onUploaded: () => void
+  file: File
+  onCancel: () => void
+  onSuccess: (id: string) => void
 }) => {
-  const { uploadCapture, isLoading, isSuccess, error } =
-    useUploadCapture(onUploaded)
-
+  const { uploadCapture, error } = useUploadCapture(onSuccess)
   const { isValid, errorMessage, allowRetry } = useCaptureError({
     error,
     file,
@@ -154,16 +201,13 @@ const AddedExampleCapture = ({
   })
 
   useEffect(() => {
-    if (!isValid || isSuccess) {
+    if (!isValid) {
       return
     }
 
+    // Trigger capture upload on component mount
     uploadCapture({ deploymentId, file })
   }, [])
-
-  if (isSuccess) {
-    return null
-  }
 
   return (
     <Card>
@@ -171,8 +215,7 @@ const AddedExampleCapture = ({
         <img src={URL.createObjectURL(file)} />
       </div>
       <div className={styles.cardContent}>
-        {isLoading ? <LoadingSpinner size={32} /> : null}
-        {errorMessage && (
+        {errorMessage ? (
           <>
             <Tooltip content={errorMessage}>
               {allowRetry ? (
@@ -194,10 +237,12 @@ const AddedExampleCapture = ({
               <IconButton
                 icon={IconType.Cross}
                 shape={IconButtonShape.Round}
-                onClick={onUploaded}
+                onClick={onCancel}
               />
             </div>
           </>
+        ) : (
+          <LoadingSpinner size={32} />
         )}
       </div>
     </Card>
