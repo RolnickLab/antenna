@@ -46,5 +46,5 @@ force = false
 
 [build]
 # Only trigger a build if the frontend code has changed
-command = "API_BASE_URL=${API_BASE_URL:?'API_BASE_URL is not set'} sed -i 's|API_BASE_URL_PLACEHOLDER|${API_BASE_URL}|g' netlify.toml && yarn build"
+command = "sed -i \"s|API_BASE_URL_PLACEHOLDER|${API_BASE_URL}|g\" netlify.toml && cat netlify.toml && yarn build"
 ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF ./"
