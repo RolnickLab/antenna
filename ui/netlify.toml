@@ -1,7 +1,7 @@
 [[redirects]]
 # Serve the api docs from /api/
-from = "/api/"
-to = "https://api.beluga.insectai.org/docs/"
+from = "/docs/"
+to = "API_BASE_URL_PLACEHOLDER/docs/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -9,7 +9,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external api endpints from /api/*
 from = "/api/*"
-to = "https://api.beluga.insectai.org/api/:splat"
+to = "API_BASE_URL_PLACEHOLDER/api/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -17,7 +17,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external images from from /static/images/*
 from = "/static/captures/*"
-to = "https://api.beluga.insectai.org/static/captures/:splat"
+to = "API_BASE_URL_PLACEHOLDER/static/captures/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -25,7 +25,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external images from from /static/images/*
 from = "/static/crops/*"
-to = "https://api.beluga.insectai.org/static/crops/:splat"
+to = "API_BASE_URL_PLACEHOLDER/static/crops/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -46,4 +46,5 @@ force = false
 
 [build]
 # Only trigger a build if the frontend code has changed
+command = "sed -i \"s|API_BASE_URL_PLACEHOLDER|${API_BASE_URL}|g\" netlify.toml && cat netlify.toml && yarn build && yarn build-storybook"
 ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF ./"
