@@ -1,7 +1,7 @@
 [[redirects]]
 # Serve the api docs from /api/
 from = "/docs/"
-to = "API_BASE_URL/docs/:splat"
+to = "API_BASE_URL_PLACEHOLDER/docs/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -9,7 +9,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external api endpints from /api/*
 from = "/api/*"
-to = "API_BASE_URL/:splat"
+to = "API_BASE_URL_PLACEHOLDER/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -17,7 +17,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external images from from /static/images/*
 from = "/static/captures/*"
-to = "API_BASE_URL/static/captures/:splat"
+to = "API_BASE_URL_PLACEHOLDER/static/captures/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -25,7 +25,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external images from from /static/images/*
 from = "/static/crops/*"
-to = "API_BASE_URL/static/crops/:splat"
+to = "API_BASE_URL_PLACEHOLDER/static/crops/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
@@ -46,5 +46,5 @@ force = false
 
 [build]
 # Only trigger a build if the frontend code has changed
+command = "API_BASE_URL=${API_BASE_URL:?'API_BASE_URL is not set'} sed -i 's|API_BASE_URL_PLACEHOLDER|${API_BASE_URL}|g' netlify.toml && yarn build"
 ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF ./"
-command = "sed -i \"s|API_BASE_URL|${API_BASE_URL}|g\" netlify.toml && yarn build"
