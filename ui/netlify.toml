@@ -9,7 +9,7 @@ headers = { X-From = "Netlify" }
 [[redirects]]
 # Serve the external api endpints from /api/*
 from = "/api/*"
-to = "API_BASE_URL_PLACEHOLDER/:splat"
+to = "API_BASE_URL_PLACEHOLDER/api/:splat"
 status = 200
 force = true
 headers = { X-From = "Netlify" }
