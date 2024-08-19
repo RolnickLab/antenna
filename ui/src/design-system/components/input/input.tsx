@@ -208,3 +208,22 @@ export const LockedInput = ({
     {children}
   </div>
 )
+
+export const EditableInput = ({
+  editing,
+  onEdit,
+  children,
+}: {
+  editing: boolean
+  onEdit: () => void
+  children: ReactNode
+}) => (
+  <div className={styles.lockedInputContainer}>
+    <div className={styles.editButtonContainer}>
+      {!editing && (
+        <IconButton icon={IconType.Pencil} onClick={() => onEdit()} />
+      )}
+    </div>
+    {children}
+  </div>
+)

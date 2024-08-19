@@ -9,6 +9,7 @@ import {
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { bytesToMB } from 'utils/bytesToMB'
@@ -17,7 +18,8 @@ import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { UserInfo } from 'utils/user/types'
 import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
-import { IconType } from 'design-system/components/icon/icon'
+import { UserEmailField } from './user-email-field'
+import { UserPasswordField } from './user-password-field'
 
 interface UserInfoFormValues {
   name: string
@@ -67,7 +69,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
-    <form onSubmit={handleSubmit((values) => updateUserInfo(values))}>
+    <>
       {errorMessage && (
         <FormError
           inDialog
@@ -77,43 +79,42 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
       )}
       <FormSection>
         <FormRow>
-          <InputValue
-            label={translate(STRING.FIELD_LABEL_EMAIL)}
-            value={userInfo.email}
-          />
-          <InputValue
-            label={translate(STRING.FIELD_LABEL_PASSWORD)}
-            value={translate(STRING.MESSAGE_CHANGE_PASSWORD)}
-          />
+          <UserEmailField value={userInfo.email} />
+          <UserPasswordField value="************" />
         </FormRow>
-        <FormRow>
-          <FormField
-            name="name"
-            type="text"
-            config={config}
-            control={control}
-          />
-        </FormRow>
-        <FormRow>
-          <FormController
-            name="image"
-            control={control}
-            config={config.image}
-            render={({ field, fieldState }) => (
-              <InputContent
-                description={config[field.name].description}
-                label={config[field.name].label}
-                error={fieldState.error?.message}
-              >
-                <UserInfoImageUpload
-                  userInfo={userInfo}
-                  file={field.value}
-                  onChange={field.onChange}
-                />
-              </InputContent>
-            )}
-          />
-        </FormRow>
+        <form
+          onSubmit={handleSubmit((values) => updateUserInfo(values))}
+          style={{ display: 'contents' }}
+        >
+          <FormRow>
+            <FormField
+              name="name"
+              type="text"
+              config={config}
+              control={control}
+            />
+          </FormRow>
+          <FormRow>
+            <FormController
+              name="image"
+              control={control}
+              config={config.image}
+              render={({ field, fieldState }) => (
+                <InputContent
+                  description={config[field.name].description}
+                  label={config[field.name].label}
+                  error={fieldState.error?.message}
+                >
+                  <UserInfoImageUpload
+                    userInfo={userInfo}
+                    file={field.value}
+                    onChange={field.onChange}
+                  />
+                </InputContent>
+              )}
+            />
+          </FormRow>
+        </form>
       </FormSection>
       <FormActions>
         <Button
@@ -124,6 +125,6 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
           loading={isLoading}
         />
       </FormActions>
-    </form>
+    </>
   )
 }
