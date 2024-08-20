@@ -90,7 +90,9 @@ export const ResetPassword = () => {
       </form>
       <div className={styles.outro}>
         <p className={styles.text}>
-          <Link to={APP_ROUTES.LOGIN}>Back to login</Link>
+          <Link to={APP_ROUTES.LOGIN} state={{ email }}>
+            Back to login
+          </Link>
         </p>
       </div>
     </>
