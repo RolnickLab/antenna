@@ -80,12 +80,12 @@ export const Login = () => {
           </p>
         )}
         <p className={styles.text}>
-          Forgot password?{' '}
+          {translate(STRING.FORGOT_PASSWORD)}{' '}
           <Link
             to={APP_ROUTES.RESET_PASSWORD}
             state={{ email: getValues('email') ?? undefined }}
           >
-            Reset
+            {translate(STRING.RESET)}
           </Link>
         </p>
       </form>

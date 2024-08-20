@@ -39,21 +39,20 @@ export const ResetPassword = () => {
   } = useForm<ResetFormValues>({
     defaultValues: { email: state?.email ?? '' },
   })
-
   const errorMessage = useFormError({ error, setFieldError })
 
   usePageBreadcrumb({
-    title: 'Forgot password?',
+    title: translate(STRING.FORGOT_PASSWORD),
     path: APP_ROUTES.RESET_PASSWORD,
   })
 
   return (
     <>
       <div className={styles.intro}>
-        <h1 className={styles.title}>Forgot password?</h1>
+        <h1 className={styles.title}>{translate(STRING.FORGOT_PASSWORD)}</h1>
         {!isSuccess && (
           <p className={styles.text}>
-            No worries, we'll send you reset instructions.
+            {translate(STRING.FORGOT_PASSWORD_DETAILS)}
           </p>
         )}
       </div>
@@ -70,16 +69,24 @@ export const ResetPassword = () => {
               control={control}
             />
             <Button
-              label="Send instructions"
+              label={translate(STRING.SEND_INSTRUCTIONS)}
               type="submit"
               theme={ButtonTheme.Success}
               loading={isLoading}
             />
           </>
         )}
-        {isSuccess && (
+        {email && (
           <p className={classNames(styles.text, styles.success)}>
             Reset intructions has been sent to <strong>{email}</strong>!
+            <p
+              className={classNames(styles.text, styles.success)}
+              dangerouslySetInnerHTML={{
+                __html: translate(STRING.MESSAGE_RESET_INSTRUCTIONS_SENT, {
+                  email: `<strong>${email}</strong>`,
+                }),
+              }}
+            />
           </p>
         )}
         {errorMessage && (
@@ -91,7 +98,7 @@ export const ResetPassword = () => {
       <div className={styles.outro}>
         <p className={styles.text}>
           <Link to={APP_ROUTES.LOGIN} state={{ email }}>
-            Back to login
+            {translate(STRING.BACK_TO_LOGIN)}
           </Link>
         </p>
       </div>

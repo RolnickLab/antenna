@@ -55,17 +55,17 @@ export const ResetPasswordConfirm = () => {
   const errorMessage = useFormError({ error, setFieldError })
 
   usePageBreadcrumb({
-    title: 'Set password',
+    title: translate(STRING.SET_PASSWORD),
     path: APP_ROUTES.RESET_PASSWORD_CONFIRM,
   })
 
   return (
     <>
       <div className={styles.intro}>
-        <h1 className={styles.title}>Set password</h1>
+        <h1 className={styles.title}>{translate(STRING.SET_PASSWORD)}</h1>
         {!isSuccess && (
           <p className={styles.text}>
-            Please set a new password for your acccount.
+            {translate(STRING.SET_PASSWORD_DETAILS)}
           </p>
         )}
       </div>
@@ -97,10 +97,15 @@ export const ResetPasswordConfirm = () => {
             />
           </>
         )}
-        {isSuccess && (
-          <p className={classNames(styles.text, styles.success)}>
-            Password has been updated for <strong>{email}</strong>!
-          </p>
+        {email && (
+          <p
+            className={classNames(styles.text, styles.success)}
+            dangerouslySetInnerHTML={{
+              __html: translate(STRING.MESSAGE_PASSWORD_UPDATED, {
+                email: `<strong>${email}</strong>`,
+              }),
+            }}
+          />
         )}
         {errorMessage && (
           <p className={classNames(styles.text, styles.error)}>
@@ -111,7 +116,7 @@ export const ResetPasswordConfirm = () => {
       <div className={styles.outro}>
         <p className={styles.text}>
           <Link to={APP_ROUTES.LOGIN} state={{ email }}>
-            Back to login
+            {translate(STRING.BACK_TO_LOGIN)}
           </Link>
         </p>
       </div>
