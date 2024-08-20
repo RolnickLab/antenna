@@ -24,13 +24,15 @@ interface UpdatePasswordFormValues {
 
 const config: FormConfig = {
   new_password: {
-    label: 'New password',
+    label: translate(STRING.FIELD_LABEL_PASSWORD_NEW),
+    description: translate(STRING.MESSAGE_PASSWORD_FORMAT),
     rules: {
       required: true,
+      minLength: 8,
     },
   },
   current_password: {
-    label: 'Current password',
+    label: translate(STRING.FIELD_LABEL_PASSWORD_CURRENT),
     rules: {
       required: true,
     },
@@ -66,7 +68,6 @@ const UpdatePasswordForm = ({ onCancel }: { onCancel: () => void }) => {
       current_password: '',
       new_password: '',
     },
-    mode: 'onChange',
   })
   const { updateUserPassword, error, isLoading, isSuccess } =
     useUpdateUserPassword(() => setTimeout(() => onCancel(), CLOSE_TIMEOUT))

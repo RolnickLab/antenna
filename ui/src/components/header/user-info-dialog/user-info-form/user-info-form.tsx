@@ -10,7 +10,7 @@ import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
-import { InputContent, InputValue } from 'design-system/components/input/input'
+import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
@@ -63,7 +63,6 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
     defaultValues: {
       name: userInfo.name,
     },
-    mode: 'onChange',
   })
   const { updateUserInfo, error, isLoading, isSuccess } = useUpdateUserInfo()
   const errorMessage = useFormError({ error, setFieldError })

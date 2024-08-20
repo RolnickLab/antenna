@@ -24,13 +24,13 @@ interface UpdateEmailFormValues {
 
 const config: FormConfig = {
   new_email: {
-    label: 'New email',
+    label: translate(STRING.FIELD_LABEL_EMAIL_NEW),
     rules: {
       required: true,
     },
   },
   current_password: {
-    label: 'Current password',
+    label: translate(STRING.FIELD_LABEL_PASSWORD_CURRENT),
     rules: {
       required: true,
     },
