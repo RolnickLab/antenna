@@ -304,7 +304,7 @@ MinimalEventNestedSerializer = MinimalNestedModelSerializer.create_for_model(Eve
 
 
 class DeploymentCaptureNestedSerializer(DefaultSerializer):
-    event = MinimalEventNestedSerializer(read_only=True)
+    event = MinimalEventNestedSerializer(read_only=True, source="event_id")
 
     class Meta:
         model = SourceImage

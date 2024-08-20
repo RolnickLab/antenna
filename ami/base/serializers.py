@@ -68,15 +68,26 @@ class MinimalNestedModelSerializer(DefaultSerializer):
         }
     }
 
+    IMPORTANT: this class is meant to work with the _id of the related model, not the actual model instance.
+    make sure to set the source field to the _id of the related model, not the model instance.
     """
 
     class Meta:
         fields = ["id", "details"]
 
+    def to_representation(self, instance):
+        # If the instance is just an ID, create a dummy object
+        if isinstance(instance, self.Meta.model):  # type: ignore
+            raise ValueError(
+                "The instance should be an ID, not an instance of the related model. "
+                "Specify the _id field with the `source` parameter."
+            )
+        else:
+            dummy_instance = self.Meta.model(pk=instance)  # type: ignore
+            return super().to_representation(dummy_instance)
+        return super().to_representation(instance)
+
     @classmethod
     def create_for_model(cls, model: type[models.Model]) -> type["MinimalNestedModelSerializer"]:
-        return type(
-            f"MinimalNestedModelSerializer_{model.__name__}",
-            (cls,),
-            {"Meta": type("Meta", (), {"model": model, "fields": cls.Meta.fields})},
-        )
+        class_name = f"MinimalNestedModelSerializer_{model.__name__}"
+        return type(class_name, (cls,), {"Meta": type("Meta", (), {"model": model, "fields": cls.Meta.fields})})
