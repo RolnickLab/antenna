@@ -1216,7 +1216,7 @@ class SourceImage(BaseModel):
 
     def get_dimensions(self) -> tuple[int | None, int | None]:
         """Calculate the width and height of the original image."""
-        if self.path and self.deployment and self.deployment.data_sourcemanually_uploaded_captures:
+        if self.path and self.deployment and self.deployment.data_source:
             config = self.deployment.data_source.config
             try:
                 img = ami.utils.s3.read_image(config=config, key=self.path)
