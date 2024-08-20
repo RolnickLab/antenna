@@ -338,8 +338,8 @@ CSRF_TRUSTED_ORIGINS = env.list(
 # User authentication and registration via REST API endpoints
 # https://djoser.readthedocs.io/en/latest/settings.html
 DJOSER = {
-    # "PASSWORD_RESET_CONFIRM_URL": "#/password/reset/confirm/{uid}/{token}",
-    # "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
+    "PASSWORD_RESET_CONFIRM_URL": "#/password/reset/confirm/{uid}/{token}",
+    "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
     # "ACTIVATION_URL": "#/activate/{uid}/{token}",
     "SEND_CONFIRMATION_EMAIL": True,
     # "SEND_ACTIVATION_EMAIL": True,
