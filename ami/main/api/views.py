@@ -158,6 +158,28 @@ class DeploymentViewSet(DefaultViewSet):
         else:
             return DeploymentSerializer
 
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+
+        num_example_captures = 10
+        if self.action == "retrieve":
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "captures",
+                    queryset=SourceImage.objects.order_by("-size")[:num_example_captures],
+                    to_attr="example_captures",
+                )
+            )
+
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "manually_uploaded_captures",
+                    queryset=SourceImage.objects.order_by("created_at").exclude(upload=None),
+                )
+            )
+
+        return qs
+
     @action(detail=True, methods=["post"], name="sync")
     def sync(self, _request, pk=None) -> Response:
         """
@@ -593,6 +615,10 @@ class SourceImageUploadViewSet(DefaultViewSet):
         if self.request.user.pk:
             qs = qs.filter(user=self.request.user)
         return qs
+
+    pagination_class = LimitOffsetPaginationWithPermissions
+    # This is the maximum limit for manually uploaded captures
+    pagination_class.default_limit = 20
 
 
 class DetectionViewSet(DefaultViewSet):

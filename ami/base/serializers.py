@@ -1,6 +1,7 @@
 import typing
 import urllib.parse
 
+from django.db import models
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
@@ -47,3 +48,35 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
         instance_data = super().to_representation(instance)
         instance_data = self.get_permissions(instance_data)
         return instance_data
+
+
+class MinimalNestedModelSerializer(DefaultSerializer):
+    """
+    A nested serializer that only includes the id and the hyperlinked identity field.
+
+    This way we do not need an extra join or query to get the details of the related model,
+    but the client can still access the data as a nested object rather than just an ID.
+
+    For example, an Event with a related Project that is serialized with the `MinimalNestedModelSerializer`:
+    {
+        "id": 1,
+        "details": "http://example.org/api/events/1/",
+        "name": "Minimal Birthday",
+        "project": {
+            "id": 1,
+            "details": "http://example.org/api/projects/1/"
+        }
+    }
+
+    """
+
+    class Meta:
+        fields = ["id", "details"]
+
+    @classmethod
+    def create_for_model(cls, model: type[models.Model]) -> type["MinimalNestedModelSerializer"]:
+        return type(
+            f"MinimalNestedModelSerializer_{model.__name__}",
+            (cls,),
+            {"Meta": type("Meta", (), {"model": model, "fields": cls.Meta.fields})},
+        )

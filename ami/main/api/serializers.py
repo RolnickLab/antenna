@@ -3,9 +3,9 @@ import datetime
 from django.db.models import QuerySet
 from rest_framework import serializers
 
-from ami.base.serializers import DefaultSerializer, get_current_user, reverse_with_params
+from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import _create_source_image_from_upload
+from ami.main.models import create_source_image_from_upload
 from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
@@ -300,8 +300,11 @@ class EventNestedSerializer(DefaultSerializer):
         ]
 
 
+MinimalEventNestedSerializer = MinimalNestedModelSerializer.create_for_model(Event)
+
+
 class DeploymentCaptureNestedSerializer(DefaultSerializer):
-    event = EventNestedSerializer(read_only=True)
+    event = MinimalEventNestedSerializer(read_only=True)
 
     class Meta:
         model = SourceImage
@@ -320,6 +323,7 @@ class DeploymentSerializer(DeploymentListSerializer):
     events = DeploymentEventNestedSerializer(many=True, read_only=True)
     occurrences = serializers.SerializerMethodField()
     example_captures = DeploymentCaptureNestedSerializer(many=True, read_only=True)
+    manually_uploaded_captures = DeploymentCaptureNestedSerializer(many=True, read_only=True)
     project_id = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Project.objects.all(),
@@ -365,6 +369,7 @@ class DeploymentSerializer(DeploymentListSerializer):
             "data_source_regex",
             "description",
             "example_captures",
+            "manually_uploaded_captures",
             # "capture_images",
         ]
 
@@ -902,7 +907,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
         user = get_current_user(request)
         # @TODO IMPORTANT ensure current user is a member of the deployment's project
         obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        source_image = _create_source_image_from_upload(
+        source_image = create_source_image_from_upload(
             obj.image,
             obj.deployment,
             request,

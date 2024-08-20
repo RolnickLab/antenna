@@ -16,9 +16,9 @@ import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
-import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { bytesToMB } from 'utils/numberFormats'
 import styles from './section-example-captures.module.scss'
 import { useCaptureError } from './useCaptureError'
 
@@ -80,11 +80,11 @@ export const SectionExampleCaptures = ({
       description={CAPTURE_FIELD_DESCRIPTION}
     >
       <div className={styles.collection}>
-        {deployment.exampleCaptures.map((exampelCapture) => (
+        {deployment.manuallyUploadedCaptures.map((exampleCapture) => (
           <ExampleCapture
-            key={exampelCapture.id}
-            id={exampelCapture.id}
-            src={exampelCapture.src}
+            key={exampleCapture.id}
+            id={exampleCapture.id}
+            src={exampleCapture.src}
           />
         ))}
 

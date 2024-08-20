@@ -9,15 +9,15 @@ import {
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
-import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { bytesToMB } from 'utils/numberFormats'
 import { useFormError } from 'utils/useFormError'
 import { UserInfo } from 'utils/user/types'
 import { UserInfoImageUpload } from '../user-info-image-upload/user-info-image-upload'
-import { IconType } from 'design-system/components/icon/icon'
 
 interface UserInfoFormValues {
   name: string

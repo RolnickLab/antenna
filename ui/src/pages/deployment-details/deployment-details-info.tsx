@@ -107,6 +107,7 @@ export const DeploymentDetailsInfo = ({
                 <ImageCarousel
                   images={deployment.exampleCaptures}
                   size={{ width: '100%', ratio: 16 / 9 }}
+                  total={deployment.numImages}
                 />
               </div>
             )}
