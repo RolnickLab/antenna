@@ -40,16 +40,11 @@ export const ResetPasswordConfirm = () => {
   const [searchParams] = useSearchParams()
   const [email, setEmail] = useState<string>()
   const { resetPasswordConfirm, isLoading, isSuccess, error } =
-    useResetPasswordConfirm(() => {
-      setEmail(getValues('uid'))
-      reset()
-    })
+    useResetPasswordConfirm(() => setEmail(getValues('uid')))
   const {
     control,
     handleSubmit,
     getValues,
-
-    reset,
     setError: setFieldError,
   } = useForm<ResetPasswordConfirmValues>({
     defaultValues: {
@@ -68,9 +63,11 @@ export const ResetPasswordConfirm = () => {
     <>
       <div className={styles.intro}>
         <h1 className={styles.title}>Set password</h1>
-        <p className={styles.text}>
-          Please set a new password for your acccount.
-        </p>
+        {!isSuccess && (
+          <p className={styles.text}>
+            Please set a new password for your acccount.
+          </p>
+        )}
       </div>
       <form
         className={styles.form}

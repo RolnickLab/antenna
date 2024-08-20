@@ -28,17 +28,13 @@ const config: FormConfig = {
 export const ResetPassword = () => {
   const [email, setEmail] = useState<string>()
   const { state } = useLocation()
-  const { resetPassword, isLoading, isSuccess, error } = useResetPassword(
-    () => {
-      setEmail(getValues('email'))
-      reset()
-    }
+  const { resetPassword, isLoading, isSuccess, error } = useResetPassword(() =>
+    setEmail(getValues('email'))
   )
   const {
     control,
     handleSubmit,
     getValues,
-    reset,
     setError: setFieldError,
   } = useForm<ResetFormValues>({
     defaultValues: { email: state?.email ?? '' },
@@ -55,21 +51,32 @@ export const ResetPassword = () => {
     <>
       <div className={styles.intro}>
         <h1 className={styles.title}>Forgot password?</h1>
-        <p className={styles.text}>
-          No worries, we'll send you reset instructions.
-        </p>
+        {!isSuccess && (
+          <p className={styles.text}>
+            No worries, we'll send you reset instructions.
+          </p>
+        )}
       </div>
       <form
         className={styles.form}
         onSubmit={handleSubmit((values) => resetPassword(values))}
       >
-        <FormField name="email" type="text" config={config} control={control} />
-        <Button
-          label="Send instructions"
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        {!isSuccess && (
+          <>
+            <FormField
+              name="email"
+              type="text"
+              config={config}
+              control={control}
+            />
+            <Button
+              label="Send instructions"
+              type="submit"
+              theme={ButtonTheme.Success}
+              loading={isLoading}
+            />
+          </>
+        )}
         {isSuccess && (
           <p className={classNames(styles.text, styles.success)}>
             Reset intructions has been sent to <strong>{email}</strong>!
