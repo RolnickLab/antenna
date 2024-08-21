@@ -3,16 +3,16 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { STRING, translate } from 'utils/language'
 import styles from './info-dialog.module.scss'
-import { useActivePage } from './useActivePage'
+import { useActiveInfoPage } from './useActiveInfoPage'
 
 export const InfoDialog = ({ name, slug }: { name: string; slug: string }) => {
-  const { activePage, setActivePage } = useActivePage()
+  const { activeInfoPage, setActiveInfoPage } = useActiveInfoPage()
   const { page, isLoading, error } = usePageDetails(slug)
 
   return (
     <Dialog.Root
-      open={activePage === slug}
-      onOpenChange={(open) => setActivePage(open ? slug : undefined)}
+      open={activeInfoPage === slug}
+      onOpenChange={(open) => setActiveInfoPage(open ? slug : undefined)}
     >
       <Dialog.Trigger>
         <Button label={name} theme={ButtonTheme.Plain} />
