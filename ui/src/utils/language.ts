@@ -363,7 +363,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
-  [STRING.MESSAGE_PASSWORD_UPDATED]: 'Password has been updated for {{email}}!',
+  [STRING.MESSAGE_PASSWORD_UPDATED]: 'Your password has been updated!',
   [STRING.MESSAGE_PERMISSIONS_MISSING]:
     'Permissions missing to perform the action',
   [STRING.MESSAGE_PROCESS_NOW_TOOLTIP]:

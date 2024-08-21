@@ -77,17 +77,14 @@ export const ResetPassword = () => {
           </>
         )}
         {email && (
-          <p className={classNames(styles.text, styles.success)}>
-            Reset intructions has been sent to <strong>{email}</strong>!
-            <p
-              className={classNames(styles.text, styles.success)}
-              dangerouslySetInnerHTML={{
-                __html: translate(STRING.MESSAGE_RESET_INSTRUCTIONS_SENT, {
-                  email: `<strong>${email}</strong>`,
-                }),
-              }}
-            />
-          </p>
+          <p
+            className={classNames(styles.text, styles.success)}
+            dangerouslySetInnerHTML={{
+              __html: translate(STRING.MESSAGE_RESET_INSTRUCTIONS_SENT, {
+                email: `<strong>${email}</strong>`,
+              }),
+            }}
+          />
         )}
         {errorMessage && (
           <p className={classNames(styles.text, styles.error)}>
