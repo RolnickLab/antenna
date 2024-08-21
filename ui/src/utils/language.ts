@@ -110,6 +110,7 @@ export enum STRING {
   FIELD_LABEL_FIRST_DATE,
   FIELD_LABEL_LAST_DATE,
   FIELD_LABEL_UPDATED_AT,
+  FIELD_LABEL_UPLOAD_CAPTURES,
   FIELD_LABEL_VERSION,
   FIELD_LABEL_VERSION_NAME,
 
@@ -255,7 +256,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
-  [STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES]: 'Deployment captures',
+  [STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES]: 'Data source captures',
   [STRING.FIELD_LABEL_DATE]: 'Date',
   [STRING.FIELD_LABEL_DATE_OBSERVED]: 'Date observed',
   [STRING.FIELD_LABEL_DELAY]: 'Delay',
@@ -291,7 +292,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
-  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Deployment sample captures',
+  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample captures',
   [STRING.FIELD_LABEL_SCORE]: 'Score',
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
   [STRING.FIELD_LABEL_SPECIES]: 'Species',
@@ -307,6 +308,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
+  [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload captures',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
   [STRING.FIELD_LABEL_VERSION]: 'Version',
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version',
@@ -328,7 +330,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} sample captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
     'Deployment must be created before syncing captures.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
