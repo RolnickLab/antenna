@@ -244,6 +244,7 @@ def initiate_async_pipeline_request(
         pipelineConfig=pipeline_config,
     )
     logger.info(f"Sending async pipeline request to {endpoint_url}")
+    logger.info(f"Async pipeline request data: {request_data}")
 
     # Add authorization header
     headers = {
@@ -252,6 +253,7 @@ def initiate_async_pipeline_request(
     resp = requests.post(endpoint_url, json=request_data.dict(), headers=headers)
     resp.raise_for_status()
     resp_data = PipelineAsyncRequestResponse(**resp.json())
+    logger.info(f"INITIATED ASYNC PIPELINE REQUEST: {resp_data}")
     print(f"INITIATED ASYNC PIPELINE REQUEST: {resp_data}")
     request.pipeline_request_id = resp_data.requestId
     request.status = PipelineAsyncRequestStatus.SENT
