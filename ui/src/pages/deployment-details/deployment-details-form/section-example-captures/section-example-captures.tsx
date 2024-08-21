@@ -53,13 +53,13 @@ export const SectionExampleCaptures = ({
     // Remove items from queue when deployment capture data is updated, to free memory
     setAddQueue((prev) =>
       prev.filter(({ id }) => {
-        const deploymentHasCapture = deployment.exampleCaptures.some(
-          (exampleCapture) => exampleCapture.id === id
+        const deploymentHasCapture = deployment.manuallyUploadedCaptures.some(
+          (capture) => capture.id === id
         )
         return !deploymentHasCapture
       })
     )
-  }, [deployment.exampleCaptures])
+  }, [deployment.manuallyUploadedCaptures])
 
   if (!deployment.createdAt) {
     return (
@@ -71,7 +71,7 @@ export const SectionExampleCaptures = ({
   }
 
   const canUpload =
-    deployment.exampleCaptures.length + addQueue.length <
+    deployment.manuallyUploadedCaptures.length + addQueue.length <
     CAPTURE_CONFIG.NUM_CAPTURES
 
   return (
@@ -80,20 +80,17 @@ export const SectionExampleCaptures = ({
       description={CAPTURE_FIELD_DESCRIPTION}
     >
       <div className={styles.collection}>
-        {deployment.manuallyUploadedCaptures.map((exampleCapture) => (
-          <ExampleCapture
-            key={exampleCapture.id}
-            id={exampleCapture.id}
-            src={exampleCapture.src}
-          />
+        {deployment.manuallyUploadedCaptures.map((capture) => (
+          <ExampleCapture key={capture.id} id={capture.id} src={capture.src} />
         ))}
 
         {addQueue
           .filter(({ id }) => {
             // Only render queue items that are not part of deployment captures
-            const deploymentHasCapture = deployment.exampleCaptures.some(
-              (exampleCapture) => exampleCapture.id === id
-            )
+            const deploymentHasCapture =
+              deployment.manuallyUploadedCaptures.some(
+                (capture) => capture.id === id
+              )
             return !deploymentHasCapture
           })
           .map(({ file }, index) => (
@@ -101,7 +98,7 @@ export const SectionExampleCaptures = ({
               key={file.name}
               deploymentId={deployment.id}
               file={file}
-              index={deployment.exampleCaptures.length + index}
+              index={deployment.manuallyUploadedCaptures.length + index}
               onCancel={() => {
                 // Remove item from queue
                 setAddQueue((prev) => prev.filter(({ file }) => file !== file))
