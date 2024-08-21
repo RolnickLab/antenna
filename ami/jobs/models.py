@@ -564,7 +564,19 @@ class Job(BaseModel):
         Add the job to the queue so that it will run in the background.
         """
         assert self.pk is not None, "Job must be saved before it can be enqueued"
-        task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
+        from celery import uuid
+        from django.db import transaction
+
+        task_id = uuid()
+
+        def send_task():
+            run_job.apply_async(kwargs={"job_id": self.pk}, task_id=task_id)
+
+        # https://stackoverflow.com/questions/31333047/get-task-id-of-scheduled-task-in-celery
+        # https://stackoverflow.com/questions/32222977/django-with-celery-existing-object-not-found
+
+        transaction.on_commit(send_task)
+        # task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
