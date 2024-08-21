@@ -1,13 +1,13 @@
 import { useSearchParams } from 'react-router-dom'
 
-const SEARCH_PARAM_KEY = 'page'
+const SEARCH_PARAM_KEY = 'info-page'
 
-export const useActivePage = () => {
+export const useActiveInfoPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const activePage = searchParams.get(SEARCH_PARAM_KEY) ?? undefined
+  const activeInfoPage = searchParams.get(SEARCH_PARAM_KEY) ?? undefined
 
-  const setActivePage = (pageSlug?: string) => {
+  const setActiveInfoPage = (pageSlug?: string) => {
     searchParams.delete(SEARCH_PARAM_KEY)
     if (pageSlug?.length) {
       searchParams.set(SEARCH_PARAM_KEY, pageSlug)
@@ -15,5 +15,5 @@ export const useActivePage = () => {
     setSearchParams(searchParams)
   }
 
-  return { activePage, setActivePage }
+  return { activeInfoPage, setActiveInfoPage }
 }
