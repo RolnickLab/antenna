@@ -58,9 +58,13 @@ By default this will try to connect to http://localhost:8000 for the backend API
 
 #### Helpful Commands
 
+##### Run the docker compose stack in the background
+
+    docker compose up -d
+
 ##### Watch the logs of Django & the backend workers
 
-   docker compose logs -f django celeryworker
+    docker compose logs -f django celeryworker
 
 ##### Watch the logs of all services:
 
@@ -68,9 +72,7 @@ By default this will try to connect to http://localhost:8000 for the backend API
 
 #####  Create a super user account:
 
-    docker compose exec django python manage.py createsuperuser
-
-
+    docker compose run --rm django python manage.py createsuperuser
 
 ##### Run tests
 
