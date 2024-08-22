@@ -10,6 +10,7 @@ const REFETCH_INTERVAL = 10000 // Refetch every 10 second
 export const useUserInfo = () => {
   const { user, clearToken } = useUser()
   const { data, isLoading, error } = useAuthorizedQuery<ServerUserInfo>({
+    enabled: user.loggedIn,
     queryKey: [API_ROUTES.ME],
     url: `${API_URL}/${API_ROUTES.ME}/`,
     refetchInterval: REFETCH_INTERVAL,
