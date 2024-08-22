@@ -14,6 +14,8 @@ export const API_ROUTES = {
   PAGES: 'pages',
   PIPELINES: 'ml/pipelines',
   PROJECTS: 'projects',
+  RESET_PASSWORD: 'users/reset_password',
+  RESET_PASSWORD_CONFIRM: 'users/reset_password_confirm',
   SESSIONS: 'events',
   SITES: 'deployments/sites',
   SPECIES: 'taxa',
