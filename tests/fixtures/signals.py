@@ -1,8 +1,9 @@
+from django.conf import settings
 from django.db import transaction
 
 from ami.main.models import Project, group_images_into_events
 
-from .main import create_captures, create_occurrences, create_taxa, setup_test_project
+from .main import create_captures, create_occurrences, create_taxa, setup_test_project, update_site_settings
 
 
 # Signal receiver function
@@ -12,6 +13,7 @@ def setup_complete_test_project(sender, **kwargs):
         return
 
     with transaction.atomic():
+        update_site_settings(domain=settings.EXTERNAL_HOSTNAME)
         project, deployment = setup_test_project(reuse=False)
         create_captures(deployment)
         group_images_into_events(deployment)

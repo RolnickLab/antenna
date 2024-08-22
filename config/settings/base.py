@@ -23,6 +23,9 @@ if READ_DOT_ENV_FILE:
 
 # GENERAL
 # ------------------------------------------------------------------------------
+EXTERNAL_HOSTNAME = env("EXTERNAL_HOSTNAME", default="localhost:8000")  # type: ignore[no-untyped-call]
+EXTERNAL_BASE_URL = env("EXTERNAL_BASE_URL", default=f"http://{EXTERNAL_HOSTNAME}")  # type: ignore[no-untyped-call]
+
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)  # type: ignore[no-untyped-call]
 # Local time zone. Choices are
@@ -332,6 +335,7 @@ CSRF_TRUSTED_ORIGINS = env.list(
     default=[
         "https://api.dev.insectai.org",
         "http://api.dev.insectai.org",
+        EXTERNAL_BASE_URL,
     ],  # type: ignore[no-untyped-call]
 )
 
