@@ -1,5 +1,6 @@
 import datetime
 import logging
+from statistics import mode
 
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
@@ -10,8 +11,9 @@ from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
-from rest_framework import serializers, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.request import Request
@@ -156,6 +158,28 @@ class DeploymentViewSet(DefaultViewSet):
         else:
             return DeploymentSerializer
 
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+
+        num_example_captures = 10
+        if self.action == "retrieve":
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "captures",
+                    queryset=SourceImage.objects.order_by("-size")[:num_example_captures],
+                    to_attr="example_captures",
+                )
+            )
+
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "manually_uploaded_captures",
+                    queryset=SourceImage.objects.order_by("created_at").exclude(upload=None),
+                )
+            )
+
+        return qs
+
     @action(detail=True, methods=["post"], name="sync")
     def sync(self, _request, pk=None) -> Response:
         """
@@ -279,8 +303,10 @@ class EventViewSet(DefaultViewSet):
                 "start": current_time,
                 "end": interval_end,
                 "first_capture": None,
+                "top_capture": None,
                 "captures_count": 0,
                 "detections_count": 0,
+                "detection_counts": [],
             }
 
             while image_index < len(source_images) and source_images[image_index]["timestamp"] <= interval_end:
@@ -289,7 +315,15 @@ class EventViewSet(DefaultViewSet):
                     interval_data["first_capture"] = SourceImage(pk=image["id"])
                 interval_data["captures_count"] += 1
                 interval_data["detections_count"] += image["detections_count"] or 0
+                interval_data["detection_counts"] += [image["detections_count"]]
+                if image["detections_count"] >= max(interval_data["detection_counts"]):
+                    interval_data["top_capture"] = SourceImage(pk=image["id"])
                 image_index += 1
+
+            # Set a meaningful average detection count to display for the interval
+            # Remove zero values and calculate the mode
+            interval_data["detection_counts"] = [x for x in interval_data["detection_counts"] if x > 0]
+            interval_data["detections_avg"] = mode(interval_data["detection_counts"] or [0])
 
             timeline.append(interval_data)
             current_time = interval_end
@@ -354,6 +388,7 @@ class SourceImageViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
+        with_detections_default = False
 
         queryset.select_related(
             "event",
@@ -364,7 +399,6 @@ class SourceImageViewSet(DefaultViewSet):
         if self.action == "list":
             # It's cumbersome to override the default list view, so customize the queryset here
             queryset = self.filter_by_has_detections(queryset)
-            with_detections_default = False
 
         elif self.action == "retrieve":
             queryset = queryset.prefetch_related("jobs", "collections")
@@ -582,6 +616,10 @@ class SourceImageUploadViewSet(DefaultViewSet):
             qs = qs.filter(user=self.request.user)
         return qs
 
+    pagination_class = LimitOffsetPaginationWithPermissions
+    # This is the maximum limit for manually uploaded captures
+    pagination_class.default_limit = 20
+
 
 class DetectionViewSet(DefaultViewSet):
     """
@@ -614,6 +652,20 @@ class DetectionViewSet(DefaultViewSet):
     #             "detection_algorithm").all()
 
 
+class CustomDeterminationFilter(filters.BaseFilterBackend):
+    def filter_queryset(self, request, queryset, view):
+        determination_id = request.query_params.get("determination")
+        if determination_id:
+            try:
+                taxon = Taxon.objects.get(id=determination_id)
+                return queryset.filter(
+                    models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.id}])
+                )
+            except Taxon.DoesNotExist:
+                return queryset.none()  # or just return queryset if you prefer
+        return queryset
+
+
 class OccurrenceViewSet(DefaultViewSet):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -622,7 +674,9 @@ class OccurrenceViewSet(DefaultViewSet):
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
-    filterset_fields = ["event", "deployment", "determination", "project", "determination__rank"]
+    # filter_backends = [CustomDeterminationFilter, DjangoFilterBackend, NullsLastOrderingFilter, SearchFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [CustomDeterminationFilter]
+    filterset_fields = ["event", "deployment", "project", "determination__rank"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -669,6 +723,7 @@ class OccurrenceViewSet(DefaultViewSet):
                 .exclude(first_appearance_timestamp=None)  # This must come after annotations
                 .order_by("-determination_score")
             )
+
         else:
             qs = qs.prefetch_related(
                 Prefetch(
@@ -748,7 +803,7 @@ class TaxonViewSet(DefaultViewSet):
         else:
             return TaxonSerializer
 
-    def filter_by_occurrence(self, queryset: QuerySet) -> tuple[QuerySet, bool]:
+    def filter_taxa_by_observed(self, queryset: QuerySet) -> tuple[QuerySet, bool]:
         """
         Filter taxa by when/where it has occurred.
 
@@ -766,19 +821,23 @@ class TaxonViewSet(DefaultViewSet):
 
         filter_active = any([occurrence_id, project_id, deployment_id, event_id])
 
-        if occurrence_id:
-            occurrence = Occurrence.objects.get(id=occurrence_id)
-            # This query does not need the same filtering as the others
-            return queryset.filter(occurrences=occurrence).distinct(), True
-        elif project_id:
-            project = Project.objects.get(id=project_id)
-            queryset = super().get_queryset().filter(occurrences__project=project)
-        elif deployment_id:
-            deployment = Deployment.objects.get(id=deployment_id)
-            queryset = super().get_queryset().filter(occurrences__deployment=deployment)
-        elif event_id:
-            event = Event.objects.get(id=event_id)
-            queryset = super().get_queryset().filter(occurrences__event=event)
+        try:
+            if occurrence_id:
+                occurrence = Occurrence.objects.get(id=occurrence_id)
+                # This query does not need the same filtering as the others
+                return queryset.filter(occurrences=occurrence).distinct(), True
+            elif project_id:
+                project = Project.objects.get(id=project_id)
+                queryset = super().get_queryset().filter(occurrences__project=project)
+            elif deployment_id:
+                deployment = Deployment.objects.get(id=deployment_id)
+                queryset = super().get_queryset().filter(occurrences__deployment=deployment)
+            elif event_id:
+                event = Event.objects.get(id=event_id)
+                queryset = super().get_queryset().filter(occurrences__event=event)
+        except exceptions.ObjectDoesNotExist as e:
+            # Raise a 404 if any of the related objects don't exist
+            raise NotFound(detail=str(e))
 
         # @TODO need to return the models.Q filter used, so we can use it for counts and related occurrences.
         return queryset, filter_active
@@ -802,17 +861,7 @@ class TaxonViewSet(DefaultViewSet):
 
         return queryset
 
-    def get_queryset(self) -> QuerySet:
-        qs = super().get_queryset()
-        try:
-            qs, filter_active = self.filter_by_occurrence(qs)
-        except exceptions.ObjectDoesNotExist as e:
-            from rest_framework.exceptions import NotFound
-
-            raise NotFound(detail=str(e))
-
-        qs = qs.select_related("parent", "parent__parent")
-
+    def get_occurrences_filters(self, queryset: QuerySet) -> tuple[QuerySet, models.Q]:
         # @TODO this should check what the user has access to
         project_id = self.request.query_params.get("project")
         taxon_occurrences_query = (
@@ -835,38 +884,68 @@ class TaxonViewSet(DefaultViewSet):
             taxon_occurrences_query = taxon_occurrences_query.filter(project=project_id)
             taxon_occurrences_count_filter &= models.Q(occurrences__project=project_id)
 
+        return taxon_occurrences_query, taxon_occurrences_count_filter
+
+    def add_occurrence_counts(self, queryset: QuerySet, occurrences_count_filter: models.Q) -> QuerySet:
+        qs = queryset.annotate(
+            occurrences_count=models.Count(
+                "occurrences",
+                filter=occurrences_count_filter,
+                distinct=True,
+            ),
+            last_detected=models.Max("classifications__detection__timestamp"),
+        )
+        return qs
+
+    def add_filtered_occurrences(self, queryset: QuerySet, occurrences_query: QuerySet) -> QuerySet:
+        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=occurrences_query))
+        return qs
+
+    def zero_occurrences(self, queryset: QuerySet) -> QuerySet:
+        """
+        Return a queryset with zero occurrences but compatible with the original queryset.
+        """
+        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.none()))
+        qs = qs.annotate(
+            occurrences_count=models.Value(0),
+            # events_count=models.Value(0),
+            last_detected=models.Value(None, output_field=models.DateTimeField()),
+        )
+        return qs
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+
+        occurrences_filter, occurrences_count_filter = self.get_occurrences_filters(qs)
+
+        qs = qs.select_related("parent")
+
         if self.action == "retrieve":
-            qs = qs.prefetch_related(Prefetch("occurrences", queryset=taxon_occurrences_query))
+            qs = self.add_filtered_occurrences(qs, occurrences_filter)
+            qs = self.add_occurrence_counts(qs, occurrences_count_filter)
 
-        if filter_active:
-            qs = self.filter_by_classification_threshold(qs)
-            qs = qs.annotate(
-                occurrences_count=models.Count(
-                    "occurrences",
-                    filter=taxon_occurrences_count_filter,
-                    distinct=True,
-                ),
-                last_detected=models.Max("classifications__detection__timestamp"),
-            )
-
-        elif self.action == "list":
-            # If no filter don't return anything related to occurrences
-            # @TODO add a project_id filter to all request from the frontend
-            # event detail views should be filtered by project
-            qs = qs.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.none()))
-            qs = qs.annotate(
-                occurrences_count=models.Value(0),
-                # events_count=models.Value(0),
-                last_detected=models.Value(None, output_field=models.DateTimeField()),
-            )
+        if self.action == "list":
+            qs, filter_active = self.filter_taxa_by_observed(qs)
+            if filter_active:
+                qs = self.filter_by_classification_threshold(qs)
+                qs = self.add_occurrence_counts(qs, occurrences_count_filter)
+            else:
+                # If no filter don't return anything related to occurrences
+                # in a list view.
+                # @TODO event detail views should be filtered by project
+                # @TODO check permissions to show project occurrences
+                qs = self.zero_occurrences(qs)
 
         return qs
 
-    # Override the main detail view to include occurrences
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+    # def retrieve(self, request: Request, *args, **kwargs) -> Response:
+    #     """
+    #     Override the serializer to include the recursive occurrences count
+    #     """
+    #     taxon: Taxon = self.get_object()
+    #     taxon.occurrences_count = taxon.occurrences_count_recursive()  # type: ignore
+    #     response = Response(TaxonSerializer(taxon, context={"request": request}).data)
+    #     return response
 
 
 class ClassificationViewSet(DefaultViewSet):

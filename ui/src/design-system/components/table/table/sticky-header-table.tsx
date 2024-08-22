@@ -1,6 +1,6 @@
 import { ReactNode, RefObject, useLayoutEffect, useRef } from 'react'
-import { StickyTableHeader } from 'vh-sticky-table-header'
 import styles from './table.module.scss'
+import StickyTableHeader from './vh-sticky-table-header'
 
 /**
  * Help component to make it possible to combine sticky table header and horizontal scrolling.
@@ -26,7 +26,8 @@ export const StickyHeaderTable = ({
       const sticky = new StickyTableHeader(
         tableRef.current,
         tableCloneRef.current,
-        { max: 96 }
+        { max: 96 },
+        document.getElementById('app') ?? undefined
       )
 
       // Destory the sticky header once the main table is unmounted.

@@ -3,6 +3,8 @@ export const APP_ROUTES = {
   HOME: '/',
   LOGIN: '/auth/login',
   SIGN_UP: '/auth/sign-up',
+  RESET_PASSWORD: '/auth/reset-password',
+  RESET_PASSWORD_CONFIRM: '/auth/reset-password-confirm',
   PROJECTS: '/projects',
 
   /* Dynamic app routes */

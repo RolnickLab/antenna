@@ -13,9 +13,9 @@ import { IconType } from 'design-system/components/icon/icon'
 import { ImageUpload } from 'design-system/components/image-upload/image-upload'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
-import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { bytesToMB } from 'utils/numberFormats'
 import { useFormError } from 'utils/useFormError'
 
 interface ProjectFormValues {

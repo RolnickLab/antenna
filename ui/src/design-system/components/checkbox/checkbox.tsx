@@ -11,8 +11,7 @@ export enum CheckboxTheme {
 }
 
 interface CheckboxProps {
-  checked?: boolean | 'indeterminate'
-  defaultChecked?: boolean
+  checked: boolean | 'indeterminate'
   id?: string
   label?: string
   theme?: CheckboxTheme
@@ -21,7 +20,6 @@ interface CheckboxProps {
 
 export const Checkbox = ({
   checked,
-  defaultChecked,
   id,
   label,
   theme = CheckboxTheme.Default,
@@ -33,7 +31,6 @@ export const Checkbox = ({
       className={classNames(styles.checkboxRoot, {
         [styles.neutral]: theme === CheckboxTheme.Neutral,
       })}
-      defaultChecked={defaultChecked}
       id={id}
       onCheckedChange={onCheckedChange}
     >

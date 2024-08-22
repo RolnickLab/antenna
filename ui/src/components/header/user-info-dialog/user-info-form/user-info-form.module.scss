@@ -1,0 +1,21 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.miniForm {
+  border-radius: 8px;
+  border: 1px solid $color-neutral-100;
+}
+
+.miniFormContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.miniFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  padding-top: 16px;
+}

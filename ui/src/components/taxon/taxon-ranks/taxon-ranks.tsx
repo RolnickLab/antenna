@@ -1,10 +1,11 @@
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import classNames from 'classnames'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './taxon-ranks.module.scss'
 
 interface TaxonRanksProps {
+  compact?: boolean
   ranks: {
     id: string
     name: string
@@ -13,27 +14,69 @@ interface TaxonRanksProps {
   getLink?: (taxonId: string) => string
 }
 
-export const TaxonRanks = ({ ranks, getLink }: TaxonRanksProps) => (
-  <div className={styles.ranks}>
-    {ranks.map((r, index) => (
-      <Fragment key={r.id}>
-        {getLink ? (
-          <Tooltip content={r.rank}>
-            <span className={styles.rank}>
-              <Link to={getLink(r.id)}>{r.name}</Link>
-            </span>
-          </Tooltip>
-        ) : (
-          <span className={styles.rank}>{r.name}</span>
-        )}
-        {index < ranks.length - 1 ? (
-          <Icon
-            type={IconType.ToggleRight}
-            theme={IconTheme.Neutral}
-            size={8}
-          />
-        ) : null}
-      </Fragment>
-    ))}
-  </div>
+export const TaxonRanks = ({
+  compact,
+  ranks: _ranks,
+  getLink,
+}: TaxonRanksProps) => {
+  const compactMode = compact && _ranks.length > 3
+  const mainRank = compactMode
+    ? _ranks.find((r) => r.rank === 'FAMILY')
+    : undefined
+  const ranks = compactMode
+    ? _ranks
+        .filter(
+          (r) =>
+            r.rank === 'SUBFAMILY' ||
+            r.rank === 'TRIBE' ||
+            r.rank === 'SUBTRIBE'
+        )
+        .slice(-2)
+    : _ranks
+
+  return (
+    <div
+      className={classNames(styles.ranks, { [styles.compact]: compactMode })}
+    >
+      {mainRank && (
+        <>
+          <TaxonRank rank={mainRank} to={getLink?.(mainRank.id)} />
+          {ranks.length ? (
+            <span className={classNames(styles.rank, styles.divider)}>|</span>
+          ) : null}
+        </>
+      )}
+      {ranks.map((r, index) => (
+        <Fragment key={r.id}>
+          <TaxonRank rank={r} to={getLink?.(r.id)} />
+          {index < ranks.length - 1 ? (
+            <span className={classNames(styles.rank, styles.divider)}>›</span>
+          ) : null}
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+const TaxonRank = ({
+  rank,
+  to,
+}: {
+  rank: {
+    name: string
+    rank: string
+  }
+  to?: string
+}) => (
+  <>
+    {to ? (
+      <Tooltip content={rank.rank}>
+        <span className={styles.rank}>
+          <Link to={to}>{rank.name}</Link>
+        </span>
+      </Tooltip>
+    ) : (
+      <span className={styles.rank}>{rank.name}</span>
+    )}
+  </>
 )

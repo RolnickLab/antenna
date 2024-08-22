@@ -35,6 +35,7 @@ export const ColumnSettings = ({
           {columns.map((column) => (
             <Checkbox
               key={column.id}
+              checked={columnSettings[column.id]}
               id={column.id}
               label={column.name}
               onCheckedChange={(checked) => {
@@ -43,7 +44,6 @@ export const ColumnSettings = ({
                   [column.id]: checked,
                 })
               }}
-              defaultChecked={columnSettings[column.id]}
             />
           ))}
         </div>

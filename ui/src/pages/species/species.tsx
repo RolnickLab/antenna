@@ -71,7 +71,7 @@ export const Species = () => {
       {selectedView === 'table' && (
         <Table
           items={species}
-          isLoading={isLoading}
+          isLoading={!id && isLoading}
           columns={columns(projectId as string)}
           sortable
           sortSettings={sort}
@@ -80,7 +80,7 @@ export const Species = () => {
       )}
       {selectedView === 'gallery' && (
         <div className={styles.galleryContent}>
-          <SpeciesGallery species={species} isLoading={isLoading} />
+          <SpeciesGallery species={species} isLoading={!id && isLoading} />
         </div>
       )}
       <PageFooter>
@@ -92,7 +92,7 @@ export const Species = () => {
           />
         ) : null}
       </PageFooter>
-      {!isLoading && id ? <SpeciesDetailsDialog id={id} /> : null}
+      {id ? <SpeciesDetailsDialog id={id} /> : null}
     </>
   )
 }

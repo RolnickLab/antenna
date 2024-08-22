@@ -42,13 +42,13 @@ export const Deployments = () => {
       </PageHeader>
       <Table
         items={sortedItems}
-        isLoading={isLoading}
+        isLoading={!id && isLoading}
         columns={columns(projectId as string)}
         sortable
         sortSettings={sort}
         onSortSettingsChange={setSort}
       />
-      {!isLoading && id ? <DeploymentDetailsDialog id={id} /> : null}
+      {id ? <DeploymentDetailsDialog id={id} /> : null}
     </>
   )
 }

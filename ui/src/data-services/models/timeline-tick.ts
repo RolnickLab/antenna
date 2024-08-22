@@ -6,8 +6,12 @@ export type ServerTimelineTick = {
   first_capture: {
     id: number
   } | null
+  top_capture: {
+    id: number
+  } | null
   captures_count: number
   detections_count: number
+  detections_avg: number
 }
 
 export class TimelineTick {
@@ -23,6 +27,10 @@ export class TimelineTick {
 
   get numDetections(): number {
     return this._timelineTick.detections_count ?? 0
+  }
+
+  get avgDetections(): number {
+    return this._timelineTick.detections_avg ?? 0
   }
 
   get numCaptures(): number {
@@ -41,6 +49,18 @@ export class TimelineTick {
     return `${this._timelineTick.first_capture.id}`
   }
 
+  get topCaptureId(): string | undefined {
+    if (!this._timelineTick.top_capture) {
+      return undefined
+    }
+
+    return `${this._timelineTick.top_capture.id}`
+  }
+
+  get representativeCaptureId(): string | undefined {
+    return this.topCaptureId ?? this.firstCaptureId
+  }
+
   get tooltip(): string {
     const timespanString = getCompactTimespanString({
       date1: this.startDate,
@@ -50,6 +70,6 @@ export class TimelineTick {
       },
     })
 
-    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Detections: ${this.numDetections}`
+    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Avg. detections: ${this.avgDetections}`
   }
 }

@@ -8,6 +8,8 @@ import { Menu } from 'components/menu/menu'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
+import { ResetPassword } from 'pages/auth/reset-password'
+import { ResetPasswordConfirm } from 'pages/auth/reset-password-confirm'
 import { SignUp } from 'pages/auth/sign-up'
 import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
@@ -34,6 +36,7 @@ import styles from './app.module.scss'
 
 const queryClient = new QueryClient()
 
+const APP_CONTAINER_ID = 'app'
 const INTRO_CONTAINER_ID = 'intro'
 
 export const App = () => {
@@ -43,7 +46,7 @@ export const App = () => {
         <UserInfoContextProvider>
           <BreadcrumbContextProvider>
             <ReactQueryDevtools initialIsOpen={false} />
-            <div className={styles.wrapper}>
+            <div id={APP_CONTAINER_ID} className={styles.wrapper}>
               <div id={INTRO_CONTAINER_ID}>
                 <Header />
               </div>
@@ -63,6 +66,11 @@ export const App = () => {
                 <Route path="auth" element={<AuthContainer />}>
                   <Route path="login" element={<Login />} />
                   <Route path="sign-up" element={<SignUp />} />
+                  <Route path="reset-password" element={<ResetPassword />} />
+                  <Route
+                    path="reset-password-confirm"
+                    element={<ResetPasswordConfirm />}
+                  />
                 </Route>
                 <Route path="projects" element={<ProjectsContainer />} />
                 <Route

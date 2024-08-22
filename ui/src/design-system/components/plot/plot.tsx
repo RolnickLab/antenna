@@ -82,7 +82,6 @@ const Plot = ({
           tickvals: data.tickvals,
           ticktext: data.ticktext,
           tickformat: 'd',
-          dtick: 1,
           automargin: true,
           ...(showRangeSlider
             ? {

@@ -144,9 +144,9 @@ export const JobDetailsForm = ({
               config={config.pipeline}
               render={({ field }) => (
                 <Checkbox
+                  checked={field.value ?? false}
                   id={field.name}
                   label={config[field.name].label}
-                  defaultChecked={field.value}
                   onCheckedChange={field.onChange}
                 />
               )}

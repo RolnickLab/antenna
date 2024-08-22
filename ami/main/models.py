@@ -9,6 +9,7 @@ import typing
 import urllib.parse
 from typing import Final, final  # noqa: F401
 
+import pydantic
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -18,6 +19,7 @@ from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
+from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
@@ -36,15 +38,15 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 
 
 class TaxonRank(OrderedEnum):
-    ORDER = "Order"
-    SUPERFAMILY = "Superfamily"
-    FAMILY = "Family"
-    SUBFAMILY = "Subfamily"
-    TRIBE = "Tribe"
-    SUBTRIBE = "Subtribe"
-    GENUS = "Genus"
-    SPECIES = "Species"
-    UNKNOWN = "Unknown"
+    ORDER = "ORDER"
+    SUPERFAMILY = "SUPERFAMILY"
+    FAMILY = "FAMILY"
+    SUBFAMILY = "SUBFAMILY"
+    TRIBE = "TRIBE"
+    SUBTRIBE = "SUBTRIBE"
+    GENUS = "GENUS"
+    SPECIES = "SPECIES"
+    UNKNOWN = "UNKNOWN"
 
 
 DEFAULT_RANKS = sorted(
@@ -356,12 +358,6 @@ class Deployment(BaseModel):
 
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
-
-    def example_captures(self, num=10) -> models.QuerySet["SourceImage"]:
-        return SourceImage.objects.filter(deployment=self).order_by("-size")[:num]
-
-    def capture_images(self, num=5) -> list[str]:
-        return [c.url() for c in self.example_captures(num)]
 
     def first_capture(self) -> typing.Optional["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("timestamp").first()
@@ -1014,7 +1010,7 @@ def validate_filename_timestamp(filename: str) -> None:
         raise ValidationError("Filename must contain a timestamp in the format YYYYMMDDHHMMSS")
 
 
-def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
     """Create a complete SourceImage from an uploaded file."""
     # md5 checksum from file
     checksum = hashlib.md5(image.read()).hexdigest()
@@ -1060,7 +1056,7 @@ class SourceImageUpload(BaseModel):
 
     image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE)
+    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
     source_image = models.OneToOneField(
         "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
     )
@@ -2102,6 +2098,96 @@ class TaxaManager(models.Manager):
         assert root, "No root taxon found"
         return root
 
+    def update_all_parents(self):
+        """Efficiently update all parents for all taxa."""
+        taxa = self.get_queryset().select_related("parent")
+        logging.info(f"Updating the cached parent tree for {taxa.count()} taxa")
+
+        # Build a dictionary of taxon parents
+        parents = {taxon.id: taxon.parent_id for taxon in taxa}
+
+        # Precompute all parents in a single pass
+        all_parents = {}
+        for taxon_id in parents:
+            if taxon_id not in all_parents:
+                taxon_parents = []
+                current_id = taxon_id
+                while current_id in parents:
+                    current_id = parents[current_id]
+                    taxon_parents.append(current_id)
+                all_parents[taxon_id] = taxon_parents
+
+        # Prepare bulk update data
+        bulk_update_data = []
+        for taxon in taxa:
+            taxon_parents = all_parents[taxon.id]
+            parent_taxa = list(taxa.filter(id__in=taxon_parents))
+            taxon_parents = [
+                TaxonParent(
+                    id=taxon.id,
+                    name=taxon.name,
+                    rank=taxon.rank,
+                )
+                for taxon in parent_taxa
+            ]
+            taxon_parents.sort(key=lambda t: t.rank)
+
+            bulk_update_data.append(taxon)
+
+        # Perform bulk update
+        # with transaction.atomic():
+        #     self.bulk_update(bulk_update_data, ["parents_json"], batch_size=1000)
+        # There is a bug that causes the bulk update to fail with a custom JSONField
+        # https://code.djangoproject.com/ticket/35167
+        # So we have to update each taxon individually
+        for taxon in bulk_update_data:
+            taxon.save(update_fields=["parents_json"])
+
+        logging.info(f"Updated parents for {len(bulk_update_data)} taxa")
+
+    def with_children(self):
+        qs = self.get_queryset()
+        # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
+
+        # example for single taxon:
+        taxon = Taxon.objects.get(pk=1)
+        taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
+        # add them to the queryset
+        qs = qs.annotate(children=models.Subquery(taxa.values("id")))
+        return qs
+
+    def with_occurrence_counts(self) -> models.QuerySet:
+        """
+        Count the number of occurrences for a taxon and all occurrences of the taxon's children.
+
+        @TODO Try a recursive CTE in a raw SQL query,
+        or count the occurrences in a separate query and attach them to the Taxon objects.
+        """
+
+        raise NotImplementedError(
+            "Occurrence counts can not be calculated in a subquery with the current JSONField schema. "
+            "Fetch them per taxon."
+        )
+
+
+class TaxonParent(pydantic.BaseModel):
+    """
+    Should contain all data needed for TaxonParentSerializer
+
+    Needs a custom encoder and decoder for for the TaxonRank enum
+    because it is an OrderedEnum and not a standard str Enum.
+    """
+
+    id: int
+    name: str
+    rank: TaxonRank
+
+    class Config:
+        # Make sure the TaxonRank is retrieved as an object and not a string
+        # so we can sort by rank. The DRF serializer will convert it to a string.
+        # just for the API responses.
+        use_enum_values = False
+
 
 @final
 class Taxon(BaseModel):
@@ -2113,9 +2199,12 @@ class Taxon(BaseModel):
     parent = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="direct_children"
     )
-    # @TODO this parents field could be replaced by a cached JSON field with the proper ordering of ranks
-    parents = models.ManyToManyField("self", related_name="children", symmetrical=False, blank=True)
-    # taxonomy = models.JSONField(null=True, blank=True)
+
+    # Examples how to query this JSON array field
+    # Taxon.objects.filter(parents_json__contains=[{"id": 1}])
+    # https://stackoverflow.com/a/53942463/966058
+    parents_json = SchemaField(list[TaxonParent], null=False, blank=True, default=list)
+
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
@@ -2127,7 +2216,6 @@ class Taxon(BaseModel):
 
     projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
-    children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
     lists: models.QuerySet["TaxaList"]
@@ -2138,6 +2226,9 @@ class Taxon(BaseModel):
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
 
     objects: TaxaManager = TaxaManager()
+
+    # Type hints for auto-generated fields
+    parent_id: int | None
 
     def __str__(self) -> str:
         name_with_rank = f"{self.name} ({self.rank})"
@@ -2166,12 +2257,23 @@ class Taxon(BaseModel):
         return self.direct_children.count()
 
     def num_children_recursive(self) -> int:
-        # @TODO how to do this with a single query?
-        return self.children.count() + sum(child.num_children_recursive() for child in self.children.all())
+        # Use the parents_json field to get all children
+        return Taxon.objects.filter(parents_json__contains=[{"id": self.pk}]).count()
 
     def occurrences_count(self) -> int:
         # return self.occurrences.count()
         return 0
+
+    def occurrences_count_recursive(self) -> int:
+        """
+        Use the parents_json field to get all children, count their occurrences and sum them.
+        """
+        return (
+            Taxon.objects.filter(models.Q(models.Q(parents_json__contains=[{"id": self.pk}]) | models.Q(id=self.pk)))
+            .annotate(occurrences_count=models.Count("occurrences"))
+            .aggregate(models.Sum("occurrences_count"))["occurrences_count__sum"]
+            or 0
+        )
 
     def detections_count(self) -> int:
         # return Detection.objects.filter(occurrence__determination=self).count()
@@ -2241,20 +2343,25 @@ class Taxon(BaseModel):
 
     def update_parents(self, save=True):
         """
-        Populate the cached "parents" list by recursively following the "parent" field.
+        Populate the cached `parents_json` list by recursively following the `parent` field.
 
-        @TODO this requires the parents' parents already being up-to-date, which may not always be the case.
-        @TODO parents could instead be a JSON field that is updated by a trigger on the database.
+        @TODO this requires all of the taxon's parent taxa to have the `parent` attribute set correctly.
         """
 
-        taxon = self
-        parents = [taxon.parent]
-        while parents[-1] is not None:
-            parents.append(parents[-1].parent)
-        parents = parents[:-1]
-        taxon.parents.set(parents)
+        current_taxon = self
+        parents = []
+        while current_taxon.parent is not None:
+            parents.append(
+                TaxonParent(id=current_taxon.parent.id, name=current_taxon.parent.name, rank=current_taxon.parent.rank)
+            )
+            current_taxon = current_taxon.parent
+        # Sort parents by rank using ordered enum
+        parents = sorted(parents, key=lambda t: t.rank)
+        self.parents_json = parents
         if save:
-            taxon.save()
+            self.save()
+
+        return parents
 
     class Meta:
         ordering = [
@@ -2272,10 +2379,16 @@ class Taxon(BaseModel):
             models.Index(fields=["ordering", "name"]),
         ]
 
-    def save(self, *args, **kwargs):
-        """Update the display name before saving."""
+    def update_calculated_fields(self, save=False):
         self.display_name = self.get_display_name()
+        self.update_parents(save=False)
+        if save:
+            self.save(update_calculated_fields=False)
+
+    def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
+        if update_calculated_fields:
+            self.update_calculated_fields(save=True)
 
 
 @final
