@@ -39,7 +39,7 @@ services:
     # Production uses an external Postgres service.
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
-      - ./data/db/backups:/backups
+      - ./data/db/snapshots:/backups
     env_file:
       - ./.envs/.local/.postgres
 
