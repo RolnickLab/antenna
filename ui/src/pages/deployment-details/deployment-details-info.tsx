@@ -101,16 +101,17 @@ export const DeploymentDetailsInfo = ({
               value={deployment.dataSourceDetails.totalSizeDisplay}
             />
           </FormRow>
-          <InputContent label={translate(STRING.FIELD_LABEL_SAMPLE_CAPTURES)}>
-            {deployment.exampleCaptures.length > 0 && (
+          {deployment.exampleCaptures.length > 0 && (
+            <InputContent label={translate(STRING.FIELD_LABEL_SAMPLE_CAPTURES)}>
               <div className={styles.section}>
                 <ImageCarousel
                   images={deployment.exampleCaptures}
                   size={{ width: '100%', ratio: 16 / 9 }}
+                  total={deployment.numImages}
                 />
               </div>
-            )}
-          </InputContent>
+            </InputContent>
+          )}
         </FormSection>
       </div>
     </>

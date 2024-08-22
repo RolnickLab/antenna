@@ -359,12 +359,6 @@ class Deployment(BaseModel):
     def taxa(self) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
 
-    def example_captures(self, num=10) -> models.QuerySet["SourceImage"]:
-        return SourceImage.objects.filter(deployment=self).order_by("-size")[:num]
-
-    def capture_images(self, num=5) -> list[str]:
-        return [c.url() for c in self.example_captures(num)]
-
     def first_capture(self) -> typing.Optional["SourceImage"]:
         return SourceImage.objects.filter(deployment=self).order_by("timestamp").first()
 
@@ -1016,7 +1010,7 @@ def validate_filename_timestamp(filename: str) -> None:
         raise ValidationError("Filename must contain a timestamp in the format YYYYMMDDHHMMSS")
 
 
-def _create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
     """Create a complete SourceImage from an uploaded file."""
     # md5 checksum from file
     checksum = hashlib.md5(image.read()).hexdigest()
@@ -1062,7 +1056,7 @@ class SourceImageUpload(BaseModel):
 
     image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE)
+    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
     source_image = models.OneToOneField(
         "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
     )

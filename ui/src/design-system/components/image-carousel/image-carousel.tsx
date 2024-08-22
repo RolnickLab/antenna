@@ -7,6 +7,7 @@ import {
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getTotalLabel } from 'utils/numberFormats'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
 import { getImageBoxStyles, getPlaceholderStyles } from './utils'
@@ -110,9 +111,7 @@ const MultiImageCarousel = ({
   const slideIndexRef = useRef(slideIndex)
   const pausedRef = useRef(paused)
 
-  const totalLabel = total
-    ? `${images.length}${images.length < total ? '+' : ''}`
-    : images.length
+  const totalLabel = getTotalLabel(images.length, total)
 
   useEffect(() => {
     if (!autoPlay) {

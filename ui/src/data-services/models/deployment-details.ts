@@ -4,6 +4,11 @@ import { StorageSource } from './storage'
 
 export type ServerDeploymentDetails = ServerDeployment & any // TODO: Update this type
 
+export type ServerNestedCapture = {
+  id: number
+  url: string
+}
+
 export interface DeploymentFieldValues {
   dataSourceId?: string
   dataSourceSubdir?: string
@@ -20,17 +25,28 @@ export interface DeploymentFieldValues {
 
 export class DeploymentDetails extends Deployment {
   private readonly _exampleCaptures: { id: string; src: string }[] = []
+  private readonly _manuallyUploadedCaptures: { id: string; src: string }[] = []
 
   public constructor(deployment: ServerDeploymentDetails) {
     super(deployment)
 
     if (deployment.example_captures?.length) {
       this._exampleCaptures = deployment.example_captures?.map(
-        (capture: any) => ({
+        (capture: ServerNestedCapture) => ({
           id: `${capture.id}`,
           src: capture.url,
         })
       )
+    }
+
+    if (deployment.manually_uploaded_captures?.length) {
+      this._manuallyUploadedCaptures =
+        deployment.manually_uploaded_captures?.map(
+          (capture: ServerNestedCapture) => ({
+            id: `${capture.id}`,
+            src: capture.url,
+          })
+        )
     }
   }
 
@@ -46,6 +62,10 @@ export class DeploymentDetails extends Deployment {
 
   get exampleCaptures(): { id: string; src: string }[] {
     return this._exampleCaptures
+  }
+
+  get manuallyUploadedCaptures(): { id: string; src: string }[] {
+    return this._manuallyUploadedCaptures
   }
 
   get dataSource(): StorageSource | undefined {

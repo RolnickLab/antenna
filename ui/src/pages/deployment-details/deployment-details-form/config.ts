@@ -1,7 +1,7 @@
 import { FormConfig } from 'components/form/types'
-import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { bytesToMB } from 'utils/numberFormats'
 
 export const config: FormConfig = {
   name: {
