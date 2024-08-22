@@ -21,7 +21,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   const blueprintItems = useMemo(
     () =>
       species.occurrences.length
-        ? species?.occurrences
+        ? species.occurrences
             .map((id) => species.getOccurrenceInfo(id))
             .filter((item): item is BlueprintItem => !!item)
             .map((item) => ({

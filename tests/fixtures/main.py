@@ -15,6 +15,16 @@ from ami.main.models import (
 )
 
 
+def update_site_settings(**kwargs):
+    from django.contrib.sites.models import Site
+
+    site = Site.objects.get_current()
+    for key, value in kwargs.items():
+        setattr(site, key, value)
+    site.save()
+    return site
+
+
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     if reuse:
         project, _ = Project.objects.get_or_create(name="Test Project")

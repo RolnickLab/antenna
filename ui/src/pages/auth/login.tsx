@@ -38,6 +38,7 @@ export const Login = () => {
     onSuccess: () => navigate(state?.to ?? APP_ROUTES.HOME),
   })
   const {
+    getValues,
     control,
     handleSubmit,
     setError: setFieldError,
@@ -53,7 +54,9 @@ export const Login = () => {
 
   return (
     <>
-      <h1 className={styles.title}>{translate(STRING.LOGIN)}</h1>
+      <div className={styles.intro}>
+        <h1 className={styles.title}>{translate(STRING.LOGIN)}</h1>
+      </div>
       <form
         className={styles.form}
         onSubmit={handleSubmit((values) => login(values))}
@@ -77,6 +80,17 @@ export const Login = () => {
           </p>
         )}
         <p className={styles.text}>
+          {translate(STRING.FORGOT_PASSWORD)}{' '}
+          <Link
+            to={APP_ROUTES.RESET_PASSWORD}
+            state={{ email: getValues('email') ?? undefined }}
+          >
+            {translate(STRING.RESET)}
+          </Link>
+        </p>
+      </form>
+      <div className={styles.outro}>
+        <p className={styles.text}>
           {translate(STRING.MESSAGE_NO_ACCOUNT_YET)}{' '}
           <Link to={APP_ROUTES.SIGN_UP}>{translate(STRING.SIGN_UP)}</Link>
         </p>
@@ -89,7 +103,7 @@ export const Login = () => {
           theme={ButtonTheme.Default}
           onClick={() => navigate(APP_ROUTES.HOME)}
         />
-      </form>
+      </div>
     </>
   )
 }
