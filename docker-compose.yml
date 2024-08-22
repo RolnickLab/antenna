@@ -4,7 +4,7 @@ volumes:
     driver: local
     driver_opts:
       type: none
-      device: ./backups/local/postgres
+      device: ./data/db/backups
       o: bind
   minio_data:
     driver: local
