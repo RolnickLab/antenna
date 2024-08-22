@@ -51,11 +51,6 @@ export const Header = () => {
         ) : (
           <>
             <Button
-              label={translate(STRING.SIGN_UP)}
-              theme={ButtonTheme.Plain}
-              onClick={() => navigate(APP_ROUTES.SIGN_UP)}
-            />
-            <Button
               label={translate(STRING.LOGIN)}
               theme={ButtonTheme.Plain}
               onClick={() =>
