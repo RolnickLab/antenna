@@ -22,7 +22,7 @@
 
 .error {
   display: block;
-  @include paragraph-x-small();
+  @include paragraph-xx-small();
   color: $color-destructive-600;
   text-align: right;
   margin-left: 32px;
