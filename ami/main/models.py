@@ -28,6 +28,7 @@ from ami.base.models import BaseModel, update_calculated_fields_in_bulk
 from ami.main import charts
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
+from ami.utils.storages import TEMPORARY_CROPS_URL_BASE, get_temporary_media_url
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -60,25 +61,6 @@ DEFAULT_RANKS = sorted(
         TaxonRank.SPECIES,
     ]
 )
-
-
-# @TODO move to settings & make configurable
-_SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
-_CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
-
-
-def get_media_url(path: str) -> str:
-    """
-    If path is a full URL, return it as-is.
-    Otherwise, join it with the MEDIA_URL setting.
-    """
-    # @TODO use settings
-    # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
-    if path.startswith("http"):
-        url = path
-    else:
-        url = urllib.parse.urljoin(_CROPS_URL_BASE, path.lstrip("/"))
-    return url
 
 
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
@@ -1750,7 +1732,7 @@ class Detection(BaseModel):
             return (None, None)
 
     def url(self) -> str | None:
-        return get_media_url(self.path) if self.path else None
+        return get_temporary_media_url(self.path) if self.path else None
 
     def associate_new_occurrence(self) -> "Occurrence":
         """
@@ -1882,7 +1864,7 @@ class Occurrence(BaseModel):
 
     def detection_images(self, limit=None):
         for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
-            yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
+            yield urllib.parse.urljoin(TEMPORARY_CROPS_URL_BASE, url)
 
     @functools.cached_property
     def best_detection(self):
