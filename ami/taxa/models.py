@@ -3,15 +3,15 @@ import functools
 import logging
 import typing as t
 
+from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
 
 from ami.base.models import BaseModel, update_calculated_fields_in_bulk
 from ami.main.models import Classification, Detection, Occurrence, Project, Taxon
+from ami.utils.storages import get_temporary_media_url
 
 logger = logging.getLogger(__name__)
-
-# Create your models here.
 
 
 @t.final
@@ -78,6 +78,48 @@ class TaxonObserved(BaseModel):
             .values_list("timestamp", flat=True)
             .first()
         )
+
+    def occurrence_images(
+        self,
+        limit: int | None = 10,
+        project_id: int | None = None,
+        classification_threshold: float | None = None,
+    ) -> list[str]:
+        """
+        Return one image from each occurrence of this Taxon.
+        The image should be from the detection with the highest classification score.
+
+        This is used for image thumbnail previews in the species summary view.
+
+        The project ID is an optional filter however
+        @TODO important, this should always filter by what the current user has access to.
+        Use the request.user to filter by the user's access.
+        Use the request to generate the full media URLs.
+        """
+
+        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
+
+        # Retrieve the URLs using a single optimized query
+        qs = (
+            self.occurrences.prefetch_related(
+                models.Prefetch(
+                    "detections__classifications",
+                    queryset=Classification.objects.filter(score__gte=classification_threshold).order_by("-score"),
+                )
+            )
+            .annotate(max_score=models.Max("detections__classifications__score"))
+            .filter(detections__classifications__score=models.F("max_score"))
+            .order_by("-max_score")
+        )
+        if project_id is not None:
+            # @TODO this should check the user's access instead
+            qs = qs.filter(project=project_id)
+
+        detection_image_paths = qs.values_list("detections__path", flat=True)[:limit]
+
+        # @TODO should this be done in the serializer?
+        # @TODO better way to get distinct values from an annotated queryset?
+        return [get_temporary_media_url(path) for path in detection_image_paths if path]
 
     def update_calculated_fields(self, save=True, updated_timestamp: datetime.datetime | None = None):
         """

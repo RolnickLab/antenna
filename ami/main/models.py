@@ -2230,7 +2230,7 @@ class Taxon(BaseModel):
 
     projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
-    occurrences: models.QuerySet[Occurrence]
+    occurrences: models.QuerySet[Occurrence]  # This should rarely be used, use TaxonObserved instead
     classifications: models.QuerySet["Classification"]
     lists: models.QuerySet["TaxaList"]
 
@@ -2274,83 +2274,41 @@ class Taxon(BaseModel):
         # Use the parents_json field to get all children
         return Taxon.objects.filter(parents_json__contains=[{"id": self.pk}]).count()
 
-    def occurrences_count(self) -> int:
-        # return self.occurrences.count()
-        return 0
+    # def occurrences_count(self) -> int:
+    #     # return self.occurrences.count()
+    #     return 0
 
-    def occurrences_count_recursive(self) -> int:
-        """
-        Use the parents_json field to get all children, count their occurrences and sum them.
-        """
-        return (
-            Taxon.objects.filter(models.Q(models.Q(parents_json__contains=[{"id": self.pk}]) | models.Q(id=self.pk)))
-            .annotate(occurrences_count=models.Count("occurrences"))
-            .aggregate(models.Sum("occurrences_count"))["occurrences_count__sum"]
-            or 0
-        )
+    # def occurrences_count_recursive(self) -> int:
+    #     """
+    #     Use the parents_json field to get all children, count their occurrences and sum them.
+    #     """
+    #     return (
+    #         Taxon.objects.filter(models.Q(models.Q(parents_json__contains=[{"id": self.pk}]) | models.Q(id=self.pk)))
+    #         .annotate(occurrences_count=models.Count("occurrences"))
+    #         .aggregate(models.Sum("occurrences_count"))["occurrences_count__sum"]
+    #         or 0
+    #     )
 
-    def detections_count(self) -> int:
-        # return Detection.objects.filter(occurrence__determination=self).count()
-        return 0
+    # def detections_count(self) -> int:
+    #     # return Detection.objects.filter(occurrence__determination=self).count()
+    #     return 0
 
-    def events_count(self) -> int:
-        return 0
+    # def events_count(self) -> int:
+    #     return 0
 
-    def latest_occurrence(self) -> Occurrence | None:
-        return self.occurrences.order_by("-created_at").first()
+    # def latest_occurrence(self) -> Occurrence | None:
+    #     return self.occurrences.order_by("-created_at").first()
 
-    def latest_detection(self) -> Detection | None:
-        return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
+    # def latest_detection(self) -> Detection | None:
+    #     return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
 
-    def last_detected(self) -> datetime.datetime | None:
-        # This is handled by an annotation
-        return None
+    # def last_detected(self) -> datetime.datetime | None:
+    #     # This is handled by an annotation
+    #     return None
 
-    def best_determination_score(self) -> float | None:
-        # This is handled by an annotation if we are filtering by project, deployment or event
-        return None
-
-    def occurrence_images(
-        self,
-        limit: int | None = 10,
-        project_id: int | None = None,
-        classification_threshold: float | None = None,
-    ) -> list[str]:
-        """
-        Return one image from each occurrence of this Taxon.
-        The image should be from the detection with the highest classification score.
-
-        This is used for image thumbnail previews in the species summary view.
-
-        The project ID is an optional filter however
-        @TODO important, this should always filter by what the current user has access to.
-        Use the request.user to filter by the user's access.
-        Use the request to generate the full media URLs.
-        """
-
-        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
-
-        # Retrieve the URLs using a single optimized query
-        qs = (
-            self.occurrences.prefetch_related(
-                models.Prefetch(
-                    "detections__classifications",
-                    queryset=Classification.objects.filter(score__gte=classification_threshold).order_by("-score"),
-                )
-            )
-            .annotate(max_score=models.Max("detections__classifications__score"))
-            .filter(detections__classifications__score=models.F("max_score"))
-            .order_by("-max_score")
-        )
-        if project_id is not None:
-            # @TODO this should check the user's access instead
-            qs = qs.filter(project=project_id)
-
-        detection_image_paths = qs.values_list("detections__path", flat=True)[:limit]
-
-        # @TODO should this be done in the serializer?
-        # @TODO better way to get distinct values from an annotated queryset?
-        return [get_media_url(path) for path in detection_image_paths if path]
+    # def best_determination_score(self) -> float | None:
+    #     # This is handled by an annotation if we are filtering by project, deployment or event
+    #     return None
 
     def list_names(self) -> str:
         return ", ".join(self.lists.values_list("name", flat=True))
