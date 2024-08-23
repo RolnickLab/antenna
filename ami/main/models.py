@@ -19,6 +19,7 @@ from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
+from django.utils import timezone
 from django_pydantic_field import SchemaField
 
 import ami.tasks
@@ -310,7 +311,7 @@ class Deployment(BaseModel):
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
 
-    # Precalculated values from the data source
+    # Pre-calculated values from the data source
     data_source_total_files = models.IntegerField(blank=True, null=True)
     data_source_total_size = models.BigIntegerField(blank=True, null=True)
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
@@ -322,7 +323,7 @@ class Deployment(BaseModel):
     # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
 
-    # Precaclulated values
+    # Pre-calculated values
     events_count = models.IntegerField(blank=True, null=True)
     occurrences_count = models.IntegerField(blank=True, null=True)
     captures_count = models.IntegerField(blank=True, null=True)
@@ -639,6 +640,12 @@ class Event(BaseModel):
     captures: models.QuerySet["SourceImage"]
     occurrences: models.QuerySet["Occurrence"]
 
+    # Pre-calculated values
+    captures_count = models.IntegerField(blank=True, null=True)
+    detections_count = models.IntegerField(blank=True, null=True)
+    occurrences_count = models.IntegerField(blank=True, null=True)
+    calculated_fields_updated_at = models.DateTimeField(blank=True, null=True)
+
     class Meta:
         ordering = ["start"]
         indexes = [
@@ -695,22 +702,18 @@ class Event(BaseModel):
         duration = self.duration() if callable(self.duration) else self.duration
         return ami.utils.dates.format_timedelta(duration)
 
-    # These are now loaded with annotations in EventViewSet
-    # But the serializer complains if they're not defined here.
-    def captures_count(self) -> int | None:
-        # return self.captures.distinct().count()
-        return None
+    def get_captures_count(self) -> int:
+        return self.captures.distinct().count()
 
-    def occurrences_count(self, classification_threshold: int | None = None) -> int | None:
+    def get_detections_count(self) -> int | None:
+        return Detection.objects.filter(Q(source_image__event=self)).count()
+
+    def get_occurrences_count(self, classification_threshold: int | None = None) -> int:
         return (
             self.occurrences.distinct()
             .filter(determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD)
             .count()
         )
-
-    def detections_count(self) -> int | None:
-        # return Detection.objects.filter(Q(source_image__event=self)).count()
-        return None
 
     def stats(self) -> dict[str, int | None]:
         return (
@@ -749,30 +752,90 @@ class Event(BaseModel):
 
         return plots
 
-    def update_calculated_fields(self, save=False):
-        if not self.group_by and self.start:
+    def update_calculated_fields(self, save=False, updated_timestamp: datetime.datetime | None = None):
+        """
+        Important: if you update a new field, add it to the bulk_update call in update_calculated_fields_for_events
+        """
+        event = self
+        if not event.group_by and event.start:
             # If no group_by is set, use the start "day"
-            self.group_by = self.start.date()
+            event.group_by = str(event.start.date())
 
-        if not self.project and self.deployment:
-            self.project = self.deployment.project
+        if not event.project and event.deployment:
+            event.project = event.deployment.project
 
-        if self.pk is not None:
+        if event.pk is not None:
             # Can only update start and end times if this is an update to an existing event
-            first = self.captures.order_by("timestamp").values("timestamp").first()
-            last = self.captures.order_by("-timestamp").values("timestamp").first()
+            first = event.captures.order_by("timestamp").values("timestamp").first()
+            last = event.captures.order_by("-timestamp").values("timestamp").first()
             if first:
-                self.start = first["timestamp"]
+                event.start = first["timestamp"]
             if last:
-                self.end = last["timestamp"]
+                event.end = last["timestamp"]
+
+            event.captures_count = event.get_captures_count()
+            event.detections_count = event.get_detections_count()
+            event.occurrences_count = event.get_occurrences_count()
+
+            event.calculated_fields_updated_at = updated_timestamp or timezone.now()
+
+            logging.info(f"last updated: {event.calculated_fields_updated_at}")
 
         if save:
-            self.save(update_calculated_fields=False)
+            event.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
+
+
+def update_calculated_fields_for_events(
+    qs: models.QuerySet[Event] | None = None,
+    pks: list[typing.Any] | None = None,
+    last_updated: datetime.datetime | None = None,
+    save=True,
+):
+    """
+    This function is called by a migration to update the calculated fields for all events.
+
+    @TODO this can likely be abstracted to a more generic function that can be used for any model
+    """
+    to_update = []
+
+    qs = qs or Event.objects.all()
+    if pks:
+        qs = qs.filter(pk__in=pks)
+    if last_updated:
+        # query for None or before the last updated time
+        qs = qs.filter(
+            Q(calculated_fields_updated_at__isnull=True) | Q(calculated_fields_updated_at__lte=last_updated)
+        )
+
+    updated_timestamp = timezone.now()
+    for event in qs:
+        event.update_calculated_fields(save=False, updated_timestamp=updated_timestamp)
+        to_update.append(event)
+
+    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
+
+    if save:
+        updated_count = Event.objects.bulk_update(
+            to_update,
+            [
+                "group_by",
+                "start",
+                "end",
+                "project",
+                "captures_count",
+                "detections_count",
+                "occurrences_count",
+                "calculated_fields_updated_at",
+            ],
+        )
+        if updated_count != len(to_update):
+            logging.error(f"Failed to update {len(to_update) - updated_count} events")
+    return to_update
 
 
 def group_images_into_events(
@@ -1098,6 +1161,8 @@ class SourceImage(BaseModel):
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
+
+    # Precaclulated values
     detections_count = models.IntegerField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")

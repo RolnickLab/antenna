@@ -1211,11 +1211,15 @@ class EventSerializer(DefaultSerializer):
         return offset
 
     def get_occurrences_count(self, obj):
-        return obj.occurrences_count(
+        # This will display a count of the occurrences that are greater than the current classification threshold
+        # But this value will be different from the occurrences_count field, which is used for sorting & filtering
+        # @TODO refactor how the classification_threshold is used everywhere! delete it!
+        return obj.get_occurrences_count(
             classification_threshold=get_active_classification_threshold(self.context["request"])
         )
 
     def get_taxa_count(self, obj):
+        # @TODO refactor how the classification_threshold is used everywhere! delete it!
         return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
 
 

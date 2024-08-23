@@ -136,6 +136,15 @@ class EventAdmin(admin.ModelAdmin[Event]):
         "duration_display",
         "captures_count",
         "project",
+        "updated_at",
+        "calculated_fields_updated_at",
+    )
+
+    readonly_fields = (
+        "captures_count",
+        "detections_count",
+        "occurrences_count",
+        "calculated_fields_updated_at",
     )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
@@ -144,7 +153,6 @@ class EventAdmin(admin.ModelAdmin[Event]):
         from django.db.models.fields import DurationField
 
         return qs.select_related("deployment", "project").annotate(
-            captures_count=models.Count("captures"),
             time_duration=ExpressionWrapper(F("end") - F("start"), output_field=DurationField()),
         )
 
@@ -156,14 +164,15 @@ class EventAdmin(admin.ModelAdmin[Event]):
         return ami.utils.dates.format_timedelta(obj.time_duration)
 
     # Save all events in queryset
-    @admin.action(description="Re-save events to update cached values")
-    def save_events(self, request: HttpRequest, queryset: QuerySet[Event]) -> None:
-        for event in queryset:
-            event.save()
+    @admin.action(description="Updated pre-calculated fields")
+    def update_calculated_fields(self, request: HttpRequest, queryset: QuerySet[Event]) -> None:
+        from ami.main.models import update_calculated_fields_for_events
+
+        update_calculated_fields_for_events(qs=queryset)
         self.message_user(request, f"Updated {queryset.count()} events.")
 
     list_filter = ("deployment", "project", "start")
-    actions = [save_events]
+    actions = [update_calculated_fields]
 
 
 @admin.register(SourceImage)
