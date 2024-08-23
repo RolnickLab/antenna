@@ -51,7 +51,7 @@ def create_captures(
         night_timestamp = first_night + datetime.timedelta(days=night)
         for i in range(images_per_night):
             random_prefix = uuid.uuid4().hex[:8]
-            path = pathlib.Path(subdir) / random_prefix / f"{night}_{i}.jpg"
+            path = pathlib.Path(subdir) / f"{random_prefix}_{night}_{i}.jpg"
             img = SourceImage.objects.create(
                 deployment=deployment,
                 timestamp=night_timestamp + datetime.timedelta(minutes=i * interval_minutes),
