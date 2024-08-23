@@ -24,7 +24,7 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, update_calculated_fields_in_bulk
 from ami.main import charts
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
@@ -787,52 +787,21 @@ class Event(BaseModel):
             self.update_calculated_fields(save=True)
 
 
-def update_calculated_fields_for_events(
-    qs: models.QuerySet[Event] | None = None,
-    pks: list[typing.Any] | None = None,
-    last_updated: datetime.datetime | None = None,
-    save=True,
-):
-    """
-    This function is called by a migration to update the calculated fields for all events.
-
-    @TODO this can likely be abstracted to a more generic function that can be used for any model
-    """
-    to_update = []
-
-    qs = qs or Event.objects.all()
-    if pks:
-        qs = qs.filter(pk__in=pks)
-    if last_updated:
-        # query for None or before the last updated time
-        qs = qs.filter(
-            Q(calculated_fields_updated_at__isnull=True) | Q(calculated_fields_updated_at__lte=last_updated)
-        )
-
-    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
-
-    updated_timestamp = timezone.now()
-    for event in qs:
-        event.update_calculated_fields(save=False, updated_timestamp=updated_timestamp)
-        to_update.append(event)
-
-    if save:
-        updated_count = Event.objects.bulk_update(
-            to_update,
-            [
-                "group_by",
-                "start",
-                "end",
-                "project",
-                "captures_count",
-                "detections_count",
-                "occurrences_count",
-                "calculated_fields_updated_at",
-            ],
-        )
-        if updated_count != len(to_update):
-            logging.error(f"Failed to update {len(to_update) - updated_count} events")
-    return to_update
+# create partial function to update calculated fields for events
+update_calculated_fields_for_events = functools.partial(
+    update_calculated_fields_in_bulk,
+    Model=Event,
+    fields=[
+        "group_by",
+        "start",
+        "end",
+        "project",
+        "captures_count",
+        "detections_count",
+        "occurrences_count",
+        "calculated_fields_updated_at",
+    ],
+)
 
 
 def group_images_into_events(
@@ -1159,7 +1128,7 @@ class SourceImage(BaseModel):
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
 
-    # Precaclulated values
+    # Pre-calculated values
     detections_count = models.IntegerField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
@@ -2467,72 +2436,6 @@ class TaxaList(BaseModel):
     class Meta:
         ordering = ["-created_at"]
         verbose_name_plural = "Taxa Lists"
-
-
-@final
-class TaxonObserved(BaseModel):
-    """
-    A record of a taxon that was detected or identified in a Project.
-
-    Should be fast to retrieve and cache any counts or other aggregate values.
-    """
-
-    taxon = models.ForeignKey(Taxon, on_delete=models.CASCADE, related_name="observations")
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="taxa_observed")
-    detections_count = models.IntegerField(default=0)
-    occurrences_count = models.IntegerField(default=0)
-    best_determination_score = models.FloatField(null=True, blank=True)
-    best_detection = models.ForeignKey(Detection, on_delete=models.SET_NULL, null=True, blank=True)
-    last_detected = models.DateTimeField(null=True, blank=True)
-    occurrences = models.ManyToManyField(Occurrence, related_name="taxa_observed")
-    detections = models.ManyToManyField(Detection, related_name="taxa_observed")
-
-    class Meta:
-        ordering = ["-last_detected"]
-        verbose_name_plural = "Taxa Observed"
-
-    def __str__(self) -> str:
-        return f"{self.taxon} in {self.project}"
-
-    def update_counts(self):
-        """
-        Update the counts and timestamps of detections, identifications, and occurrences.
-        """
-        self.detections_count = Detection.objects.filter(
-            occurrence__determination=self.taxon,
-            project=self.project,
-        ).count()
-        self.occurrences_count = Occurrence.objects.filter(
-            determination=self.taxon,
-            project=self.project,
-        ).count()
-
-        best_detection = (
-            Detection.objects.filter(occurrence__determination=self.taxon, project=self.project)
-            .order_by("-classifications__score")
-            .first()
-        )
-        if best_detection:
-            self.best_detection = best_detection
-            best_classification = best_detection.classifications.first()
-            if best_classification:
-                self.best_determination_score = best_classification.score
-
-        last_detected = (
-            Detection.objects.filter(occurrence__determination=self.taxon, project=self.project)
-            .order_by("-timestamp")
-            .values_list("timestamp", flat=True)
-            .first()
-        )
-        if last_detected:
-            self.last_detected = last_detected
-
-        self.save()
-
-    def save(self, update_counts=True, *args, **kwargs):
-        super().save(*args, **kwargs)
-        if update_counts:
-            self.update_counts()
 
 
 @final
