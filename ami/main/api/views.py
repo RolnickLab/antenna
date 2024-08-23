@@ -221,7 +221,7 @@ class EventViewSet(DefaultViewSet):
         "start__time",
         "captures_count",
         "detections_count",
-        # "occurrences_count",
+        "occurrences_count",
         "taxa_count",
         "duration",
     ]
@@ -239,16 +239,31 @@ class EventViewSet(DefaultViewSet):
         qs: QuerySet = super().get_queryset()
         qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
-            captures_count=models.Count("captures", distinct=True),
-            # occurrences_count is calculated in a model method because it requires a classification threshold. @TODO
             duration=models.F("end") - models.F("start"),
         ).select_related("deployment", "project")
 
-        # Only get detections_count if its a detail view
-        if self.action == "retrieve":
-            qs = qs.annotate(detections_count=models.Count("captures__detections", distinct=True))
-            # Alternatively, we could sum the cached detections_count from the source images
-            # qs = qs.annotate(detections_count=models.Sum("captures__detections_count"))
+        if self.action == "list":
+            num_example_captures = 1
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "captures",
+                    queryset=SourceImage.objects.order_by("-size").select_related(
+                        "deployment",
+                        "deployment__data_source",
+                    )[:num_example_captures],
+                    to_attr="example_captures",
+                )
+            )
+
+            qs = qs.annotate(
+                taxa_count=models.Count(
+                    "occurrences__determination",
+                    distinct=True,
+                    filter=models.Q(
+                        occurrences__determination_score__gte=get_active_classification_threshold(self.request),
+                    ),
+                ),
+            )
 
         return qs
 
