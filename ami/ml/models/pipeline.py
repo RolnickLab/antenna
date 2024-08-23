@@ -2,7 +2,7 @@ import logging
 import typing
 
 import requests
-from django.db import models
+from django.db import models, transaction
 from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
@@ -20,6 +20,7 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    update_calculated_fields_for_events,
 )
 
 from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
@@ -300,9 +301,13 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
                 detection.save()
             detection.occurrence.save()
 
-    # Update precalculated counts on source images
-    for source_image in source_images:
-        source_image.save()
+    # Update precalculated counts on source images and events
+    with transaction.atomic():
+        for source_image in source_images:
+            source_image.save()
+
+    event_ids = [img.event_id for img in source_images]
+    update_calculated_fields_for_events(pks=event_ids)
 
     registered_algos = pipeline.algorithms.all()
     for algo in algorithms_used:

@@ -87,7 +87,9 @@ class TestPipeline(TestCase):
         for image in self.test_images:
             image.save()
             self.assertEqual(image.detections_count, 1)
+
         print(saved_objects)
+        # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
 
     def no_test_skip_existing_results(self):
         # @TODO fix issue with "None" algorithm on some detections
