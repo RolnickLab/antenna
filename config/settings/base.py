@@ -90,7 +90,7 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "anymail",
-    "cachalot",
+    # "cachalot",
 ]
 
 LOCAL_APPS = [
