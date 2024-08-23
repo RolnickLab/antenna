@@ -242,6 +242,29 @@ class EventViewSet(DefaultViewSet):
             duration=models.F("end") - models.F("start"),
         ).select_related("deployment", "project")
 
+        if self.action == "list":
+            num_example_captures = 1
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "captures",
+                    queryset=SourceImage.objects.order_by("-size").select_related(
+                        "deployment",
+                        "deployment__data_source",
+                    )[:num_example_captures],
+                    to_attr="example_captures",
+                )
+            )
+
+            qs = qs.annotate(
+                taxa_count=models.Count(
+                    "occurrences__determination",
+                    distinct=True,
+                    filter=models.Q(
+                        occurrences__determination_score__gte=get_active_classification_threshold(self.request),
+                    ),
+                ),
+            )
+
         return qs
 
     @action(detail=True, methods=["get"], name="timeline")

@@ -84,6 +84,19 @@ class SourceImageNestedSerializer(DefaultSerializer):
         ]
 
 
+class ExampleSourceImageNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        fields = [
+            "id",
+            "details",
+            "url",
+            "width",
+            "height",
+            "timestamp",
+        ]
+
+
 class DeviceNestedSerializer(DefaultSerializer):
     class Meta:
         model = Device
@@ -252,8 +265,7 @@ class EventListSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(
         read_only=True,
     )
-    example_captures = SourceImageNestedSerializer(many=True, read_only=True)
-    # captures = serializers.StringRelatedField(many=True, read_only=True)
+    example_captures = ExampleSourceImageNestedSerializer(many=True, read_only=True)
     captures = serializers.SerializerMethodField()
 
     class Meta:
@@ -1126,8 +1138,6 @@ class EventSerializer(DefaultSerializer):
     start = serializers.DateTimeField(read_only=True)
     end = serializers.DateTimeField(read_only=True)
     capture_page_offset = serializers.SerializerMethodField()
-    occurrences_count = serializers.SerializerMethodField()
-    taxa_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -1209,18 +1219,6 @@ class EventSerializer(DefaultSerializer):
             offset = request.query_params.get("offset", None)
 
         return offset
-
-    def get_occurrences_count(self, obj):
-        # This will display a count of the occurrences that are greater than the current classification threshold
-        # But this value will be different from the occurrences_count field, which is used for sorting & filtering
-        # @TODO refactor how the classification_threshold is used everywhere! delete it!
-        return obj.get_occurrences_count(
-            classification_threshold=get_active_classification_threshold(self.context["request"])
-        )
-
-    def get_taxa_count(self, obj):
-        # @TODO refactor how the classification_threshold is used everywhere! delete it!
-        return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
 
 
 class EventTimelineSourceImageSerializer(DefaultSerializer):

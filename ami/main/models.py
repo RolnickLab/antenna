@@ -727,16 +727,15 @@ class Event(BaseModel):
         )
 
     def taxa_count(self, classification_threshold: int | None = None) -> int:
-        return self.taxa(classification_threshold).count()
+        # Move this to a pre-calculated field or prefetch_related in the view
+        # return self.taxa(classification_threshold).count()
+        return 0
 
     def taxa(self, classification_threshold: int | None = None) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(
             Q(occurrences__event=self),
             occurrences__determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD,
         ).distinct()
-
-    def example_captures(self, num=5):
-        return SourceImage.objects.filter(event=self).order_by("-size")[:num]
 
     def first_capture(self):
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
@@ -1183,6 +1182,7 @@ class SourceImage(BaseModel):
 
         @TODO add support for thumbnail URLs here?
         @TODO consider if we ever need to access the original image directly!
+        @TODO every source image request requires joins for the deployment and data source, is this necessary?
         """
         # Get presigned URL if access keys are configured
         data_source = self.deployment.data_source if self.deployment and self.deployment.data_source else None
