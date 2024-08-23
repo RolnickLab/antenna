@@ -90,13 +90,14 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "anymail",
-    "cachalot",
+    # "cachalot",
 ]
 
 LOCAL_APPS = [
     # Your stuff: custom apps go here
     "ami.users",
     "ami.main",
+    "ami.taxa",
     "ami.jobs",
     "ami.ml",
     "ami.labelstudio",
