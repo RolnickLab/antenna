@@ -779,8 +779,6 @@ class Event(BaseModel):
 
             event.calculated_fields_updated_at = updated_timestamp or timezone.now()
 
-            logging.info(f"last updated: {event.calculated_fields_updated_at}")
-
         if save:
             event.save(update_calculated_fields=False)
 
@@ -812,12 +810,12 @@ def update_calculated_fields_for_events(
             Q(calculated_fields_updated_at__isnull=True) | Q(calculated_fields_updated_at__lte=last_updated)
         )
 
+    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
+
     updated_timestamp = timezone.now()
     for event in qs:
         event.update_calculated_fields(save=False, updated_timestamp=updated_timestamp)
         to_update.append(event)
-
-    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
 
     if save:
         updated_count = Event.objects.bulk_update(
