@@ -33,6 +33,7 @@ import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import { UserContextProvider } from 'utils/user/userContext'
 import { UserInfoContextProvider } from 'utils/user/userInfoContext'
 import styles from './app.module.scss'
+import { CookieDialog } from 'components/cookie-dialog/cookie-dialog'
 
 const queryClient = new QueryClient()
 
@@ -45,7 +46,6 @@ export const App = () => {
       <UserContextProvider>
         <UserInfoContextProvider>
           <BreadcrumbContextProvider>
-            <ReactQueryDevtools initialIsOpen={false} />
             <div id={APP_CONTAINER_ID} className={styles.wrapper}>
               <div id={INTRO_CONTAINER_ID}>
                 <Header />
@@ -92,6 +92,8 @@ export const App = () => {
                 </Route>
               </Routes>
             </div>
+            <ReactQueryDevtools initialIsOpen={false} />
+            <CookieDialog />
           </BreadcrumbContextProvider>
         </UserInfoContextProvider>
       </UserContextProvider>
