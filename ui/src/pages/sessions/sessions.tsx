@@ -7,9 +7,9 @@ import { ColumnSettings } from 'design-system/components/table/column-settings/c
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
 import { Error } from 'pages/error/error'
-import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
@@ -20,9 +20,7 @@ import styles from './sessions.module.scss'
 
 export const Sessions = () => {
   const { projectId } = useParams()
-  const [columnSettings, setColumnSettings] = useState<{
-    [id: string]: boolean
-  }>({
+  const { columnSettings, setColumnSettings } = useColumnSettings('sessions', {
     deployment: true,
     snapshots: true,
     session: true,

@@ -17,6 +17,7 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
@@ -28,19 +29,20 @@ import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
   const { projectId, id } = useParams()
-  const [columnSettings, setColumnSettings] = useState<{
-    [id: string]: boolean
-  }>({
-    batch: true,
-    snapshots: true,
-    id: true,
-    date: true,
-    deployment: true,
-    duration: false,
-    detections: true,
-    score: true,
-    ['created-at']: true,
-  })
+  const { columnSettings, setColumnSettings } = useColumnSettings(
+    'occurrences',
+    {
+      batch: true,
+      snapshots: true,
+      id: true,
+      date: true,
+      deployment: true,
+      duration: false,
+      detections: true,
+      score: true,
+      ['created-at']: true,
+    }
+  )
   const { sort, setSort } = useSort({
     field: 'created_at',
     order: 'desc',
