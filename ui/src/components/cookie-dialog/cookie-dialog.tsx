@@ -2,17 +2,24 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { useState } from 'react'
+import { useCookieContext } from 'utils/cookies/cookieContext'
+import { CookieCategory } from 'utils/cookies/types'
 import { STRING, translate } from 'utils/language'
 import styles from './cookie-dialog.module.scss'
-import { CookieCategory, CookieDialogSection } from './types'
+
+export enum CookieDialogSection {
+  Intro,
+  SetCookies,
+}
 
 export const CookieDialog = () => {
+  const { accepted } = useCookieContext()
   const [section, setSection] = useState<CookieDialogSection>(
     CookieDialogSection.Intro
   )
 
   return (
-    <Dialog.Root open={true} modal={false}>
+    <Dialog.Root open={!accepted} modal={false}>
       <Dialog.Portal>
         <Dialog.Content className={styles.dialog}>
           {section === CookieDialogSection.Intro && (
@@ -35,49 +42,56 @@ const IntroContent = ({
   onSectionChange,
 }: {
   onSectionChange: (section: CookieDialogSection) => void
-}) => (
-  <div>
-    <div className={styles.content}>
-      <p>
-        We use cookies to analyze the browsing and usage of our website and to
-        personalize your experience. You can disable these technologies at any
-        time, but this may limit certain functionalities of the site.
-      </p>
+}) => {
+  const { setSettings } = useCookieContext()
+
+  return (
+    <div>
+      <div className={styles.content}>
+        <p>
+          We use cookies to analyze the browsing and usage of our website and to
+          personalize your experience. You can disable these technologies at any
+          time, but this may limit certain functionalities of the site.
+        </p>
+      </div>
+      <div className={styles.actions}>
+        <Button
+          label="Set cookies"
+          onClick={() => onSectionChange(CookieDialogSection.SetCookies)}
+        />
+        <Button
+          label="Refuse cookies"
+          onClick={() =>
+            setSettings({
+              [CookieCategory.Necessary]: true,
+              [CookieCategory.Functionality]: false,
+              [CookieCategory.Performance]: false,
+            })
+          }
+        />
+        <Button
+          label="Accept cookies"
+          theme={ButtonTheme.Success}
+          onClick={() =>
+            setSettings({
+              [CookieCategory.Necessary]: true,
+              [CookieCategory.Functionality]: true,
+              [CookieCategory.Performance]: true,
+            })
+          }
+        />
+      </div>
     </div>
-    <div className={styles.actions}>
-      <Button
-        label="Set cookies"
-        onClick={() => onSectionChange(CookieDialogSection.SetCookies)}
-      />
-      <Button
-        label="Refuse cookies"
-        onClick={() => {
-          /* TODO: Save and close */
-        }}
-      />
-      <Button
-        label="Accept cookies"
-        theme={ButtonTheme.Success}
-        onClick={() => {
-          /* TODO: Save and close */
-        }}
-      />
-    </div>
-  </div>
-)
+  )
+}
 
 const SetCookiesContent = ({
   onSectionChange,
 }: {
   onSectionChange: (section: CookieDialogSection) => void
 }) => {
-  const [settings, setSettings] = useState<{
-    [key in CookieCategory]: boolean
-  }>({
-    [CookieCategory.Necessary]: true,
-    [CookieCategory.Functionality]: false,
-    [CookieCategory.Performance]: false,
-  })
+  const { settings, setSettings } = useCookieContext()
+  const [formValues, setFormValues] = useState(settings)
 
   return (
     <div>
@@ -91,13 +105,13 @@ const SetCookiesContent = ({
         <div className={styles.options}>
           <Checkbox
             label="Necessary cookies (cookies needed for core features, such as login)"
-            checked={settings[CookieCategory.Necessary]}
+            checked={formValues[CookieCategory.Necessary]}
           />
           <Checkbox
             label="Functionality cookies (cookies to remember user preferences)"
-            checked={settings[CookieCategory.Functionality]}
+            checked={formValues[CookieCategory.Functionality]}
             onCheckedChange={(checked) =>
-              setSettings((prev) => ({
+              setFormValues((prev) => ({
                 ...prev,
                 [CookieCategory.Functionality]: checked,
               }))
@@ -105,9 +119,9 @@ const SetCookiesContent = ({
           />
           <Checkbox
             label="Performance cookies (cookies for analytics)"
-            checked={settings[CookieCategory.Performance]}
+            checked={formValues[CookieCategory.Performance]}
             onCheckedChange={(checked) =>
-              setSettings((prev) => ({
+              setFormValues((prev) => ({
                 ...prev,
                 [CookieCategory.Performance]: checked,
               }))
@@ -123,9 +137,7 @@ const SetCookiesContent = ({
         <Button
           label={translate(STRING.SAVE)}
           theme={ButtonTheme.Success}
-          onClick={() => {
-            /* TODO: Save and close */
-          }}
+          onClick={() => setSettings(formValues)}
         />
       </div>
     </div>

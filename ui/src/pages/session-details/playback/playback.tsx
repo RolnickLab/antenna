@@ -6,7 +6,7 @@ import {
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
 import { useState } from 'react'
-import { useThreshold } from 'utils/threshold/thresholdContext'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { ActivityPlot } from './activity-plot/activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
@@ -17,7 +17,9 @@ import { ThresholdSlider } from './threshold-slider/threshold-slider'
 import { useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
-  const { threshold } = useThreshold()
+  const {
+    userPreferences: { scoreThreshold },
+  } = useUserPreferences()
   const { timeline = [] } = useSessionTimeline(session.id)
   const [showDetections, setShowDetections] = useState(true)
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
@@ -63,7 +65,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         height={activeCapture?.height ?? session.firstCapture.height}
         detections={activeCapture?.detections ?? []}
         showDetections={showDetections}
-        threshold={threshold}
+        threshold={scoreThreshold}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>
