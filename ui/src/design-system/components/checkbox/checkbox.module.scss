@@ -29,7 +29,11 @@
     border-color: $color-neutral-600;
   }
 
-  &:hover {
+  &[data-disabled] {
+    opacity: 0.5;
+  }
+
+  &:hover:not([data-disabled]) {
     opacity: 0.7;
     cursor: pointer;
   }

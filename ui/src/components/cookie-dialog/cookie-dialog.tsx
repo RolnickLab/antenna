@@ -104,10 +104,13 @@ const SetCookiesContent = ({
         </p>
         <div className={styles.options}>
           <Checkbox
+            id={CookieCategory.Necessary}
             label="Necessary cookies (cookies needed for core features, such as login)"
             checked={formValues[CookieCategory.Necessary]}
+            disabled
           />
           <Checkbox
+            id={CookieCategory.Functionality}
             label="Functionality cookies (cookies to remember user preferences)"
             checked={formValues[CookieCategory.Functionality]}
             onCheckedChange={(checked) =>
@@ -118,6 +121,7 @@ const SetCookiesContent = ({
             }
           />
           <Checkbox
+            id={CookieCategory.Performance}
             label="Performance cookies (cookies for analytics)"
             checked={formValues[CookieCategory.Performance]}
             onCheckedChange={(checked) =>
