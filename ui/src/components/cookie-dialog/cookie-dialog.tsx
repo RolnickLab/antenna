@@ -2,8 +2,8 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { useState } from 'react'
-import { useCookieContext } from 'utils/cookies/cookieContext'
-import { CookieCategory } from 'utils/cookies/types'
+import { useCookieConsent } from 'utils/cookieConsent/cookieConsentContext'
+import { CookieCategory } from 'utils/cookieConsent/types'
 import { STRING, translate } from 'utils/language'
 import styles from './cookie-dialog.module.scss'
 
@@ -13,7 +13,7 @@ export enum CookieDialogSection {
 }
 
 export const CookieDialog = () => {
-  const { accepted } = useCookieContext()
+  const { accepted } = useCookieConsent()
   const [section, setSection] = useState<CookieDialogSection>(
     CookieDialogSection.Intro
   )
@@ -43,7 +43,7 @@ const IntroContent = ({
 }: {
   onSectionChange: (section: CookieDialogSection) => void
 }) => {
-  const { setSettings } = useCookieContext()
+  const { setSettings } = useCookieConsent()
 
   return (
     <div>
@@ -90,7 +90,7 @@ const SetCookiesContent = ({
 }: {
   onSectionChange: (section: CookieDialogSection) => void
 }) => {
-  const { settings, setSettings } = useCookieContext()
+  const { settings, setSettings } = useCookieConsent()
   const [formValues, setFormValues] = useState(settings)
 
   return (

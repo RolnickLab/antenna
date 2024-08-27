@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
-import { useCookieContext } from 'utils/cookies/cookieContext'
+import { useCookieConsent } from 'utils/cookieConsent/cookieConsentContext'
 
 const GTM_ID = 'G-EX26RXX0YT'
 
 export const Analytics = () => {
-  const { accepted, settings } = useCookieContext()
+  const { accepted, settings } = useCookieConsent()
   const shouldLoad = accepted && settings.performance
 
   useEffect(() => {

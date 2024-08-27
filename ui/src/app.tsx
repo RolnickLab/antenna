@@ -30,7 +30,7 @@ import {
   BreadcrumbContextProvider,
 } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
-import { CookieContextProvider } from 'utils/cookies/cookieContext'
+import { CookieConsentContextProvider } from 'utils/cookieConsent/cookieConsentContext'
 import { STRING, translate } from 'utils/language'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import { UserContextProvider } from 'utils/user/userContext'
@@ -92,7 +92,7 @@ export const App = () => (
 
 const AppProviders = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>
-    <CookieContextProvider>
+    <CookieConsentContextProvider>
       <UserPreferencesContextProvider>
         <UserContextProvider>
           <UserInfoContextProvider>
@@ -100,7 +100,7 @@ const AppProviders = ({ children }: { children: ReactNode }) => (
           </UserInfoContextProvider>
         </UserContextProvider>
       </UserPreferencesContextProvider>
-    </CookieContextProvider>
+    </CookieConsentContextProvider>
   </QueryClientProvider>
 )
 

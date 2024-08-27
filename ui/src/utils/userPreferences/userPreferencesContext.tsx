@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useState } from 'react'
-import { useCookieContext } from '../cookies/cookieContext'
+import { useCookieConsent } from '../cookieConsent/cookieConsentContext'
 import { DEFAULT_PREFERENCES, USER_PREFERENCES_STORAGE_KEY } from './constants'
 import { UserPreferences, UserPreferencesContextValues } from './types'
 
@@ -14,7 +14,7 @@ export const UserPreferencesContextProvider = ({
 }: {
   children: ReactNode
 }) => {
-  const { accepted, settings } = useCookieContext()
+  const { accepted, settings } = useCookieConsent()
   const hasStorageConsent = accepted && settings.functionality // Do not store preferences is browser unless user has given consent
 
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(

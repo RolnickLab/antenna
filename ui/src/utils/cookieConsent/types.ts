@@ -6,12 +6,12 @@ export enum CookieCategory {
 
 export type CookieSettings = { [key in CookieCategory]: boolean }
 
-export interface CookiePreferences {
+export interface CookieConsent {
   settings: CookieSettings
   accepted?: string
 }
 
-export interface CookieContextValues {
+export interface CookieConsentContextValues {
   accepted?: string
   settings: CookieSettings
   setSettings: (settings: CookieSettings) => void
