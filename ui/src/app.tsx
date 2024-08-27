@@ -2,6 +2,7 @@ import * as Portal from '@radix-ui/react-portal'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import classNames from 'classnames'
+import { Analytics } from 'components/analytics'
 import { CookieDialog } from 'components/cookie-dialog/cookie-dialog'
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
@@ -85,6 +86,7 @@ export const App = () => (
     </div>
     <ReactQueryDevtools initialIsOpen={false} />
     <CookieDialog />
+    <Analytics />
   </AppProviders>
 )
 
