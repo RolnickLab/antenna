@@ -43,6 +43,16 @@ services:
     env_file:
       - ./.envs/.local/.postgres
 
+  ui:
+    image: ami_local_ui
+    build:
+      context: ./ui
+      dockerfile: ../compose/local/ui/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - django
+
   docs:
     image: ami_local_docs
     build:

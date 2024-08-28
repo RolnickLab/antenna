@@ -1,0 +1,8 @@
+services:
+  example:
+    build:
+      context: ./example
+    volumes:
+      - ./example/:/app:z
+    ports:
+      - "2000:2000"
