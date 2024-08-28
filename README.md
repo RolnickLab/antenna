@@ -6,17 +6,29 @@ Platform for processing and reviewing images from automated insect monitoring st
 
 ## Quick Start
 
-The platform uses Docker Compose to run all backend services. To run all services locally, install Docker and run the following command:
+The platform uses Docker Compose to run all services locally for development. Install Docker Desktop and run the following command:
 
     $ docker compose up
 
-Explore the API
+- Web UI: http://localhost:4000
+- API Browser: http://localhost:8000/api/v2/
+- Django admin: http://localhost:8000/admin/
+- OpenAPI / Swagger Docs: http://localhost:8000/api/v2/docs/
 
-- Rest Framework: http://localhost:8000/api/v2/
-- Access the Django admin: http://localhost:8000/admin/
-- OpenAPI / Swagger: http://localhost:8000/api/v2/docs/
+## Development
 
-Install and run the frontend:
+### Frontend
+
+#### Dependencies
+
+- [Node.js](https://nodejs.org/en/download/)
+- [Yarn](https://yarnpkg.com/getting-started/install)
+
+#### Configuration
+
+By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
+
+#### Installation
 
 ```bash
 # Enter into the ui directory
@@ -32,21 +44,6 @@ yarn start
 ```
 
 Visit http://localhost:3000/
-
-_TODO! Make a pre-built frontend available in the Docker compose stack._
-
-## Development
-
-### Frontend
-
-#### Dependencies
-
-- [Node.js](https://nodejs.org/en/download/)
-- [Yarn](https://yarnpkg.com/getting-started/install)
-
-#### Configuration
-
-By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
 
 ### Backend
 
