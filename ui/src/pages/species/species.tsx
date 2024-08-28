@@ -1,5 +1,5 @@
-import { useSpecies } from 'data-services/hooks/species/useSpecies'
-import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
+import { useSpeciesObserved } from 'data-services/hooks/species-observed/useSpeciesObserved'
+import { useSpeciesObservedDetails } from 'data-services/hooks/species-observed/useSpeciesObservedDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -28,7 +28,7 @@ export const Species = () => {
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
-  const { species, total, isLoading, isFetching, error } = useSpecies({
+  const { species, total, isLoading, isFetching, error } = useSpeciesObserved({
     projectId,
     sort,
     pagination,
@@ -101,10 +101,10 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { species, isLoading, error } = useSpeciesDetails(id, projectId)
+  const { species, isLoading, error } = useSpeciesObservedDetails(id)
 
   useEffect(() => {
-    setDetailBreadcrumb(species ? { title: species.name } : undefined)
+    setDetailBreadcrumb(species ? { title: species.taxon.name } : undefined)
 
     return () => {
       setDetailBreadcrumb(undefined)
