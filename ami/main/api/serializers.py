@@ -458,12 +458,15 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
 
 
 class TaxonListSerializer(DefaultSerializer):
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
+
     class Meta:
         model = Taxon
         fields = [
             "id",
             "name",
             "rank",
+            "parents",
             "details",
             "created_at",
             "updated_at",
