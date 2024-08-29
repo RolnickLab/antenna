@@ -561,7 +561,7 @@ class Job(BaseModel):
         Add the job to the queue so that it will run in the background.
         """
         assert self.pk is not None, "Job must be saved before it can be enqueued"
-        task_id = uuid.uuid4().hex
+        task_id = uuid()
 
         def send_task():
             run_job.apply_async(kwargs={"job_id": self.pk}, task_id=task_id)
