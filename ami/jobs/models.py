@@ -6,7 +6,9 @@ import typing
 from dataclasses import dataclass
 
 import pydantic
-from django.db import models
+from celery import uuid
+from celery.result import AsyncResult
+from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
@@ -559,12 +561,17 @@ class Job(BaseModel):
         Add the job to the queue so that it will run in the background.
         """
         assert self.pk is not None, "Job must be saved before it can be enqueued"
-        task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
+        task_id = uuid.uuid4().hex
+
+        def send_task():
+            run_job.apply_async(kwargs={"job_id": self.pk}, task_id=task_id)
+
+        transaction.on_commit(send_task)
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = run_job.AsyncResult(task_id).status
+        self.status = AsyncResult(task_id).status
         self.update_progress(save=False)
         self.save()
 
