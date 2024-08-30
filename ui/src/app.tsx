@@ -2,6 +2,8 @@ import * as Portal from '@radix-ui/react-portal'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import classNames from 'classnames'
+import { Analytics } from 'components/analytics'
+import { CookieDialog } from 'components/cookie-dialog/cookie-dialog'
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
 import { Menu } from 'components/menu/menu'
@@ -21,83 +23,86 @@ import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
-import { useContext, useEffect } from 'react'
+import { ReactNode, useContext, useEffect } from 'react'
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   BreadcrumbContext,
   BreadcrumbContextProvider,
 } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
+import { CookieConsentContextProvider } from 'utils/cookieConsent/cookieConsentContext'
 import { STRING, translate } from 'utils/language'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import { UserContextProvider } from 'utils/user/userContext'
 import { UserInfoContextProvider } from 'utils/user/userInfoContext'
+import { UserPreferencesContextProvider } from 'utils/userPreferences/userPreferencesContext'
 import styles from './app.module.scss'
 
 const queryClient = new QueryClient()
-
 const APP_CONTAINER_ID = 'app'
 const INTRO_CONTAINER_ID = 'intro'
 
-export const App = () => {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <UserContextProvider>
-        <UserInfoContextProvider>
-          <BreadcrumbContextProvider>
-            <ReactQueryDevtools initialIsOpen={false} />
-            <div id={APP_CONTAINER_ID} className={styles.wrapper}>
-              <div id={INTRO_CONTAINER_ID}>
-                <Header />
-              </div>
-              <Routes>
-                <Route
-                  path="/"
-                  element={
-                    <Navigate
-                      to={{
-                        pathname: 'projects',
-                        search: location.search,
-                      }}
-                      replace={true}
-                    />
-                  }
-                />
-                <Route path="auth" element={<AuthContainer />}>
-                  <Route path="login" element={<Login />} />
-                  <Route path="sign-up" element={<SignUp />} />
-                  <Route path="reset-password" element={<ResetPassword />} />
-                  <Route
-                    path="reset-password-confirm"
-                    element={<ResetPasswordConfirm />}
-                  />
-                </Route>
-                <Route path="projects" element={<ProjectsContainer />} />
-                <Route
-                  path="projects/:projectId"
-                  element={<ProjectContainer />}
-                >
-                  <Route path="" element={<Overview />} />
-                  <Route path="jobs/:id?" element={<Jobs />} />
-                  <Route path="deployments/:id?" element={<Deployments />} />
-                  <Route path="sessions" element={<Sessions />} />
-                  <Route path="sessions/:id" element={<SessionDetails />} />
-                  <Route path="occurrences/:id?" element={<Occurrences />} />
-                  <Route path="species/:id?" element={<Species />} />
-                  <Route
-                    path="collections/:id"
-                    element={<CollectionDetails />}
-                  />
-                  <Route path="*" element={<UnderConstruction />} />
-                </Route>
-              </Routes>
-            </div>
-          </BreadcrumbContextProvider>
-        </UserInfoContextProvider>
-      </UserContextProvider>
-    </QueryClientProvider>
-  )
-}
+export const App = () => (
+  <AppProviders>
+    <div id={APP_CONTAINER_ID} className={styles.wrapper}>
+      <div id={INTRO_CONTAINER_ID}>
+        <Header />
+      </div>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to={{
+                pathname: 'projects',
+                search: location.search,
+              }}
+              replace={true}
+            />
+          }
+        />
+        <Route path="auth" element={<AuthContainer />}>
+          <Route path="login" element={<Login />} />
+          <Route path="sign-up" element={<SignUp />} />
+          <Route path="reset-password" element={<ResetPassword />} />
+          <Route
+            path="reset-password-confirm"
+            element={<ResetPasswordConfirm />}
+          />
+        </Route>
+        <Route path="projects" element={<ProjectsContainer />} />
+        <Route path="projects/:projectId" element={<ProjectContainer />}>
+          <Route path="" element={<Overview />} />
+          <Route path="jobs/:id?" element={<Jobs />} />
+          <Route path="deployments/:id?" element={<Deployments />} />
+          <Route path="sessions" element={<Sessions />} />
+          <Route path="sessions/:id" element={<SessionDetails />} />
+          <Route path="occurrences/:id?" element={<Occurrences />} />
+          <Route path="species/:id?" element={<Species />} />
+          <Route path="collections/:id" element={<CollectionDetails />} />
+          <Route path="*" element={<UnderConstruction />} />
+        </Route>
+      </Routes>
+    </div>
+    <ReactQueryDevtools initialIsOpen={false} />
+    <CookieDialog />
+    <Analytics />
+  </AppProviders>
+)
+
+const AppProviders = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>
+    <CookieConsentContextProvider>
+      <UserPreferencesContextProvider>
+        <UserContextProvider>
+          <UserInfoContextProvider>
+            <BreadcrumbContextProvider>{children}</BreadcrumbContextProvider>
+          </UserInfoContextProvider>
+        </UserContextProvider>
+      </UserPreferencesContextProvider>
+    </CookieConsentContextProvider>
+  </QueryClientProvider>
+)
 
 const AuthContainer = () => (
   <main className={classNames(styles.main, styles.fullscreen)}>
