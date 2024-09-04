@@ -8,6 +8,7 @@ import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
 import { InfoPage } from 'components/info-page/info-page'
 import { Menu } from 'components/menu/menu'
+import { TermsOfServiceInfo } from 'components/terms-of-service-info/terms-of-service-info'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
@@ -124,6 +125,7 @@ const ProjectsContainer = () => {
 
   return (
     <main className={styles.main}>
+      <TermsOfServiceInfo />
       <div className={styles.content}>
         <ErrorBoundary>
           <Projects />
