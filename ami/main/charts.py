@@ -279,6 +279,12 @@ def event_top_taxa(event_pk: int, top_n: int = 10):
     else:
         taxa, counts = [], []
 
+    # Restrict number of top species if too many
+    N = 10
+    if len(taxa) > N:
+        taxa = taxa[:N]
+        counts = counts[:N]
+
     return {
         "title": "Top species",
         "data": {"x": counts, "y": taxa},

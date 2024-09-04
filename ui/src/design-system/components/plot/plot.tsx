@@ -34,7 +34,8 @@ const Plot = ({
           marker: {
             color: markerColor,
           },
-          hovertemplate,
+          hovertemplate: type === 'bar' && orientation === 'h' ? '%{x}' : type === 'bar' ? '%{y}' : '<b>%{x}</b>: %{y}',
+          name: "" // Remove ‘trace 0’ next to hover
         },
       ]}
       config={{
