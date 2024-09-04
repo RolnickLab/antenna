@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("main", "0037_alter_sourceimageupload_deployment"),
+        ("main", "0036_event_calculated_fields_updated_at_and_more"),
     ]
 
     operations = [
