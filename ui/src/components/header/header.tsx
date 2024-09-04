@@ -1,6 +1,4 @@
-import { InfoDialog } from 'components/info-dialog/info-dialog'
 import { useLogout } from 'data-services/hooks/auth/useLogout'
-import { usePages } from 'data-services/hooks/pages/usePages'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -15,7 +13,6 @@ import { UserInfoDialog } from './user-info-dialog/user-info-dialog'
 export const Header = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const { pages = [] } = usePages()
   const { user } = useUser()
   const { logout, isLoading: isLogoutLoading } = useLogout()
 
@@ -35,11 +32,12 @@ export const Header = () => {
       <BetaInfo />
       <div className={styles.rightContent}>
         <div className={styles.infoPages}>
-          {pages.map((page) => (
-            <InfoDialog key={page.id} name={page.name} slug={page.slug} />
-          ))}
+          <Button
+            label="Terms of service"
+            theme={ButtonTheme.Plain}
+            onClick={() => navigate(APP_ROUTES.TERMS_OF_SERVICE)}
+          />
         </div>
-
         {user.loggedIn ? (
           <>
             <Button
