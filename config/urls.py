@@ -7,11 +7,11 @@ from django.views import defaults as default_views
 from django.views.generic import TemplateView, RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+API_ROOT = 'api/v2/'
+
 urlpatterns = [
-    # Redirect homepage to api/v2/
-    path('', RedirectView.as_view(url='/api/v2/', permanent=True)),
-    path("home/", TemplateView.as_view(template_name="pages/home.html"), name="home"),
-    path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),
+    # Redirect homepage to API_ROOT
+    path('', RedirectView.as_view(url=API_ROOT, permanent=True)),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
     # Your stuff: custom urls includes go here
@@ -23,11 +23,11 @@ if settings.DEBUG:
 # API URLS
 urlpatterns += [
     # API base url
-    path("api/v2/", include("config.api_router", namespace="api")),
+    path(API_ROOT, include("config.api_router", namespace="api")),
     # OpenAPI Docs
-    path("api/v2/schema/", SpectacularAPIView.as_view(api_version="api"), name="api-schema"),
+    path(API_ROOT + "schema/", SpectacularAPIView.as_view(api_version="api"), name="api-schema"),
     path(
-        "api/v2/docs/",
+        API_ROOT + "docs/",
         SpectacularSwaggerView.as_view(url_name="api-schema"),
         name="api-docs",
     ),
