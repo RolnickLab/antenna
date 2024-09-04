@@ -13,5 +13,9 @@ export const convertToServerFormData = (fieldValues: any) => {
     data.append('image', '')
   }
 
+  if (fieldValues.openSource) {
+    data.append('license', 'open-source')
+  }
+
   return data
 }
