@@ -33,7 +33,7 @@ export const Header = () => {
       <div className={styles.rightContent}>
         <div className={styles.infoPages}>
           <Button
-            label="Terms of service"
+            label="Terms of Service"
             theme={ButtonTheme.Plain}
             onClick={() => navigate(APP_ROUTES.TERMS_OF_SERVICE)}
           />

@@ -18,8 +18,8 @@ export const TermsOfServiceInfo = () => {
   return (
     <div className={styles.wrapper}>
       <p>
-        By using this site, you agree to{' '}
-        <Link to={APP_ROUTES.TERMS_OF_SERVICE}>Terms of service.</Link>
+        By using this website you agree to the{' '}
+        <Link to={APP_ROUTES.TERMS_OF_SERVICE}>Terms of Service.</Link>
       </p>
       <div className={styles.iconContainer}>
         <IconButton
