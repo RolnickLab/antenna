@@ -1,6 +1,7 @@
 import * as _Checkbox from '@radix-ui/react-checkbox'
 import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { RefCallBack } from 'react-hook-form'
 import styles from './checkbox.module.scss'
 
 export enum CheckboxTheme {
@@ -13,8 +14,10 @@ export enum CheckboxTheme {
 interface CheckboxProps {
   checked: boolean | 'indeterminate'
   disabled?: boolean
+  hasError?: boolean
   id?: string
-  label?: string
+  innerRef?: RefCallBack
+  label?: string | JSX.Element
   theme?: CheckboxTheme
   onCheckedChange?: (checked: boolean) => void
 }
@@ -22,19 +25,24 @@ interface CheckboxProps {
 export const Checkbox = ({
   checked,
   disabled,
+  hasError,
   id,
+  innerRef,
   label,
   theme = CheckboxTheme.Default,
   onCheckedChange,
 }: CheckboxProps) => (
   <div className={styles.wrapper}>
     <_Checkbox.Root
+      aria-disabled={disabled}
+      aria-invalid={hasError}
       checked={checked}
       className={classNames(styles.checkboxRoot, {
         [styles.neutral]: theme === CheckboxTheme.Neutral,
       })}
       disabled={disabled}
       id={id}
+      ref={innerRef}
       onCheckedChange={onCheckedChange}
     >
       <_Checkbox.Indicator className={styles.checkboxIndicator}>

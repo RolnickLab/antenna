@@ -1,3 +1,4 @@
+import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Deployment, ServerDeployment } from './deployment'
 
@@ -31,6 +32,14 @@ export class Project {
 
   get canUpdate(): boolean {
     return this._project.user_permissions.includes(UserPermission.Update)
+  }
+
+  get createdAt(): string | undefined {
+    if (!this._project.created_at) {
+      return
+    }
+
+    return getFormatedTimeString({ date: new Date(this._project.created_at) })
   }
 
   get description(): string {
