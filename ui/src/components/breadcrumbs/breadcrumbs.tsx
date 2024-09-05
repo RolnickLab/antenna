@@ -51,17 +51,22 @@ export const Breadcrumbs = ({
         const title = breadcrumb.title.length
           ? breadcrumb.title
           : `${translate(STRING.LOADING_DATA)}...`
+        const compactTitle = '...'
 
         return (
           <Fragment key={index}>
             {isLast || !breadcrumb.path ? (
-              <span className={styles.breadcrumb}>{title}</span>
+              <span className={styles.breadcrumb}>
+                <span>{title}</span>
+                <span>{compactTitle}</span>
+              </span>
             ) : (
               <Link
                 to={breadcrumb.path}
                 className={classNames(styles.breadcrumb, styles.link)}
               >
                 <span>{title}</span>
+                <span>{compactTitle}</span>
               </Link>
             )}
             {!isLast && (

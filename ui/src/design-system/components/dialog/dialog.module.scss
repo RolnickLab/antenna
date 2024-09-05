@@ -42,10 +42,6 @@ $dialog-padding-medium: 32px;
   z-index: 2;
   overflow: hidden;
 
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
-  }
-
   &.compact {
     height: fit-content;
   }

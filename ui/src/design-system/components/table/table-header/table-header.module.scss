@@ -5,8 +5,10 @@
 .tableHeader {
   white-space: nowrap;
   vertical-align: middle;
+  padding: 2px;
   border-bottom: 2px solid $color-neutral-200;
   background-color: $color-neutral-50;
+  text-align: left;
 
   &.active {
     border-color: $color-neutral-400;

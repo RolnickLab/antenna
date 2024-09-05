@@ -59,7 +59,7 @@ const Content = ({
   value: string
   children: ReactNode
 }) => (
-  <Tabs.Content value={value} className={styles.tabsContent}>
+  <Tabs.Content value={value} tabIndex={-1}>
     {children}
   </Tabs.Content>
 )
