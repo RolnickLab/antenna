@@ -6,7 +6,9 @@ import { Analytics } from 'components/analytics'
 import { CookieDialog } from 'components/cookie-dialog/cookie-dialog'
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
+import { InfoPage } from 'components/info-page/info-page'
 import { Menu } from 'components/menu/menu'
+import { TermsOfServiceInfo } from 'components/terms-of-service-info/terms-of-service-info'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
@@ -82,6 +84,7 @@ export const App = () => (
           <Route path="collections/:id" element={<CollectionDetails />} />
           <Route path="*" element={<UnderConstruction />} />
         </Route>
+        <Route path="/:slug" element={<InfoPageContainer />} />
       </Routes>
     </div>
     <ReactQueryDevtools initialIsOpen={false} />
@@ -122,6 +125,7 @@ const ProjectsContainer = () => {
 
   return (
     <main className={styles.main}>
+      <TermsOfServiceInfo />
       <div className={styles.content}>
         <ErrorBoundary>
           <Projects />
@@ -181,5 +185,19 @@ const ProjectContainer = () => {
         </div>
       </main>
     </>
+  )
+}
+
+const InfoPageContainer = () => {
+  const { slug } = useParams()
+
+  return (
+    <main className={styles.main}>
+      <div className={styles.content}>
+        <ErrorBoundary>
+          <InfoPage slug={slug as string} />
+        </ErrorBoundary>
+      </div>
+    </main>
   )
 }
