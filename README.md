@@ -15,6 +15,14 @@ The platform uses Docker Compose to run all services locally for development. In
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger Docs: http://localhost:8000/api/v2/docs/
 
+If using VSCode, configure the appropriate extensions and the pre-commit hook for linting/formatting.
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements/local.txt
+```
+
 ## Development
 
 ### Frontend

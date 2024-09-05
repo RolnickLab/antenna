@@ -4,14 +4,14 @@ from django.contrib import admin
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 from django.views import defaults as default_views
-from django.views.generic import TemplateView, RedirectView
+from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-API_ROOT = 'api/v2/'
+API_ROOT = "api/v2/"
 
 urlpatterns = [
     # Redirect homepage to API_ROOT
-    path('', RedirectView.as_view(url=API_ROOT, permanent=True)),
+    path("", RedirectView.as_view(url=API_ROOT, permanent=True)),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
     # Your stuff: custom urls includes go here
