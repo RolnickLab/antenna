@@ -1695,7 +1695,7 @@ class Detection(BaseModel):
     #         upload_to="detections",
     #     ),
     # )
-    path = models.CharField(max_length=255, blank=True)
+    path = models.CharField(max_length=255, blank=True, null=True)
 
     occurrence = models.ForeignKey(
         "Occurrence",
@@ -1912,7 +1912,7 @@ class Occurrence(BaseModel):
         return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
-        for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
+        for url in Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]:
             yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
 
     @functools.cached_property
