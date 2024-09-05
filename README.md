@@ -21,6 +21,8 @@ If using VSCode, configure the appropriate extensions and the pre-commit hook fo
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements/local.txt
+pre-commit install
+pre-commit run --all-files
 ```
 
 ## Development
