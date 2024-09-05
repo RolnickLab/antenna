@@ -357,12 +357,6 @@ class Deployment(BaseModel):
         )
         return (first, last)
 
-    def first_date(self) -> datetime.date | None:
-        return self.first_capture_timestamp.date() if self.first_capture_timestamp else None
-
-    def last_date(self) -> datetime.date | None:
-        return self.last_capture_timestamp.date() if self.last_capture_timestamp else None
-
     def data_source_uri(self) -> str | None:
         if self.data_source:
             uri = self.data_source.uri().rstrip("/")

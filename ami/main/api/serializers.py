@@ -132,6 +132,8 @@ class DeploymentListSerializer(DefaultSerializer):
     project = ProjectNestedSerializer(read_only=True)
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
+    first_date = serializers.DateField(read_only=True, source="first_capture_timestamp")
+    last_date = serializers.DateField(read_only=True, source="last_capture_timestamp")
 
     class Meta:
         model = Deployment
