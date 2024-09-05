@@ -226,7 +226,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         ).first()
         if existing_detection:
             if not existing_detection.path:
-                existing_detection.path = detection_resp.crop_image_url or ""
+                existing_detection.path = detection_resp.crop_image_url or None
                 existing_detection.save()
                 print("Updated existing detection", existing_detection)
             detection = existing_detection
