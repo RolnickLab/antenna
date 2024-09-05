@@ -14,7 +14,6 @@ import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
 import { ResetPassword } from 'pages/auth/reset-password'
 import { ResetPasswordConfirm } from 'pages/auth/reset-password-confirm'
-import { SignUp } from 'pages/auth/sign-up'
 import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
@@ -65,7 +64,6 @@ export const App = () => (
         />
         <Route path="auth" element={<AuthContainer />}>
           <Route path="login" element={<Login />} />
-          <Route path="sign-up" element={<SignUp />} />
           <Route path="reset-password" element={<ResetPassword />} />
           <Route
             path="reset-password-confirm"
