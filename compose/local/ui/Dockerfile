@@ -1,3 +1,4 @@
+# Node version should always match the version in `ui/.nvmrc`
 FROM node:18
 WORKDIR /app
 USER node
