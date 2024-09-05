@@ -13,6 +13,7 @@ from ami.main.models import (
     Taxon,
     TaxonRank,
 )
+from ami.taxa.models import update_taxa_observed_for_project
 
 
 def update_site_settings(**kwargs):
@@ -92,6 +93,7 @@ def create_taxa(project: Project) -> TaxaList:
     for taxon in taxa_list.taxa.all():
         taxon.projects.add(project)
     #  project.taxa.set([taxa_list.taxa.all()])
+    update_taxa_observed_for_project(project)
     return taxa_list
 
 
