@@ -37,7 +37,8 @@ button,
 fieldset,
 input,
 li,
-ul {
+ul,
+ol {
   all: unset;
 }
 

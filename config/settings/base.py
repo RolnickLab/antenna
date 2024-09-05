@@ -353,6 +353,9 @@ DJOSER = {
         "user": "ami.users.api.serializers.UserSerializer",
         "current_user": "ami.users.api.serializers.CurrentUserSerializer",
     },
+    "PERMISSIONS": {
+        "user_create": ["rest_framework.permissions.IsAdminUser"],
+    },
 }
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that

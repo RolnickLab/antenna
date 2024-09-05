@@ -25,6 +25,7 @@ export default defineConfig(({ mode }) => {
       svgr({ include: '**/*.svg?react' }),
       eslint({ exclude: ['/virtual:/**', 'node_modules/**'] }),
     ],
+    assetsInclude: ['**/*.md'],
     define: {
       __COMMIT_HASH__: JSON.stringify(commitHash),
     },

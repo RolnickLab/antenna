@@ -5,6 +5,7 @@ export const APP_ROUTES = {
   SIGN_UP: '/auth/sign-up',
   RESET_PASSWORD: '/auth/reset-password',
   RESET_PASSWORD_CONFIRM: '/auth/reset-password-confirm',
+  TERMS_OF_SERVICE: '/terms-of-service',
   PROJECTS: '/projects',
 
   /* Dynamic app routes */
