@@ -482,7 +482,9 @@ export const translate = (
   }
 
   Object.entries(values).forEach(([key, value]) => {
-    string = string.replace(`{{${key}}}`, `${value}`)
+    const valueLabel =
+      typeof value === 'number' ? value.toLocaleString() : value
+    string = string.replace(`{{${key}}}`, `${valueLabel}`)
   })
 
   return string
