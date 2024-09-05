@@ -3,6 +3,7 @@ import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { Fragment, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Breadcrumb, BreadcrumbContext } from 'utils/breadcrumbContext'
+import { STRING, translate } from 'utils/language'
 import styles from './breadcrumbs.module.scss'
 
 export const Breadcrumbs = ({
@@ -47,17 +48,20 @@ export const Breadcrumbs = ({
     <div className={styles.breadcrumbs}>
       {breadcrumbs.map((breadcrumb, index) => {
         const isLast = index === breadcrumbs.length - 1
+        const title = breadcrumb.title.length
+          ? breadcrumb.title
+          : `${translate(STRING.LOADING_DATA)}...`
 
         return (
           <Fragment key={index}>
             {isLast || !breadcrumb.path ? (
-              <span className={styles.breadcrumb}>{breadcrumb.title}</span>
+              <span className={styles.breadcrumb}>{title}</span>
             ) : (
               <Link
                 to={breadcrumb.path}
                 className={classNames(styles.breadcrumb, styles.link)}
               >
-                <span>{breadcrumb.title}</span>
+                <span>{title}</span>
               </Link>
             )}
             {!isLast && (
