@@ -1,5 +1,6 @@
 FROM node:18
 WORKDIR /app
+USER node
 COPY package.json yarn.lock ./
 RUN yarn install
 COPY . .
