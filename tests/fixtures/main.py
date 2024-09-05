@@ -13,6 +13,7 @@ from ami.main.models import (
     Taxon,
     TaxonRank,
 )
+from tests.fixtures.storage import create_storage_source
 
 
 def update_site_settings(**kwargs):
@@ -28,11 +29,17 @@ def update_site_settings(**kwargs):
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     if reuse:
         project, _ = Project.objects.get_or_create(name="Test Project")
-        deployment, _ = Deployment.objects.get_or_create(project=project, name="Test Deployment")
+        data_source = create_storage_source(project, "Test Data Source")
+        deployment, _ = Deployment.objects.get_or_create(
+            project=project, name="Test Deployment", defaults=dict(data_source=data_source)
+        )
     else:
         short_id = uuid.uuid4().hex[:8]
         project = Project.objects.create(name=f"Test Project {short_id}")
-        deployment = Deployment.objects.create(project=project, name=f"Test Deployment {short_id}")
+        data_source = create_storage_source(project, f"Test Data Source {short_id}")
+        deployment = Deployment.objects.create(
+            project=project, name=f"Test Deployment {short_id}", data_source=data_source
+        )
     return project, deployment
 
 
