@@ -339,15 +339,6 @@ class Deployment(BaseModel):
     class Meta:
         ordering = ["name"]
 
-    def taxa(self) -> models.QuerySet["Taxon"]:
-        return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
-
-    def first_capture(self) -> typing.Optional["SourceImage"]:
-        return SourceImage.objects.filter(deployment=self).order_by("timestamp").first()
-
-    def last_capture(self) -> typing.Optional["SourceImage"]:
-        return SourceImage.objects.filter(deployment=self).order_by("timestamp").last()
-
     def get_first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
         # Retrieve the timestamps of the first and last capture in a single query
         first, last = (
