@@ -6,4 +6,5 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   columnSettings: {},
   recentIdentifications: [],
   scoreThreshold: 0.6,
+  termsMessageSeen: false,
 }

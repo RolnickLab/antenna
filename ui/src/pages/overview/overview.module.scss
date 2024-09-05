@@ -21,19 +21,20 @@
 }
 
 .aboutImage {
-  background-color: $color-generic-white;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  background-color: rgba($color: $color-primary-2-50, $alpha: 0.5);
+  border-right: 1px solid $color-neutral-100;
 
   img {
     position: absolute;
-    top: 0;
-    right: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    top: 32px;
+    right: 32px;
+    width: calc(100% - 64px);
+    height: calc(100% - 64px);
+    object-fit: contain;
   }
 }
 

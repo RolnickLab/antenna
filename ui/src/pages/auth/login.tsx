@@ -79,6 +79,8 @@ export const Login = () => {
             {errorMessage}
           </p>
         )}
+      </form>
+      <div className={styles.outro}>
         <p className={styles.text}>
           {translate(STRING.FORGOT_PASSWORD)}{' '}
           <Link
@@ -88,12 +90,7 @@ export const Login = () => {
             {translate(STRING.RESET)}
           </Link>
         </p>
-      </form>
-      <div className={styles.outro}>
-        <p className={styles.text}>
-          {translate(STRING.MESSAGE_NO_ACCOUNT_YET)}{' '}
-          <Link to={APP_ROUTES.SIGN_UP}>{translate(STRING.SIGN_UP)}</Link>
-        </p>
+        {/* TODO: Add link to join waitlist */}
         <p className={classNames(styles.text, styles.divider)}>
           {translate(STRING.OR).toUpperCase()}
         </p>
