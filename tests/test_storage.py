@@ -255,7 +255,7 @@ class TestStorageSource(TestCase):
 
     def test_connection(self):
         assert isinstance(self.storage_source, S3StorageSource)
+        s3.write_random_file(self.storage_source.config)
         status = self.storage_source.test_connection()
         self.assertTrue(status.connection_successful)
-        s3.write_random_file(self.storage_source.config)
         self.assertIsNotNone(status.first_file_found)

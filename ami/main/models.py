@@ -1192,9 +1192,16 @@ class SourceImage(BaseModel):
             and data_source.access_key
             and data_source.secret_key
         ):
-            return ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+            url = ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+        elif self.public_base_url:
+            url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
         else:
-            return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
+            raise ValueError(f"Source image {self} has no public_base_url and or data source.")
+        # Ensure url has a scheme
+        if not urllib.parse.urlparse(url).netloc:
+            raise ValueError(f"Public URL for {self} is invalid: {url}. Public base URL: '{self.public_base_url}'")
+        else:
+            return url
 
     # backwards compatibility
     url = public_url
@@ -1202,16 +1209,18 @@ class SourceImage(BaseModel):
     def get_detections_count(self) -> int:
         return self.detections.distinct().count()
 
-    def get_base_url(self) -> str:
+    def get_base_url(self) -> str | None:
         """
         Determine the public URL from the deployment's data source.
 
-        If there is no data source, return a relative URL.
+        If there is no data source, return None
+
+        If the public_base_url is None, a presigned URL will be generated for each request.
         """
         if self.deployment and self.deployment.data_source and self.deployment.data_source.public_base_url:
             return self.deployment.data_source.public_base_url
         else:
-            return "/"
+            return None
 
     def extract_timestamp(self) -> datetime.datetime | None:
         """
