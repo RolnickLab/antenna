@@ -242,21 +242,27 @@ def update_taxa_observed_for_project(project: Project) -> list[TaxonObserved]:
     existing_observed = set(TaxonObserved.objects.filter(project=project).values_list("taxon_id", flat=True))
 
     # Find taxa that have occurrences in the project but don't have a TaxonObserved record
-    taxa_to_create = Taxon.objects.filter(occurrences__project=project).exclude(id__in=existing_observed).distinct()
-
+    taxa_to_create = (
+        Occurrence.objects.filter(project=project)
+        .values_list("determination__id", flat=True)
+        .exclude(determination__id__in=existing_observed)
+        .distinct()
+    )
     # @TODO create & update parent taxa counts (Genus, Family, etc. records)
 
     # Prepare TaxonObserved objects for bulk creation
     to_create = [
         TaxonObserved(
-            taxon_id=taxon.id,
+            taxon_id=taxon_id,
             project=project,
         )
-        for taxon in taxa_to_create
+        for taxon_id in taxa_to_create
     ]
 
     # Find taxa that no longer have occurrences in the project
-    taxa_still_in_project = Taxon.objects.filter(occurrences__project=project).values("id")
+    taxa_still_in_project = (
+        Occurrence.objects.filter(project=project).values_list("determination__id", flat=True).distinct()
+    )
     to_delete_ids = (
         TaxonObserved.objects.filter(project=project)
         .exclude(taxon_id__in=taxa_still_in_project)

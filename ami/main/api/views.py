@@ -24,6 +24,7 @@ from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.taxa.models import TaxonObserved
 from ami.utils.requests import get_active_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -177,6 +178,10 @@ class DeploymentViewSet(DefaultViewSet):
                     queryset=SourceImage.objects.order_by("created_at").exclude(upload=None),
                 )
             )
+        elif self.action == "list":
+            # Add annotations for deployments
+            # @TODO use a QuerySet manager and call Deployments.with_counts() etc.
+            pass
 
         return qs
 
@@ -1007,13 +1012,10 @@ class SummaryView(GenericAPIView):
                     determination_score__gte=confidence_threshold,
                     event__isnull=False,
                 ).count(),
-                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+                "taxa_count": TaxonObserved.objects.filter(project=project)
                 .filter(
-                    occurrences_count__gt=0,
-                    occurrences__determination_score__gte=confidence_threshold,
-                    occurrences__project=project,
+                    best_determination_score__gte=confidence_threshold,
                 )
-                .distinct()
                 .count(),
             }
         else:
@@ -1026,9 +1028,7 @@ class SummaryView(GenericAPIView):
                 "occurrences_count": Occurrence.objects.filter(
                     determination_score__gte=confidence_threshold, event__isnull=False
                 ).count(),
-                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
-                .filter(occurrences_count__gt=0, occurrences__determination_score__gte=confidence_threshold)
-                .count(),
+                "taxa_count": TaxonObserved.objects.filter(best_determination_score__gte=confidence_threshold).count(),
                 "last_updated": timezone.now(),
             }
 
@@ -1048,7 +1048,7 @@ class SummaryView(GenericAPIView):
 
 
 _STORAGE_CONNECTION_STATUS = [
-    # These come from the ConnetionStatus react component
+    # These come from the ConnectionStatus react component
     # @TODO use ENUM
     "NOT_CONNECTED",
     "CONNECTING",

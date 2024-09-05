@@ -262,18 +262,17 @@ def event_detections_per_hour(event_pk: int):
 
 
 def event_top_taxa(event_pk: int, top_n: int = 10):
-    # Horiziontal bar chart of top taxa
-    Taxon = apps.get_model("main", "Taxon")
+    # Horizontal bar chart of top taxa
+    TaxonObserved = apps.get_model("taxa", "TaxonObserved")
     top_taxa = (
-        Taxon.objects.filter(occurrences__event=event_pk)
-        .values("name")
-        # .annotate(num_detections=models.Count("occurrences__detections"))
-        .annotate(num_detections=models.Count("occurrences"))
-        .order_by("-num_detections")[:top_n]
+        TaxonObserved.objects.filter(occurrences__event=event_pk)
+        .select_related("taxon")
+        .values("taxon__name", "occurrences_count")
+        .order_by("-occurrences_count")[:top_n]
     )
 
     if top_taxa:
-        taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in top_taxa]))
+        taxa, counts = list(zip(*[(t["name"], t["occurrences_count"]) for t in top_taxa]))
         taxa = [t or "Unknown" for t in taxa]
         counts = [c or 0 for c in counts]
     else:
