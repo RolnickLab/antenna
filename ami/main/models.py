@@ -565,11 +565,12 @@ class Deployment(BaseModel):
             .count()
         )
         self.taxa_count = (
-            Taxon.objects.filter(
-                occurrences__deployment=self,
-                occurrences__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
-                occurrences__event__isnull=False,
+            self.occurrences.filter(
+                determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
+                event__isnull=False,
+                deployment=self,
             )
+            .values_list("determination", flat=True)
             .distinct()
             .count()
         )
