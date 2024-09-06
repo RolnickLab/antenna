@@ -4,18 +4,18 @@ import { useFilters } from 'utils/useFilters'
 import styles from './empty-state.module.scss'
 
 export const EmptyState = () => {
-  const { filters, clearFilter } = useFilters()
+  const { filters, isActive: filtersActive, clearFilter } = useFilters()
 
   return (
     <div className={styles.wrapper}>
       <span>
         {translate(
-          filters.length
+          filtersActive
             ? STRING.MESSAGE_NO_RESULTS_FOR_FILTERING
             : STRING.MESSAGE_NO_RESULTS
         )}
       </span>
-      {filters.length && (
+      {filtersActive && (
         <Button
           label={translate(STRING.CLEAR_FILTERS)}
           onClick={() => filters.map((filter) => clearFilter(filter.field))}
