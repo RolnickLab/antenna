@@ -13,7 +13,7 @@ from ami.main.models import (
     Taxon,
     TaxonRank,
 )
-from tests.fixtures.storage import create_storage_source
+from tests.fixtures.storage import create_storage_source, populate_bucket
 
 
 def update_site_settings(**kwargs):
@@ -43,7 +43,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     return project, deployment
 
 
-def create_captures(
+def create_captures_without_images(
     deployment: Deployment,
     num_nights: int = 3,
     images_per_night: int = 3,
@@ -73,6 +73,26 @@ def create_captures(
     collection.images.set(created)
 
     return created
+
+
+def create_captures(
+    deployment: Deployment,
+):
+    assert deployment.data_source is not None
+    populate_bucket(
+        config=deployment.data_source.config,
+        subdir=f"deployment_{deployment.pk}",
+    )
+
+    deployment.sync_captures()
+    assert deployment.captures.count() > 0, "Captures were synced, but no files were found."
+
+    collection = SourceImageCollection.objects.create(
+        project=deployment.project,
+        name="Test Source Image Collection",
+    )
+    collection.images.set(SourceImage.objects.filter(deployment=deployment))
+    return collection.images.all()
 
 
 def create_taxa(project: Project) -> TaxaList:
