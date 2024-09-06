@@ -13,6 +13,7 @@ import pydantic
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
@@ -62,11 +63,6 @@ DEFAULT_RANKS = sorted(
 )
 
 
-# @TODO move to settings & make configurable
-_SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
-_CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
-
-
 def get_media_url(path: str) -> str:
     """
     If path is a full URL, return it as-is.
@@ -77,7 +73,8 @@ def get_media_url(path: str) -> str:
     if path.startswith("http"):
         url = path
     else:
-        url = urllib.parse.urljoin(_CROPS_URL_BASE, path.lstrip("/"))
+        # @TODO add a file field to the Detection model and use that to get the URL
+        url = default_storage.url(path.lstrip("/"))
     return url
 
 
@@ -1921,8 +1918,10 @@ class Occurrence(BaseModel):
         return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
-        for url in Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]:
-            yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
+        for path in (
+            Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]
+        ):
+            yield get_media_url(path)
 
     @functools.cached_property
     def best_detection(self):
