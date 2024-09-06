@@ -2,11 +2,11 @@ import { useSearchParams } from 'react-router-dom'
 
 const AVAILABLE_FILTERS = [
   {
-    label: 'Deployment',
+    label: 'Station',
     field: 'deployment',
   },
   {
-    label: 'Occurrence deployment',
+    label: 'Occurrence station',
     field: 'occurrences__deployment',
   },
   {
