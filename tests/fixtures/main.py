@@ -50,7 +50,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     return project, deployment
 
 
-def create_captures_without_images(
+def create_captures(
     deployment: Deployment,
     num_nights: int = 3,
     images_per_night: int = 3,
@@ -82,7 +82,7 @@ def create_captures_without_images(
     return created
 
 
-def create_captures(
+def create_captures_from_files(
     deployment: Deployment,
 ) -> list[tuple[SourceImage, GeneratedTestFrame]]:
     assert deployment.data_source is not None
