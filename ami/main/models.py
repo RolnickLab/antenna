@@ -1169,7 +1169,7 @@ class SourceImage(BaseModel):
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
-    def public_url(self) -> str:
+    def public_url(self, raise_errors=False) -> str | None:
         """
         Return the public URL for this image.
 
@@ -1193,10 +1193,20 @@ class SourceImage(BaseModel):
         elif self.public_base_url:
             url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
         else:
-            raise ValueError(f"Source image {self} has no public_base_url and or data source.")
+            msg = f"Public URL for {self} is not available. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
         # Ensure url has a scheme
         if not urllib.parse.urlparse(url).netloc:
-            raise ValueError(f"Public URL for {self} is invalid: {url}. Public base URL: '{self.public_base_url}'")
+            msg = f"Public URL for {self} is invalid: {url}. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
         else:
             return url
 
