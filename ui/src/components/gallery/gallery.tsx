@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { EmptyState } from 'components/empty-state/empty-state'
 import { Card, CardSize } from 'design-system/components/card/card'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { CSSProperties } from 'react'
@@ -54,5 +55,6 @@ export const Gallery = ({
         <LoadingSpinner />
       </div>
     )}
+    {!isLoading && items.length === 0 && <EmptyState />}
   </div>
 )
