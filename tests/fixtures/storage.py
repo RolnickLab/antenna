@@ -5,7 +5,7 @@ from django.conf import settings
 
 from ami.main.models import Project, S3StorageSource
 from ami.utils import s3
-from tests.fixtures.images import generate_moth_series
+from tests.fixtures.images import GeneratedTestFrame, generate_moth_series
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def populate_bucket(
     minutes_interval: int = 45,
     minutes_interval_variation: int = 10,
     skip_existing: bool = True,
-) -> list[str]:
+) -> list[GeneratedTestFrame]:
     # Images need to be named with iso timestamps to be sorted correctly
     # They should be in folders by day
     # the timestamps should range from 10pm to 4am over a few days
@@ -58,7 +58,7 @@ def populate_bucket(
         existing_keys = [key.key for key, i in keys if key]
         if existing_keys:
             logger.info(f"Skipping existing images in {subdir}: {existing_keys}")
-            return existing_keys
+            return []
 
     logger.info(f"Generating a total of {num_nights * images_per_day} images over {num_nights} nights")
     for _ in range(num_nights):
@@ -68,20 +68,19 @@ def populate_bucket(
             minutes_interval_variation=minutes_interval_variation,
             save_images=False,
         ):
-            image = frame["image"]
-
             # Convert the image to bytes
             img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format="JPEG")
+            frame.image.save(img_byte_arr, format="JPEG")
             img_byte_arr = img_byte_arr.getvalue()
 
             # Create the S3 key for the image
-            key = f"{subdir}/{frame['filename']}"
+            key = f"{subdir}/{frame.filename}"
 
             # Upload the image to S3
             logging.info(f"Uploading {key} to {config.bucket_name}")
             s3.write_file(config, key, img_byte_arr)
+            frame.object_store_key = key
 
-            created.append(key)
+            created.append(frame)
 
     return created

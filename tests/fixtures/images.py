@@ -1,4 +1,5 @@
 import colorsys
+import dataclasses
 import datetime
 import json
 import os
@@ -119,6 +120,24 @@ def generate_fake_moth(
     }
 
 
+@dataclasses.dataclass
+class BoundingBoxWithIdentifier:
+    identifier: str
+    bbox: tuple[float, float, float, float]
+
+
+@dataclasses.dataclass
+class GeneratedTestFrame:
+    series_id: str
+    width: int
+    height: int
+    timestamp: datetime.datetime
+    image: Image.Image
+    filename: str
+    bounding_boxes: list[BoundingBoxWithIdentifier]
+    object_store_key: str | None = None
+
+
 def generate_moth_series(
     num_frames: int = 3,
     width: int = 1024,
@@ -129,7 +148,7 @@ def generate_moth_series(
     minutes_interval_variation: int = 10,
     save_images: bool = True,
     output_dir: str = "generated_test_captures",
-) -> list[dict]:
+) -> list[GeneratedTestFrame]:
     background = create_background(width, height)
     moths = []
     image_data = []
@@ -184,31 +203,36 @@ def generate_moth_series(
             moth["x"] = max(moth["size"] // 2, min(width - moth["size"] // 2, moth["x"]))
             moth["y"] = max(moth["size"] // 2, min(height - moth["size"] // 2, moth["y"]))
 
-            bbox = generate_fake_moth(
+            moth_data = generate_fake_moth(
                 image, moth["x"], moth["y"], moth["size"], moth["identifier"], moth["color"], moth["rotation"]
             )
-            bounding_boxes.append((moth["identifier"], bbox))
+            moth_bbox = (
+                moth_data["x"],
+                moth_data["y"],
+                (moth_data["x"] + moth_data["width"]),
+                (moth_data["y"] + moth_data["height"]),
+            )
+            bounding_boxes.append(BoundingBoxWithIdentifier(moth["identifier"], moth_bbox))
 
         image = add_noise(image)
 
         image_filename = f"session_{series_id}_capture_{timestamp.strftime('%Y%m%d%H%M%S')}.jpg"
 
-        frame_data = {
-            "session": series_id,
-            "timestamp": timestamp.isoformat(),
-            "filename": image_filename,
-            "width": width,
-            "height": height,
-            "bounding_boxes": bounding_boxes,
-        }
+        frame_data = GeneratedTestFrame(
+            series_id=series_id,
+            width=width,
+            height=height,
+            timestamp=timestamp,
+            filename=image_filename,
+            bounding_boxes=bounding_boxes,
+            image=image,
+        )
+
         if save_images:
             # Make sure the output directory exists
             os.makedirs(output_dir, exist_ok=True)
             image_filepath = os.path.join(output_dir, image_filename)
             image.save(image_filepath)
-        else:
-            # Add the actual image object to the image data
-            frame_data["image"] = image
 
         image_data.append(frame_data)
 

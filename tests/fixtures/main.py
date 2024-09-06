@@ -1,19 +1,25 @@
 import datetime
+import logging
 import pathlib
+import random
 import uuid
 
 from ami.main.models import (
     Deployment,
     Detection,
     Event,
+    Occurrence,
     Project,
     SourceImage,
     SourceImageCollection,
     TaxaList,
     Taxon,
     TaxonRank,
+    group_images_into_events,
 )
-from tests.fixtures.storage import create_storage_source, populate_bucket
+from tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
+
+logger = logging.getLogger(__name__)
 
 
 def update_site_settings(**kwargs):
@@ -77,22 +83,36 @@ def create_captures_without_images(
 
 def create_captures(
     deployment: Deployment,
-):
+) -> list[tuple[SourceImage, GeneratedTestFrame]]:
     assert deployment.data_source is not None
-    populate_bucket(
+    frame_data = populate_bucket(
         config=deployment.data_source.config,
         subdir=f"deployment_{deployment.pk}",
     )
 
     deployment.sync_captures()
     assert deployment.captures.count() > 0, "Captures were synced, but no files were found."
+    group_images_into_events(deployment)
 
     collection = SourceImageCollection.objects.create(
         project=deployment.project,
         name="Test Source Image Collection",
     )
     collection.images.set(SourceImage.objects.filter(deployment=deployment))
-    return collection.images.all()
+
+    source_images = SourceImage.objects.filter(deployment=deployment).order_by("timestamp")
+    source_images = [img for img in source_images if any(img.path.endswith(frame.filename) for frame in frame_data)]
+
+    assert len(source_images) == len(
+        frame_data
+    ), f"There are {len(source_images)} source images and {len(frame_data)} frame data items."
+    frame_data = sorted(frame_data, key=lambda x: x.timestamp)
+    frames_with_images = list(zip(source_images, frame_data))
+    for source_image, frame in frames_with_images:
+        assert source_image.timestamp == frame.timestamp
+        assert source_image.path.endswith(frame.filename)
+
+    return frames_with_images
 
 
 def create_taxa(project: Project) -> TaxaList:
@@ -160,6 +180,88 @@ def create_taxa_from_csv(project: Project, csv_data: str = TEST_TAXA_CSV_DATA):
     return taxa_list
 
 
+def create_detections(
+    source_image: SourceImage,
+    bboxes: list[tuple[float, float, float, float]],
+):
+    for i, bbox in enumerate(bboxes):
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=bbox,
+        )
+        taxon = Taxon.objects.filter(projects=source_image.deployment.project).order_by("?").first()
+        if taxon:
+            detection.classifications.create(
+                taxon=taxon,
+                score=random.randint(70, 98) / 100,
+                timestamp=source_image.timestamp,
+            )
+
+
+def create_occurrences_from_frame_data(
+    frame_data: list[tuple[SourceImage, GeneratedTestFrame]],
+    taxa_list: TaxaList | None = None,
+) -> list[Occurrence]:
+    def make_identifier(series_id: str, bbox_identifier: str):
+        return f"{series_id}_{bbox_identifier}"
+
+    # Create an Occurrence for each series of detections, using the same "identifier"
+    occurrences_by_identifier = {}
+    for source_image, frame in frame_data:
+        assert source_image.event, f"Source image {source_image} has no event"
+        for bbox in frame.bounding_boxes:
+            identifier = make_identifier(frame.series_id, bbox.identifier)
+            if identifier not in occurrences_by_identifier:
+                occurrences_by_identifier[identifier] = Occurrence.objects.create(
+                    event=source_image.event,
+                    deployment=source_image.deployment,
+                    project=source_image.project,
+                )
+
+    # Group detections by identifier and create a Detection for each with the same Taxon classification
+    detections_by_identifier = {}
+    for source_image, frame in frame_data:
+        for bbox in frame.bounding_boxes:
+            identifier = make_identifier(frame.series_id, bbox.identifier)
+            detections_by_identifier.setdefault(identifier, []).append((source_image, bbox.bbox))
+
+    for identifier, detections in detections_by_identifier.items():
+        assert source_image.deployment
+        if not taxa_list:
+            taxon = Taxon.objects.order_by("?").first()
+        else:
+            taxon = taxa_list.taxa.order_by("?").first()
+        assert taxon, f"No taxon found to create classification for detections with identifier {identifier}"
+        for source_image, bbox in detections:
+            detection = Detection.objects.create(
+                source_image=source_image,
+                timestamp=source_image.timestamp,
+                bbox=bbox,
+                occurrence=occurrences_by_identifier[identifier],
+            )
+            detection.classifications.create(
+                taxon=taxon,
+                score=random.randint(41, 92) / 100,
+                timestamp=datetime.datetime.now(),
+            )
+            detection.save()
+
+    occurrences = list(occurrences_by_identifier.values())
+
+    # Resave all occurrences to update the best detection and species determination
+    for occurrence in occurrences:
+        occurrence.save()
+
+    # Resave all source images to update cached properties
+    for source_image, _ in frame_data:
+        source_image.save()
+
+    logger.info(f"Created {len(occurrences)} occurrences from {len(frame_data)} frames")
+
+    return occurrences
+
+
 def create_occurrences(
     deployment: Deployment,
     num: int = 6,
@@ -180,6 +282,7 @@ def create_occurrences(
         detection = Detection.objects.create(
             source_image=source_image,
             timestamp=source_image.timestamp,  # @TODO this should be automatically set to the source image timestamp
+            bbox=[0.1, 0.1, 0.2, 0.2],
         )
         # Could speed this up by creating an Occurrence with a determined taxon directly
         # but this tests more of the code.
