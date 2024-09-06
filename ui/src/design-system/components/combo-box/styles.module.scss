@@ -1,7 +1,7 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-$loading-wrapper-size: 38px;
+$accessory-wrapper-size: 38px;
 
 .wrapper {
   position: relative;
@@ -33,10 +33,7 @@ $loading-wrapper-size: 38px;
   border: 1px solid $color-neutral-300;
   box-sizing: border-box;
   margin-bottom: 8px;
-
-  &.loading {
-    padding-right: $loading-wrapper-size;
-  }
+  padding-right: $accessory-wrapper-size;
 
   &::placeholder {
     color: $color-neutral-500;
@@ -49,15 +46,15 @@ $loading-wrapper-size: 38px;
   }
 }
 
-.loadingWrapper {
+.accessoryWrapper {
   position: absolute;
   display: flex;
   justify-content: center;
   align-items: center;
   top: 0;
   right: 0;
-  width: $loading-wrapper-size;
-  height: $loading-wrapper-size;
+  width: $accessory-wrapper-size;
+  height: $accessory-wrapper-size;
 }
 
 .item {
