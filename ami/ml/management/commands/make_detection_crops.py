@@ -25,18 +25,29 @@ class Command(BaseCommand):
 
         processed_images = 0
         processed_detections = 0
+        errors: list[tuple[SourceImage, str]] = []
 
         with tqdm(total=total_images, desc="Processing images", unit="img") as pbar:
             while True:
+                # Exclude images that have known errors
+                queryset = queryset.exclude(id__in=[source_image.pk for source_image, _ in errors])
                 batch = get_source_images_with_missing_detections(queryset, batch_size)
                 if not batch:
                     break
 
                 for source_image in batch:
-                    processed_paths = process_source_image(source_image)
-                    processed_detections += len(processed_paths)
-                    processed_images += 1
-                    pbar.update(1)
+                    try:
+                        processed_paths = process_source_image(source_image)
+                        processed_detections += len(processed_paths)
+                        processed_images += 1
+                    except Exception as e:
+                        error_message = (
+                            f"Error processing image {source_image} from project '{source_image.project}': {str(e)}"
+                        )
+                        self.stderr.write(error_message)
+                        errors.append((source_image, error_message))
+                    finally:
+                        pbar.update(1)
 
                 self.stdout.write(
                     f"Processed {processed_images}/{total_images} images, {processed_detections} detections"
@@ -47,3 +58,8 @@ class Command(BaseCommand):
                 f"Successfully processed {processed_images} images and {processed_detections} detections"
             )
         )
+
+        if errors:
+            self.stdout.write(self.style.WARNING(f"Encountered {len(errors)} errors:"))
+            for source_image, error_message in errors:
+                self.stdout.write(f"  - {error_message}")
