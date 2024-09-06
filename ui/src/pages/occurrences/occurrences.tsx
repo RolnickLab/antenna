@@ -125,7 +125,12 @@ export const Occurrences = () => {
           />
         </div>
       )}
-      <PageFooter>
+      <PageFooter
+        hide={
+          selectedItems.length === 0 &&
+          (!occurrences || occurrences.length === 0)
+        }
+      >
         {selectedItems.length ? (
           <BulkActionBar
             selectedItems={selectedItems.filter((id) =>
