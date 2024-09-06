@@ -418,7 +418,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TOOLTIPS */
   [STRING.TOOLTIP_COLLECTION]:
-    'A collection is a group of source images. A collection contains all or some source images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
+    'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
     'A monitoring station is a location where a device is deployed to take images of insects in the wild (at a “Site”).',
   [STRING.TOOLTIP_DEVICE_TYPE]:
@@ -426,7 +426,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_JOB]:
     'A job is a request for data processing that specifies the data to process and the pipeline to use.',
   [STRING.TOOLTIP_OCCURRENCE]:
-    'An occurrence refers to when an individual is detected in a sequence of one or more images with no time interruption. Species classifications apply to occurrences: when a validator confirms the species in an image or a label is machine generated, they apply to all detections within the occurrence.',
+    'An occurrence refers to when an individual is detected in a sequence of one or more images with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_SESSION]:
