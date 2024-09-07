@@ -1,19 +1,21 @@
+// Raw colors
 $color-generic-white: #ffffff;
 $color-generic-black: #000000;
 
-$color-neutral-50: #f6f6f6;
-$color-neutral-100: #f0f0f0;
-$color-neutral-200: #dededf;
-$color-neutral-300: #bdbdbe;
-$color-neutral-400: #939397;
-$color-neutral-500: #6f7172;
-$color-neutral-600: #4e5051;
-$color-neutral-700: #383a3c;
-$color-neutral-800: #222426;
-$color-neutral-900: #111213;
+$color-neutral-50: #f8f8fa;
+$color-neutral-70: #f2f2f5;
+$color-neutral-100: #dedee5;
+$color-neutral-200: #a1a0a9;
+$color-neutral-300: #78777f;
+$color-neutral-400: #4e4f57;
+$color-neutral-500: #45464e;
+$color-neutral-600: #3d3e46;
+$color-neutral-700: #303137;
+$color-neutral-800: #1f1f23;
+$color-neutral-900: #131316;
 
 $color-success-100: #d8f2ec;
-$color-success-300: #86efac;
+$color-success-300: #6bcfb9;
 $color-success-500: #09af8a;
 $color-success-600: #089e7c;
 $color-success-700: #078c6e;
@@ -33,3 +35,11 @@ $color-primary-2-50: #f4f8fe;
 $color-primary-2-100: #e4effe;
 $color-primary-2-500: #77adf8;
 $color-primary-2-600: #5f8ac6;
+
+// Theme colors
+$color-background: $color-generic-white;
+$color-foreground: $color-neutral-700;
+$color-primary: $color-primary-1-600;
+$color-muted: $color-neutral-50;
+$color-muted-foreground: $color-neutral-300;
+$color-border: $color-neutral-100;
