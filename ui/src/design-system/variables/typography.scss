@@ -46,7 +46,7 @@
   font-style: normal;
   font-weight: 400;
   font-size: 10px;
-  line-height: 18px;
+  line-height: 16px;
 }
 
 @mixin paragraph-x-small {
@@ -54,11 +54,11 @@
   font-style: normal;
   font-weight: 400;
   font-size: 12px;
-  line-height: 20px;
+  line-height: 16px;
 
   @media only screen and (max-width: $small-screen-breakpoint) {
     font-size: 10px;
-    line-height: 18px;
+    line-height: 16px;
   }
 }
 
@@ -71,7 +71,7 @@
 
   @media only screen and (max-width: $small-screen-breakpoint) {
     font-size: 12px;
-    line-height: 20px;
+    line-height: 16px;
   }
 }
 
@@ -80,7 +80,7 @@
   font-style: normal;
   font-weight: 400;
   font-size: 16px;
-  line-height: 24px;
+  line-height: 22px;
 
   @media only screen and (max-width: $small-screen-breakpoint) {
     font-size: 14px;
@@ -93,11 +93,11 @@
   font-style: normal;
   font-weight: 400;
   font-size: 18px;
-  line-height: 28px;
+  line-height: 24px;
 
   @media only screen and (max-width: $small-screen-breakpoint) {
     font-size: 16px;
-    line-height: 24px;
+    line-height: 22px;
   }
 }
 
@@ -114,14 +114,13 @@
 @mixin bubble-label {
   display: inline-flex;
   height: auto;
-  border-radius: 15px;
-  padding: 0 12px;
-  background-color: #f2f3fe;
+  border-radius: 4px;
+  padding: 6px 8px 4px;
+  background-color: $color-primary-1-50;
   color: $color-primary-1-600;
   font-size: 16px;
-  line-height: 30px;
+  line-height: 22px;
   font-weight: 600;
-  border: 1px solid $color-neutral-100;
 }
 
 @mixin mono {
