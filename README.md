@@ -15,17 +15,17 @@ The platform uses Docker Compose to run all services locally for development. In
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger Docs: http://localhost:8000/api/v2/docs/
 
-If using VSCode, configure the appropriate extensions and the pre-commit hook for linting/formatting.
+## Development
 
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements/local.txt
-pre-commit install
-pre-commit run --all-files
+Install the pre-commit tool to run linting & formatting checks _before_ each git commit. It's typical to install this tool using your system-wide python.
+
+```
+pip install pre-commit  # Install pre-commit system-wide
+pre-commit install  # Install the hook for our project
 ```
 
-## Development
+If using VS Code, install the formatting extensions that are automatically suggested for the project (e.g. black). Format-on-save should be turned on by default from the project's vscode settings file.
+
 
 ### Frontend
 
@@ -62,6 +62,13 @@ Visit http://localhost:3000/
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 
+All backend packages are installed in the docker containers, however for faster auto-completion and intellisense, you can install them on the host machine:
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements/local.txt
+```
 
 #### Helpful Commands
 
