@@ -6,9 +6,9 @@ import { STRING, translate } from 'utils/language'
 import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
 import ami from './ami.png'
-import { BetaInfo } from './beta-info/beta-info'
 import styles from './header.module.scss'
 import { UserInfoDialog } from './user-info-dialog/user-info-dialog'
+import { VersionInfo } from './version-info/version-info'
 
 export const Header = () => {
   const location = useLocation()
@@ -29,7 +29,7 @@ export const Header = () => {
           className={styles.logo}
         />
       </Link>
-      <BetaInfo />
+      <VersionInfo />
       <div className={styles.rightContent}>
         <div className={styles.infoPages}>
           <Button
