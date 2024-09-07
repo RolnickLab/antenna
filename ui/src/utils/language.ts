@@ -182,10 +182,12 @@ export enum STRING {
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE_TYPE,
+  TOOLTIP_JOB,
   TOOLTIP_OCCURRENCE,
   TOOLTIP_PIPELINE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
+  TOOLTIP_STATUS,
   TOOLTIP_STORAGE,
 
   /* OTHER */
@@ -268,16 +270,16 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
-  [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
+  [STRING.FIELD_LABEL_CAPTURES]: 'Source images',
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
-  [STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES]: 'Data source captures',
+  [STRING.FIELD_LABEL_DATA_SOURCE_CAPTURES]: 'Data source images',
   [STRING.FIELD_LABEL_DATE]: 'Date',
   [STRING.FIELD_LABEL_DATE_OBSERVED]: 'Date observed',
   [STRING.FIELD_LABEL_DELAY]: 'Delay',
   [STRING.FIELD_LABEL_DEVICE]: 'Device type',
-  [STRING.FIELD_LABEL_DEPLOYMENT]: 'Deployment',
+  [STRING.FIELD_LABEL_DEPLOYMENT]: 'Station',
   [STRING.FIELD_LABEL_DESCRIPTION]: 'Description',
   [STRING.FIELD_LABEL_DETECTIONS]: 'Detections',
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
@@ -312,7 +314,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
-  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample captures',
+  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample images',
   [STRING.FIELD_LABEL_SCORE]: 'Score',
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
   [STRING.FIELD_LABEL_SPECIES]: 'Species',
@@ -328,7 +330,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
-  [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload captures',
+  [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload images',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
   [STRING.FIELD_LABEL_VERSION]: 'Version',
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version',
@@ -338,8 +340,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
-  [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
-  [STRING.ENTITY_TYPE_DEPLOYMENT]: 'deployment',
+  [STRING.ENTITY_TYPE_CAPTURE]: 'source image',
+  [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
   [STRING.ENTITY_TYPE_PIPELINE]: 'pipeline',
   [STRING.ENTITY_TYPE_JOB]: 'job',
@@ -350,18 +352,18 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} images can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
-    'Deployment must be created before syncing captures.',
+    'Station must be created before syncing images.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
     'To upload more than {{numCaptures}} images you must configure a data source.',
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
-    'Deployment must be created before uploading captures.',
+    'Station must be created before uploading images.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
     'Contact an administrator to change your email or password.',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
-    'A data source must be configured and saved before syncing captures.',
+    'A data source must be configured and saved before syncing images.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
@@ -390,7 +392,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
   /* NAV_ITEM */
-  [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
+  [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',
   [STRING.NAV_ITEM_JOBS]: 'Jobs',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
   [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
@@ -421,21 +423,25 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TOOLTIPS */
   [STRING.TOOLTIP_COLLECTION]:
-    'A collection is a group of captures. A collection contains all or some captures in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
+    'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
-    'A deployment is defined as one monitoring station.',
+    'A monitoring station is a location where a device is deployed to take images of insects in the wild (at a “Site”).',
   [STRING.TOOLTIP_DEVICE_TYPE]:
-    'A device type is the type of equipment used for monitoring, for example an AMI system. One or many deployments can be connected to a device type.',
+    'A device type is the type of equipment or camera used for collecting source images. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
+  [STRING.TOOLTIP_JOB]:
+    'A job is a request for data processing that specifies the data to process and the pipeline to use.',
   [STRING.TOOLTIP_OCCURRENCE]:
-    'An occurrence is a group of detections of one individual. One occurrence consists of one or many detections.',
+    'An occurrence refers to when an individual is detected in a sequence of one or more images with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
-    'A pipeline is a set of algorithms used for processing. When a processing job is registered, a pipeline is picked. This list defines the pipeline options available.',
+    'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_SESSION]:
-    'A session is a fixed period of time of monitoring for one deployment. The period is typically one night.',
+    'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
-    'A site is a physical place where monitoring is taking place. One or many deployments can be connected to a site.',
+    'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
+  [STRING.TOOLTIP_STATUS]:
+    'A status is the processing stage of a job once submitted: Created > Pending > Running > Done. A Failed status means the job stopped before it had finished.',
   [STRING.TOOLTIP_STORAGE]:
-    'A storage is a place where captures are kept, for example a S3 bucket. One or many deployments can be connected to a storage.',
+    'A storage is a place where source images are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 
   /* OTHER */
   [STRING.ALGORITHMS]: 'Algorithms',
