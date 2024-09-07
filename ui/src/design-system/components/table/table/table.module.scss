@@ -75,7 +75,7 @@
     position: relative;
 
     tr:nth-child(even) {
-      background-color: rgba(255, 255, 255, 0.6);
+      background-color: rgba($color: $color-generic-white, $alpha: 0.6);
     }
 
     tr:nth-child(odd) {
