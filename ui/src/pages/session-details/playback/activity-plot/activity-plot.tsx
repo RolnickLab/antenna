@@ -4,7 +4,7 @@ import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 
-const fontFamily = 'AzoSans, sans-serif'
+const fontFamily = 'Mazzard, sans-serif'
 const lineColorCaptures = '#4e5051'
 const lineColorDetections = '#5f8ac6'
 const textColor = '#222426'

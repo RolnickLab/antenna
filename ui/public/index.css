@@ -1,34 +1,34 @@
 @font-face {
-  font-family: 'AzoSans';
-  src: url('/fonts/AzoSans/AzoSans.otf');
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard/mazzardsoftm-medium.otf');
   font-weight: normal;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'AzoSans';
-  src: url('/fonts/AzoSans/AzoSans-Italic.otf');
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard/mazzardsoftm-mediumitalic.otf');
   font-weight: normal;
   font-style: italic;
 }
 
 @font-face {
-  font-family: 'AzoSans';
-  src: url('/fonts/AzoSans/AzoSans-Medium.otf');
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard/mazzardsoftm-semibold.otf');
   font-weight: 600;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'AzoSans';
-  src: url('/fonts/AzoSans/AzoSans-Bold.otf');
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard/mazzardsoftm-bold.otf');
   font-weight: 700;
   font-style: normal;
 }
 
 body {
   margin: 0;
-  font-family: 'AzoSans', sans-serif;
+  font-family: 'Mazzard', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
