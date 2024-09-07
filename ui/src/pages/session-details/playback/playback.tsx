@@ -74,19 +74,21 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             setActiveCaptureId={setActiveCaptureId}
           />
         </div>
-        <ActivityPlot
-          session={session}
-          timeline={timeline}
-          setActiveCaptureId={setActiveCaptureId}
-        />
-        {timeline.length > 0 && (
-          <SessionCapturesSlider
+        <div>
+          <ActivityPlot
             session={session}
             timeline={timeline}
-            activeCapture={activeCapture}
             setActiveCaptureId={setActiveCaptureId}
           />
-        )}
+          {timeline.length > 0 && (
+            <SessionCapturesSlider
+              session={session}
+              timeline={timeline}
+              activeCapture={activeCapture}
+              setActiveCaptureId={setActiveCaptureId}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

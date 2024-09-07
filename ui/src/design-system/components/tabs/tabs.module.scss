@@ -7,6 +7,7 @@
 
 .tabsList {
   margin-bottom: 16px;
+  padding: 2px 0;
 
   :not(:last-child) {
     margin-right: 4px;
@@ -46,13 +47,5 @@
     > * {
       color: $color-generic-white !important;
     }
-  }
-}
-
-.tabsContent {
-  outline: none;
-
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
   }
 }

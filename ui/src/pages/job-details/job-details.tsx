@@ -98,8 +98,6 @@ const JobSummary = ({ job }: { job: Job }) => {
             />
           </InputContent>
         </div>
-      </FormRow>
-      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_NAME)}
           value={job.name}
@@ -108,8 +106,6 @@ const JobSummary = ({ job }: { job: Job }) => {
           label={translate(STRING.FIELD_LABEL_DELAY)}
           value={job.delay}
         />
-      </FormRow>
-      <FormRow>
         {job.sourceImage ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
@@ -128,7 +124,7 @@ const JobSummary = ({ job }: { job: Job }) => {
                 : undefined
             }
           />
-        ) : (
+        ) : job.sourceImages ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
             to={
@@ -141,12 +137,13 @@ const JobSummary = ({ job }: { job: Job }) => {
             }
             value={job.sourceImages?.name}
           />
-        )}
-
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_PIPELINE)}
-          value={job.pipeline?.name}
-        />
+        ) : null}
+        {job.pipeline ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_PIPELINE)}
+            value={job.pipeline.name}
+          />
+        ) : null}
       </FormRow>
       <FormRow>
         <InputValue

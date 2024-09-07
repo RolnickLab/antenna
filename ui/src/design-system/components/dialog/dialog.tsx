@@ -52,6 +52,7 @@ const Content = ({
         [styles.compact]: isCompact || error,
         [styles.loading]: isLoading,
       })}
+      tabIndex={-1}
       onOpenAutoFocus={onOpenAutoFocus}
     >
       <div className={styles.dialogContent}>

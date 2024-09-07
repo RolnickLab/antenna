@@ -16,11 +16,26 @@
   font-weight: 600;
   color: $color-neutral-800;
 
+  span {
+    &:last-child {
+      display: none;
+    }
+  }
+
   &.link {
     color: $color-primary-1-600;
+  }
+}
 
-    &:focus-visible {
-      box-shadow: 0 0 0 2px $color-generic-black;
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .breadcrumb:not(:first-child):not(:last-child) {
+    span {
+      &:first-child {
+        display: none;
+      }
+      &:last-child {
+        display: inline;
+      }
     }
   }
 }

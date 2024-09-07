@@ -67,6 +67,10 @@
     display: table;
   }
 
+  &:has(tbody.loading) {
+    overflow: hidden;
+  }
+
   tbody {
     position: relative;
 

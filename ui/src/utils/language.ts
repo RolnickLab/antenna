@@ -90,6 +90,7 @@ export enum STRING {
   FIELD_LABEL_PASSWORD_NEW,
   FIELD_LABEL_PATH,
   FIELD_LABEL_PIPELINE,
+  FIELD_LABEL_PROCESS,
   FIELD_LABEL_PROJECT,
   FIELD_LABEL_SAMPLING_METHOD,
   FIELD_LABEL_SESSION,
@@ -305,6 +306,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_PASSWORD_NEW]: 'New password',
   [STRING.FIELD_LABEL_PATH]: 'Path',
   [STRING.FIELD_LABEL_PIPELINE]: 'Pipeline',
+  [STRING.FIELD_LABEL_PROCESS]: 'Process',
   [STRING.FIELD_LABEL_PROJECT]: 'Project',
   [STRING.FIELD_LABEL_SAMPLING_METHOD]: 'Sampling method',
   [STRING.FIELD_LABEL_SESSION]: 'Session',
@@ -491,7 +493,9 @@ export const translate = (
   }
 
   Object.entries(values).forEach(([key, value]) => {
-    string = string.replace(`{{${key}}}`, `${value}`)
+    const valueLabel =
+      typeof value === 'number' ? value.toLocaleString() : value
+    string = string.replace(`{{${key}}}`, `${valueLabel}`)
   })
 
   return string

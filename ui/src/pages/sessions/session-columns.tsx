@@ -146,9 +146,4 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
       </Link>
     ),
   },
-  {
-    id: 'avg-temp',
-    name: translate(STRING.FIELD_LABEL_AVG_TEMP),
-    renderCell: (item: Session) => <BasicTableCell value={item.tempLabel} />,
-  },
 ]

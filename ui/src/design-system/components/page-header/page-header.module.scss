@@ -35,3 +35,10 @@
   color: $color-neutral-500;
   margin: 0;
 }
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .details {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
