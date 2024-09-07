@@ -26,6 +26,7 @@ import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
+import { TaxonFilter } from './taxon-filter/taxon-filter'
 
 export const Occurrences = () => {
   const { projectId, id } = useParams()
@@ -77,6 +78,7 @@ export const Occurrences = () => {
         showAppliedFilters
         tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
       >
+        <TaxonFilter />
         <ToggleGroup
           items={[
             {
@@ -123,7 +125,12 @@ export const Occurrences = () => {
           />
         </div>
       )}
-      <PageFooter>
+      <PageFooter
+        hide={
+          selectedItems.length === 0 &&
+          (!occurrences || occurrences.length === 0)
+        }
+      >
         {selectedItems.length ? (
           <BulkActionBar
             selectedItems={selectedItems.filter((id) =>

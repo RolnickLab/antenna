@@ -14,7 +14,7 @@ export const TaxonSearch = ({
   containerRef: RefObject<HTMLDivElement>
   inputRef: RefObject<HTMLInputElement>
   taxon?: Taxon
-  onTaxonChange: (taxon: Taxon) => void
+  onTaxonChange: (taxon?: Taxon) => void
 }) => {
   const [searchString, setSearchString] = useState('')
   const debouncedSearchString = useDebounce(searchString, 200)
@@ -44,10 +44,8 @@ export const TaxonSearch = ({
       selectedLabel={taxon?.name}
       selectedNodeId={taxon?.id}
       onItemSelect={(id) => {
-        const taxon = data?.find((i) => i.id === id)
-        if (taxon) {
-          onTaxonChange(taxon)
-        }
+        const taxon = id ? data?.find((i) => i.id === id) : undefined
+        onTaxonChange(taxon)
       }}
       setSearchString={setSearchString}
     />

@@ -9,7 +9,7 @@ $dialog-padding-medium: 32px;
   background-color: rgba(0, 0, 0, 0.2);
   position: fixed;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
 }
 
 .loadingWrapper {
@@ -39,7 +39,7 @@ $dialog-padding-medium: 32px;
   border-radius: 4px;
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
-  z-index: 2;
+  z-index: 3;
   overflow: hidden;
 
   &:focus-visible {
@@ -91,7 +91,7 @@ $dialog-padding-medium: 32px;
   top: 8px;
   right: 8px;
   padding: 0 4px;
-  z-index: 1;
+  z-index: 2;
 
   span {
     display: block;

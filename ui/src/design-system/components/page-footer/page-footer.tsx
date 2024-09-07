@@ -2,11 +2,12 @@ import { ReactNode } from 'react'
 import styles from './page-footer.module.scss'
 
 interface PageFooterProps {
+  hide?: boolean
   children?: ReactNode
 }
 
-export const PageFooter = ({ children }: PageFooterProps) => {
-  if (!children) {
+export const PageFooter = ({ hide, children }: PageFooterProps) => {
+  if (!children || hide) {
     return null
   }
 
