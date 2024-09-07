@@ -12,7 +12,7 @@
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  border: 1px solid $color-neutral-300;
+  border: 1px solid $color-neutral-100;
   flex-shrink: 0;
 
   &.neutral {
@@ -48,7 +48,7 @@
 
 .label {
   @include paragraph-x-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   margin-left: 6px;
 
   &.success {
@@ -60,6 +60,6 @@
   }
 
   &.neutral {
-    color: $color-neutral-200;
+    color: $color-neutral-100;
   }
 }

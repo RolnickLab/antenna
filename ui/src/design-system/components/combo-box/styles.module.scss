@@ -29,14 +29,14 @@ $accessory-wrapper-size: 38px;
   border-radius: 4px;
   padding: 8px 12px;
   @include paragraph-small();
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
+  color: $color-neutral-700;
+  border: 1px solid $color-neutral-100;
   box-sizing: border-box;
   margin-bottom: 8px;
   padding-right: $accessory-wrapper-size;
 
   &::placeholder {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     opacity: 1; /* For Firefox */
   }
 
@@ -65,7 +65,7 @@ $accessory-wrapper-size: 38px;
   padding: 8px 12px;
   border-radius: 4px;
   @include paragraph-small();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   box-sizing: border-box;
 
   &:not(.empty) {
@@ -105,7 +105,7 @@ $accessory-wrapper-size: 38px;
 
   .details {
     @include paragraph-xx-small();
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     padding: 0 8px 0 32px;
   }
 }

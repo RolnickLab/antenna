@@ -36,7 +36,7 @@
   .title {
     display: block;
     @include label();
-    color: $color-neutral-200;
+    color: $color-neutral-100;
   }
 }
 
@@ -48,7 +48,7 @@
 
 .bottomBar {
   grid-column: span 2;
-  background-color: $color-neutral-800;
+  background-color: $color-neutral-700;
   padding: 32px;
 }
 

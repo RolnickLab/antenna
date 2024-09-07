@@ -47,13 +47,13 @@
 .title {
   @include paragraph-large();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin: 0 0 16px;
 }
 
 .description {
   @include paragraph-medium();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin: 0 0 16px;
 }
 

@@ -16,7 +16,7 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   white-space: nowrap;
 }
 
@@ -35,7 +35,7 @@
 .value {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   white-space: pre-wrap;
 
   &.link {
@@ -47,7 +47,7 @@
 .description {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   font-style: italic;
   word-break: break-word;
 }
@@ -69,8 +69,8 @@
   padding: 8px 12px;
   @include paragraph-small();
   background-color: $color-generic-white;
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
+  color: $color-neutral-700;
+  border: 1px solid $color-neutral-100;
   box-sizing: border-box;
 
   &.password {
@@ -78,7 +78,7 @@
   }
 
   &::placeholder {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     opacity: 1; /* For Firefox */
   }
 

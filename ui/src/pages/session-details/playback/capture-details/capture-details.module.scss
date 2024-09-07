@@ -39,7 +39,7 @@
 .value {
   display: block;
   @include paragraph-x-small();
-  color: $color-neutral-200;
+  color: $color-neutral-100;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

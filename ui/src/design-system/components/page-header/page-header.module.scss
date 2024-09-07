@@ -7,7 +7,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid $color-neutral-200;
+  border-bottom: 1px solid $color-neutral-100;
   background-color: $color-neutral-50;
   height: 96px;
   margin: -16px 0 0;
@@ -25,14 +25,14 @@
 .title {
   @include paragraph-large();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin: 0;
 }
 
 .subTitle {
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   margin: 0;
 }
 

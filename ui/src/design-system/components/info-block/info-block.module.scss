@@ -13,13 +13,13 @@
   display: block;
   @include label();
   font-weight: 600;
-  color: $color-neutral-500;
+  color: $color-neutral-300;
 }
 
 .fieldValue {
   display: block;
   @include paragraph-medium();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
 
   &.link {
     color: $color-primary-1-600;

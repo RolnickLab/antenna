@@ -9,7 +9,7 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin-bottom: 4px;
 }
 
@@ -38,8 +38,8 @@
   border-radius: 4px;
   padding: 8px 12px;
   @include paragraph-small();
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
+  color: $color-neutral-700;
+  border: 1px solid $color-neutral-100;
   box-sizing: border-box;
 
   &:not(:last-child) {
@@ -53,7 +53,7 @@
   }
 
   &[data-placeholder] {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
 
   &:not(.disabled) {
@@ -116,7 +116,7 @@
   align-items: center;
   justify-content: space-between;
   @include paragraph-small();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   cursor: pointer;
 
   &[data-highlighted],
