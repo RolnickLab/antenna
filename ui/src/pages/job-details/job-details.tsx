@@ -214,7 +214,7 @@ const JobStages = ({ job }: { job: Job }) => {
             <Wizard.Trigger title={stage.name}>
               {status === Status.Success ? (
                 <StatusBullet
-                  icon={IconType.Checkmark}
+                  icon={IconType.RadixCheck}
                   theme={StatusBulletTheme.Success}
                 />
               ) : (

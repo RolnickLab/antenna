@@ -101,7 +101,7 @@
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  z-index: 2;
+  z-index: 3;
 }
 
 .selectViewport {
@@ -131,4 +131,6 @@
 
 .itemIndicator {
   margin-left: 32px;
+  display: inline-flex;
+  align-items: center;
 }

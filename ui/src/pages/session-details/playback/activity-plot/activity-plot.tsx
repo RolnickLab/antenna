@@ -5,12 +5,12 @@ import Plot from 'react-plotly.js'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 
 const fontFamily = 'Mazzard, sans-serif'
-const lineColorCaptures = '#4e5051'
-const lineColorDetections = '#5f8ac6'
-const textColor = '#222426'
+const lineColorCaptures = '#4E4F57'
+const lineColorDetections = '#5F8AC6'
+const textColor = '#303137'
 const tooltipBgColor = '#ffffff'
-const tooltipBorderColor = '#222426'
-const gridLineColor = '#f36399'
+const tooltipBorderColor = '#303137'
+const gridLineColor = '#4E4F57'
 
 export const ActivityPlot = ({
   session,

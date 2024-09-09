@@ -18,8 +18,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'thumbnail',
     name: translate(STRING.FIELD_LABEL_THUMBNAIL),
-    renderCell: (item: Capture, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Capture) => {
       const detailsRoute = getAppRoute({
         to: APP_ROUTES.SESSION_DETAILS({
           projectId: projectId,
@@ -33,7 +32,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       return (
         <ImageTableCell
           images={[{ src: item.src }]}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )

@@ -33,13 +33,13 @@
   @include paragraph-xx-small();
   text-transform: uppercase;
   font-weight: 700;
-  color: $color-neutral-400;
+  color: $color-neutral-300;
 }
 
 .value {
   display: block;
   @include paragraph-x-small();
-  color: $color-neutral-100;
+  color: $color-generic-white;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

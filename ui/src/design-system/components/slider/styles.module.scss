@@ -86,7 +86,7 @@
     @include paragraph-xx-small();
     text-transform: uppercase;
     font-weight: 700;
-    color: $color-neutral-100;
+    color: $color-generic-white;
     margin: 0;
   }
 
@@ -94,7 +94,7 @@
     display: block;
     @include paragraph-x-small();
     font-weight: 700;
-    color: $color-neutral-100;
+    color: $color-generic-white;
     width: 32px;
     text-align: right;
     overflow: hidden;
@@ -146,7 +146,7 @@
     justify-content: space-between;
 
     .label {
-      color: $color-neutral-400;
+      color: $color-neutral-300;
     }
   }
 

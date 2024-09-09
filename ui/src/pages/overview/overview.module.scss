@@ -25,7 +25,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba($color: $color-primary-2-50, $alpha: 0.5);
+  background-color: $color-generic-white;
   border-right: 1px solid $color-neutral-100;
 
   img {

@@ -3,6 +3,7 @@
 
 .wrapper {
   display: flex;
+  align-items: center;
 }
 
 .checkboxRoot {
@@ -16,7 +17,7 @@
   flex-shrink: 0;
 
   &.neutral {
-    border-color: $color-neutral-600;
+    border-color: $color-neutral-400;
   }
 
   &:focus-visible {
@@ -60,6 +61,6 @@
   }
 
   &.neutral {
-    color: $color-neutral-100;
+    color: $color-generic-white;
   }
 }
