@@ -25,7 +25,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba($color: $color-primary-2-50, $alpha: 0.5);
+  background-color: $color-generic-white;
   border-right: 1px solid $color-neutral-100;
 
   img {
@@ -47,13 +47,13 @@
 .title {
   @include paragraph-large();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin: 0 0 16px;
 }
 
 .description {
   @include paragraph-medium();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin: 0 0 16px;
 }
 

@@ -21,7 +21,7 @@ const WizardTemplate: Story = () => (
     <Wizard.Item value="item-1">
       <Wizard.Trigger title="Object Detection">
         <StatusBullet
-          icon={IconType.Checkmark}
+          icon={IconType.RadixCheck}
           theme={StatusBulletTheme.Success}
         />
       </Wizard.Trigger>

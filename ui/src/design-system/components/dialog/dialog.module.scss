@@ -79,7 +79,7 @@ $dialog-padding-medium: 32px;
   display: block;
   @include paragraph-large();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
 }
 
 .dialogClose {
@@ -94,7 +94,7 @@ $dialog-padding-medium: 32px;
     padding: 0 4px;
     @include paragraph-small();
     font-weight: 600;
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
 
   &:hover {

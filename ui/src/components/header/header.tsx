@@ -5,7 +5,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
-import ami from './ami.png'
+import antenna from './antenna-primary.svg'
 import styles from './header.module.scss'
 import { UserInfoDialog } from './user-info-dialog/user-info-dialog'
 import { VersionInfo } from './version-info/version-info'
@@ -20,10 +20,10 @@ export const Header = () => {
 
   return (
     <header className={styles.header}>
-      <Link to="/">
+      <Link to="/" className={styles.logoContainer}>
         <img
-          alt="AMI"
-          src={ami}
+          alt="Antenna"
+          src={antenna}
           width={40}
           height={40}
           className={styles.logo}

@@ -65,6 +65,7 @@
   .tableClone {
     all: unset;
     display: table;
+    border-collapse: collapse;
   }
 
   &:has(tbody.loading) {
@@ -74,12 +75,12 @@
   tbody {
     position: relative;
 
-    tr:nth-child(even) {
-      background-color: rgba(255, 255, 255, 0.6);
+    tr {
+      background-color: $color-generic-white;
     }
 
-    tr:nth-child(odd) {
-      background-color: $color-generic-white;
+    tr:not(:last-child) {
+      border-bottom: 1px solid $color-neutral-100;
     }
 
     &.loading {
