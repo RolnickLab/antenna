@@ -20,5 +20,6 @@
 
 .version {
   @include paragraph-x-small();
+  color: $color-neutral-700;
   white-space: nowrap;
 }

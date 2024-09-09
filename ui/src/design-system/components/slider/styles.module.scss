@@ -5,7 +5,7 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin-bottom: 4px;
   white-space: nowrap;
 }
@@ -13,7 +13,7 @@
 .description {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   font-style: italic;
 }
 
@@ -33,7 +33,7 @@
 }
 
 .sliderTrack {
-  background-color: $color-neutral-200;
+  background-color: $color-neutral-100;
   position: relative;
   flex-grow: 1;
   border-radius: 2px;
@@ -54,7 +54,7 @@
   width: 24px;
   height: 24px;
   background-color: $color-generic-white;
-  border: 2px solid $color-neutral-300;
+  border: 2px solid $color-neutral-100;
   border-radius: 50%;
   box-sizing: border-box;
 
@@ -70,7 +70,7 @@
   left: 50%;
   transform: translateX(-50%);
   @include paragraph-small();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin-top: 8px;
 }
 
@@ -86,7 +86,7 @@
     @include paragraph-xx-small();
     text-transform: uppercase;
     font-weight: 700;
-    color: $color-neutral-200;
+    color: $color-generic-white;
     margin: 0;
   }
 
@@ -94,7 +94,7 @@
     display: block;
     @include paragraph-x-small();
     font-weight: 700;
-    color: $color-neutral-200;
+    color: $color-generic-white;
     width: 32px;
     text-align: right;
     overflow: hidden;
@@ -117,7 +117,7 @@
   .sliderThumb {
     width: 20px;
     height: 20px;
-    background-color: $color-neutral-200;
+    background-color: $color-neutral-100;
     border: none;
 
     &:focus {
@@ -146,7 +146,7 @@
     justify-content: space-between;
 
     .label {
-      color: $color-neutral-400;
+      color: $color-neutral-300;
     }
   }
 

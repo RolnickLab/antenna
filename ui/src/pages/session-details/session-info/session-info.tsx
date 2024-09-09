@@ -54,10 +54,6 @@ export const SessionInfo = ({ session }: { session: Session }) => {
         filters: { occurrences__event: session.id },
       }),
     },
-    {
-      label: translate(STRING.FIELD_LABEL_AVG_TEMP),
-      value: session.tempLabel,
-    },
   ]
 
   return (

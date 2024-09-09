@@ -41,7 +41,7 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
 
   return (
     <>
-      <div className={styles.blueprintInfo} style={{ minWidth: size.width }}>
+      <div className={styles.blueprintInfo} style={{ width: size.width }}>
         <span className={styles.count}>
           {item.countLabel?.length ? (
             <>
@@ -50,6 +50,7 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
             </>
           ) : null}
         </span>
+        <span style={{ flex: 1 }} />
         <span>{item.timeLabel}</span>
       </div>
       <div className={styles.blueprintImage}>

@@ -1,0 +1,12 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.container {
+  width: 240px;
+  margin: 0 8px;
+
+  input {
+    margin: 0;
+    background-color: $color-generic-white;
+  }
+}

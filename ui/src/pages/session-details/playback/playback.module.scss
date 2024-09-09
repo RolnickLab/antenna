@@ -11,6 +11,7 @@
 
 .sidebar {
   background-color: $color-neutral-700;
+  border-bottom: 1px solid $color-neutral-600;
   position: relative;
 }
 
@@ -36,7 +37,7 @@
   .title {
     display: block;
     @include label();
-    color: $color-neutral-200;
+    color: $color-generic-white;
   }
 }
 
@@ -48,12 +49,30 @@
 
 .bottomBar {
   grid-column: span 2;
-  background-color: $color-neutral-800;
+  background-color: $color-neutral-700;
   padding: 32px;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .wrapper {
-    grid-template-columns: 200px 1fr;
+  .sidebar {
+    grid-column: span 2;
+  }
+
+  .sidebarContent {
+    position: static;
+  }
+
+  .sidebarSection:last-child {
+    display: none;
+  }
+
+  .bottomBar {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .captureNavigationWrapper {
+    margin-bottom: 32px;
+    justify-content: center;
   }
 }

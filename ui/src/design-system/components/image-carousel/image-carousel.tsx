@@ -71,14 +71,14 @@ const BasicImageCarousel = ({
   to?: string
 }) => (
   <div className={styles.container}>
-    <div
-      className={classNames(styles.imageBox, {
-        [styles.light]: theme === CarouselTheme.Light,
-      })}
-      style={getImageBoxStyles(size?.width)}
-    >
-      <div style={getPlaceholderStyles(size?.ratio)} />
-      <ConditionalLink to={to}>
+    <ConditionalLink to={to}>
+      <div
+        className={classNames(styles.imageBox, {
+          [styles.light]: theme === CarouselTheme.Light,
+        })}
+        style={getImageBoxStyles(size?.width)}
+      >
+        <div style={getPlaceholderStyles(size?.ratio)} />
         <div className={classNames(styles.slide, styles.visible)}>
           {image ? (
             <img src={image.src} alt={image.alt} className={styles.image} />
@@ -90,8 +90,8 @@ const BasicImageCarousel = ({
             />
           )}
         </div>
-      </ConditionalLink>
-    </div>
+      </div>
+    </ConditionalLink>
   </div>
 )
 
