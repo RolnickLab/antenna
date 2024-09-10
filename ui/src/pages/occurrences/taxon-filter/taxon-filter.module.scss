@@ -1,5 +1,6 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
 
 .container {
   width: 240px;
@@ -8,5 +9,11 @@
   input {
     margin: 0;
     background-color: $color-generic-white;
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .container {
+    display: none;
   }
 }
