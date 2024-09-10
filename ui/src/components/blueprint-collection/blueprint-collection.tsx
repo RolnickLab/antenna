@@ -3,6 +3,7 @@ import { Icon, IconType } from 'design-system/components/icon/icon'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './blueprint-collection.module.scss'
+import { LicenseInfo } from 'components/license-info/license-info'
 
 export interface BlueprintItem {
   id: string
@@ -19,6 +20,7 @@ export const BlueprintCollection = ({ items }: { items: BlueprintItem[] }) => (
       [styles.empty]: items.length === 0,
     })}
   >
+    <LicenseInfo style={{ textAlign: 'right' }} />
     {items.map((item) =>
       item.to ? (
         <Link key={item.id} to={item.to} className={styles.blueprintItem}>
