@@ -31,7 +31,7 @@ def fetch_image_content(url: str) -> bytes:
     return response.content
 
 
-def load_and_process_image(source_image: SourceImage) -> np.ndarray:
+def load_source_image(source_image: SourceImage) -> np.ndarray:
     url = source_image.public_url(raise_errors=True)
     assert url
     image_content = fetch_image_content(url)
@@ -61,7 +61,7 @@ def crop_detection(image: np.ndarray, bbox: tuple[int, int, int, int]) -> Image.
     return img
 
 
-def save_cropped_image(cropped_image: Image.Image, detection: Detection, source_image: SourceImage) -> str:
+def save_crop(cropped_image: Image.Image, detection: Detection, source_image: SourceImage) -> str:
     source_basename = os.path.splitext(os.path.basename(source_image.path))[0]
     image_name = f"{source_basename}_detection_{detection.pk}.jpg"
     iso_day = detection.timestamp.date().isoformat() if detection.timestamp else "unknown_date"
@@ -75,14 +75,14 @@ def save_cropped_image(cropped_image: Image.Image, detection: Detection, source_
     return default_storage.save(image_path, ContentFile(img_byte_arr))
 
 
-def process_source_image(source_image: SourceImage) -> list[str]:
-    image_np = load_and_process_image(source_image)
+def create_detection_crops_from_source_image(source_image: SourceImage) -> list[str]:
+    image_np = load_source_image(source_image)
     processed_paths = []
 
     for detection in source_image.detections.filter(path__isnull=True):
         if detection.bbox:
             cropped_image = crop_detection(image_np, detection.bbox)
-            path = save_cropped_image(cropped_image, detection, source_image)
+            path = save_crop(cropped_image, detection, source_image)
             detection.path = path
             detection.save()
             processed_paths.append(path)

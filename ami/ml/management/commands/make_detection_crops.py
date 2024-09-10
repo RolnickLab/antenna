@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from tqdm import tqdm
 
 from ami.main.models import SourceImage
-from ami.ml.media import get_source_images_with_missing_detections, process_source_image
+from ami.ml.media import create_detection_crops_from_source_image, get_source_images_with_missing_detections
 
 
 class Command(BaseCommand):
@@ -37,7 +37,7 @@ class Command(BaseCommand):
 
                 for source_image in batch:
                     try:
-                        processed_paths = process_source_image(source_image)
+                        processed_paths = create_detection_crops_from_source_image(source_image)
                         processed_detections += len(processed_paths)
                         processed_images += 1
                     except Exception as e:

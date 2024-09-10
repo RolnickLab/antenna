@@ -1,6 +1,6 @@
 import logging
 
-from ami.ml.media import get_source_images_with_missing_detections, process_source_image
+from ami.ml.media import create_detection_crops_from_source_image, get_source_images_with_missing_detections
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
@@ -42,7 +42,7 @@ def crop_missing_detection_images(batch_size: int = 100, queryset=None):
 
     for source_image in source_images:
         try:
-            processed_paths = process_source_image(source_image)
+            processed_paths = create_detection_crops_from_source_image(source_image)
             logger.info(f"Processed {len(processed_paths)} detections for SourceImage {source_image.id}")
         except Exception as e:
             logger.error(f"Error processing SourceImage {source_image.pk}: {str(e)}")
