@@ -21,7 +21,8 @@
   @include paragraph-small();
   font-weight: 600;
   background-color: transparent;
-  padding: 6px 16px;
+  height: 28px;
+  padding: 0 16px;
   border-radius: 16px;
 
   :not(:last-child) {
@@ -48,4 +49,8 @@
       color: $color-generic-white !important;
     }
   }
+}
+
+.label {
+  padding-top: 2px;
 }
