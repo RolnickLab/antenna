@@ -46,6 +46,7 @@ class TaxonRank(OrderedEnum):
     TRIBE = "TRIBE"
     SUBTRIBE = "SUBTRIBE"
     GENUS = "GENUS"
+    SUBGENUS = "SUBGENUS"
     SPECIES = "SPECIES"
     UNKNOWN = "UNKNOWN"
 
