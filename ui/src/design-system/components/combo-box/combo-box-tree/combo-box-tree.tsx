@@ -14,6 +14,7 @@ import { Node } from './types'
 import { useBottomAnchor } from './useBottomAnchor'
 
 export const ComboBoxTree = ({
+  autoFocus = true,
   containerRef,
   emptyLabel,
   inputRef,
@@ -25,6 +26,7 @@ export const ComboBoxTree = ({
   onItemSelect,
   setSearchString,
 }: {
+  autoFocus?: boolean
   containerRef: RefObject<HTMLDivElement>
   emptyLabel: string
   inputRef: RefObject<HTMLInputElement>
@@ -48,7 +50,7 @@ export const ComboBoxTree = ({
     <Command shouldFilter={false} className={styles.wrapper}>
       <Command.Input
         placeholder="Search taxonomy"
-        autoFocus
+        autoFocus={autoFocus}
         className={styles.input}
         ref={inputRef}
         value={open ? searchString : selectedLabel}

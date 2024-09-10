@@ -6,11 +6,13 @@ import { useDebounce } from 'utils/useDebounce'
 import { useTaxonSearch } from './useTaxonSearch'
 
 export const TaxonSearch = ({
+  autoFocus = true,
   containerRef,
   inputRef,
   taxon,
   onTaxonChange,
 }: {
+  autoFocus?: boolean
   containerRef: RefObject<HTMLDivElement>
   inputRef: RefObject<HTMLInputElement>
   taxon?: Taxon
@@ -35,6 +37,7 @@ export const TaxonSearch = ({
 
   return (
     <ComboBoxTree
+      autoFocus={autoFocus}
       containerRef={containerRef}
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       inputRef={inputRef}

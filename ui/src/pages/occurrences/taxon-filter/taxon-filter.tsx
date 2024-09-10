@@ -26,6 +26,7 @@ export const TaxonFilter = () => {
   return (
     <div ref={containerRef} className={styles.container}>
       <TaxonSearch
+        autoFocus={false}
         containerRef={containerRef}
         inputRef={inputRef}
         taxon={taxon}
