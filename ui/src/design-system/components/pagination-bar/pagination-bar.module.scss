@@ -1,5 +1,6 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
 
 .wrapper {
   width: 100%;
@@ -26,4 +27,10 @@
   @include paragraph-small();
   font-weight: 600;
   color: $color-neutral-100;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .wrapper {
+    justify-content: center;
+  }
 }
