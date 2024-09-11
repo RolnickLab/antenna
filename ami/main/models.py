@@ -13,6 +13,7 @@ import pydantic
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
@@ -62,11 +63,6 @@ DEFAULT_RANKS = sorted(
 )
 
 
-# @TODO move to settings & make configurable
-_SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
-_CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
-
-
 def get_media_url(path: str) -> str:
     """
     If path is a full URL, return it as-is.
@@ -77,7 +73,8 @@ def get_media_url(path: str) -> str:
     if path.startswith("http"):
         url = path
     else:
-        url = urllib.parse.urljoin(_CROPS_URL_BASE, path.lstrip("/"))
+        # @TODO add a file field to the Detection model and use that to get the URL
+        url = default_storage.url(path.lstrip("/"))
     return url
 
 
@@ -1172,7 +1169,7 @@ class SourceImage(BaseModel):
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
-    def public_url(self) -> str:
+    def public_url(self, raise_errors=False) -> str | None:
         """
         Return the public URL for this image.
 
@@ -1192,9 +1189,26 @@ class SourceImage(BaseModel):
             and data_source.access_key
             and data_source.secret_key
         ):
-            return ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+            url = ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+        elif self.public_base_url:
+            url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
         else:
-            return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
+            msg = f"Public URL for {self} is not available. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
+        # Ensure url has a scheme
+        if not urllib.parse.urlparse(url).netloc:
+            msg = f"Public URL for {self} is invalid: {url}. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
+        else:
+            return url
 
     # backwards compatibility
     url = public_url
@@ -1202,16 +1216,18 @@ class SourceImage(BaseModel):
     def get_detections_count(self) -> int:
         return self.detections.distinct().count()
 
-    def get_base_url(self) -> str:
+    def get_base_url(self) -> str | None:
         """
         Determine the public URL from the deployment's data source.
 
-        If there is no data source, return a relative URL.
+        If there is no data source, return None
+
+        If the public_base_url is None, a presigned URL will be generated for each request.
         """
         if self.deployment and self.deployment.data_source and self.deployment.data_source.public_base_url:
             return self.deployment.data_source.public_base_url
         else:
-            return "/"
+            return None
 
     def extract_timestamp(self) -> datetime.datetime | None:
         """
@@ -1695,7 +1711,16 @@ class Detection(BaseModel):
     #         upload_to="detections",
     #     ),
     # )
-    path = models.CharField(max_length=255, blank=True, null=True)
+    path = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=(
+            "Either a full URL to a cropped detection image or a relative path to a file in the default "
+            "project storage. @TODO ensure all detection crops are hosted in the project storage, "
+            "not the default media storage. Migrate external URLs."
+        ),
+    )
 
     occurrence = models.ForeignKey(
         "Occurrence",
@@ -1912,8 +1937,10 @@ class Occurrence(BaseModel):
         return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
-        for url in Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]:
-            yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
+        for path in (
+            Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]
+        ):
+            yield get_media_url(path)
 
     @functools.cached_property
     def best_detection(self):

@@ -1,14 +1,14 @@
 import logging
 
+from ami.ml.media import create_detection_images_from_source_image
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
 logger = logging.getLogger(__name__)
 
 
-# @TODO can the timeout be dynamic based on the number of images?
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
-def process_and_save_images(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
+def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
     from ami.jobs.models import Job
     from ami.main.models import SourceImage
     from ami.ml.models.pipeline import process_images, save_results
@@ -34,4 +34,17 @@ def process_and_save_images(pipeline_choice: str, endpoint_url: str, image_ids: 
     except Exception as e:
         logger.error(f"Failed to save results for job {job_id}: {e}")
         raise e
-        # self.retry(exc=e, countdown=2)
+
+
+@celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
+def create_detection_images(source_image_ids: list[int]):
+    from ami.main.models import SourceImage
+
+    logger.debug(f"Creating detection images for {len(source_image_ids)} capture(s)")
+
+    for source_image in SourceImage.objects.filter(pk__in=source_image_ids):
+        try:
+            processed_paths = create_detection_images_from_source_image(source_image)
+            logger.debug(f"Created {len(processed_paths)} detection images for SourceImage #{source_image.pk}")
+        except Exception as e:
+            logger.error(f"Error creating detection images for SourceImage {source_image.pk}: {str(e)}")
