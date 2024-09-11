@@ -75,7 +75,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             setActiveCaptureId={setActiveCaptureId}
           />
           <div className={styles.licenseInfoWrapper}>
-            <LicenseInfo style={{ textAlign: 'right' }} />
+            <LicenseInfo />
           </div>
         </div>
         <div>
