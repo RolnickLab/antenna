@@ -20,18 +20,22 @@ export const BlueprintCollection = ({ items }: { items: BlueprintItem[] }) => (
       [styles.empty]: items.length === 0,
     })}
   >
-    <LicenseInfo style={{ textAlign: 'right' }} />
-    {items.map((item) =>
-      item.to ? (
-        <Link key={item.id} to={item.to} className={styles.blueprintItem}>
-          <BlueprintItem item={item} />
-        </Link>
-      ) : (
-        <div key={item.id} className={styles.blueprintItem}>
-          <BlueprintItem item={item} />
-        </div>
-      )
-    )}
+    <div className={styles.licenseInfoContent}>
+      <LicenseInfo />
+    </div>
+    <div className={styles.blueprintContent}>
+      {items.map((item) =>
+        item.to ? (
+          <Link key={item.id} to={item.to} className={styles.blueprintItem}>
+            <BlueprintItem item={item} />
+          </Link>
+        ) : (
+          <div key={item.id} className={styles.blueprintItem}>
+            <BlueprintItem item={item} />
+          </div>
+        )
+      )}
+    </div>
   </div>
 )
 
