@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from tqdm import tqdm
 
 from ami.main.models import SourceImage
-from ami.ml.media import create_detection_crops_from_source_image, get_source_images_with_missing_detections
+from ami.ml.media import create_detection_images_from_source_image, get_source_images_with_missing_detection_images
 
 
 class Command(BaseCommand):
@@ -20,8 +20,8 @@ class Command(BaseCommand):
         if project_id:
             queryset = queryset.filter(project_id=project_id)
 
-        total_images = get_source_images_with_missing_detections(queryset).count()
-        self.stdout.write(f"Found {total_images} source images with missing detection crops")
+        total_images = get_source_images_with_missing_detection_images(queryset).count()
+        self.stdout.write(f"Found {total_images}+ source images with missing detection crops")
 
         processed_images = 0
         processed_detections = 0
@@ -31,13 +31,13 @@ class Command(BaseCommand):
             while True:
                 # Exclude images that have known errors
                 queryset = queryset.exclude(id__in=[source_image.pk for source_image, _ in errors])
-                batch = get_source_images_with_missing_detections(queryset, batch_size)
+                batch = get_source_images_with_missing_detection_images(queryset, batch_size)
                 if not batch:
                     break
 
                 for source_image in batch:
                     try:
-                        processed_paths = create_detection_crops_from_source_image(source_image)
+                        processed_paths = create_detection_images_from_source_image(source_image)
                         processed_detections += len(processed_paths)
                         processed_images += 1
                     except Exception as e:

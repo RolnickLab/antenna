@@ -1,6 +1,6 @@
 import logging
 
-from ami.ml.media import create_detection_crops_from_source_image, get_source_images_with_missing_detections
+from ami.ml.media import create_detection_images_from_source_image
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
-def process_and_save_images(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
+def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
     from ami.jobs.models import Job
     from ami.main.models import SourceImage
     from ami.ml.models.pipeline import process_images, save_results
@@ -37,19 +37,21 @@ def process_and_save_images(pipeline_choice: str, endpoint_url: str, image_ids: 
 
 
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
-def crop_missing_detection_images(batch_size: int = 100, queryset=None):
-    source_images = get_source_images_with_missing_detections(queryset, batch_size)
+def create_detection_images(source_image_ids: list[int], job_id: int | None = None):
+    from ami.jobs.models import Job
+    from ami.main.models import SourceImage
 
-    for source_image in source_images:
+    task_logger = logger
+
+    if job_id:
+        job = Job.objects.get(pk=job_id)
+        task_logger = job.logger
+
+    task_logger.info(f"Creating detection images for {len(source_image_ids)} capture(s)")
+
+    for source_image in SourceImage.objects.filter(pk__in=source_image_ids):
         try:
-            processed_paths = create_detection_crops_from_source_image(source_image)
-            logger.info(f"Processed {len(processed_paths)} detections for SourceImage {source_image.id}")
+            processed_paths = create_detection_images_from_source_image(source_image)
+            task_logger.info(f"Created {len(processed_paths)} detection images for SourceImage #{source_image.pk}")
         except Exception as e:
-            logger.error(f"Error processing SourceImage {source_image.pk}: {str(e)}")
-
-    logger.info(f"Finished processing batch of {len(source_images)} SourceImages with missing detection paths")
-
-
-def process_all_missing_detections(batch_size: int = 100, queryset=None):
-    while get_source_images_with_missing_detections(queryset, 1):
-        crop_missing_detection_images.delay(batch_size, queryset)
+            task_logger.error(f"Error processing SourceImage {source_image.pk}: {str(e)}")

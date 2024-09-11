@@ -14,7 +14,7 @@ from ami.main.models import Detection, SourceImage
 logger = logging.getLogger(__name__)
 
 
-def get_source_images_with_missing_detections(
+def get_source_images_with_missing_detection_images(
     queryset: QuerySet[SourceImage] | None = None, batch_size: int = 100
 ) -> QuerySet[SourceImage]:
     if queryset is None:
@@ -75,7 +75,11 @@ def save_crop(cropped_image: Image.Image, detection: Detection, source_image: So
     return default_storage.save(image_path, ContentFile(img_byte_arr))
 
 
-def create_detection_crops_from_source_image(source_image: SourceImage) -> list[str]:
+def create_detection_images_from_source_image(source_image: SourceImage) -> list[str]:
+    # Check if the source image has detections without images before loading the image
+    if not source_image.detections.filter(path__isnull=True).exists():
+        return []
+
     image_np = load_source_image(source_image)
     processed_paths = []
 

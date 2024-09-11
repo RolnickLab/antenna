@@ -17,7 +17,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.tasks import crop_missing_detection_images
+from ami.ml.tasks import create_detection_images
 from tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
 
 logger = logging.getLogger(__name__)
@@ -260,7 +260,7 @@ def create_occurrences_from_frame_data(
 
     logger.info(f"Created {len(occurrences)} occurrences from {len(frame_data)} frames")
 
-    crop_missing_detection_images(queryset=SourceImage.objects.filter(pk__in=[img.pk for img, _ in frame_data]))
+    create_detection_images(source_image_ids=[img.pk for img, _ in frame_data])
 
     return occurrences
 

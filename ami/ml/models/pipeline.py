@@ -22,6 +22,7 @@ from ami.main.models import (
     TaxonRank,
     update_calculated_fields_for_events,
 )
+from ami.ml.tasks import create_detection_images
 
 from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from .algorithm import Algorithm
@@ -231,11 +232,15 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
                 print("Updated existing detection", existing_detection)
             detection = existing_detection
         else:
+            if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
+                crop_url = detection_resp.crop_image_url
+            else:
+                crop_url = None
             new_detection = Detection.objects.create(
                 source_image=source_image,
                 bbox=list(detection_resp.bbox.dict().values()),
                 timestamp=source_image.timestamp,
-                path=detection_resp.crop_image_url or "",
+                path=crop_url,
                 detection_time=detection_resp.timestamp,
                 detection_algorithm=detection_algo,
             )
@@ -305,6 +310,12 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     with transaction.atomic():
         for source_image in source_images:
             source_image.save()
+
+    print("About to create detection images")
+    create_detection_images.delay(
+        source_image_ids=[source_image.pk for source_image in source_images],
+        job_id=job_id,
+    )
 
     event_ids = [img.event_id for img in source_images]
     update_calculated_fields_for_events(pks=event_ids)
