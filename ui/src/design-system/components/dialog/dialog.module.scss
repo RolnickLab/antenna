@@ -119,7 +119,7 @@ $dialog-padding-medium: 32px;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .dialog {
+  .dialog:not(.compact) {
     width: 100%;
     height: 100vh;
     height: 100dvh;
@@ -129,14 +129,9 @@ $dialog-padding-medium: 32px;
     border-radius: 0;
     border: none;
 
-    &.compact {
-      width: auto;
-      max-width: calc(100% - 32px);
+    .dialogContent {
+      height: 100%;
     }
-  }
-
-  .dialogContent {
-    height: 100%;
   }
 
   .dialogHeader {

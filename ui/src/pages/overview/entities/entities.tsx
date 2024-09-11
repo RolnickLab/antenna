@@ -52,7 +52,9 @@ export const Entities = ({
         isFetching={isFetching}
         tooltip={tooltip}
       >
-        {canCreate && <NewEntityDialog collection={collection} type={type} />}
+        {canCreate && (
+          <NewEntityDialog collection={collection} type={type} isCompact />
+        )}
       </PageHeader>
       <Table
         items={entities}

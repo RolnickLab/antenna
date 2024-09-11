@@ -49,6 +49,8 @@
 
 .licenseInfoWrapper {
   flex: 1;
+  text-align: right;
+
   p a {
     color: $color-generic-white;
   }
@@ -76,12 +78,17 @@
   .bottomBar {
     display: flex;
     flex-direction: column;
+    padding: 16px;
   }
 
   .captureNavigationWrapper {
     margin-bottom: 32px;
-    gap: 16px;
+    gap: 32px;
     flex-direction: column-reverse;
-    justify-content: center;
+    justify-content: flex-start;
+  }
+
+  .licenseInfoWrapper {
+    text-align: left;
   }
 }
