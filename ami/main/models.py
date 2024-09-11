@@ -1711,7 +1711,16 @@ class Detection(BaseModel):
     #         upload_to="detections",
     #     ),
     # )
-    path = models.CharField(max_length=255, blank=True, null=True)
+    path = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=(
+            "Either a full URL to a cropped detection image or a relative path to a file in the default "
+            "project storage. @TODO ensure all detection crops are hosted in the project storage, "
+            "not the default media storage. Migrate external URLs."
+        ),
+    )
 
     occurrence = models.ForeignKey(
         "Occurrence",
