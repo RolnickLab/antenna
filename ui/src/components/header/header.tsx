@@ -1,7 +1,10 @@
+import classNames from 'classnames'
 import { useLogout } from 'data-services/hooks/auth/useLogout'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { APP_ROUTES } from 'utils/constants'
+import buttonStyles from 'design-system/components/button/button.module.scss'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { Link, useLocation } from 'react-router-dom'
+import { APP_ROUTES, LANDING_PAGE_URL } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
@@ -12,7 +15,6 @@ import { VersionInfo } from './version-info/version-info'
 
 export const Header = () => {
   const location = useLocation()
-  const navigate = useNavigate()
   const { user } = useUser()
   const { logout, isLoading: isLogoutLoading } = useLogout()
 
@@ -32,11 +34,25 @@ export const Header = () => {
       <VersionInfo />
       <div className={styles.rightContent}>
         <div className={styles.infoPages}>
-          <Button
-            label="Terms of Service"
-            theme={ButtonTheme.Plain}
-            onClick={() => navigate(APP_ROUTES.TERMS_OF_SERVICE)}
-          />
+          <a
+            href={LANDING_PAGE_URL}
+            rel="noreferrer"
+            target="_blank"
+            className={classNames(buttonStyles.button, buttonStyles.plain)}
+          >
+            <span className={buttonStyles.label}>About</span>
+            <Icon
+              type={IconType.ExternalLink}
+              theme={IconTheme.Primary}
+              size={14}
+            />
+          </a>
+          <Link
+            to={APP_ROUTES.TERMS_OF_SERVICE}
+            className={classNames(buttonStyles.button, buttonStyles.plain)}
+          >
+            <span className={buttonStyles.label}>Terms of Service</span>
+          </Link>
         </div>
         {user.loggedIn ? (
           <>
@@ -49,15 +65,15 @@ export const Header = () => {
             <UserInfoDialog />
           </>
         ) : (
-          <>
-            <Button
-              label={translate(STRING.LOGIN)}
-              theme={ButtonTheme.Plain}
-              onClick={() =>
-                navigate(APP_ROUTES.LOGIN, { state: { to: location.pathname } })
-              }
-            />
-          </>
+          <Link
+            to={APP_ROUTES.LOGIN}
+            state={{ to: location.pathname }}
+            className={classNames(buttonStyles.button, buttonStyles.plain)}
+          >
+            <span className={buttonStyles.label}>
+              {translate(STRING.LOGIN)}
+            </span>
+          </Link>
         )}
       </div>
     </header>
