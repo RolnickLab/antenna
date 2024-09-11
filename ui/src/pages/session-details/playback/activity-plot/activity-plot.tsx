@@ -4,6 +4,7 @@ import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
+import { findClosestCaptureId } from '../session-captures-slider/utils'
 
 const fontFamily = 'Mazzard, sans-serif'
 const lineColorCaptures = '#4E4F57'
@@ -144,8 +145,17 @@ export const ActivityPlot = ({
           onClick={(data) => {
             const timelineTickIndex = data.points[0].pointIndex
             const timelineTick = timeline[timelineTickIndex]
-            if (timelineTick?.representativeCaptureId) {
-              setActiveCaptureId(timelineTick.representativeCaptureId)
+
+            if (!timelineTick) {
+              return
+            }
+
+            const captureId =
+              timelineTick.representativeCaptureId ??
+              findClosestCaptureId(timeline, timelineTick.startDate)
+
+            if (captureId) {
+              setActiveCaptureId(captureId)
             }
           }}
         />
