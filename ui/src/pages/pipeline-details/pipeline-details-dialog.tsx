@@ -94,7 +94,7 @@ const PipelineDetailsContent = ({
               />
             </FormRow>
           </FormSection>
-          {pipeline.stages.length > 0 && (
+          {pipeline.stages.length > 1 && (
             <FormSection title={translate(STRING.STAGES)}>
               <PipelineStages pipeline={pipeline} />
             </FormSection>
