@@ -136,6 +136,7 @@ def process_images(
     """
     job = None
     images = list(images)
+    urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
     if job_id:
         from ami.jobs.models import Job
@@ -148,9 +149,10 @@ def process_images(
         source_images=[
             SourceImageRequest(
                 id=str(source_image.pk),
-                url=source_image.public_url(),
+                url=url,
             )
-            for source_image in images
+            for source_image, url in zip(images, urls)
+            if url
         ],
     )
 
@@ -281,16 +283,20 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             # or do we use the bbox as a unique identifier?
             # then it doesn't matter what detection algorithm was used
 
-            new_classification = Classification()
-            new_classification.detection = detection
-            new_classification.taxon = taxon
-            new_classification.algorithm = classification_algo
-            new_classification.score = max(classification.scores)
-            new_classification.timestamp = now()  # @TODO get timestamp from API response
-            # @TODO add reference to job or pipeline?
+            new_classification, created = Classification.objects.get_or_create(
+                detection=detection,
+                taxon=taxon,
+                algorithm=classification_algo,
+                score=max(classification.scores),
+                defaults={"timestamp": classification.timestamp or now()},
+            )
 
-            new_classification.save()
-            created_objects.append(new_classification)
+            if created:
+                # Optionally add reference to job or pipeline here
+                created_objects.append(new_classification)
+            else:
+                # Optionally handle the case where a duplicate is found
+                logger.warn("Duplicate classification found, not creating a new one.")
 
             # Create a new occurrence for each detection (no tracking yet)
             # @TODO remove when we implement tracking
@@ -302,7 +308,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
                     determination=taxon,
                     determination_score=new_classification.score,
                 )
-                detection.occurrence = occurrence
+                detection.occurrence = occurrence  # type: ignore
                 detection.save()
             detection.occurrence.save()
 
