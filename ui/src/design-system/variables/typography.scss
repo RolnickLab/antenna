@@ -55,11 +55,6 @@
   font-weight: 400;
   font-size: 12px;
   line-height: 16px;
-
-  @media only screen and (max-width: $small-screen-breakpoint) {
-    font-size: 10px;
-    line-height: 16px;
-  }
 }
 
 @mixin paragraph-small {
@@ -68,11 +63,6 @@
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
-
-  @media only screen and (max-width: $small-screen-breakpoint) {
-    font-size: 12px;
-    line-height: 16px;
-  }
 }
 
 @mixin paragraph-medium {
@@ -81,11 +71,6 @@
   font-weight: 400;
   font-size: 16px;
   line-height: 22px;
-
-  @media only screen and (max-width: $small-screen-breakpoint) {
-    font-size: 14px;
-    line-height: 20px;
-  }
 }
 
 @mixin paragraph-large {
@@ -94,11 +79,6 @@
   font-weight: 400;
   font-size: 18px;
   line-height: 24px;
-
-  @media only screen and (max-width: $small-screen-breakpoint) {
-    font-size: 16px;
-    line-height: 22px;
-  }
 }
 
 // Not present in Figma

@@ -11,6 +11,7 @@ import { getTotalLabel } from 'utils/numberFormats'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
 import { getImageBoxStyles, getPlaceholderStyles } from './utils'
+import { LicenseInfo } from 'components/license-info/license-info'
 
 interface ImageCarouselProps {
   autoPlay?: boolean
@@ -18,26 +19,34 @@ interface ImageCarouselProps {
     src: string
     alt?: string
   }[]
-  total?: number
+  showLicenseInfo?: boolean
   size?: {
     width: string | number
     ratio: number
   }
   theme?: CarouselTheme
+  total?: number
   to?: string
 }
 
 export const ImageCarousel = ({
   autoPlay,
   images,
-  total,
+  showLicenseInfo,
   size,
   theme = CarouselTheme.Default,
+  total,
   to,
 }: ImageCarouselProps) => {
   if (images.length <= 1) {
     return (
-      <BasicImageCarousel image={images[0]} size={size} theme={theme} to={to} />
+      <BasicImageCarousel
+        image={images[0]}
+        showLicenseInfo={showLicenseInfo}
+        size={size}
+        theme={theme}
+        to={to}
+      />
     )
   }
 
@@ -45,9 +54,10 @@ export const ImageCarousel = ({
     <MultiImageCarousel
       autoPlay={autoPlay}
       images={images}
-      total={total}
+      showLicenseInfo={showLicenseInfo}
       size={size}
       theme={theme}
+      total={total}
       to={to}
     />
   )
@@ -55,6 +65,7 @@ export const ImageCarousel = ({
 
 const BasicImageCarousel = ({
   image,
+  showLicenseInfo,
   size,
   theme,
   to,
@@ -63,6 +74,7 @@ const BasicImageCarousel = ({
     src: string
     alt?: string
   }
+  showLicenseInfo?: boolean
   size?: {
     width: string | number
     ratio: number
@@ -92,6 +104,7 @@ const BasicImageCarousel = ({
         </div>
       </div>
     </ConditionalLink>
+    {showLicenseInfo && <LicenseInfo style={{ marginTop: '32px' }} />}
   </div>
 )
 
@@ -100,9 +113,10 @@ const DURATION = 10000 // Change image every 10 second
 const MultiImageCarousel = ({
   autoPlay,
   images,
-  total,
+  showLicenseInfo,
   size,
   theme,
+  total,
   to,
 }: ImageCarouselProps) => {
   const [paused, setPaused] = useState(false)
@@ -223,6 +237,7 @@ const MultiImageCarousel = ({
       <span className={styles.info}>
         {slideIndex + 1} / {totalLabel}
       </span>
+      {showLicenseInfo && <LicenseInfo style={{ marginTop: '32px' }} />}
     </div>
   )
 }

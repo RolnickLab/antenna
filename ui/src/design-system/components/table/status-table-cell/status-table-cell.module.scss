@@ -12,5 +12,6 @@
     display: block;
     @include paragraph-medium();
     color: $color-neutral-700;
+    padding-top: 2px;
   }
 }

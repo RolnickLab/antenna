@@ -3,6 +3,7 @@ import { Icon, IconType } from 'design-system/components/icon/icon'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './blueprint-collection.module.scss'
+import { LicenseInfo } from 'components/license-info/license-info'
 
 export interface BlueprintItem {
   id: string
@@ -19,17 +20,22 @@ export const BlueprintCollection = ({ items }: { items: BlueprintItem[] }) => (
       [styles.empty]: items.length === 0,
     })}
   >
-    {items.map((item) =>
-      item.to ? (
-        <Link key={item.id} to={item.to} className={styles.blueprintItem}>
-          <BlueprintItem item={item} />
-        </Link>
-      ) : (
-        <div key={item.id} className={styles.blueprintItem}>
-          <BlueprintItem item={item} />
-        </div>
-      )
-    )}
+    <div className={styles.licenseInfoContent}>
+      <LicenseInfo />
+    </div>
+    <div className={styles.blueprintContent}>
+      {items.map((item) =>
+        item.to ? (
+          <Link key={item.id} to={item.to} className={styles.blueprintItem}>
+            <BlueprintItem item={item} />
+          </Link>
+        ) : (
+          <div key={item.id} className={styles.blueprintItem}>
+            <BlueprintItem item={item} />
+          </div>
+        )
+      )}
+    </div>
   </div>
 )
 

@@ -60,7 +60,12 @@
   }
 }
 
+.label {
+  padding-top: 2px;
+}
+
 .details {
+  padding-top: 2px;
   @include paragraph-xx-small();
   color: $color-neutral-300;
   font-weight: 600;

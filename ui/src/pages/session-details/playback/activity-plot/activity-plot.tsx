@@ -2,15 +2,17 @@ import { SessionDetails } from 'data-services/models/session-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
+import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
+import { findClosestCaptureId } from '../session-captures-slider/utils'
 
 const fontFamily = 'Mazzard, sans-serif'
 const lineColorCaptures = '#4E4F57'
 const lineColorDetections = '#5F8AC6'
+const spikeColor = '#FFFFFF'
 const textColor = '#303137'
-const tooltipBgColor = '#ffffff'
+const tooltipBgColor = '#FFFFFF'
 const tooltipBorderColor = '#303137'
-const gridLineColor = '#4E4F57'
 
 export const ActivityPlot = ({
   session,
@@ -48,8 +50,7 @@ export const ActivityPlot = ({
                 (timelineTick) => new Date(timelineTick.startDate)
               ),
               y: timeline.map((timelineTick) => timelineTick.numCaptures),
-              text: timeline.map((timelineTick) => timelineTick.tooltip),
-              hovertemplate: '%{text}<extra></extra>',
+              hovertemplate: 'Captures: %{y}<extra></extra>',
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
@@ -62,8 +63,7 @@ export const ActivityPlot = ({
                 (timelineTick) => new Date(timelineTick.startDate)
               ),
               y: timeline.map((timelineTick) => timelineTick.avgDetections),
-              text: timeline.map((timelineTick) => timelineTick.tooltip),
-              hovertemplate: '%{text}<extra></extra>',
+              hovertemplate: 'Avg. detections: %{y}<extra></extra>',
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
@@ -84,6 +84,7 @@ export const ActivityPlot = ({
               t: 0,
               pad: 0,
             },
+            hovermode: 'x unified',
             // y-axis for captures
             yaxis: {
               showgrid: false,
@@ -106,16 +107,26 @@ export const ActivityPlot = ({
               overlaying: 'y',
             },
             xaxis: {
-              showline: false,
-              showgrid: true,
-              griddash: 'dot',
-              gridwidth: 1,
-              gridcolor: gridLineColor,
-              showticklabels: false,
-              zeroline: false,
               fixedrange: true,
               range: [new Date(session.startDate), new Date(session.endDate)],
-              dtick: 3600000, // milliseconds in an hour
+              showgrid: false,
+              showline: false,
+              showticklabels: false,
+              spikecolor: spikeColor,
+              spikethickness: -2,
+              ticktext: timeline.map((timelineTick) =>
+                getCompactTimespanString({
+                  date1: timelineTick.startDate,
+                  date2: timelineTick.endDate,
+                  options: {
+                    second: true,
+                  },
+                })
+              ),
+              tickvals: timeline.map(
+                (timelineTick) => new Date(timelineTick.startDate)
+              ),
+              zeroline: false,
             },
             hoverlabel: {
               bgcolor: tooltipBgColor,
@@ -134,8 +145,17 @@ export const ActivityPlot = ({
           onClick={(data) => {
             const timelineTickIndex = data.points[0].pointIndex
             const timelineTick = timeline[timelineTickIndex]
-            if (timelineTick?.representativeCaptureId) {
-              setActiveCaptureId(timelineTick.representativeCaptureId)
+
+            if (!timelineTick) {
+              return
+            }
+
+            const captureId =
+              timelineTick.representativeCaptureId ??
+              findClosestCaptureId(timeline, timelineTick.startDate)
+
+            if (captureId) {
+              setActiveCaptureId(captureId)
             }
           }}
         />

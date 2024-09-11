@@ -48,7 +48,7 @@ const Trigger = ({
 }) => (
   <Tabs.Trigger value={value} className={styles.tabsTrigger}>
     {icon && <Icon type={icon} />}
-    <span>{label}</span>
+    <span className={styles.label}>{label}</span>
   </Tabs.Trigger>
 )
 

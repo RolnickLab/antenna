@@ -1,0 +1,13 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.text {
+  @include paragraph-small();
+  color: $color-neutral-300;
+  margin: 0;
+
+  a {
+    font-weight: 600;
+    color: $color-primary-1-600;
+  }
+}
