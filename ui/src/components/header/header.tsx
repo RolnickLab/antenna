@@ -40,7 +40,7 @@ export const Header = () => {
             target="_blank"
             className={classNames(buttonStyles.button, buttonStyles.plain)}
           >
-            <span className={buttonStyles.label}>About</span>
+            <span className={buttonStyles.label}>About Antenna</span>
             <Icon
               type={IconType.ExternalLink}
               theme={IconTheme.Primary}
