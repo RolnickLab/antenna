@@ -69,6 +69,7 @@ const Plot = ({
         },
         yaxis: {
           color: textColor,
+          fixedrange: true,
           showgrid: true,
           gridcolor: borderColor,
           zeroline: true,
@@ -77,6 +78,7 @@ const Plot = ({
         },
         xaxis: {
           color: textColor,
+          fixedrange: true,
           showgrid: false,
           zeroline: false,
           tickvals: data.tickvals,
