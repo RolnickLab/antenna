@@ -318,11 +318,11 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         for source_image in source_images:
             source_image.save()
 
-    print("About to create detection images")
-    create_detection_images.delay(
+    image_cropping_task = create_detection_images.delay(
         source_image_ids=[source_image.pk for source_image in source_images],
-        job_id=job_id,
     )
+    if job:
+        job.logger.info(f"Creating detection images in sub-task {image_cropping_task.id}")
 
     event_ids = [img.event_id for img in source_images]
     update_calculated_fields_for_events(pks=event_ids)

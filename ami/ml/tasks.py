@@ -37,21 +37,14 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
 
 
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
-def create_detection_images(source_image_ids: list[int], job_id: int | None = None):
-    from ami.jobs.models import Job
+def create_detection_images(source_image_ids: list[int]):
     from ami.main.models import SourceImage
 
-    task_logger = logger
-
-    if job_id:
-        job = Job.objects.get(pk=job_id)
-        task_logger = job.logger
-
-    task_logger.info(f"Creating detection images for {len(source_image_ids)} capture(s)")
+    logger.debug(f"Creating detection images for {len(source_image_ids)} capture(s)")
 
     for source_image in SourceImage.objects.filter(pk__in=source_image_ids):
         try:
             processed_paths = create_detection_images_from_source_image(source_image)
-            task_logger.info(f"Created {len(processed_paths)} detection images for SourceImage #{source_image.pk}")
+            logger.debug(f"Created {len(processed_paths)} detection images for SourceImage #{source_image.pk}")
         except Exception as e:
-            task_logger.error(f"Error processing SourceImage {source_image.pk}: {str(e)}")
+            logger.error(f"Error creating detection images for SourceImage {source_image.pk}: {str(e)}")
