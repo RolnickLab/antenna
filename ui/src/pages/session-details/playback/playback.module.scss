@@ -47,6 +47,13 @@
   margin-bottom: 16px;
 }
 
+.licenseInfoWrapper {
+  flex: 1;
+  p a {
+    color: $color-generic-white;
+  }
+}
+
 .bottomBar {
   grid-column: span 2;
   background-color: $color-neutral-700;
@@ -73,6 +80,8 @@
 
   .captureNavigationWrapper {
     margin-bottom: 32px;
+    gap: 16px;
+    flex-direction: column-reverse;
     justify-content: center;
   }
 }
