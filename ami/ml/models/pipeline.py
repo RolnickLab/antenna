@@ -227,17 +227,18 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             detection_algorithm=detection_algo,
             bbox=list(detection_resp.bbox.dict().values()),
         ).first()
+        # Ensure that the crop image URL is not empty or only a slash. None is fine.
+        if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
+            crop_url = detection_resp.crop_image_url
+        else:
+            crop_url = None
         if existing_detection:
             if not existing_detection.path:
-                existing_detection.path = detection_resp.crop_image_url or None
+                existing_detection.path = crop_url
                 existing_detection.save()
                 print("Updated existing detection", existing_detection)
             detection = existing_detection
         else:
-            if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
-                crop_url = detection_resp.crop_image_url
-            else:
-                crop_url = None
             new_detection = Detection.objects.create(
                 source_image=source_image,
                 bbox=list(detection_resp.bbox.dict().values()),
