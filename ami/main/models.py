@@ -1642,6 +1642,25 @@ class ClassificationResult(BaseModel):
     pass
 
 
+class ClassificationQuerySet(models.QuerySet):
+    def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
+        # Find the oldest classification for each unique combination
+        if project_id:
+            self = self.filter(detection__source_image__project_id=project_id)
+        unique_oldest = (
+            self.values("detection", "taxon", "algorithm", "score", "softmax_output", "raw_output")
+            .annotate(min_id=models.Min("id"))
+            .distinct()
+        )
+
+        # Keep only the oldest classifications
+        return self.filter(id__in=[item["min_id"] for item in unique_oldest])
+
+
+class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)):
+    pass
+
+
 @final
 class Classification(BaseModel):
     """The output of a classifier"""
@@ -1676,6 +1695,8 @@ class Classification(BaseModel):
         null=True,
     )
     # job = models.CharField(max_length=255, null=True)
+
+    objects = ClassificationManager()
 
     # Type hints for auto-generated fields
     taxon_id: int
