@@ -560,13 +560,14 @@ class Deployment(BaseModel):
         ]
         for model_name in child_models:
             model = apps.get_model("main", model_name)
-            project_values = set(model.objects.filter(deployment=self).values_list("project", flat=True).distinct())
-            if len(project_values) > 1:
+            qs = model.objects.filter(deployment=self).exclude(project=self.project)
+            project_values = set(qs.values_list("project", flat=True).distinct())
+            if len(project_values):
                 logger.warning(
                     f"Deployment {self} has alternate projects set on {model_name} "
                     f"objects: {project_values}. Updating them!"
                 )
-            model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
+            qs.update(project=self.project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
