@@ -602,7 +602,7 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
-        last_updated = self.updated_at
+        last_updated = self.updated_at or timezone.now()
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
             # @TODO Use "dirty" flag strategy to only update when needed
