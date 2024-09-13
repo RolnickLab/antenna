@@ -560,13 +560,14 @@ class Deployment(BaseModel):
         ]
         for model_name in child_models:
             model = apps.get_model("main", model_name)
-            project_values = set(model.objects.filter(deployment=self).values_list("project", flat=True).distinct())
-            if len(project_values) > 1:
+            qs = model.objects.filter(deployment=self).exclude(project=self.project)
+            project_values = set(qs.values_list("project", flat=True).distinct())
+            if len(project_values):
                 logger.warning(
                     f"Deployment {self} has alternate projects set on {model_name} "
                     f"objects: {project_values}. Updating them!"
                 )
-            model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
+            qs.update(project=self.project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
@@ -601,15 +602,19 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
+        last_updated = self.updated_at or timezone.now()
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
+            # @TODO Use "dirty" flag strategy to only update when needed
+            new_or_updated_captures = self.captures.filter(updated_at__gte=last_updated).count()
+            deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
+            if new_or_updated_captures or deleted_captures:
+                ami.tasks.regroup_events.delay(self.pk)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
-            # @TODO Use "dirty" flag strategy to only update when needed
-            ami.tasks.regroup_events.delay(self.pk)
 
 
 @final
@@ -848,8 +853,7 @@ def group_images_into_events(
             [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
         )
         logger.warning(
-            f"Found multiple images with the same timestamp in deployment '{deployment}':\n "
-            f"{values}\n"
+            f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
             f"Only one image will be used for each timestamp for each event."
         )
 
@@ -1642,6 +1646,25 @@ class ClassificationResult(BaseModel):
     pass
 
 
+class ClassificationQuerySet(models.QuerySet):
+    def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
+        # Find the oldest classification for each unique combination
+        if project_id:
+            self = self.filter(detection__source_image__project_id=project_id)
+        unique_oldest = (
+            self.values("detection", "taxon", "algorithm", "score", "softmax_output", "raw_output")
+            .annotate(min_id=models.Min("id"))
+            .distinct()
+        )
+
+        # Keep only the oldest classifications
+        return self.filter(id__in=[item["min_id"] for item in unique_oldest])
+
+
+class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)):
+    pass
+
+
 @final
 class Classification(BaseModel):
     """The output of a classifier"""
@@ -1676,6 +1699,8 @@ class Classification(BaseModel):
         null=True,
     )
     # job = models.CharField(max_length=255, null=True)
+
+    objects = ClassificationManager()
 
     # Type hints for auto-generated fields
     taxon_id: int
