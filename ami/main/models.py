@@ -602,15 +602,19 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
+        last_updated = self.updated_at
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
+            # @TODO Use "dirty" flag strategy to only update when needed
+            new_or_updated_captures = self.captures.filter(updated_at__gte=last_updated).count()
+            deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
+            if new_or_updated_captures or deleted_captures:
+                ami.tasks.regroup_events.delay(self.pk)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
-            # @TODO Use "dirty" flag strategy to only update when needed
-            ami.tasks.regroup_events.delay(self.pk)
 
 
 @final
@@ -849,8 +853,7 @@ def group_images_into_events(
             [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
         )
         logger.warning(
-            f"Found multiple images with the same timestamp in deployment '{deployment}':\n "
-            f"{values}\n"
+            f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
             f"Only one image will be used for each timestamp for each event."
         )
 
