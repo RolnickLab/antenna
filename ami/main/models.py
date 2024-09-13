@@ -1658,7 +1658,7 @@ class ClassificationQuerySet(models.QuerySet):
         )
 
         # Keep only the oldest classifications
-        return self.filter(id__in=[item["min_id"] for item in unique_oldest])
+        return self.exclude(id__in=[item["min_id"] for item in unique_oldest])
 
 
 class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)):
