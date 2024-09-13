@@ -9,6 +9,7 @@ from django.utils.formats import number_format
 
 import ami.utils
 from ami import tasks
+from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
     BlogPost,
@@ -56,6 +57,16 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
 
     list_display = ("name", "priority", "active", "created_at", "updated_at")
+
+    @admin.action(description="Remove duplicate classifications from all detections")
+    def _remove_duplicate_classifications(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:
+        task_ids = []
+        for project in queryset:
+            task = remove_duplicate_classifications.delay(project_id=project.pk)
+            task_ids.append(task.id)
+        self.message_user(request, f"Started {len(task_ids)} tasks to delete classification: {task_ids}")
+
+    actions = [_remove_duplicate_classifications]
 
 
 @admin.register(Deployment)
