@@ -41,7 +41,7 @@
 
 .text {
   @include paragraph-medium();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

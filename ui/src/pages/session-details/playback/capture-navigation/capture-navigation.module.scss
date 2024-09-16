@@ -16,14 +16,6 @@
 
   span {
     @include label();
-    color: $color-neutral-200;
-  }
-}
-
-@media only screen and (max-width: $small-screen-breakpoint) {
-  .wrapper {
-    span {
-      display: none;
-    }
+    color: $color-generic-white;
   }
 }

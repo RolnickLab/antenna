@@ -1,9 +1,19 @@
+import logging
+
 from django.conf import settings
 from django.db import transaction
 
-from ami.main.models import Project, group_images_into_events
+from ami.main.models import Project
 
-from .main import create_captures, create_occurrences, create_taxa, setup_test_project, update_site_settings
+from .main import (
+    create_captures_from_files,
+    create_occurrences_from_frame_data,
+    create_taxa,
+    setup_test_project,
+    update_site_settings,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Signal receiver function
@@ -15,8 +25,7 @@ def setup_complete_test_project(sender, **kwargs):
     with transaction.atomic():
         update_site_settings(domain=settings.EXTERNAL_HOSTNAME)
         project, deployment = setup_test_project(reuse=False)
-        create_captures(deployment)
-        group_images_into_events(deployment)
+        frame_data = create_captures_from_files(deployment)
         taxa_list = create_taxa(project)
-        for taxon in taxa_list.taxa.all():
-            create_occurrences(deployment=deployment, taxon=taxon, num=3)
+        create_occurrences_from_frame_data(frame_data, taxa_list=taxa_list)
+        logger.info(f"Created test project {project}")

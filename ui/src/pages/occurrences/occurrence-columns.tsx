@@ -36,8 +36,7 @@ export const columns: (
     styles: {
       textAlign: TextAlign.Center,
     },
-    renderCell: (item: Occurrence, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Occurrence) => {
       const detailsRoute = getAppRoute({
         to: APP_ROUTES.OCCURRENCE_DETAILS({
           projectId,
@@ -49,7 +48,7 @@ export const columns: (
       return (
         <ImageTableCell
           images={item.images}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )

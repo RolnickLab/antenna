@@ -71,6 +71,13 @@ export class Session {
   }
 
   get numSpecies(): number | undefined {
+    // Workaround for taxa count being 0 when occurrences count > 0
+    if (this.numOccurrences) {
+      if (this._event.taxa_count === 0) {
+        return undefined
+      }
+    }
+
     return this._event.taxa_count
   }
 

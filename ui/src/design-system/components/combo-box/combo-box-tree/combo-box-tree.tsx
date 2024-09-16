@@ -1,5 +1,10 @@
 import classNames from 'classnames'
 import { Command } from 'cmdk'
+import {
+  IconButton,
+  IconButtonTheme,
+} from 'design-system/components/icon-button/icon-button'
+import { IconType } from 'design-system/components/icon/icon'
 import { RefObject, useMemo, useState } from 'react'
 import { LoadingSpinner } from '../../loading-spinner/loading-spinner'
 import styles from '../styles.module.scss'
@@ -9,6 +14,7 @@ import { Node } from './types'
 import { useBottomAnchor } from './useBottomAnchor'
 
 export const ComboBoxTree = ({
+  autoFocus = true,
   containerRef,
   emptyLabel,
   inputRef,
@@ -20,6 +26,7 @@ export const ComboBoxTree = ({
   onItemSelect,
   setSearchString,
 }: {
+  autoFocus?: boolean
   containerRef: RefObject<HTMLDivElement>
   emptyLabel: string
   inputRef: RefObject<HTMLInputElement>
@@ -28,7 +35,7 @@ export const ComboBoxTree = ({
   searchString: string
   selectedNodeId?: string
   selectedLabel?: string
-  onItemSelect: (id: string | number) => void
+  onItemSelect: (id: string | number | undefined) => void
   setSearchString: (value: string) => void
 }) => {
   const [open, setOpen] = useState(false)
@@ -42,21 +49,29 @@ export const ComboBoxTree = ({
   return (
     <Command shouldFilter={false} className={styles.wrapper}>
       <Command.Input
-        autoFocus
-        className={classNames(styles.input, {
-          [styles.loading]: loading,
-        })}
+        placeholder="Search taxonomy"
+        autoFocus={autoFocus}
+        className={styles.input}
         ref={inputRef}
         value={open ? searchString : selectedLabel}
         onBlur={() => setTimeout(() => setOpen(false), 200)}
         onFocus={() => setOpen(true)}
         onValueChange={setSearchString}
       />
-      {loading && (
-        <div className={styles.loadingWrapper}>
-          <LoadingSpinner size={12} />
-        </div>
-      )}
+      <div className={styles.accessoryWrapper}>
+        {open && loading && <LoadingSpinner size={12} />}
+        {!open && selectedNodeId && (
+          <IconButton
+            icon={IconType.Cross}
+            theme={IconButtonTheme.Plain}
+            onClick={() => {
+              onItemSelect(undefined)
+              setSearchString('')
+              inputRef?.current?.blur()
+            }}
+          />
+        )}
+      </div>
       <Command.List
         className={classNames(styles.content, styles.treeItems, {
           [styles.open]: open && searchString.length,

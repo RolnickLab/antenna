@@ -21,7 +21,7 @@ services:
       - postgres
       - redis
       - mailhog
-      - minio
+      - minio-init
     volumes:
       - .:/app:z
     env_file:

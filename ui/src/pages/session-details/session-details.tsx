@@ -8,7 +8,6 @@ import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
-import { ThresholdContextProvider } from 'utils/threshold/thresholdContext'
 import { Playback } from './playback/playback'
 import { useActiveCaptureId } from './playback/useActiveCapture'
 import { useActiveOccurrences } from './playback/useActiveOccurrences'
@@ -53,9 +52,7 @@ export const SessionDetails = () => {
         </div>
       )}
       <div className={styles.playbackWrapper}>
-        <ThresholdContextProvider>
-          <Playback session={session} />
-        </ThresholdContextProvider>
+        <Playback session={session} />
       </div>
       <PlotGrid>
         <Box>
@@ -63,16 +60,22 @@ export const SessionDetails = () => {
             <SessionInfo session={session} />
           </div>
         </Box>
-        {session.summaryData.map((summary, index) => (
-          <Box key={index}>
-            <Plot
-              title={summary.title}
-              data={summary.data}
-              orientation={summary.orientation}
-              type={summary.type}
-            />
-          </Box>
-        ))}
+        {session.summaryData.map((summary, index) => {
+          if (summary.data.x.length <= 1) {
+            return null
+          }
+
+          return (
+            <Box key={index}>
+              <Plot
+                title={summary.title}
+                data={summary.data}
+                orientation={summary.orientation}
+                type={summary.type}
+              />
+            </Box>
+          )
+        })}
       </PlotGrid>
     </div>
   )

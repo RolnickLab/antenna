@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { EmptyState } from 'components/empty-state/empty-state'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
@@ -134,6 +135,7 @@ export const Table = <T extends { id: string }>({
           <LoadingSpinner />
         </div>
       )}
+      {!isLoading && items.length === 0 && <EmptyState />}
       <div
         className={classNames(styles.overflowFader, {
           [styles.visible]: showScrollFader,

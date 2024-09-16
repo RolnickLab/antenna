@@ -45,6 +45,7 @@ export const Jobs = () => {
         })}
         isLoading={isLoading}
         isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_JOB)}
       >
         {canCreate ? <NewJobDialog /> : null}
       </PageHeader>

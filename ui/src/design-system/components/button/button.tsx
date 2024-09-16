@@ -78,7 +78,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...rest}
       >
         {icon && <Icon type={icon} theme={iconTheme} size={14} />}
-        <span>{!loading ? label : `${label}...`}</span>
+        <span className={styles.label}>{!loading ? label : `${label}...`}</span>
         {details && <span className={styles.details}>{details}</span>}
       </button>
     )

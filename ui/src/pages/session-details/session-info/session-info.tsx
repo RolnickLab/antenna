@@ -46,18 +46,18 @@ export const SessionInfo = ({ session }: { session: Session }) => {
         filters: { event: session.id },
       }),
     },
-    {
-      label: translate(STRING.FIELD_LABEL_SPECIES),
-      value: session.numSpecies,
-      to: getAppRoute({
-        to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
-        filters: { occurrences__event: session.id },
-      }),
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_AVG_TEMP),
-      value: session.tempLabel,
-    },
+    ...(session.numSpecies !== undefined
+      ? [
+          {
+            label: translate(STRING.FIELD_LABEL_SPECIES),
+            value: session.numSpecies,
+            to: getAppRoute({
+              to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
+              filters: { occurrences__event: session.id },
+            }),
+          },
+        ]
+      : []),
   ]
 
   return (
