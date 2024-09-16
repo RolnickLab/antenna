@@ -12,6 +12,7 @@ import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { useUser } from 'utils/user/userContext'
 import styles from './capture-details.module.scss'
 import { CaptureJob } from './capture-job/capture-job'
 
@@ -22,6 +23,8 @@ export const CaptureDetails = ({
   capture?: Capture
   captureId: string
 }) => {
+  const { user } = useUser()
+
   if (!capture) {
     return null
   }
@@ -29,7 +32,9 @@ export const CaptureDetails = ({
   return (
     <>
       <div className={styles.starButtonWrapper}>
-        <StarButton capture={capture} captureId={captureId} />
+        {user.loggedIn && (
+          <StarButton capture={capture} captureId={captureId} />
+        )}
         <a
           href={capture.url}
           className={styles.link}
@@ -62,10 +67,14 @@ export const CaptureDetails = ({
           </span>
           <span className={styles.value}>{capture.sizeLabel}</span>
         </div>
-        <div>
-          <span className={styles.label}>Process</span>
-          <JobControls capture={capture} />
-        </div>
+        {user.loggedIn && (
+          <div>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_PROCESS)}
+            </span>
+            <JobControls capture={capture} />
+          </div>
+        )}
       </div>
     </>
   )

@@ -3,7 +3,7 @@
 
 .message {
   @include heading-6();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
 }
 
 .details {
@@ -11,7 +11,7 @@
   @include paragraph-small();
   font-family: monospace;
   padding: 24px;
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   background: $color-generic-white;
   border-radius: 8px;
   border: 1px solid $color-neutral-100;

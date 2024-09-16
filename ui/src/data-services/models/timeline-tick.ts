@@ -1,5 +1,3 @@
-import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
-
 export type ServerTimelineTick = {
   start: string
   end: string
@@ -59,17 +57,5 @@ export class TimelineTick {
 
   get representativeCaptureId(): string | undefined {
     return this.topCaptureId ?? this.firstCaptureId
-  }
-
-  get tooltip(): string {
-    const timespanString = getCompactTimespanString({
-      date1: this.startDate,
-      date2: this.endDate,
-      options: {
-        second: true,
-      },
-    })
-
-    return `${timespanString}<br>Captures: ${this.numCaptures}<br>Avg. detections: ${this.avgDetections}`
   }
 }

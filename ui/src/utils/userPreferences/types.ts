@@ -6,6 +6,7 @@ export interface UserPreferences {
     value: string
   }[]
   scoreThreshold: number
+  termsMessageSeen?: boolean
 }
 
 export interface UserPreferencesContextValues {

@@ -1,1 +1,3 @@
 v18.12.0
+
+# This should always match the version in `local/ui/Dockerfile`

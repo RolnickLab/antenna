@@ -15,6 +15,7 @@ import styles from './playback.module.scss'
 import { SessionCapturesSlider } from './session-captures-slider/session-captures-slider'
 import { ThresholdSlider } from './threshold-slider/threshold-slider'
 import { useActiveCaptureId } from './useActiveCapture'
+import { LicenseInfo } from 'components/license-info/license-info'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const {
@@ -73,20 +74,25 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             activeCapture={activeCapture}
             setActiveCaptureId={setActiveCaptureId}
           />
+          <div className={styles.licenseInfoWrapper}>
+            <LicenseInfo />
+          </div>
         </div>
-        <ActivityPlot
-          session={session}
-          timeline={timeline}
-          setActiveCaptureId={setActiveCaptureId}
-        />
-        {timeline.length > 0 && (
-          <SessionCapturesSlider
+        <div>
+          <ActivityPlot
             session={session}
             timeline={timeline}
-            activeCapture={activeCapture}
             setActiveCaptureId={setActiveCaptureId}
           />
-        )}
+          {timeline.length > 0 && (
+            <SessionCapturesSlider
+              session={session}
+              timeline={timeline}
+              activeCapture={activeCapture}
+              setActiveCaptureId={setActiveCaptureId}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

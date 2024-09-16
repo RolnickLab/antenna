@@ -11,7 +11,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
-  border-bottom: 2px solid $color-neutral-200;
+  border-bottom: 2px solid $color-neutral-100;
   position: relative;
   padding: 2px 2px 0;
 
@@ -71,7 +71,7 @@
 .itemTitle {
   display: block;
   @include label();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   white-space: nowrap;
 }
 

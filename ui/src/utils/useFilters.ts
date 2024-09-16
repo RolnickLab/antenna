@@ -2,11 +2,11 @@ import { useSearchParams } from 'react-router-dom'
 
 const AVAILABLE_FILTERS = [
   {
-    label: 'Deployment',
+    label: 'Station',
     field: 'deployment',
   },
   {
-    label: 'Occurrence deployment',
+    label: 'Occurrence station',
     field: 'occurrences__deployment',
   },
   {
@@ -18,7 +18,7 @@ const AVAILABLE_FILTERS = [
     field: 'occurrences__event',
   },
   {
-    label: 'Species',
+    label: 'Taxon',
     field: 'determination',
   },
 ]
@@ -37,18 +37,24 @@ export const useFilters = () => {
 
   const isActive = filters.some((filter) => filter.value?.length)
 
+  const addFilter = (field: string, value: string) => {
+    if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
+      searchParams.set(field, value)
+      setSearchParams(searchParams)
+    }
+  }
+
   const clearFilter = (field: string) => {
-    AVAILABLE_FILTERS.filter((filter) => filter.field === field).forEach(
-      (filter) => {
-        searchParams.delete(filter.field)
-      }
-    )
-    setSearchParams(searchParams)
+    if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
+      searchParams.delete(field)
+      setSearchParams(searchParams)
+    }
   }
 
   return {
     filters,
     isActive,
+    addFilter,
     clearFilter,
   }
 }

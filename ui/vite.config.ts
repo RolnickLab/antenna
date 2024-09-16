@@ -25,6 +25,7 @@ export default defineConfig(({ mode }) => {
       svgr({ include: '**/*.svg?react' }),
       eslint({ exclude: ['/virtual:/**', 'node_modules/**'] }),
     ],
+    assetsInclude: ['**/*.md'],
     define: {
       __COMMIT_HASH__: JSON.stringify(commitHash),
     },
@@ -33,6 +34,10 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       proxy: {
         '/api': {
+          target: env.API_PROXY_TARGET || 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/media': {
           target: env.API_PROXY_TARGET || 'http://localhost:8000',
           changeOrigin: true,
         },

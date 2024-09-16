@@ -1,21 +1,20 @@
-import { InfoDialog } from 'components/info-dialog/info-dialog'
+import classNames from 'classnames'
 import { useLogout } from 'data-services/hooks/auth/useLogout'
-import { usePages } from 'data-services/hooks/pages/usePages'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { APP_ROUTES } from 'utils/constants'
+import buttonStyles from 'design-system/components/button/button.module.scss'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { Link, useLocation } from 'react-router-dom'
+import { APP_ROUTES, LANDING_PAGE_URL } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
-import ami from './ami.png'
-import { BetaInfo } from './beta-info/beta-info'
+import antenna from './antenna-primary.svg'
 import styles from './header.module.scss'
 import { UserInfoDialog } from './user-info-dialog/user-info-dialog'
+import { VersionInfo } from './version-info/version-info'
 
 export const Header = () => {
   const location = useLocation()
-  const navigate = useNavigate()
-  const { pages = [] } = usePages()
   const { user } = useUser()
   const { logout, isLoading: isLogoutLoading } = useLogout()
 
@@ -23,23 +22,38 @@ export const Header = () => {
 
   return (
     <header className={styles.header}>
-      <Link to="/">
+      <Link to="/" className={styles.logoContainer}>
         <img
-          alt="AMI"
-          src={ami}
+          alt="Antenna"
+          src={antenna}
           width={40}
           height={40}
           className={styles.logo}
         />
       </Link>
-      <BetaInfo />
+      <VersionInfo />
       <div className={styles.rightContent}>
         <div className={styles.infoPages}>
-          {pages.map((page) => (
-            <InfoDialog key={page.id} name={page.name} slug={page.slug} />
-          ))}
+          <a
+            href={LANDING_PAGE_URL}
+            rel="noreferrer"
+            target="_blank"
+            className={classNames(buttonStyles.button, buttonStyles.plain)}
+          >
+            <span className={buttonStyles.label}>About Antenna</span>
+            <Icon
+              type={IconType.ExternalLink}
+              theme={IconTheme.Primary}
+              size={14}
+            />
+          </a>
+          <Link
+            to={APP_ROUTES.TERMS_OF_SERVICE}
+            className={classNames(buttonStyles.button, buttonStyles.plain)}
+          >
+            <span className={buttonStyles.label}>Terms of Service</span>
+          </Link>
         </div>
-
         {user.loggedIn ? (
           <>
             <Button
@@ -51,20 +65,15 @@ export const Header = () => {
             <UserInfoDialog />
           </>
         ) : (
-          <>
-            <Button
-              label={translate(STRING.SIGN_UP)}
-              theme={ButtonTheme.Plain}
-              onClick={() => navigate(APP_ROUTES.SIGN_UP)}
-            />
-            <Button
-              label={translate(STRING.LOGIN)}
-              theme={ButtonTheme.Plain}
-              onClick={() =>
-                navigate(APP_ROUTES.LOGIN, { state: { to: location.pathname } })
-              }
-            />
-          </>
+          <Link
+            to={APP_ROUTES.LOGIN}
+            state={{ to: location.pathname }}
+            className={classNames(buttonStyles.button, buttonStyles.plain)}
+          >
+            <span className={buttonStyles.label}>
+              {translate(STRING.LOGIN)}
+            </span>
+          </Link>
         )}
       </div>
     </header>

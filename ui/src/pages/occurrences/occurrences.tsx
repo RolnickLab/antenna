@@ -20,14 +20,17 @@ import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { useUser } from 'utils/user/userContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
+import { TaxonFilter } from './taxon-filter/taxon-filter'
 
 export const Occurrences = () => {
+  const { user } = useUser()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -77,6 +80,7 @@ export const Occurrences = () => {
         showAppliedFilters
         tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
       >
+        <TaxonFilter />
         <ToggleGroup
           items={[
             {
@@ -109,7 +113,7 @@ export const Occurrences = () => {
           ).filter((column) => !!columnSettings[column.id])}
           sortable
           sortSettings={sort}
-          selectable
+          selectable={user.loggedIn}
           selectedItems={selectedItems}
           onSelectedItemsChange={setSelectedItems}
           onSortSettingsChange={setSort}
@@ -123,7 +127,12 @@ export const Occurrences = () => {
           />
         </div>
       )}
-      <PageFooter>
+      <PageFooter
+        hide={
+          selectedItems.length === 0 &&
+          (!occurrences || occurrences.length === 0)
+        }
+      >
         {selectedItems.length ? (
           <BulkActionBar
             selectedItems={selectedItems.filter((id) =>
