@@ -1,3 +1,5 @@
+from urllib.parse import urljoin
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -25,9 +27,9 @@ urlpatterns += [
     # API base url
     path(API_ROOT, include("config.api_router", namespace="api")),
     # OpenAPI Docs
-    path(API_ROOT + "schema/", SpectacularAPIView.as_view(api_version="api"), name="api-schema"),
+    path(urljoin(API_ROOT, "schema/"), SpectacularAPIView.as_view(api_version="api"), name="api-schema"),
     path(
-        API_ROOT + "docs/",
+        urljoin(API_ROOT, "docs/"),
         SpectacularSwaggerView.as_view(url_name="api-schema"),
         name="api-docs",
     ),
