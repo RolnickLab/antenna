@@ -52,7 +52,7 @@
 
 .text {
   @include paragraph-small();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   text-align: center;
   margin: 0;
 
@@ -66,7 +66,7 @@
   }
 
   &.divider {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
 
   &.error {

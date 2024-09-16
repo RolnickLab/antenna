@@ -21,8 +21,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     styles: {
       textAlign: TextAlign.Center,
     },
-    renderCell: (item: Session, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Session) => {
       const detailsRoute = APP_ROUTES.SESSION_DETAILS({
         projectId,
         sessionId: item.id,
@@ -33,7 +32,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
           images={item.exampleCaptures}
           total={item.numImages}
           to={detailsRoute}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
         />
       )
     },
@@ -145,10 +144,5 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
         <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
       </Link>
     ),
-  },
-  {
-    id: 'avg-temp',
-    name: translate(STRING.FIELD_LABEL_AVG_TEMP),
-    renderCell: (item: Session) => <BasicTableCell value={item.tempLabel} />,
   },
 ]

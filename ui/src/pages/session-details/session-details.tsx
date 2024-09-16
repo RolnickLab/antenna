@@ -60,16 +60,22 @@ export const SessionDetails = () => {
             <SessionInfo session={session} />
           </div>
         </Box>
-        {session.summaryData.map((summary, index) => (
-          <Box key={index}>
-            <Plot
-              title={summary.title}
-              data={summary.data}
-              orientation={summary.orientation}
-              type={summary.type}
-            />
-          </Box>
-        ))}
+        {session.summaryData.map((summary, index) => {
+          if (summary.data.x.length <= 1) {
+            return null
+          }
+
+          return (
+            <Box key={index}>
+              <Plot
+                title={summary.title}
+                data={summary.data}
+                orientation={summary.orientation}
+                type={summary.type}
+              />
+            </Box>
+          )
+        })}
       </PlotGrid>
     </div>
   )

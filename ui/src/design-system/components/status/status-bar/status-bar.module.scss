@@ -5,7 +5,7 @@
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background-color: $color-neutral-200;
+  background-color: $color-neutral-100;
   position: relative;
 }
 
@@ -30,12 +30,12 @@
   }
 
   &.neutral {
-    background-color: $color-neutral-500;
+    background-color: $color-neutral-300;
   }
 }
 
 .description {
   @include paragraph-x-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   margin: 8px 0 0 0;
 }

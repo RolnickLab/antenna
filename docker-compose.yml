@@ -21,7 +21,7 @@ services:
       - postgres
       - redis
       - mailhog
-      - minio
+      - minio-init
     volumes:
       - .:/app:z
     env_file:
@@ -43,22 +43,22 @@ services:
     env_file:
       - ./.envs/.local/.postgres
 
-  ui:
-    image: ami_local_ui
-    build:
-      context: ./ui
-      dockerfile: ../compose/local/ui/Dockerfile
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./.git:/app/.git:ro
-      - ./ui:/app:z
-      - /app/node_modules
-    depends_on:
-      - django
-    environment:
-      - CHOKIDAR_USEPOLLING=true
-      - API_PROXY_TARGET=http://django:8000
+  # ui:
+  #   image: ami_local_ui
+  #   build:
+  #     context: ./ui
+  #     dockerfile: ../compose/local/ui/Dockerfile
+  #   ports:
+  #     - "4000:4000"
+  #   volumes:
+  #     - ./.git:/app/.git:ro
+  #     - ./ui:/app
+  #     - /app/node_modules
+  #   depends_on:
+  #     - django
+  #   environment:
+  #     - CHOKIDAR_USEPOLLING=true
+  #     - API_PROXY_TARGET=http://django:8000
 
   docs:
     image: ami_local_docs

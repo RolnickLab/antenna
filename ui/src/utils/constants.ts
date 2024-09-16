@@ -5,6 +5,7 @@ export const APP_ROUTES = {
   SIGN_UP: '/auth/sign-up',
   RESET_PASSWORD: '/auth/reset-password',
   RESET_PASSWORD_CONFIRM: '/auth/reset-password-confirm',
+  TERMS_OF_SERVICE: '/terms-of-service',
   PROJECTS: '/projects',
 
   /* Dynamic app routes */
@@ -48,3 +49,7 @@ export const APP_ROUTES = {
 }
 
 export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB
+
+export const LANDING_PAGE_URL = 'https://insectai.org/'
+
+export const LANDING_PAGE_WAITLIST_URL = 'https://insectai.org/waitlist'

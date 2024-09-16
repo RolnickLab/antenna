@@ -12,10 +12,20 @@
   gap: 32px;
   padding: 0 100px;
   background-color: $color-generic-white;
-  border-bottom: 1px solid $color-neutral-200;
+  border-bottom: 1px solid $color-neutral-100;
   box-sizing: border-box;
   z-index: 2;
   overflow-x: auto;
+}
+
+.logoContainer {
+  padding: 2px;
+  border-radius: 50%;
+
+  &:hover {
+    opacity: 1;
+    background: $color-primary-1-50;
+  }
 }
 
 .logo {

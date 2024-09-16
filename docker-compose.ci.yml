@@ -7,7 +7,7 @@ services:
     depends_on:
       - postgres
       - redis
-      - minio
+      - minio-init
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -31,3 +31,13 @@ services:
     command: minio server --console-address ":9001" /data
     env_file:
       - ./.envs/.ci/.django
+
+  minio-init:
+    image: minio/mc
+    env_file:
+      - ./.envs/.ci/.django
+    depends_on:
+      - minio
+    volumes:
+      - ./compose/local/minio/init.sh:/etc/minio/init.sh
+    entrypoint: /etc/minio/init.sh

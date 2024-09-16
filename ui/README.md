@@ -1,4 +1,4 @@
-# AMI Data Companion UI
+# Antenna Data Platform UI
 
 Web interface to explore data from automated insect monitoring stations. We use React and TypeScript for the implementation. The project was setup using [Vite](https://vitejs.dev/).
 

@@ -40,6 +40,9 @@ By default this will try to connect to http://localhost:8000 for the backend API
 
 #### Installation
 
+Note: if you installed the ui using Docker first (as instructed in the quick-start) then your local `node_modules/` directory will be owned by root. Change the permissions with:
+`sudo chown -R ${UID}:${UID} ui/node_modules`. The version of Node on your host machine must match that of the Docker container (which will be the case if you follow the `nvm` instructions below.)
+
 ```bash
 # Enter into the ui directory
 cd ui
