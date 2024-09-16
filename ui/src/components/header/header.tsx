@@ -67,7 +67,12 @@ export const Header = () => {
         ) : (
           <Link
             to={APP_ROUTES.LOGIN}
-            state={{ to: location.pathname }}
+            state={{
+              to: {
+                pathname: location.pathname,
+                search: location.search,
+              },
+            }}
             className={classNames(buttonStyles.button, buttonStyles.plain)}
           >
             <span className={buttonStyles.label}>
