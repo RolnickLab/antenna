@@ -13,7 +13,7 @@ API_ROOT = "api/v2/"
 
 urlpatterns = [
     # Redirect homepage to API_ROOT
-    path("", RedirectView.as_view(url=API_ROOT, permanent=False)),
+    path("", RedirectView.as_view(url=API_ROOT, permanent=False), name="home"),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
     # Your stuff: custom urls includes go here
