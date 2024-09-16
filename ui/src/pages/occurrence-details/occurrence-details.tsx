@@ -184,7 +184,12 @@ export const OccurrenceDetails = ({
               label="Login to suggest ID"
               onClick={() =>
                 navigate(APP_ROUTES.LOGIN, {
-                  state: { to: location.pathname },
+                  state: {
+                    to: {
+                      pathname: location.pathname,
+                      search: location.search,
+                    },
+                  },
                 })
               }
             />
