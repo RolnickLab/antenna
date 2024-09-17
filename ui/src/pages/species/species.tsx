@@ -8,6 +8,7 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
 import { Error } from 'pages/error/error'
+import { TaxonFilter } from 'pages/occurrences/taxon-filter/taxon-filter'
 import { SpeciesDetails } from 'pages/species-details/species-details'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -51,6 +52,7 @@ export const Species = () => {
         isFetching={isFetching}
         showAppliedFilters
       >
+        <TaxonFilter />
         <ToggleGroup
           items={[
             {
