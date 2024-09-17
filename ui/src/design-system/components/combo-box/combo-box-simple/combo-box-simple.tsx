@@ -51,7 +51,7 @@ export const ComboBoxSimple = ({
             onValueChange={setSearchString}
           />
           {loading && (
-            <div className={styles.loadingWrapper}>
+            <div className={styles.accessoryWrapper}>
               <LoadingSpinner size={12} />
             </div>
           )}

@@ -21,7 +21,7 @@ services:
       - postgres
       - redis
       - mailhog
-      - minio
+      - minio-init
     volumes:
       - .:/app:z
     env_file:
@@ -52,8 +52,7 @@ services:
       - "4000:4000"
     volumes:
       - ./.git:/app/.git:ro
-      - ./ui:/app:z
-      - /app/node_modules
+      - ./ui:/app
     depends_on:
       - django
     environment:

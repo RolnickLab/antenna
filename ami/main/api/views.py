@@ -942,6 +942,9 @@ class TaxonViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
 
+        # First filter out taxa that have no occurrences
+        # qs = qs.filter(occurrences__isnull=False).distinct()
+
         occurrences_filter, occurrences_count_filter = self.get_occurrences_filters(qs)
 
         qs = qs.select_related("parent")
@@ -955,6 +958,8 @@ class TaxonViewSet(DefaultViewSet):
             if filter_active:
                 qs = self.filter_by_classification_threshold(qs)
                 qs = self.add_occurrence_counts(qs, occurrences_count_filter)
+                # Filter out taxa that have no occurrences or occurrences count is null
+                qs = qs.filter(occurrences_count__gt=0).filter(occurrences_count__isnull=False)
             else:
                 # If no filter don't return anything related to occurrences
                 # in a list view.

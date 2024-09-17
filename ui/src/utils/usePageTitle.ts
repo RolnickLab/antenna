@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from 'react'
 import { BreadcrumbContext } from './breadcrumbContext'
 
-const DEFAULT_PAGE_TITLE = 'AMI Platform'
+const DEFAULT_PAGE_TITLE = 'Antenna Data Platform'
 const SEPARATOR = ' | '
 
 export const usePageTitle = () => {

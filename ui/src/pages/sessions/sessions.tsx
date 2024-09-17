@@ -27,10 +27,13 @@ export const Sessions = () => {
     images: true,
     duration: true,
     captures: true,
-    occurrences: false,
+    occurrences: true,
     species: true,
   })
-  const { sort, setSort } = useSort({ field: 'start', order: 'desc' })
+  const { sort, setSort } = useSort({
+    field: 'occurrences_count',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({

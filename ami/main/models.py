@@ -13,6 +13,7 @@ import pydantic
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
@@ -61,6 +62,21 @@ DEFAULT_RANKS = sorted(
         TaxonRank.SPECIES,
     ]
 )
+
+
+def get_media_url(path: str) -> str:
+    """
+    If path is a full URL, return it as-is.
+    Otherwise, join it with the MEDIA_URL setting.
+    """
+    # @TODO use settings
+    # urllib.parse.urljoin(settings.MEDIA_URL, self.path)
+    if path.startswith("http"):
+        url = path
+    else:
+        # @TODO add a file field to the Detection model and use that to get the URL
+        url = default_storage.url(path.lstrip("/"))
+    return url
 
 
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
@@ -530,13 +546,14 @@ class Deployment(BaseModel):
         ]
         for model_name in child_models:
             model = apps.get_model("main", model_name)
-            project_values = set(model.objects.filter(deployment=self).values_list("project", flat=True).distinct())
-            if len(project_values) > 1:
+            qs = model.objects.filter(deployment=self).exclude(project=self.project)
+            project_values = set(qs.values_list("project", flat=True).distinct())
+            if len(project_values):
                 logger.warning(
                     f"Deployment {self} has alternate projects set on {model_name} "
                     f"objects: {project_values}. Updating them!"
                 )
-            model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
+            qs.update(project=self.project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
@@ -572,15 +589,19 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
+        last_updated = self.updated_at or timezone.now()
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
+            # @TODO Use "dirty" flag strategy to only update when needed
+            new_or_updated_captures = self.captures.filter(updated_at__gte=last_updated).count()
+            deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
+            if new_or_updated_captures or deleted_captures:
+                ami.tasks.regroup_events.delay(self.pk)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
-            # @TODO Use "dirty" flag strategy to only update when needed
-            ami.tasks.regroup_events.delay(self.pk)
 
 
 @final
@@ -788,8 +809,7 @@ def group_images_into_events(
             [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
         )
         logger.warning(
-            f"Found multiple images with the same timestamp in deployment '{deployment}':\n "
-            f"{values}\n"
+            f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
             f"Only one image will be used for each timestamp for each event."
         )
 
@@ -1109,7 +1129,7 @@ class SourceImage(BaseModel):
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
-    def public_url(self) -> str:
+    def public_url(self, raise_errors=False) -> str | None:
         """
         Return the public URL for this image.
 
@@ -1129,9 +1149,26 @@ class SourceImage(BaseModel):
             and data_source.access_key
             and data_source.secret_key
         ):
-            return ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+            url = ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+        elif self.public_base_url:
+            url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
         else:
-            return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
+            msg = f"Public URL for {self} is not available. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
+        # Ensure url has a scheme
+        if not urllib.parse.urlparse(url).netloc:
+            msg = f"Public URL for {self} is invalid: {url}. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
+        else:
+            return url
 
     # backwards compatibility
     url = public_url
@@ -1139,16 +1176,18 @@ class SourceImage(BaseModel):
     def get_detections_count(self) -> int:
         return self.detections.distinct().count()
 
-    def get_base_url(self) -> str:
+    def get_base_url(self) -> str | None:
         """
         Determine the public URL from the deployment's data source.
 
-        If there is no data source, return a relative URL.
+        If there is no data source, return None
+
+        If the public_base_url is None, a presigned URL will be generated for each request.
         """
         if self.deployment and self.deployment.data_source and self.deployment.data_source.public_base_url:
             return self.deployment.data_source.public_base_url
         else:
-            return "/"
+            return None
 
     def extract_timestamp(self) -> datetime.datetime | None:
         """
@@ -1563,6 +1602,25 @@ class ClassificationResult(BaseModel):
     pass
 
 
+class ClassificationQuerySet(models.QuerySet):
+    def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
+        # Find the oldest classification for each unique combination
+        if project_id:
+            self = self.filter(detection__source_image__project_id=project_id)
+        unique_oldest = (
+            self.values("detection", "taxon", "algorithm", "score", "softmax_output", "raw_output")
+            .annotate(min_id=models.Min("id"))
+            .distinct()
+        )
+
+        # Keep only the oldest classifications
+        return self.exclude(id__in=[item["min_id"] for item in unique_oldest])
+
+
+class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)):
+    pass
+
+
 @final
 class Classification(BaseModel):
     """The output of a classifier"""
@@ -1598,6 +1656,8 @@ class Classification(BaseModel):
     )
     # job = models.CharField(max_length=255, null=True)
 
+    objects = ClassificationManager()
+
     # Type hints for auto-generated fields
     taxon_id: int
     algorithm_id: int
@@ -1632,7 +1692,16 @@ class Detection(BaseModel):
     #         upload_to="detections",
     #     ),
     # )
-    path = models.CharField(max_length=255, blank=True)
+    path = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=(
+            "Either a full URL to a cropped detection image or a relative path to a file in the default "
+            "project storage. @TODO ensure all detection crops are hosted in the project storage, "
+            "not the default media storage. Migrate external URLs."
+        ),
+    )
 
     occurrence = models.ForeignKey(
         "Occurrence",
@@ -1849,8 +1918,10 @@ class Occurrence(BaseModel):
         return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
-        for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
-            yield urllib.parse.urljoin(TEMPORARY_CROPS_URL_BASE, url)
+        for path in (
+            Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]
+        ):
+            yield get_media_url(path)
 
     @functools.cached_property
     def best_detection(self):

@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { AppliedFilters } from 'components/applied-filters/applied-filters'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -36,12 +37,14 @@ export const PageHeader = ({
           </Tooltip>
         ) : null}
       </div>
-      <div className={styles.row}>
-        <h2 className={styles.subTitle}>
-          {isLoading ? `${translate(STRING.LOADING_DATA)}...` : subTitle}
-        </h2>
+      <div className={classNames(styles.row, styles.details)}>
+        <div className={styles.row}>
+          <h2 className={styles.subTitle}>
+            {isLoading ? `${translate(STRING.LOADING_DATA)}...` : subTitle}
+          </h2>
+          {!isLoading && isFetching && <LoadingSpinner size={12} />}
+        </div>
         {showAppliedFilters && <AppliedFilters />}
-        {!isLoading && isFetching && <LoadingSpinner size={12} />}
       </div>
     </div>
     <div className={styles.row}>{children}</div>

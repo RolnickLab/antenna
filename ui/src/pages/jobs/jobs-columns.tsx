@@ -33,6 +33,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'status',
     name: translate(STRING.FIELD_LABEL_STATUS),
+    tooltip: translate(STRING.TOOLTIP_STATUS),
     sortField: 'status',
     renderCell: (item: Job) => {
       const status = (() => {

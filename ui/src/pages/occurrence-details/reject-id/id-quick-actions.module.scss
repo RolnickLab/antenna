@@ -15,7 +15,7 @@
     display: block;
     @include paragraph-small();
     font-weight: 600;
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     margin-bottom: 16px;
   }
 
@@ -23,7 +23,7 @@
     display: block;
     @include paragraph-x-small();
     font-weight: 600;
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     margin: 16px 0 8px;
   }
 
@@ -31,7 +31,7 @@
     display: block;
     @include paragraph-x-small();
     font-style: italic;
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
 
   .options {

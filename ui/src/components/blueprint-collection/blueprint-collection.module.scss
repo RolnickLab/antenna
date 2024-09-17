@@ -3,21 +3,32 @@
 @import 'src/design-system/variables/variables.scss';
 
 .blueprint {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 40px;
-  min-height: 100%;
   padding: 20px;
+  width: 100%;
+  min-height: 100%;
   background-color: rgba($color: $color-primary-2-50, $alpha: 0.5);
   background-size: 20px 20px;
   background-image: linear-gradient(
       to right,
-      $color-neutral-100 1px,
+      $color-neutral-70 1px,
       transparent 1px
     ),
-    linear-gradient(to bottom, $color-neutral-100 1px, transparent 1px);
+    linear-gradient(to bottom, $color-neutral-70 1px, transparent 1px);
   box-sizing: border-box;
+}
+
+.licenseInfoContent {
+  padding: 20px;
+  text-align: center;
+}
+
+.blueprintContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  padding: 20px;
+  overflow-x: auto;
 }
 
 .blueprintItem {
@@ -39,10 +50,10 @@
   .blueprintInfo {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 16px;
     max-width: 100%;
-    color: $color-neutral-800;
+    color: $color-neutral-700;
     padding: 4px 8px;
     box-sizing: border-box;
     @include paragraph-x-small();
@@ -60,7 +71,7 @@
     text-align: center;
     max-width: 100%;
     display: inline-block;
-    color: $color-neutral-800;
+    color: $color-neutral-700;
     padding: 4px 8px;
     box-sizing: border-box;
     @include paragraph-x-small();
@@ -69,8 +80,11 @@
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .blueprint {
-    min-width: 100%;
+  .licenseInfoContent {
+    text-align: left;
+  }
+
+  .blueprintContent {
     flex-direction: row;
 
     &.empty {

@@ -14,12 +14,20 @@ export const columns: (
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
-    renderCell: (item: Entity) => <BasicTableCell>{item.name}</BasicTableCell>,
+    renderCell: (item: Entity) => <BasicTableCell value={item.name} />,
   },
   {
     id: 'description',
     name: translate(STRING.FIELD_LABEL_DESCRIPTION),
-    renderCell: (item: Entity) => <BasicTableCell value={item.description} />,
+    renderCell: (item: Entity) => (
+      <BasicTableCell
+        style={{
+          width: '320px',
+          whiteSpace: 'normal',
+        }}
+        value={item.description}
+      />
+    ),
   },
   {
     id: 'created-at',

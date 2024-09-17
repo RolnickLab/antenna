@@ -6,15 +6,17 @@ import { useDebounce } from 'utils/useDebounce'
 import { useTaxonSearch } from './useTaxonSearch'
 
 export const TaxonSearch = ({
+  autoFocus = true,
   containerRef,
   inputRef,
   taxon,
   onTaxonChange,
 }: {
+  autoFocus?: boolean
   containerRef: RefObject<HTMLDivElement>
   inputRef: RefObject<HTMLInputElement>
   taxon?: Taxon
-  onTaxonChange: (taxon: Taxon) => void
+  onTaxonChange: (taxon?: Taxon) => void
 }) => {
   const [searchString, setSearchString] = useState('')
   const debouncedSearchString = useDebounce(searchString, 200)
@@ -35,6 +37,7 @@ export const TaxonSearch = ({
 
   return (
     <ComboBoxTree
+      autoFocus={autoFocus}
       containerRef={containerRef}
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       inputRef={inputRef}
@@ -44,10 +47,8 @@ export const TaxonSearch = ({
       selectedLabel={taxon?.name}
       selectedNodeId={taxon?.id}
       onItemSelect={(id) => {
-        const taxon = data?.find((i) => i.id === id)
-        if (taxon) {
-          onTaxonChange(taxon)
-        }
+        const taxon = id ? data?.find((i) => i.id === id) : undefined
+        onTaxonChange(taxon)
       }}
       setSearchString={setSearchString}
     />

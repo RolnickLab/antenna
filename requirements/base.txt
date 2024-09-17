@@ -15,7 +15,8 @@ rich==13.5
 pydantic<2.0  # Less than 2.0 because of django pydantic field
 django-pydantic-field==0.3.10
 sentry-sdk==1.40.4  # https://github.com/getsentry/sentry-python
-django-cachalot
+django-cachalot==2.6.3
+numpy==2.1
 
 # Django
 # ------------------------------------------------------------------------------
