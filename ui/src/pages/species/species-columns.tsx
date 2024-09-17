@@ -77,7 +77,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { determination: item.id },
+          filters: { taxon: item.id },
         })}
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
