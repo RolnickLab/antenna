@@ -107,3 +107,5 @@ if __name__ == "__main__":
 # @TODO: check for \n in the context (readlines keeps them,
 # read().splitlines() removes them)....maybe use read().splitlines()?
 # but might need \n to maintain context
+
+# @TODO: fix bug; sometimes TODO does not lie in a function, it lies in a class.
