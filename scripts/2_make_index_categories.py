@@ -12,7 +12,7 @@ def numbered_list_to_numpy(list_string):
     return np.array(items)
 
 
-df = pd.read_csv("/Users/vanessa/dev/mila/ami-platform/make_index.csv")
+df = pd.read_csv("make_index.csv")
 # print(df.shape)
 
 # split into separate csv
@@ -20,8 +20,8 @@ idx = int(df.shape[0] / 2)
 df1 = df.iloc[:idx]
 df2 = df.iloc[idx:]
 
-df1.to_csv("/Users/vanessa/dev/mila/ami-platform/make_index_1.csv")
-df2.to_csv("/Users/vanessa/dev/mila/ami-platform/make_index_2.csv")
+df1.to_csv("make_index_1.csv")
+df2.to_csv("make_index_2.csv")
 
 # Follow the instructions in scripts/README.md about what
 # Claude prompt to use to generate categories make_index_1 and make_index_2.
@@ -172,4 +172,4 @@ df2.to_csv("/Users/vanessa/dev/mila/ami-platform/make_index_2.csv")
 # print(categories.shape)
 # results["Category"] = categories
 
-# results.to_csv("/Users/vanessa/dev/mila/ami-platform/categories.csv")
+# results.to_csv("categories.csv")
