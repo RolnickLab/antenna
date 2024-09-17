@@ -12,7 +12,7 @@ interface SummaryData {
     ticktext?: string[]
   }
   type: any
-  orientation: 'h' | 'v' 
+  orientation: 'h' | 'v'
 }
 
 export class Project {
