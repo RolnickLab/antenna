@@ -123,7 +123,7 @@ def collect_images(
 
 
 def process_images(
-    pipeline_choice: str,
+    pipeline: "Pipeline",
     endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
@@ -135,17 +135,24 @@ def process_images(
     @TODO break into task chunks.
     """
     job = None
-    images = list(images)
-    urls = [source_image.public_url() for source_image in images if source_image.public_url()]
+    task_logger = logger
 
     if job_id:
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info(f"Sending {len(images)} images to ML backend {pipeline_choice}")
+        task_logger = job.logger
+
+    prefiltered_images = list(images)
+    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline))
+    if len(images) < len(prefiltered_images):
+        # Log how many images were filtered out because they have already been processed
+        task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
+    task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
+    urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
     request_data = PipelineRequest(
-        pipeline=pipeline_choice,  # type: ignore
+        pipeline=pipeline.slug,
         source_images=[
             SourceImageRequest(
                 id=str(source_image.pk),
@@ -396,7 +403,7 @@ class Pipeline(BaseModel):
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
             endpoint_url=self.endpoint_url,
-            pipeline_choice=self.slug,
+            pipeline=self,
             images=images,
             job_id=job_id,
         )

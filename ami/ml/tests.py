@@ -152,6 +152,12 @@ class TestPipeline(TestCase):
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, total_images)
 
+    def _test_skip_existing_per_batch_during_processing(self):
+        # Send the same batch to two simultaneous processing pipelines
+        # @TODO this needs to test the `process_images()` function with a real pipeline
+        # @TODO enable test when a pipeline is added to the CI environment in PR #576
+        pass
+
     def test_unknown_algorithm_returned_by_backend(self):
         fake_results = self.fake_pipeline_results(self.test_images, self.pipeline)
 
