@@ -269,7 +269,7 @@ def event_top_taxa(event_pk: int, top_n: int = 10):
         .values("name")
         # .annotate(num_detections=models.Count("occurrences__detections"))
         .annotate(num_detections=models.Count("occurrences"))
-        .order_by("-num_detections")[:top_n]
+        .order_by("num_detections")[:top_n]
     )
 
     if top_taxa:
