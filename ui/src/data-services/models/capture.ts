@@ -101,12 +101,12 @@ export class Capture {
     return this._capture.detections_count ?? 0
   }
 
-  get sessionId(): string {
-    return this._capture.event.id
+  get sessionId(): string | undefined {
+    return this._capture.event?.id
   }
 
   get sessionLabel(): string {
-    return this._capture.event.name
+    return this._capture.event?.name ?? ''
   }
 
   get src(): string {

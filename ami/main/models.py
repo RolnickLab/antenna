@@ -1163,9 +1163,16 @@ class SourceImage(BaseModel):
     # Precaclulated values
     detections_count = models.IntegerField(null=True, blank=True)
 
-    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="captures",
+        db_index=True,
+        blank=True,
+    )
 
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]

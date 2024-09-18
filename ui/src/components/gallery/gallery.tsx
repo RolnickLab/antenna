@@ -14,7 +14,7 @@ interface GalleryItem {
   }
   subTitle?: string
   title: string
-  to: string
+  to: string | undefined
 }
 
 export const Gallery = ({
@@ -39,7 +39,8 @@ export const Gallery = ({
   >
     {items?.map(
       (item) =>
-        renderItem?.(item) ?? (
+        renderItem?.(item) ??
+        (item.to ? (
           <Link key={item.id} to={item.to}>
             <Card
               title={item.title}
@@ -48,7 +49,15 @@ export const Gallery = ({
               size={cardSize}
             />
           </Link>
-        )
+        ) : (
+          <Card
+            key={item.id}
+            title={item.title}
+            subTitle={item.subTitle}
+            image={item.image}
+            size={cardSize}
+          />
+        ))
     )}
     {isLoading && (
       <div className={styles.loadingWrapper}>
