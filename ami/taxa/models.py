@@ -111,6 +111,26 @@ class TaxonObserved(BaseModel):
             project=self.project,
         ).count()
 
+    # def get_occurrences_count_recursive(self) -> int:
+    #     """
+    #     Get the total number of occurrences for this taxon and all its children.
+    #     """
+    #     ids = [self.taxon.pk] + list(parent.id for parent in self.taxon.parents_json)
+    #     occ = Occurrence.objects.filter(determination_id__in=ids, project=self.project)
+    #     return occ.count()
+
+    def get_occurrences_count_recursive(self) -> int:
+        """
+        Use the parents_json field to get all children, count their occurrences and sum them.
+        """
+        # Occurrences where the current taxon is the determination
+        # or the determination is a child of the current taxon.
+        return Occurrence.objects.filter(
+            models.Q(determination=self.taxon)
+            | models.Q(determination__parents_json__contains=[{"id": self.taxon.pk}]),
+            project=self.project,
+        ).count()
+
     def get_best_detection(self) -> Detection | None:
         return (
             Detection.objects.filter(occurrence__determination=self.taxon, occurrence__project=self.project)
@@ -192,7 +212,7 @@ class TaxonObserved(BaseModel):
         Update the counts and timestamps of detections, identifications, and occurrences.
         """
         self.detections_count = self.get_detections_count()
-        self.occurrences_count = self.get_detections_count()
+        self.occurrences_count = self.get_occurrences_count()
         self.best_detection = self.get_best_detection()
         self.best_determination_score = self.get_best_determination_score()
         self.last_detected = self.get_last_detected()
