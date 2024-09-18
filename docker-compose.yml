@@ -8,6 +8,7 @@ volumes:
       o: bind
   minio_data:
     driver: local
+  node_modules:
 
 services:
   django: &django
@@ -53,6 +54,7 @@ services:
     volumes:
       - ./.git:/app/.git:ro
       - ./ui:/app
+      - node_modules:/app/node_modules
     depends_on:
       - django
     environment:

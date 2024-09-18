@@ -15,3 +15,4 @@ venv
 .env
 .envs
 .envs/*
+node_modules
