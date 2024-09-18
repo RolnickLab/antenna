@@ -45,7 +45,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
       value: species.numOccurrences || 'View all',
       to: getAppRoute({
         to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
-        filters: { determination: species.taxon.id },
+        filters: { taxon: species.taxon.id },
       }),
     },
     {

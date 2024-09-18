@@ -672,18 +672,58 @@ class DetectionViewSet(DefaultViewSet):
     #             "detection_algorithm").all()
 
 
-class CustomDeterminationFilter(filters.BaseFilterBackend):
+class CustomTaxonFilter(filters.BaseFilterBackend):
+    """
+    Find a taxon and its children.
+    """
+
+    query_params = ["taxon"]
+
+    def get_filter_taxon(self, request: Request) -> Taxon | None:
+        taxon_id = None
+        for param in self.query_params:
+            taxon_id = request.query_params.get(param)
+            if taxon_id:
+                break
+        if not taxon_id:
+            return None
+
+        try:
+            # @TODO In the future filter by active taxa only, or any other required criteria (use the default queryset)
+            taxon = Taxon.objects.get(id=taxon_id)
+        except Taxon.DoesNotExist:
+            raise NotFound(f"No taxon found with id {taxon_id}")
+        else:
+            return taxon
+
     def filter_queryset(self, request, queryset, view):
-        determination_id = request.query_params.get("determination")
-        if determination_id:
-            try:
-                taxon = Taxon.objects.get(id=determination_id)
-                return queryset.filter(
-                    models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.id}])
-                )
-            except Taxon.DoesNotExist:
-                return queryset.none()  # or just return queryset if you prefer
-        return queryset
+        taxon = self.get_filter_taxon(request)
+        if taxon:
+            # Here the queryset is the Taxon queryset
+            return queryset.filter(models.Q(id=taxon.pk) | models.Q(parents_json__contains=[{"id": taxon.pk}]))
+        else:
+            # No taxon id in the query params
+            return queryset
+
+
+class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
+    """
+    Find an occurrence that was determined to be a taxon or andy of the taxon's children.
+    """
+
+    # "determination" is what we are filtering by, but "taxon" is also a valid query param for convenience
+    # and consistency with the TaxonViewSet.
+    query_params = ["determination", "taxon"]
+
+    def filter_queryset(self, request, queryset, view):
+        taxon = self.get_filter_taxon(request)
+        if taxon:
+            # Here the queryset is the Occurrence queryset
+            return queryset.filter(
+                models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.pk}])
+            )
+        else:
+            return queryset
 
 
 class OccurrenceViewSet(DefaultViewSet):
@@ -695,7 +735,7 @@ class OccurrenceViewSet(DefaultViewSet):
 
     serializer_class = OccurrenceSerializer
     # filter_backends = [CustomDeterminationFilter, DjangoFilterBackend, NullsLastOrderingFilter, SearchFilter]
-    filter_backends = DefaultViewSetMixin.filter_backends + [CustomDeterminationFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [CustomOccurrenceDeterminationFilter]
     filterset_fields = ["event", "deployment", "project", "determination__rank"]
     ordering_fields = [
         "created_at",
@@ -761,6 +801,7 @@ class TaxonViewSet(DefaultViewSet):
 
     queryset = Taxon.objects.all()
     serializer_class = TaxonSerializer
+    filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter]
     filterset_fields = [
         "name",
         "rank",
