@@ -18,7 +18,7 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.ml.tasks import create_detection_images
-from tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
+from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
 
 logger = logging.getLogger(__name__)
 
