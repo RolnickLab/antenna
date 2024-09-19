@@ -1418,7 +1418,9 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
-    minute_interval: int = 10, qs: models.QuerySet[SourceImage] | None = None, max_num: int | None = None
+    minute_interval: int = 10,
+    qs: models.QuerySet[SourceImage] | None = None,
+    max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
@@ -1428,7 +1430,8 @@ def sample_captures_by_interval(
     total = 0
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     for capture in qs.all():
@@ -1459,7 +1462,8 @@ def sample_captures_by_position(
     """
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     events = Event.objects.filter(captures__in=qs).distinct()
@@ -1496,7 +1500,8 @@ def sample_captures_by_nth(
     """
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     events = Event.objects.filter(captures__in=qs).distinct()
@@ -2675,7 +2680,9 @@ class SourceImageCollection(BaseModel):
         if minute_interval:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
-            qs = list(sample_captures_by_interval(minute_interval, qs, max_num=max_num))
+            # Ensure the queryset is limited to the project
+            qs = qs.filter(project=self.project)
+            qs = list(sample_captures_by_interval(minute_interval, qs=qs, max_num=max_num))
         if max_num:
             qs = qs[:max_num]
         captures = list(qs)
@@ -2692,19 +2699,20 @@ class SourceImageCollection(BaseModel):
         if exclude_events:
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
-        return sample_captures_by_interval(minute_interval, qs)
+        qs = qs.filter(project=self.project)
+        return sample_captures_by_interval(minute_interval, qs=qs)
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_position(position, qs)
+        return sample_captures_by_position(position, qs=qs)
 
     def sample_nth(self, nth: int):
         """Sample every nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_nth(nth, qs)
+        return sample_captures_by_nth(nth, qs=qs)
 
     def sample_random_from_each_event(self, num_each: int = 10):
         """Sample n random source images from each event in the project."""
