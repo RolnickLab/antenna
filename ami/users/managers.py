@@ -1,5 +1,6 @@
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import UserManager as DjangoUserManager
+from django.db.models import Q
 
 
 class UserManager(DjangoUserManager):
@@ -32,3 +33,19 @@ class UserManager(DjangoUserManager):
             raise ValueError("Superuser must have is_superuser=True.")
 
         return self._create_user(email, password, **extra_fields)
+
+    def get_by_natural_key(self, username):
+        """
+        Enable case-insensitive username lookup
+        """
+        return self.get(Q(email__iexact=username))
+
+    @classmethod
+    def normalize_email(cls, email: str) -> str:
+        """
+        Lowercase the entire email address.
+
+        For justification see https://docs.allauth.org/en/latest/account/email.html#case-sensitivity
+        """
+        email = super().normalize_email(email)
+        return email.lower() if email else ""
