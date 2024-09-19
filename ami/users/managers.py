@@ -34,11 +34,11 @@ class UserManager(DjangoUserManager):
 
         return self._create_user(email, password, **extra_fields)
 
-    def get_by_natural_key(self, username):
+    def get_by_natural_key(self, email: str):
         """
         Enable case-insensitive username lookup
         """
-        return self.get(Q(email__iexact=username))
+        return self.get(Q(email__iexact=email))
 
     @classmethod
     def normalize_email(cls, email: str | None) -> str:
