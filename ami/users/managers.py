@@ -41,11 +41,12 @@ class UserManager(DjangoUserManager):
         return self.get(Q(email__iexact=username))
 
     @classmethod
-    def normalize_email(cls, email: str) -> str:
+    def normalize_email(cls, email: str | None) -> str:
         """
         Lowercase the entire email address.
 
-        For justification see https://docs.allauth.org/en/latest/account/email.html#case-sensitivity
+        For justification see
+        https://docs.allauth.org/en/latest/account/email.html#case-sensitivity
         """
         email = super().normalize_email(email)
-        return email.lower() if email else ""
+        return email.lower()
