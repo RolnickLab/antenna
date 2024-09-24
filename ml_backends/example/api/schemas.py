@@ -129,3 +129,29 @@ class PipelineResponse(pydantic.BaseModel):
     total_time: float
     source_images: list[SourceImageResponse]
     detections: list[Detection]
+
+
+class PipelineStageParam(pydantic.BaseModel):
+    """A configurable parameter of a stage of a pipeline."""
+
+    name: str
+    key: str
+    category: str = "default"
+
+
+class PipelineStage(pydantic.BaseModel):
+    """A configurable stage of a pipeline."""
+
+    key: str
+    name: str
+    params: list[PipelineStageParam] = []
+    description: str | None = None
+
+
+class PipelineConfig(pydantic.BaseModel):
+    """A configurable pipeline."""
+
+    name: str
+    slug: str
+    description: str | None = None  # @TODO: python type annotations
+    stages: list[PipelineStage] = []

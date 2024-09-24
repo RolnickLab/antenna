@@ -6,3 +6,20 @@ services:
       - ./example/:/app:z
     ports:
       - "2000:2000"
+  ngrok:
+    image: ngrok/ngrok:latest
+    ports:
+      - "4040:4040"
+    command:
+      - "http"
+      - "http://host.docker.internal:2000"
+      - "--request-header-add='ngrok-skip-browser-warning': '69420'"
+    env_file:
+      - ./.envs/.local/.ngrok
+
+# @TODO: How to connect docker compose? ui is not running in a container
+#     networks:
+#       - ml-backend-network
+# networks:
+#   ml-backend-network:
+#     driver: bridge

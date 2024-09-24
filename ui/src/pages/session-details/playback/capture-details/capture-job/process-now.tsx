@@ -6,6 +6,8 @@ import { IconType } from 'design-system/components/icon/icon'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import axios from 'axios';
+import { useState } from 'react'
 
 export const ProcessNow = ({
   capture,
@@ -18,7 +20,19 @@ export const ProcessNow = ({
   const { project } = useProjectDetails(projectId as string, true)
   const { createJob, isLoading, isSuccess } = useCreateJob()
   const icon = isSuccess ? IconType.RadixCheck : undefined
-  const disabled = !capture || capture.hasJobInProgress || !pipelineId
+  const disabled = !capture || capture.hasJobInProgress || !pipelineId 
+
+  const getPipelineInfo = async () => {
+    try {
+      const response = await axios.get('https://d5cf-24-114-29-178.ngrok-free.app/info');
+      const data = await response.data
+      console.log(data)
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+  };
+  
+  // @TODO: hasJobInProgress, replace with if pipeline is healthy/available
 
   if (disabled) {
     return (
@@ -44,16 +58,20 @@ export const ProcessNow = ({
         label={translate(STRING.PROCESS_NOW)}
         loading={isLoading}
         theme={ButtonTheme.Neutral}
-        onClick={() => {
-          createJob({
-            delay: 0,
-            name: `Capture #${capture.id}`,
-            sourceImage: capture.id,
-            pipeline: pipelineId,
-            projectId: projectId as string,
-            startNow: true,
-          })
-        }}
+        onClick={
+          // @TODO: get the data from the completed processing and print it to console...ngrok
+          getPipelineInfo
+
+          // @TODO: I should create a job which is then processed by ML backend....how does thi createJob work??
+          // createJob({ 
+          //   delay: 0,
+          //   name: `Capture #${capture.id}`,
+          //   sourceImage: capture.id,
+          //   pipeline: pipelineId, 
+          //   projectId: projectId as string,
+          //   startNow: true,
+          // })
+        }
       />
     </Tooltip>
   )
