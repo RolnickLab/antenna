@@ -54,7 +54,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Collection) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Collection) => <BasicTableCell value={item.createdAt} />,
   },
   {
     id: 'updated-at',
