@@ -71,7 +71,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     },
     renderCell: (item: Collection) => (
       <div className={styles.entityActions}>
-        {item.canPopulate && <PopulateCollection collectionId={item.id} />}
+        {item.canPopulate && <PopulateCollection collection={item} />}
       </div>
     ),
   },
