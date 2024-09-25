@@ -7,11 +7,13 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 import { dateToValue, findClosestCaptureId, valueToDate } from './utils'
 
 export const SessionCapturesSlider = ({
+  snapToDetections,
   session,
   timeline,
   activeCapture,
   setActiveCaptureId,
 }: {
+  snapToDetections?: boolean
   session: SessionDetails
   timeline: TimelineTick[]
   activeCapture?: Capture
@@ -45,7 +47,11 @@ export const SessionCapturesSlider = ({
         onValueCommit={(value) => {
           // Update active capture based on date
           const targetDate = valueToDate({ value, startDate, endDate })
-          const captureId = findClosestCaptureId(timeline, targetDate)
+          const captureId = findClosestCaptureId({
+            snapToDetections,
+            targetDate,
+            timeline,
+          })
 
           if (captureId && activeCapture?.id !== captureId) {
             setActiveCaptureId(captureId)
