@@ -3,7 +3,7 @@ import { TimelineTick } from 'data-services/models/timeline-tick'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
-import { findClosestCaptureId } from '../session-captures-slider/utils'
+import { findClosestCaptureId } from '../utils'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 
 const fontFamily = 'Mazzard, sans-serif'

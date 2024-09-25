@@ -4,7 +4,7 @@ import { TimelineTick } from 'data-services/models/timeline-tick'
 import { TimestampSlider } from 'design-system/components/slider/timestamp-slider'
 import { useEffect, useState } from 'react'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
-import { dateToValue, findClosestCaptureId, valueToDate } from './utils'
+import { dateToValue, findClosestCaptureId, valueToDate } from '../utils'
 
 export const SessionCapturesSlider = ({
   snapToDetections,

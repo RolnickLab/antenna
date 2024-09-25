@@ -7,7 +7,7 @@ import {
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { useEffect, useState } from 'react'
-import { findClosestCaptureId } from '../session-captures-slider/utils'
+import { findClosestCaptureId } from '../utils'
 import styles from './capture-navigation.module.scss'
 
 export const CaptureNavigation = ({
