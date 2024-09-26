@@ -3,8 +3,8 @@ import { TimelineTick } from 'data-services/models/timeline-tick'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
+import { findClosestCaptureId } from '../utils'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
-import { findClosestCaptureId } from '../session-captures-slider/utils'
 
 const fontFamily = 'Mazzard, sans-serif'
 const lineColorCaptures = '#4E4F57'
@@ -16,10 +16,12 @@ const tooltipBorderColor = '#303137'
 
 export const ActivityPlot = ({
   session,
+  snapToDetections,
   timeline,
   setActiveCaptureId,
 }: {
   session: SessionDetails
+  snapToDetections?: boolean
   timeline: TimelineTick[]
   setActiveCaptureId: (captureId: string) => void
 }) => {
@@ -151,8 +153,13 @@ export const ActivityPlot = ({
             }
 
             const captureId =
-              timelineTick.representativeCaptureId ??
-              findClosestCaptureId(timeline, timelineTick.startDate)
+              snapToDetections || !timelineTick.representativeCaptureId
+                ? findClosestCaptureId({
+                    snapToDetections,
+                    timeline,
+                    targetDate: timelineTick.startDate,
+                  })
+                : timelineTick.representativeCaptureId
 
             if (captureId) {
               setActiveCaptureId(captureId)

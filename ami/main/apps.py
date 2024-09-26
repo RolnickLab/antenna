@@ -8,6 +8,6 @@ class MainConfig(AppConfig):
     verbose_name = _("Main")
 
     def ready(self):
-        from tests.fixtures.signals import setup_complete_test_project
+        from ami.tests.fixtures.signals import setup_complete_test_project
 
         post_migrate.connect(setup_complete_test_project, sender=self)

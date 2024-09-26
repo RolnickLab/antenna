@@ -1,42 +1,31 @@
 import { usePopulateCollection } from 'data-services/hooks/collections/usePopulateCollection'
+import { Collection } from 'data-services/models/collection'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 
 export const PopulateCollection = ({
-  collectionId,
+  collection,
 }: {
-  collectionId: string
+  collection: Collection
 }) => {
-  const { populateCollection, isLoading, isSuccess } = usePopulateCollection()
+  const [timestamp, setTimestamp] = useState<string>()
+  const { populateCollection, isLoading } = usePopulateCollection()
 
-  if (isSuccess) {
-    return (
-      <Button
-        label={translate(STRING.QUEUED)}
-        icon={IconType.RadixClock}
-        theme={ButtonTheme.Neutral}
-        disabled={true}
-      />
-    )
-  }
-
-  if (isSuccess) {
-    return (
-      <Button
-        label={translate(STRING.QUEUED)}
-        icon={IconType.RadixClock}
-        theme={ButtonTheme.Neutral}
-      />
-    )
-  }
+  // When the collection is updated, we consider the population to be completed.
+  // TODO: It would be better to inspect task status here, but we currently don't have this information.
+  const isPopulating = isLoading || timestamp === collection.updatedAtDetailed
 
   return (
     <Button
       label={translate(STRING.POPULATE)}
-      loading={isLoading}
+      loading={isPopulating}
+      disabled={isPopulating}
       theme={ButtonTheme.Success}
-      onClick={() => populateCollection(collectionId)}
+      onClick={() => {
+        populateCollection(collection.id)
+        setTimestamp(collection.updatedAtDetailed)
+      }}
     />
   )
 }

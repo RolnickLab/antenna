@@ -1,4 +1,5 @@
 import { CaptureDetails } from 'data-services/models/capture-details'
+import { TimelineTick } from 'data-services/models/timeline-tick'
 import {
   IconButton,
   IconButtonShape,
@@ -6,13 +7,18 @@ import {
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { useEffect, useState } from 'react'
+import { findClosestCaptureId } from '../utils'
 import styles from './capture-navigation.module.scss'
 
 export const CaptureNavigation = ({
   activeCapture,
+  snapToDetections,
+  timeline,
   setActiveCaptureId,
 }: {
   activeCapture?: CaptureDetails
+  snapToDetections?: boolean
+  timeline: TimelineTick[]
   setActiveCaptureId: (captureId: string) => void
 }) => {
   const [currentIndex, setCurrentIndex] = useState(activeCapture?.currentIndex)
@@ -28,16 +34,40 @@ export const CaptureNavigation = ({
   }, [activeCapture])
 
   const goToPrev = () => {
-    if (activeCapture?.prevCaptureId) {
-      setActiveCaptureId(activeCapture.prevCaptureId)
-      setCurrentIndex(activeCapture.currentIndex - 1)
+    if (!activeCapture) {
+      return
+    }
+
+    const prevCaptureId = snapToDetections
+      ? findClosestCaptureId({
+          maxDate: activeCapture.date,
+          snapToDetections: true,
+          targetDate: activeCapture.date,
+          timeline,
+        })
+      : activeCapture.prevCaptureId
+
+    if (prevCaptureId) {
+      setActiveCaptureId(prevCaptureId)
     }
   }
 
   const goToNext = () => {
-    if (activeCapture?.nextCaptureId) {
-      setActiveCaptureId(activeCapture.nextCaptureId)
-      setCurrentIndex(activeCapture.currentIndex + 1)
+    if (!activeCapture) {
+      return
+    }
+
+    const nextCaptureId = snapToDetections
+      ? findClosestCaptureId({
+          minDate: activeCapture.date,
+          snapToDetections: true,
+          targetDate: activeCapture.date,
+          timeline,
+        })
+      : activeCapture.nextCaptureId
+
+    if (nextCaptureId) {
+      setActiveCaptureId(nextCaptureId)
     }
   }
 

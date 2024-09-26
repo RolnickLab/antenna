@@ -1,3 +1,4 @@
+import { LicenseInfo } from 'components/license-info/license-info'
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
@@ -15,7 +16,6 @@ import styles from './playback.module.scss'
 import { SessionCapturesSlider } from './session-captures-slider/session-captures-slider'
 import { ThresholdSlider } from './threshold-slider/threshold-slider'
 import { useActiveCaptureId } from './useActiveCapture'
-import { LicenseInfo } from 'components/license-info/license-info'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
   const {
@@ -23,6 +23,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   } = useUserPreferences()
   const { timeline = [] } = useSessionTimeline(session.id)
   const [showDetections, setShowDetections] = useState(true)
+  const [snapToDetections, setSnapToDetections] = useState(true)
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
   )
@@ -52,9 +53,16 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             <ThresholdSlider />
             <Checkbox
               id="show-detections"
-              label="Show detections"
+              label="Show detection frames"
               checked={showDetections}
               onCheckedChange={setShowDetections}
+              theme={CheckboxTheme.Neutral}
+            />
+            <Checkbox
+              id="snap-to-detections"
+              label="Snap to images with detections"
+              checked={snapToDetections}
+              onCheckedChange={setSnapToDetections}
               theme={CheckboxTheme.Neutral}
             />
           </div>
@@ -72,6 +80,8 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         <div className={styles.captureNavigationWrapper}>
           <CaptureNavigation
             activeCapture={activeCapture}
+            snapToDetections={snapToDetections}
+            timeline={timeline}
             setActiveCaptureId={setActiveCaptureId}
           />
           <div className={styles.licenseInfoWrapper}>
@@ -81,12 +91,14 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         <div>
           <ActivityPlot
             session={session}
+            snapToDetections={snapToDetections}
             timeline={timeline}
             setActiveCaptureId={setActiveCaptureId}
           />
           {timeline.length > 0 && (
             <SessionCapturesSlider
               session={session}
+              snapToDetections={snapToDetections}
               timeline={timeline}
               activeCapture={activeCapture}
               setActiveCaptureId={setActiveCaptureId}

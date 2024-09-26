@@ -1,8 +1,6 @@
 # This is a transitional production configuration.
-# Redis and celery will be external services in the final production configuration.
 # Traffic or NGINX may or may not be used in the final production configuration
 # but the Django container will not expose its port to the host (there will be more than one container).
-version: "3"
 
 services:
   django: &django
@@ -11,8 +9,6 @@ services:
       # This is the most important setting to test the production configuration of Django.
       dockerfile: ./compose/production/django/Dockerfile
     image: insectai/ami_backend
-    depends_on:
-      - redis
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
@@ -21,14 +17,10 @@ services:
     ports:
       - "5001:5000"
     extra_hosts:
-      - "db.host.internal:172.16.104.50"
-      # - "host.docker.internal:host-gateway"
+      - "db:${DATABASE_IP}"
+      - "redis:${REDIS_IP}"
     command: /start
     scale: 1  # Can't scale until the load balancer is within the compose config
-    restart: always
-
-  redis:
-    image: redis:6
     restart: always
 
   celeryworker:
