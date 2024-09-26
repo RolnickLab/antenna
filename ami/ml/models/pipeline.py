@@ -181,19 +181,19 @@ def process_images(
 
 
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
-def save_results(results: PipelineResponse | None = None, results_json: list | None = None, job_id: int | None = None):
+def save_results(results: PipelineResponse | None = None, results_json: str | None = None, job_id: int | None = None):
     """
     Save results from ML pipeline API.
 
     @TODO break into task chunks.
-    @TODO rewrite this
+    @TODO rewrite this!
     """
     created_objects = []
     job = None
 
     if results_json:
-        results = PipelineResponse.parse_obj(results_json)
-    assert results, "No results provided"
+        results = PipelineResponse.parse_raw(results_json)
+    assert results, "No results data passed to save_results task"
 
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
@@ -205,7 +205,7 @@ def save_results(results: PipelineResponse | None = None, results_json: list | N
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info("Saving results")
+        job.logger.info("Saving results...")
 
     # collection_name = f"Images processed by {results.pipeline} pipeline"
     # if job_id:
@@ -350,6 +350,16 @@ def save_results(results: PipelineResponse | None = None, results_json: list | N
     if job:
         if len(created_objects):
             job.logger.info(f"Created {len(created_objects)} objects")
+            try:
+                previously_created = int(job.progress.get_stage_param("results", "objects_created").value)
+                job.progress.update_stage(
+                    "results",
+                    objects_created=previously_created + len(created_objects),
+                )
+            except ValueError:
+                pass
+            else:
+                job.update_progress()
 
 
 class PipelineStage(ConfigurableStage):

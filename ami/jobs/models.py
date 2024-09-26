@@ -389,14 +389,6 @@ class MLJob(JobType):
                 job.save()
                 save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
                 job.logger.info(f"Saving results in sub-task {save_results_task.id}")
-                # job.progress.update_stage(
-                #     "results",
-                #     status=JobState.STARTED,
-                #     progress=(i + 1) / len(chunks),
-                #     objects_created=len(objects),
-                # )
-                # job.update_progress()
-                # job.save()
 
             job.progress.update_stage(
                 "process",
@@ -496,7 +488,7 @@ class Job(BaseModel):
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
     limit = models.IntegerField(
-        "Limit", null=True, blank=True, default=1000, help_text="Limit the number of images to process"
+        "Limit", null=True, blank=True, default=None, help_text="Limit the number of images to process"
     )
     shuffle = models.BooleanField("Shuffle", default=True, help_text="Process images in a random order")
 
@@ -696,6 +688,7 @@ class Job(BaseModel):
         logger = logging.getLogger(f"ami.jobs.{self.pk}")
         # Also log output to a field on thie model instance
         logger.addHandler(JobLogHandler(self))
+        logger.propagate = False
         return logger
 
     class Meta:
