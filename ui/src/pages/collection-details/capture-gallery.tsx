@@ -20,15 +20,17 @@ export const CaptureGallery = ({
         id: c.id,
         image: { src: c.src },
         title: c.dateTimeLabel,
-        to: getAppRoute({
-          to: APP_ROUTES.SESSION_DETAILS({
-            projectId: projectId as string,
-            sessionId: c.sessionId,
-          }),
-          filters: {
-            capture: c.id,
-          },
-        }),
+        to: c.sessionId
+          ? getAppRoute({
+              to: APP_ROUTES.SESSION_DETAILS({
+                projectId: projectId as string,
+                sessionId: c.sessionId,
+              }),
+              filters: {
+                capture: c.id,
+              },
+            })
+          : undefined,
       })),
     [captures, projectId]
   )

@@ -1165,7 +1165,14 @@ class SourceImage(BaseModel):
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="captures",
+        db_index=True,
+        blank=True,
+    )
 
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]

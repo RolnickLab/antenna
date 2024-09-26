@@ -14,7 +14,7 @@ export class CaptureDetails extends Capture {
     }
   }
 
-  get currentIndex(): number {
+  get currentIndex(): number | undefined {
     return this._capture.event_current_capture_index
   }
 
@@ -49,7 +49,7 @@ export class CaptureDetails extends Capture {
     return `${this._capture.size} B`
   }
 
-  get totalCaptures(): number {
+  get totalCaptures(): number | undefined {
     return this._capture.event_total_captures
   }
 
