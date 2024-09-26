@@ -6,6 +6,7 @@ import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { useOutletContext } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { useSelectedView } from 'utils/useSelectedView'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
@@ -15,6 +16,7 @@ import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
 
 export const Overview = () => {
+  const { selectedView, setSelectedView } = useSelectedView('summary')
   const { project, isLoading, error } = useOutletContext<{
     project?: Project
     isLoading: boolean
@@ -54,7 +56,7 @@ export const Overview = () => {
           <DeploymentsMap deployments={project.deployments} />
         </div>
       </div>
-      <Tabs.Root defaultValue="summary">
+      <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
         <Tabs.List>
           <Tabs.Trigger
             value="summary"
