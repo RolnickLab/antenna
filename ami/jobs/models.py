@@ -344,10 +344,6 @@ class MLJob(JobType):
                 job.logger.info("Shuffling images")
                 random.shuffle(images)
 
-            # @TODO remove this temporary limit
-            TEMPORARY_LIMIT = 1000
-            job.limit = job.limit or TEMPORARY_LIMIT
-
             if job.limit and source_image_count > job.limit:
                 job.logger.warn(f"Limiting number of images to {job.limit} (out of {source_image_count})")
                 images = images[: job.limit]
@@ -365,7 +361,7 @@ class MLJob(JobType):
             total_detections = 0
             total_classifications = 0
 
-            CHUNK_SIZE = 4  # Keep it low to see more progress updates
+            CHUNK_SIZE = 2  # Keep it low to see more progress updates
             chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
 
             for i, chunk in enumerate(chunks):
@@ -391,15 +387,16 @@ class MLJob(JobType):
                     classifications=total_classifications,
                 )
                 job.save()
-                objects = job.pipeline.save_results(results=results, job_id=job.pk)
-                job.progress.update_stage(
-                    "results",
-                    status=JobState.STARTED,
-                    progress=(i + 1) / len(chunks),
-                    objects_created=len(objects),
-                )
-                job.update_progress()
-                job.save()
+                save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
+                job.logger.info(f"Saving results in sub-task {save_results_task.id}")
+                # job.progress.update_stage(
+                #     "results",
+                #     status=JobState.STARTED,
+                #     progress=(i + 1) / len(chunks),
+                #     objects_created=len(objects),
+                # )
+                # job.update_progress()
+                # job.save()
 
             job.progress.update_stage(
                 "process",
