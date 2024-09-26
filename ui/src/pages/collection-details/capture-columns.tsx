@@ -77,7 +77,9 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
         >
           <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
         </Link>
-      ) : undefined,
+      ) : (
+        <BasicTableCell />
+      ),
   },
   {
     id: 'detections',
