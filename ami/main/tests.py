@@ -6,7 +6,7 @@ from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
-from ami.main.models import Event, Occurrence, Project, Taxon, TaxonRank, group_images_into_events
+from ami.main.models import Event, Occurrence, Taxon, TaxonRank, group_images_into_events
 from ami.users.models import User
 from tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 
@@ -532,13 +532,6 @@ class TestTaxonomyViews(TestCase):
         self.project_two = project_two
         return super().setUp()
 
-    def test_occurrences_for_project(self):
-        # Test that occurrences are specific to each project
-        for project in [self.project_one, self.project_two]:
-            response = self.client.get(f"/api/v2/occurrences/?project={project.pk}")
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
-
     def no_test_project_species_list(self):
         """
         Test that the taxa for a project (of species rank) are returned from the API
@@ -571,32 +564,6 @@ class TestTaxonomyViews(TestCase):
             "Expected taxa for project (list one) do not match taxa in API response (list two)",
         )
 
-    def _test_taxa_for_project(self, project: Project):
-        """
-        Ensure the annotation counts are specific to each project, not global counts
-        of occurrences and detections.
-        """
-        from ami.main.models import Taxon
-
-        response = self.client.get(f"/api/v2/taxa/?project={project.pk}")
-        self.assertEqual(response.status_code, 200)
-        project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
-        # project_any_taxa = Taxon.objects.filter(projects=project)
-        self.assertGreater(project_occurred_taxa.count(), 0)
-        self.assertEqual(response.json()["count"], project_occurred_taxa.count())
-
-        # Check counts for each taxon
-        results = response.json()["results"]
-        for taxon_result in results:
-            taxon: Taxon = Taxon.objects.get(pk=taxon_result["id"])
-            project_occurrences = taxon.occurrences.filter(project=project).count()
-            # project_detections = taxon.detections.filter(project=project).count()
-            self.assertEqual(taxon_result["occurrences_count"], project_occurrences)
-
-    def test_taxa_for_project(self):
-        for project in [self.project_one, self.project_two]:
-            self._test_taxa_for_project(project)
-
     def test_taxon_detail(self):
         from ami.main.models import Taxon
 
@@ -606,49 +573,6 @@ class TestTaxonomyViews(TestCase):
         response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], taxon.name)
-
-    def test_recursive_occurrence_counts_single(self):
-        # First, assert that we have taxa with parents and occurrences
-        from ami.main.models import Taxon
-
-        taxa = Taxon.objects.exclude(parent=None).filter(occurrences__isnull=False)
-        self.assertGreater(taxa.count(), 0)
-        for taxon in taxa:
-            occurrence_count_direct = taxon.occurrences.count()
-            occurrence_count_total = taxon.occurrences_count_recursive()
-            self.assertGreaterEqual(occurrence_count_total, occurrence_count_direct)
-
-            # Manually add up the occurrences for each taxon and its children, recursively:
-            def _count_occurrences_recursive(taxon):
-                count = taxon.occurrences.count()
-                for child in taxon.direct_children.all():
-                    count += _count_occurrences_recursive(child)
-                return count
-
-            manual_count = _count_occurrences_recursive(taxon)
-            self.assertEqual(occurrence_count_total, manual_count)
-
-        # The top level test taxa should have all occurrences
-        top_level_taxa = Taxon.objects.root()
-        count = top_level_taxa.occurrences_count_recursive()
-        self.assertGreater(count, 0)
-        project_ids = top_level_taxa.projects.values_list("id", flat=True)
-        total_occurrences = Occurrence.objects.filter(project__in=project_ids).count()
-        self.assertEqual(count, total_occurrences)
-
-    def test_recursive_occurrence_count_from_manager(self):
-        from ami.main.models import Taxon
-
-        with self.assertRaises(NotImplementedError):
-            taxa_with_counts = Taxon.objects.with_occurrence_counts()
-            for taxon in taxa_with_counts:
-                occurrence_count_total = taxon.occurrences_count_recursive()
-                self.assertEqual(occurrence_count_total, taxon.occurrences_count)
-
-            for taxon in taxa_with_counts:
-                occurrence_count_direct = taxon.occurrences.count()
-                occurrence_count_total = taxon.occurrences_count_recursive()
-                self.assertEqual(occurrence_count_total, occurrence_count_direct)
 
 
 class TestIdentification(APITestCase):

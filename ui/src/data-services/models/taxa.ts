@@ -6,7 +6,7 @@ export type ServerTaxon = {
   parents?: ServerTaxon[]
 }
 
-const SORTED_RANKS = [
+export const SORTED_RANKS = [
   'Unknown',
   'ORDER',
   'SUBORDER',
@@ -34,9 +34,6 @@ export class Taxon {
 
     if (taxon.parents) {
       this.ranks = taxon.parents
-    } else if (taxon.parent?.parents) {
-      // TODO: Update this when species list is returning parents similar to other endpoints
-      this.ranks = [taxon.parent, ...taxon.parent.parents]
     } else {
       this.ranks = []
     }

@@ -25,10 +25,11 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, update_calculated_fields_in_bulk
 from ami.main import charts
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
+from ami.utils.storages import TEMPORARY_CROPS_URL_BASE, get_temporary_media_url
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -354,15 +355,6 @@ class Deployment(BaseModel):
     class Meta:
         ordering = ["name"]
 
-    def taxa(self) -> models.QuerySet["Taxon"]:
-        return Taxon.objects.filter(Q(occurrences__deployment=self)).distinct()
-
-    def first_capture(self) -> typing.Optional["SourceImage"]:
-        return SourceImage.objects.filter(deployment=self).order_by("timestamp").first()
-
-    def last_capture(self) -> typing.Optional["SourceImage"]:
-        return SourceImage.objects.filter(deployment=self).order_by("timestamp").last()
-
     def get_first_and_last_timestamps(self) -> tuple[datetime.datetime, datetime.datetime]:
         # Retrieve the timestamps of the first and last capture in a single query
         first, last = (
@@ -371,12 +363,6 @@ class Deployment(BaseModel):
             .values()
         )
         return (first, last)
-
-    def first_date(self) -> datetime.date | None:
-        return self.first_capture_timestamp.date() if self.first_capture_timestamp else None
-
-    def last_date(self) -> datetime.date | None:
-        return self.last_capture_timestamp.date() if self.last_capture_timestamp else None
 
     def data_source_uri(self) -> str | None:
         if self.data_source:
@@ -587,11 +573,12 @@ class Deployment(BaseModel):
             .count()
         )
         self.taxa_count = (
-            Taxon.objects.filter(
-                occurrences__deployment=self,
-                occurrences__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
-                occurrences__event__isnull=False,
+            self.occurrences.filter(
+                determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
+                event__isnull=False,
+                deployment=self,
             )
+            .values_list("determination", flat=True)
             .distinct()
             .count()
         )
@@ -789,52 +776,21 @@ class Event(BaseModel):
             self.update_calculated_fields(save=True)
 
 
-def update_calculated_fields_for_events(
-    qs: models.QuerySet[Event] | None = None,
-    pks: list[typing.Any] | None = None,
-    last_updated: datetime.datetime | None = None,
-    save=True,
-):
-    """
-    This function is called by a migration to update the calculated fields for all events.
-
-    @TODO this can likely be abstracted to a more generic function that can be used for any model
-    """
-    to_update = []
-
-    qs = qs or Event.objects.all()
-    if pks:
-        qs = qs.filter(pk__in=pks)
-    if last_updated:
-        # query for None or before the last updated time
-        qs = qs.filter(
-            Q(calculated_fields_updated_at__isnull=True) | Q(calculated_fields_updated_at__lte=last_updated)
-        )
-
-    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
-
-    updated_timestamp = timezone.now()
-    for event in qs:
-        event.update_calculated_fields(save=False, updated_timestamp=updated_timestamp)
-        to_update.append(event)
-
-    if save:
-        updated_count = Event.objects.bulk_update(
-            to_update,
-            [
-                "group_by",
-                "start",
-                "end",
-                "project",
-                "captures_count",
-                "detections_count",
-                "occurrences_count",
-                "calculated_fields_updated_at",
-            ],
-        )
-        if updated_count != len(to_update):
-            logging.error(f"Failed to update {len(to_update) - updated_count} events")
-    return to_update
+# create partial function to update calculated fields for events
+update_calculated_fields_for_events = functools.partial(
+    update_calculated_fields_in_bulk,
+    Model=Event,
+    fields=[
+        "group_by",
+        "start",
+        "end",
+        "project",
+        "captures_count",
+        "detections_count",
+        "occurrences_count",
+        "calculated_fields_updated_at",
+    ],
+)
 
 
 def group_images_into_events(
@@ -1160,7 +1116,7 @@ class SourceImage(BaseModel):
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
 
-    # Precaclulated values
+    # Pre-calculated values
     detections_count = models.IntegerField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
@@ -1831,7 +1787,7 @@ class Detection(BaseModel):
             return (None, None)
 
     def url(self) -> str | None:
-        return get_media_url(self.path) if self.path else None
+        return get_temporary_media_url(self.path) if self.path else None
 
     def associate_new_occurrence(self) -> "Occurrence":
         """
@@ -2331,7 +2287,7 @@ class Taxon(BaseModel):
 
     projects = models.ManyToManyField("Project", related_name="taxa")
     direct_children: models.QuerySet["Taxon"]
-    occurrences: models.QuerySet[Occurrence]
+    occurrences: models.QuerySet[Occurrence]  # This should rarely be used, use TaxonObserved instead
     classifications: models.QuerySet["Classification"]
     lists: models.QuerySet["TaxaList"]
 
@@ -2375,83 +2331,41 @@ class Taxon(BaseModel):
         # Use the parents_json field to get all children
         return Taxon.objects.filter(parents_json__contains=[{"id": self.pk}]).count()
 
-    def occurrences_count(self) -> int:
-        # return self.occurrences.count()
-        return 0
+    # def occurrences_count(self) -> int:
+    #     # return self.occurrences.count()
+    #     return 0
 
-    def occurrences_count_recursive(self) -> int:
-        """
-        Use the parents_json field to get all children, count their occurrences and sum them.
-        """
-        return (
-            Taxon.objects.filter(models.Q(models.Q(parents_json__contains=[{"id": self.pk}]) | models.Q(id=self.pk)))
-            .annotate(occurrences_count=models.Count("occurrences"))
-            .aggregate(models.Sum("occurrences_count"))["occurrences_count__sum"]
-            or 0
-        )
+    # def occurrences_count_recursive(self) -> int:
+    #     """
+    #     Use the parents_json field to get all children, count their occurrences and sum them.
+    #     """
+    #     return (
+    #         Taxon.objects.filter(models.Q(models.Q(parents_json__contains=[{"id": self.pk}]) | models.Q(id=self.pk)))
+    #         .annotate(occurrences_count=models.Count("occurrences"))
+    #         .aggregate(models.Sum("occurrences_count"))["occurrences_count__sum"]
+    #         or 0
+    #     )
 
-    def detections_count(self) -> int:
-        # return Detection.objects.filter(occurrence__determination=self).count()
-        return 0
+    # def detections_count(self) -> int:
+    #     # return Detection.objects.filter(occurrence__determination=self).count()
+    #     return 0
 
-    def events_count(self) -> int:
-        return 0
+    # def events_count(self) -> int:
+    #     return 0
 
-    def latest_occurrence(self) -> Occurrence | None:
-        return self.occurrences.order_by("-created_at").first()
+    # def latest_occurrence(self) -> Occurrence | None:
+    #     return self.occurrences.order_by("-created_at").first()
 
-    def latest_detection(self) -> Detection | None:
-        return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
+    # def latest_detection(self) -> Detection | None:
+    #     return Detection.objects.filter(occurrence__determination=self).order_by("-created_at").first()
 
-    def last_detected(self) -> datetime.datetime | None:
-        # This is handled by an annotation
-        return None
+    # def last_detected(self) -> datetime.datetime | None:
+    #     # This is handled by an annotation
+    #     return None
 
-    def best_determination_score(self) -> float | None:
-        # This is handled by an annotation if we are filtering by project, deployment or event
-        return None
-
-    def occurrence_images(
-        self,
-        limit: int | None = 10,
-        project_id: int | None = None,
-        classification_threshold: float | None = None,
-    ) -> list[str]:
-        """
-        Return one image from each occurrence of this Taxon.
-        The image should be from the detection with the highest classification score.
-
-        This is used for image thumbnail previews in the species summary view.
-
-        The project ID is an optional filter however
-        @TODO important, this should always filter by what the current user has access to.
-        Use the request.user to filter by the user's access.
-        Use the request to generate the full media URLs.
-        """
-
-        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
-
-        # Retrieve the URLs using a single optimized query
-        qs = (
-            self.occurrences.prefetch_related(
-                models.Prefetch(
-                    "detections__classifications",
-                    queryset=Classification.objects.filter(score__gte=classification_threshold).order_by("-score"),
-                )
-            )
-            .annotate(max_score=models.Max("detections__classifications__score"))
-            .filter(detections__classifications__score=models.F("max_score"))
-            .order_by("-max_score")
-        )
-        if project_id is not None:
-            # @TODO this should check the user's access instead
-            qs = qs.filter(project=project_id)
-
-        detection_image_paths = qs.values_list("detections__path", flat=True)[:limit]
-
-        # @TODO should this be done in the serializer?
-        # @TODO better way to get distinct values from an annotated queryset?
-        return [get_media_url(path) for path in detection_image_paths if path]
+    # def best_determination_score(self) -> float | None:
+    #     # This is handled by an annotation if we are filtering by project, deployment or event
+    #     return None
 
     def list_names(self) -> str:
         return ", ".join(self.lists.values_list("name", flat=True))

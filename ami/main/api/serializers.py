@@ -10,7 +10,6 @@ from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
 from ami.utils.dates import get_image_timestamp_from_filename
-from ami.utils.requests import get_active_classification_threshold
 
 from ..models import (
     Classification,
@@ -133,6 +132,8 @@ class DeploymentListSerializer(DefaultSerializer):
     project = ProjectNestedSerializer(read_only=True)
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
+    first_date = serializers.DateField(read_only=True, source="first_capture_timestamp")
+    last_date = serializers.DateField(read_only=True, source="last_capture_timestamp")
 
     class Meta:
         model = Deployment
@@ -459,10 +460,7 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
 
 
 class TaxonListSerializer(DefaultSerializer):
-    # latest_detection = DetectionNestedSerializer(read_only=True)
-    occurrences = serializers.SerializerMethodField()
-    occurrence_images = serializers.SerializerMethodField()
-    parent = TaxonNestedSerializer(read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
 
     class Meta:
         model = Taxon
@@ -470,48 +468,11 @@ class TaxonListSerializer(DefaultSerializer):
             "id",
             "name",
             "rank",
-            "parent",
+            "parents",
             "details",
-            "occurrences_count",
-            "occurrences",
-            "occurrence_images",
-            "last_detected",
-            "best_determination_score",
             "created_at",
             "updated_at",
         ]
-
-    def get_occurrences(self, obj):
-        """
-        Return URL to the occurrences endpoint filtered by this taxon.
-        """
-
-        params = {}
-        params.update(dict(self.context["request"].query_params.items()))
-        params.update({"determination": obj.pk})
-
-        return reverse_with_params(
-            "occurrence-list",
-            request=self.context.get("request"),
-            params=params,
-        )
-
-    def get_occurrence_images(self, obj):
-        """
-        Call the occurrence_images method on the Taxon model, with arguments.
-        """
-
-        # request = self.context.get("request")
-        # project_id = request.query_params.get("project") if request else None
-        project_id = self.context["request"].query_params["project"]
-        classification_threshold = get_active_classification_threshold(self.context["request"])
-
-        return obj.occurrence_images(
-            # @TODO pass the request to generate media url & filter by current user's access
-            # request=self.context.get("request"),
-            project_id=project_id,
-            classification_threshold=classification_threshold,
-        )
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
@@ -669,7 +630,6 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
-    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     # parents = TaxonParentNestedSerializer(many=True, read_only=True, source="parents_json")
@@ -685,10 +645,6 @@ class TaxonSerializer(DefaultSerializer):
             "parent_id",
             "parents",
             "details",
-            "occurrences_count",
-            "detections_count",
-            "events_count",
-            "occurrences",
         ]
 
 

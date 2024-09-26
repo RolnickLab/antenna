@@ -58,6 +58,17 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
 
     list_display = ("name", "priority", "active", "created_at", "updated_at")
 
+    # add action to update observed taxa for the project
+    @admin.action(description="Update observed taxa")
+    def update_observed_taxa(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:
+        from ami.taxa.models import update_taxa_observed_for_project
+
+        for project in queryset:
+            update_taxa_observed_for_project(project)
+        self.message_user(request, f"Updated {queryset.count()} projects.")
+
+    actions = [update_observed_taxa]
+
     @admin.action(description="Remove duplicate classifications from all detections")
     def _remove_duplicate_classifications(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:
         task_ids = []
@@ -66,7 +77,7 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
             task_ids.append(task.id)
         self.message_user(request, f"Started {len(task_ids)} tasks to delete classification: {task_ids}")
 
-    actions = [_remove_duplicate_classifications]
+    actions = [_remove_duplicate_classifications, update_observed_taxa]
 
 
 @admin.register(Deployment)

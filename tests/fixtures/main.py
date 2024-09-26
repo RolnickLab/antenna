@@ -17,10 +17,13 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+
 from ami.ml.tasks import create_detection_images
+from ami.taxa.models import update_taxa_observed_for_project
 from tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
 
 logger = logging.getLogger(__name__)
+
 
 
 def update_site_settings(**kwargs):
@@ -140,6 +143,7 @@ def create_taxa(project: Project) -> TaxaList:
     for taxon in taxa_list.taxa.all():
         taxon.projects.add(project)
     #  project.taxa.set([taxa_list.taxa.all()])
+    update_taxa_observed_for_project(project)
     return taxa_list
 
 

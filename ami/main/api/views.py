@@ -24,6 +24,7 @@ from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.taxa.models import TaxonObserved
 from ami.utils.requests import get_active_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -177,6 +178,10 @@ class DeploymentViewSet(DefaultViewSet):
                     queryset=SourceImage.objects.order_by("created_at").exclude(upload=None),
                 )
             )
+        elif self.action == "list":
+            # Add annotations for deployments
+            # @TODO use a QuerySet manager and call Deployments.with_counts() etc.
+            pass
 
         return qs
 
@@ -859,6 +864,7 @@ class TaxonViewSet(DefaultViewSet):
         else:
             return TaxonSerializer
 
+    # @TODO this can now be removed since we are using TaxonObservedViewSet
     def filter_taxa_by_observed(self, queryset: QuerySet) -> tuple[QuerySet, bool]:
         """
         Filter taxa by when/where it has occurred.
@@ -898,6 +904,7 @@ class TaxonViewSet(DefaultViewSet):
         # @TODO need to return the models.Q filter used, so we can use it for counts and related occurrences.
         return queryset, filter_active
 
+    # @TODO this can now be removed since we are using TaxonObservedViewSet
     def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
         """
         Filter taxa by their best determination score in occurrences.
@@ -917,6 +924,7 @@ class TaxonViewSet(DefaultViewSet):
 
         return queryset
 
+    # @TODO this can now be removed since we are using TaxonObservedViewSet
     def get_occurrences_filters(self, queryset: QuerySet) -> tuple[QuerySet, models.Q]:
         # @TODO this should check what the user has access to
         project_id = self.request.query_params.get("project")
@@ -942,6 +950,7 @@ class TaxonViewSet(DefaultViewSet):
 
         return taxon_occurrences_query, taxon_occurrences_count_filter
 
+    # @TODO this can now be removed since we are using TaxonObservedViewSet
     def add_occurrence_counts(self, queryset: QuerySet, occurrences_count_filter: models.Q) -> QuerySet:
         qs = queryset.annotate(
             occurrences_count=models.Count(
@@ -953,10 +962,12 @@ class TaxonViewSet(DefaultViewSet):
         )
         return qs
 
+    # @TODO this can now be removed since we are using TaxonObservedViewSet
     def add_filtered_occurrences(self, queryset: QuerySet, occurrences_query: QuerySet) -> QuerySet:
         qs = queryset.prefetch_related(Prefetch("occurrences", queryset=occurrences_query))
         return qs
 
+    # @TODO this can now be removed since we are using TaxonObservedViewSet
     def zero_occurrences(self, queryset: QuerySet) -> QuerySet:
         """
         Return a queryset with zero occurrences but compatible with the original queryset.
@@ -1047,13 +1058,10 @@ class SummaryView(GenericAPIView):
                     determination_score__gte=confidence_threshold,
                     event__isnull=False,
                 ).count(),
-                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+                "taxa_count": TaxonObserved.objects.filter(project=project)
                 .filter(
-                    occurrences_count__gt=0,
-                    occurrences__determination_score__gte=confidence_threshold,
-                    occurrences__project=project,
+                    best_determination_score__gte=confidence_threshold,
                 )
-                .distinct()
                 .count(),
             }
         else:
@@ -1066,9 +1074,7 @@ class SummaryView(GenericAPIView):
                 "occurrences_count": Occurrence.objects.filter(
                     determination_score__gte=confidence_threshold, event__isnull=False
                 ).count(),
-                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
-                .filter(occurrences_count__gt=0, occurrences__determination_score__gte=confidence_threshold)
-                .count(),
+                "taxa_count": TaxonObserved.objects.filter(best_determination_score__gte=confidence_threshold).count(),
                 "last_updated": timezone.now(),
             }
 
@@ -1088,7 +1094,7 @@ class SummaryView(GenericAPIView):
 
 
 _STORAGE_CONNECTION_STATUS = [
-    # These come from the ConnetionStatus react component
+    # These come from the ConnectionStatus react component
     # @TODO use ENUM
     "NOT_CONNECTED",
     "CONNECTING",
