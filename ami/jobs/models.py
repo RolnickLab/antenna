@@ -379,8 +379,10 @@ class MLJob(JobType):
                     job.logger.error(f"Failed to process image batch {i} of {len(chunks)}: {e}")
                     continue
 
-                total_detections += len(results.detections)
-                total_classifications += len([c for d in results.detections for c in d.classifications])
+                if results:
+                    total_detections += len(results.detections)
+                    total_classifications += len([c for d in results.detections for c in d.classifications])
+
                 job.progress.update_stage(
                     "process",
                     status=JobState.STARTED,
@@ -390,16 +392,19 @@ class MLJob(JobType):
                     detections=total_detections,
                     classifications=total_classifications,
                 )
-                job.save()
-                objects = job.pipeline.save_results(results=results, job_id=job.pk)
-                job.progress.update_stage(
-                    "results",
-                    status=JobState.STARTED,
-                    progress=(i + 1) / len(chunks),
-                    objects_created=len(objects),
-                )
                 job.update_progress()
                 job.save()
+
+                if results:
+                    objects = job.pipeline.save_results(results=results, job_id=job.pk)
+                    job.progress.update_stage(
+                        "results",
+                        status=JobState.STARTED,
+                        progress=(i + 1) / len(chunks),
+                        objects_created=len(objects),
+                    )
+                    job.update_progress()
+                    job.save()
 
             job.progress.update_stage(
                 "process",
