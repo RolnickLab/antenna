@@ -42,13 +42,15 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     ),
   },
   {
-    id: 'captures',
-    name: translate(STRING.FIELD_LABEL_CAPTURES),
+    id: 'captures-with-detections',
+    name: 'Captures with Detections',
     sortField: 'source_image_count',
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => <BasicTableCell value={item.numImages} />,
+    renderCell: (item: Collection) => (
+      <BasicTableCell value={item.numImagesWithDetectionsLabel} />
+    ),
   },
   {
     id: 'created-at',

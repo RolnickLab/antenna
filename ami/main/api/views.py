@@ -533,9 +533,8 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     """
 
     queryset = (
-        SourceImageCollection.objects.annotate(
-            source_image_count=models.Count("images"),
-        )
+        SourceImageCollection.objects.with_source_image_count()  # type: ignore
+        .with_source_images_with_detections_count()
         .prefetch_related("jobs")
         .all()
     )

@@ -985,6 +985,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "kwargs",
             "source_images",
             "source_image_count",
+            "source_images_with_detections_count",
             "jobs",
             "created_at",
             "updated_at",
