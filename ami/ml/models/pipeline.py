@@ -93,7 +93,7 @@ def collect_images(
 
     # Set source to first argument that is not None
     if collection:
-        images = collection.images.all()
+        images = collection.images.all().distinct()
     elif source_images:
         images = source_images
     elif deployment:
