@@ -16,12 +16,12 @@ services:
       - "db:${DATABASE_IP}"
       - "redis:${REDIS_IP}"
     command: /start
-    scale: 0  # Can't scale until the load balancer is within the compose config
+    scale: 0  # We don't need the Django service running, but we inherit the worker settings from it.
     restart: always
 
   celeryworker:
     <<: *django
-    scale: 1
+    scale: 1  # 1 worker per machine, celery will scale worker pool to the number of available CPUs.
     ports: []
     command: /start-celeryworker
     restart: always
