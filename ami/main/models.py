@@ -2600,9 +2600,9 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 
 
 class SourceImageCollectionQuerySet(models.QuerySet):
-    def with_source_image_count(self):
+    def with_source_images_count(self):
         return self.annotate(
-            source_image_count=models.Count(
+            source_images_count=models.Count(
                 "images",
                 distinct=True,
             )
@@ -2614,6 +2614,11 @@ class SourceImageCollectionQuerySet(models.QuerySet):
                 "images", filter=models.Q(images__detections__isnull=False), distinct=True
             )
         )
+
+
+class SourceImageCollectionManager(models.Manager):
+    def get_queryset(self) -> SourceImageCollectionQuerySet:
+        return SourceImageCollectionQuerySet(self.model, using=self._db)
 
 
 @final
@@ -2648,9 +2653,9 @@ class SourceImageCollection(BaseModel):
         default=dict,
     )
 
-    objects = SourceImageCollectionQuerySet.as_manager()
+    objects = SourceImageCollectionManager()
 
-    def source_image_count(self) -> int | None:
+    def source_images_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
         # return self.images.count()
         return None

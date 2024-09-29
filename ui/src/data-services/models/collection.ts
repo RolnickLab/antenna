@@ -34,7 +34,7 @@ export class Collection extends Entity {
   }
 
   get numImages(): number | undefined {
-    return this._data.source_image_count
+    return this._data.source_images_count
   }
 
   get numImagesWithDetections(): number | undefined {

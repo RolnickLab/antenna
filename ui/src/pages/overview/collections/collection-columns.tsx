@@ -43,8 +43,8 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   },
   {
     id: 'captures-with-detections',
-    name: 'Captures with Detections',
-    sortField: 'source_image_count',
+    name: translate(STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS),
+    sortField: 'source_images_count',
     styles: {
       textAlign: TextAlign.Right,
     },

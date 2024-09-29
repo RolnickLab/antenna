@@ -93,7 +93,7 @@ def collect_images(
 
     # Set source to first argument that is not None
     if collection:
-        images = collection.images.all().distinct()
+        images = collection.images.all()
     elif source_images:
         images = source_images
     elif deployment:
@@ -127,7 +127,7 @@ def process_images(
     endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
-) -> PipelineResponse | None:
+) -> PipelineResponse:
     """
     Process images using ML pipeline API.
 
@@ -148,11 +148,6 @@ def process_images(
     if len(images) < len(prefiltered_images):
         # Log how many images were filtered out because they have already been processed
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
-
-    if not images:
-        task_logger.info("No images to process")
-        return None
-
     task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 

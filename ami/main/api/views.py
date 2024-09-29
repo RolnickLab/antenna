@@ -533,10 +533,10 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     """
 
     queryset = (
-        SourceImageCollection.objects.with_source_image_count()  # type: ignore
+        SourceImageCollection.objects.all()
+        .with_source_images_count()  # type: ignore
         .with_source_images_with_detections_count()
         .prefetch_related("jobs")
-        .all()
     )
     serializer_class = SourceImageCollectionSerializer
 
@@ -546,7 +546,8 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         "updated_at",
         "name",
         "method",
-        "source_image_count",
+        "source_images_count",
+        "source_images_with_detections_count",
     ]
 
     @action(detail=True, methods=["post"], name="populate")
