@@ -22,7 +22,7 @@ from ami.main.models import (
     TaxonRank,
     update_calculated_fields_for_events,
 )
-from ami.ml.tasks import create_detection_images
+from ami.ml.tasks import celery_app, create_detection_images
 
 from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from .algorithm import Algorithm
@@ -148,6 +148,15 @@ def process_images(
     if len(images) < len(prefiltered_images):
         # Log how many images were filtered out because they have already been processed
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
+
+    if not images:
+        task_logger.info("No images to process")
+        return PipelineResponse(
+            pipeline=pipeline.slug,
+            source_images=[],
+            detections=[],
+            total_time=0,
+        )
     task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
@@ -180,15 +189,20 @@ def process_images(
     return results
 
 
-def save_results(results: PipelineResponse, job_id: int | None = None) -> list[models.Model]:
+@celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
+def save_results(results: PipelineResponse | None = None, results_json: str | None = None, job_id: int | None = None):
     """
     Save results from ML pipeline API.
 
     @TODO break into task chunks.
-    @TODO rewrite this
+    @TODO rewrite this!
     """
     created_objects = []
     job = None
+
+    if results_json:
+        results = PipelineResponse.parse_raw(results_json)
+    assert results, "No results data passed to save_results task"
 
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
@@ -200,7 +214,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info("Saving results")
+        job.logger.info("Saving results...")
 
     # collection_name = f"Images processed by {results.pipeline} pipeline"
     # if job_id:
@@ -345,8 +359,16 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     if job:
         if len(created_objects):
             job.logger.info(f"Created {len(created_objects)} objects")
-
-    return created_objects
+            try:
+                previously_created = int(job.progress.get_stage_param("results", "objects_created").value)
+                job.progress.update_stage(
+                    "results",
+                    objects_created=previously_created + len(created_objects),
+                )
+            except ValueError:
+                pass
+            else:
+                job.update_progress()
 
 
 class PipelineStage(ConfigurableStage):
@@ -408,8 +430,13 @@ class Pipeline(BaseModel):
             job_id=job_id,
         )
 
-    def save_results(self, *args, **kwargs):
-        return save_results(*args, **kwargs)
+    def save_results(self, results: PipelineResponse, job_id: int | None = None):
+        return save_results(results=results, job_id=job_id)
+
+    def save_results_async(self, results: PipelineResponse, job_id: int | None = None):
+        # Returns an AsyncResult
+        results_json = results.json()
+        return save_results.delay(results_json=results_json, job_id=job_id)
 
     def save(self, *args, **kwargs):
         if not self.slug:
