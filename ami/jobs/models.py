@@ -387,8 +387,10 @@ class MLJob(JobType):
                     classifications=total_classifications,
                 )
                 job.save()
-                save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
-                job.logger.info(f"Saving results in sub-task {save_results_task.id}")
+
+                if results.source_images or results.detections:
+                    save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
+                    job.logger.info(f"Saving results in sub-task {save_results_task.id}")
 
             job.progress.update_stage(
                 "process",

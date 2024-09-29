@@ -148,6 +148,15 @@ def process_images(
     if len(images) < len(prefiltered_images):
         # Log how many images were filtered out because they have already been processed
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
+
+    if not images:
+        task_logger.info("No images to process")
+        return PipelineResponse(
+            pipeline=pipeline.slug,
+            source_images=[],
+            detections=[],
+            total_time=0,
+        )
     task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
