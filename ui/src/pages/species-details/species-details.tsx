@@ -65,11 +65,9 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
 
   return (
     <div className={styles.wrapper}>
-      {image && (
-        <Helmet>
-          <meta name="og:image" content={image} />
-        </Helmet>
-      )}
+      <Helmet>
+        <meta name="og:image" content={image} />
+      </Helmet>
       <div className={styles.header}>
         <TaxonInfo
           taxon={species}

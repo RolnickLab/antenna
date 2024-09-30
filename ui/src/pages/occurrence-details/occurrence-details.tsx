@@ -119,11 +119,9 @@ export const OccurrenceDetails = ({
 
   return (
     <div className={styles.wrapper} ref={containerRef}>
-      {occurrence.images[0] && (
-        <Helmet>
-          <meta name="og:image" content={occurrence.images[0].src} />
-        </Helmet>
-      )}
+      <Helmet>
+        <meta name="og:image" content={occurrence.images[0]?.src} />
+      </Helmet>
       <div className={styles.header}>
         <TaxonInfo
           taxon={occurrence.determinationTaxon}

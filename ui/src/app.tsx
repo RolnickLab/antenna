@@ -166,17 +166,13 @@ const ProjectContainer = () => {
 
   return (
     <>
-      {projectDetails.project && (
-        <Helmet>
-          <meta
-            name="description"
-            content={projectDetails.project.description}
-          />
-          {projectDetails.project.image && (
-            <meta property="og:image" content={projectDetails.project.image} />
-          )}
-        </Helmet>
-      )}
+      <Helmet>
+        <meta
+          name="description"
+          content={projectDetails.project?.description}
+        />
+        <meta property="og:image" content={projectDetails.project?.image} />
+      </Helmet>
       <Portal.Root container={document.getElementById(INTRO_CONTAINER_ID)}>
         <Menu />
       </Portal.Root>

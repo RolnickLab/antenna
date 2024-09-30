@@ -47,11 +47,9 @@ export const SessionDetails = () => {
 
   return (
     <div className={styles.main}>
-      {session.exampleCaptures[0] && (
-        <Helmet>
-          <meta name="og:image" content={session.exampleCaptures[0].src} />
-        </Helmet>
-      )}
+      <Helmet>
+        <meta name="og:image" content={session.exampleCaptures[0]?.src} />
+      </Helmet>
       {isFetching && (
         <div className={styles.fetchInfoWrapper}>
           <FetchInfo isLoading={isLoading} />

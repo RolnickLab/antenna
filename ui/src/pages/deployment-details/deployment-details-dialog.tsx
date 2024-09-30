@@ -69,11 +69,9 @@ const DeploymentDetailsDialogContent = ({
 
   return (
     <>
-      {deployment.image && (
-        <Helmet>
-          <meta name="og:image" content={deployment.image} />
-        </Helmet>
-      )}
+      <Helmet>
+        <meta name="og:image" content={deployment.image} />
+      </Helmet>
       {!isEditing ? (
         <DeploymentDetailsInfo
           deployment={deployment}
