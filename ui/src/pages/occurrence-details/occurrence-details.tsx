@@ -14,6 +14,7 @@ import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useMemo, useRef, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -118,6 +119,11 @@ export const OccurrenceDetails = ({
 
   return (
     <div className={styles.wrapper} ref={containerRef}>
+      {occurrence.images[0] && (
+        <Helmet>
+          <meta name="og:image" content={occurrence.images[0].src} />
+        </Helmet>
+      )}
       <div className={styles.header}>
         <TaxonInfo
           taxon={occurrence.determinationTaxon}

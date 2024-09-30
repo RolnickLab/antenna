@@ -6,6 +6,7 @@ import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
 import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { Playback } from './playback/playback'
@@ -46,6 +47,11 @@ export const SessionDetails = () => {
 
   return (
     <div className={styles.main}>
+      {session.exampleCaptures[0] && (
+        <Helmet>
+          <meta name="og:image" content={session.exampleCaptures[0].src} />
+        </Helmet>
+      )}
       {isFetching && (
         <div className={styles.fetchInfoWrapper}>
           <FetchInfo isLoading={isLoading} />
