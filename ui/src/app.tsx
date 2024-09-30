@@ -171,7 +171,6 @@ const ProjectContainer = () => {
           name="description"
           content={projectDetails.project?.description}
         />
-        <meta property="og:image" content={projectDetails.project?.image} />
       </Helmet>
       <Portal.Root container={document.getElementById(INTRO_CONTAINER_ID)}>
         <Menu />
