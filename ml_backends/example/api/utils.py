@@ -44,7 +44,11 @@ def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
 
     else:
         logger.info(f"Downloading {path_or_url} to {local_filepath}")
-        resulting_filepath, _headers = urllib.request.urlretrieve(url=path_or_url, filename=local_filepath)
+        try:
+            resulting_filepath, _headers = urllib.request.urlretrieve(url=path_or_url, filename=local_filepath)
+        except Exception as e:
+            raise Exception(f"Could not retrieve {path_or_url}: {e}")
+
         resulting_filepath = pathlib.Path(resulting_filepath)
         logger.info(f"Downloaded to {resulting_filepath}")
         return resulting_filepath

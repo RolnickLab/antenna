@@ -60,7 +60,7 @@ async def healthcheck():
     return "OK"
 
 
-@app.post("/pipeline/process/")  # @TODO: Future change use @app.post("/{pipeline_name}/process/")
+@app.post("/pipeline/process")  # @TODO: Future change use @app.post("/{pipeline_name}/process/")
 async def process(data: PipelineRequest) -> PipelineResponse:
     source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
@@ -68,7 +68,10 @@ async def process(data: PipelineRequest) -> PipelineResponse:
     start_time = time.time()
 
     pipeline = DummyPipeline(source_images=source_images)
-    results = pipeline.run()
+    try:
+        results = pipeline.run()
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=422, detail=f"{e}")
 
     end_time = time.time()
     seconds_elapsed = float(end_time - start_time)
