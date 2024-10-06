@@ -102,7 +102,7 @@ class SourceImageResponse(pydantic.BaseModel):
     url: str
 
 
-PipelineChoice = typing.Literal["random", "fixed", "dummy"]
+PipelineChoice = typing.Literal["dummy"]
 
 
 class PipelineRequest(pydantic.BaseModel):
