@@ -1165,7 +1165,14 @@ class SourceImage(BaseModel):
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="captures",
+        db_index=True,
+        blank=True,
+    )
 
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]
@@ -1418,7 +1425,9 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
-    minute_interval: int = 10, qs: models.QuerySet[SourceImage] | None = None, max_num: int | None = None
+    minute_interval: int = 10,
+    qs: models.QuerySet[SourceImage] | None = None,
+    max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
@@ -1428,7 +1437,8 @@ def sample_captures_by_interval(
     total = 0
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     for capture in qs.all():
@@ -1459,7 +1469,8 @@ def sample_captures_by_position(
     """
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     events = Event.objects.filter(captures__in=qs).distinct()
@@ -1496,7 +1507,8 @@ def sample_captures_by_nth(
     """
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     events = Event.objects.filter(captures__in=qs).distinct()
@@ -2587,6 +2599,28 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 ]
 
 
+class SourceImageCollectionQuerySet(models.QuerySet):
+    def with_source_images_count(self):
+        return self.annotate(
+            source_images_count=models.Count(
+                "images",
+                distinct=True,
+            )
+        )
+
+    def with_source_images_with_detections_count(self):
+        return self.annotate(
+            source_images_with_detections_count=models.Count(
+                "images", filter=models.Q(images__detections__isnull=False), distinct=True
+            )
+        )
+
+
+class SourceImageCollectionManager(models.Manager):
+    def get_queryset(self) -> SourceImageCollectionQuerySet:
+        return SourceImageCollectionQuerySet(self.model, using=self._db)
+
+
 @final
 class SourceImageCollection(BaseModel):
     """
@@ -2619,9 +2653,17 @@ class SourceImageCollection(BaseModel):
         default=dict,
     )
 
-    def source_image_count(self) -> int:
+    objects = SourceImageCollectionManager()
+
+    def source_images_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
-        return self.images.count()
+        # return self.images.count()
+        return None
+
+    def source_images_with_detections_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        # return self.images.filter(detections__isnull=False).count()
+        return None
 
     def get_queryset(self):
         return SourceImage.objects.filter(project=self.project)
@@ -2662,24 +2704,31 @@ class SourceImageCollection(BaseModel):
         hour_end: int | None = None,
         month_start: datetime.date | None = None,
         month_end: datetime.date | None = None,
-    ) -> list[SourceImage]:
+        day_start: datetime.date | None = None,
+        day_end: datetime.date | None = None,
+    ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
         if month_start:
             qs = qs.filter(timestamp__month__gte=month_start)
         if month_end:
             qs = qs.filter(timestamp__month__lte=month_end)
+        if day_start:
+            qs = qs.filter(timestamp__day__gte=day_start)
+        if day_end:
+            qs = qs.filter(timestamp__day__lte=day_end)
         if hour_start:
             qs = qs.filter(timestamp__hour__gte=hour_start)
         if hour_end:
             qs = qs.filter(timestamp__hour__lte=hour_end)
+        if not minute_interval and max_num:
+            qs = qs[:max_num]
         if minute_interval:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
-            qs = list(sample_captures_by_interval(minute_interval, qs, max_num=max_num))
-        if max_num:
-            qs = qs[:max_num]
-        captures = list(qs)
-        return captures
+            # Ensure the queryset is limited to the project
+            qs = qs.filter(project=self.project)
+            qs = sample_captures_by_interval(minute_interval, qs=qs, max_num=max_num)
+        return qs
 
     def sample_interval(
         self, minute_interval: int = 10, exclude_events: list[int] = [], deployment_id: int | None = None
@@ -2692,19 +2741,20 @@ class SourceImageCollection(BaseModel):
         if exclude_events:
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
-        return sample_captures_by_interval(minute_interval, qs)
+        qs = qs.filter(project=self.project)
+        return sample_captures_by_interval(minute_interval, qs=qs)
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_position(position, qs)
+        return sample_captures_by_position(position, qs=qs)
 
     def sample_nth(self, nth: int):
         """Sample every nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_nth(nth, qs)
+        return sample_captures_by_nth(nth, qs=qs)
 
     def sample_random_from_each_event(self, num_each: int = 10):
         """Sample n random source images from each event in the project."""

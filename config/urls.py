@@ -1,15 +1,19 @@
+from urllib.parse import urljoin
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 from django.views import defaults as default_views
-from django.views.generic import TemplateView
+from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+API_ROOT = "api/v2/"
+
 urlpatterns = [
-    path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
-    path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),
+    # Redirect homepage to API_ROOT
+    path("", RedirectView.as_view(url=API_ROOT, permanent=False), name="home"),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
     # Your stuff: custom urls includes go here
@@ -21,11 +25,11 @@ if settings.DEBUG:
 # API URLS
 urlpatterns += [
     # API base url
-    path("api/v2/", include("config.api_router", namespace="api")),
+    path(API_ROOT, include("config.api_router", namespace="api")),
     # OpenAPI Docs
-    path("api/v2/schema/", SpectacularAPIView.as_view(api_version="api"), name="api-schema"),
+    path(urljoin(API_ROOT, "schema/"), SpectacularAPIView.as_view(api_version="api"), name="api-schema"),
     path(
-        "api/v2/docs/",
+        urljoin(API_ROOT, "docs/"),
         SpectacularSwaggerView.as_view(url_name="api-schema"),
         name="api-docs",
     ),

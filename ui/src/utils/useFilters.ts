@@ -19,7 +19,7 @@ const AVAILABLE_FILTERS = [
   },
   {
     label: 'Taxon',
-    field: 'determination',
+    field: 'taxon',
   },
 ]
 

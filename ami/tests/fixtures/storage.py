@@ -4,8 +4,8 @@ import logging
 from django.conf import settings
 
 from ami.main.models import Project, S3StorageSource
+from ami.tests.fixtures.images import GeneratedTestFrame, generate_moth_series
 from ami.utils import s3
-from tests.fixtures.images import GeneratedTestFrame, generate_moth_series
 
 logger = logging.getLogger(__name__)
 

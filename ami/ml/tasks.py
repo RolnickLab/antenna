@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
     from ami.jobs.models import Job
     from ami.main.models import SourceImage
-    from ami.ml.models.pipeline import process_images, save_results
+    from ami.ml.models.pipeline import Pipeline, process_images, save_results
 
     job = None
     try:
@@ -22,8 +22,10 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
         pass
 
     images = SourceImage.objects.filter(pk__in=image_ids)
+    pipeline = Pipeline.objects.get(slug=pipeline_choice)
+
     results = process_images(
-        pipeline_choice=pipeline_choice,
+        pipeline=pipeline,
         endpoint_url=endpoint_url,
         images=images,
         job_id=job_id,

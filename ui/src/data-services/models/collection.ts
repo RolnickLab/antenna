@@ -34,6 +34,20 @@ export class Collection extends Entity {
   }
 
   get numImages(): number | undefined {
-    return this._data.source_image_count
+    return this._data.source_images_count
+  }
+
+  get numImagesWithDetections(): number | undefined {
+    return this._data.source_images_with_detections_count
+  }
+
+  get numImagesWithDetectionsLabel(): string {
+    const pct =
+      this.numImagesWithDetections && this.numImages
+        ? (this.numImagesWithDetections / this.numImages) * 100
+        : 0
+    return `${this.numImagesWithDetections?.toLocaleString()} / ${this.numImages?.toLocaleString()} (${pct.toFixed(
+      0
+    )}%)`
   }
 }

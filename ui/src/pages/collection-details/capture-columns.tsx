@@ -19,15 +19,17 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     id: 'thumbnail',
     name: translate(STRING.FIELD_LABEL_THUMBNAIL),
     renderCell: (item: Capture) => {
-      const detailsRoute = getAppRoute({
-        to: APP_ROUTES.SESSION_DETAILS({
-          projectId: projectId,
-          sessionId: item.sessionId,
-        }),
-        filters: {
-          capture: item.id,
-        },
-      })
+      const detailsRoute = item.sessionId
+        ? getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId,
+              sessionId: item.sessionId,
+            }),
+            filters: {
+              capture: item.id,
+            },
+          })
+        : undefined
 
       return (
         <ImageTableCell
@@ -68,11 +70,16 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     sortField: 'event__start',
-    renderCell: (item: Capture) => (
-      <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
-        <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
-      </Link>
-    ),
+    renderCell: (item: Capture) =>
+      item.sessionId ? (
+        <Link
+          to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}
+        >
+          <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
+        </Link>
+      ) : (
+        <BasicTableCell />
+      ),
   },
   {
     id: 'detections',

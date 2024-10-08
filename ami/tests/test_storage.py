@@ -5,9 +5,9 @@ import requests
 from django.test import TestCase
 
 from ami.main.models import S3StorageSource
+from ami.tests.fixtures.main import create_captures_from_files, setup_test_project
+from ami.tests.fixtures.storage import S3_TEST_CONFIG
 from ami.utils import s3
-from tests.fixtures.main import create_captures_from_files, setup_test_project
-from tests.fixtures.storage import S3_TEST_CONFIG
 
 logger = logging.getLogger(__name__)
 
