@@ -33,34 +33,33 @@ pipeline = PipelineConfig(
 
 pipelines = [pipeline]
 
-# Make slash and no slash endpoints work:
-
 
 @app.get("/")
 async def root():
     return fastapi.responses.RedirectResponse("/docs")
 
 
-# @app.get("/info/{model_name}")
-# async def get_model_info(model_name: str):
-#     if p in pipelines:
-#         return models[model_name]
-#     else:
-#         raise Exception("Model not found")
-
-
-@app.get("/info")
+@app.get("/info", tags=["services"])
 async def info() -> list[PipelineConfig]:
     return pipelines
 
 
-# Check if the server online & ready to process data -- @TODO: /livez, /readyz
-@app.get("/healthcheck")
-async def healthcheck():
-    return "OK"
+# Check if the server is online
+@app.get("/livez", tags=["health checks"])
+async def livez():
+    return fastapi.responses.JSONResponse(status_code=200, content={"status": "ok"})
 
 
-@app.post("/pipeline/process")  # @TODO: Future change use @app.post("/{pipeline_name}/process/")
+# Check if the server is ready to process data
+@app.get("/readyz", tags=["health checks"])
+async def readyz():
+    if pipelines:
+        return fastapi.responses.JSONResponse(status_code=200, content={"status": "ok"})
+    else:
+        return fastapi.responses.JSONResponse(status_code=503, content={"status": "pipelines unavailable"})
+
+
+@app.post("/pipeline/process", tags=["services"])  # @TODO: Future change use @app.post("/{pipeline_name}/process/")
 async def process(data: PipelineRequest) -> PipelineResponse:
     source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
