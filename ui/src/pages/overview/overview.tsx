@@ -14,6 +14,7 @@ import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
 import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
+import { Helmet } from 'react-helmet-async'
 
 export const Overview = () => {
   const { selectedView, setSelectedView } = useSelectedView('summary')
@@ -38,6 +39,9 @@ export const Overview = () => {
 
   return (
     <>
+      <Helmet>
+        <meta property="og:image" content={project?.image} />
+      </Helmet>
       <div className={styles.about}>
         <div className={styles.aboutImage}>
           {project.image ? (
