@@ -25,6 +25,7 @@ import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { ReactNode, useContext, useEffect } from 'react'
+import { Helmet, HelmetProvider } from 'react-helmet-async'
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   BreadcrumbContext,
@@ -45,6 +46,13 @@ const INTRO_CONTAINER_ID = 'intro'
 
 export const App = () => (
   <AppProviders>
+    <Helmet>
+      <title>Antenna Data Platform</title>
+      <meta
+        name="description"
+        content="An interdisciplinary platform to upload, classify, and analyse in-the-wild images of invertebrates for research and conservation efforts."
+      />
+    </Helmet>
     <div id={APP_CONTAINER_ID} className={styles.wrapper}>
       <div id={INTRO_CONTAINER_ID}>
         <Header />
@@ -92,17 +100,19 @@ export const App = () => (
 )
 
 const AppProviders = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={queryClient}>
-    <CookieConsentContextProvider>
-      <UserPreferencesContextProvider>
-        <UserContextProvider>
-          <UserInfoContextProvider>
-            <BreadcrumbContextProvider>{children}</BreadcrumbContextProvider>
-          </UserInfoContextProvider>
-        </UserContextProvider>
-      </UserPreferencesContextProvider>
-    </CookieConsentContextProvider>
-  </QueryClientProvider>
+  <HelmetProvider>
+    <QueryClientProvider client={queryClient}>
+      <CookieConsentContextProvider>
+        <UserPreferencesContextProvider>
+          <UserContextProvider>
+            <UserInfoContextProvider>
+              <BreadcrumbContextProvider>{children}</BreadcrumbContextProvider>
+            </UserInfoContextProvider>
+          </UserContextProvider>
+        </UserPreferencesContextProvider>
+      </CookieConsentContextProvider>
+    </QueryClientProvider>
+  </HelmetProvider>
 )
 
 const AuthContainer = () => (
@@ -154,24 +164,14 @@ const ProjectContainer = () => {
     }
   }, [projectDetails.project])
 
-  useEffect(() => {
-    const meta = document.getElementsByTagName('meta').namedItem('description')
-    const newDescription = projectDetails.project?.description
-    const prevDescription = meta?.content
-
-    if (meta && newDescription) {
-      meta.content = newDescription
-    }
-
-    return () => {
-      if (meta && prevDescription) {
-        meta.content = prevDescription
-      }
-    }
-  }, [projectDetails.project])
-
   return (
     <>
+      <Helmet>
+        <meta
+          name="description"
+          content={projectDetails.project?.description}
+        />
+      </Helmet>
       <Portal.Root container={document.getElementById(INTRO_CONTAINER_ID)}>
         <Menu />
       </Portal.Root>

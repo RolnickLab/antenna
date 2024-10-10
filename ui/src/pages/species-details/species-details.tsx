@@ -9,6 +9,7 @@ import {
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { useMemo } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -17,6 +18,13 @@ import styles from './species-details.module.scss'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
+
+  const image = useMemo(() => {
+    if (species.occurrences.length) {
+      const occurrenceInfo = species.getOccurrenceInfo(species.occurrences[0])
+      return occurrenceInfo?.image.src
+    }
+  }, [species])
 
   const blueprintItems = useMemo(
     () =>
@@ -57,6 +65,9 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
 
   return (
     <div className={styles.wrapper}>
+      <Helmet>
+        <meta name="og:image" content={image} />
+      </Helmet>
       <div className={styles.header}>
         <TaxonInfo
           taxon={species}
