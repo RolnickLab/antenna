@@ -144,7 +144,7 @@ const PipelinesPicker = ({
     <Select
       loading={isLoading}
       options={pipelines.map((p) => ({
-        value: p.id,
+        value: String(p.id),
         label: p.name,
       }))}
       placeholder="Pipeline"

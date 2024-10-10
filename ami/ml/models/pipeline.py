@@ -173,7 +173,17 @@ def process_images(
     )
 
     resp = requests.post(endpoint_url, json=request_data.dict())
-    resp.raise_for_status()
+    if not resp.ok:
+        if job:
+            try:
+                msg = resp.json()["detail"]
+            except Exception:
+                msg = resp.content
+
+            job.logger.error(msg)
+
+        resp.raise_for_status()
+
     results = resp.json()
     results = PipelineResponse(**results)
 
