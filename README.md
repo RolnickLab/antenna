@@ -148,7 +148,6 @@ dot -Tsvg  models.dot > models.svg
 Add the minio and ml_backend hostname to /etc/hosts
 ```
 127.0.0.1 minio
-127.0.0.1 ml_backend
 ```
 Start the ml backend using `docker compose up`.
 ```
