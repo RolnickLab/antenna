@@ -403,7 +403,7 @@ class Pipeline(BaseModel):
             "The backend implementation of the pipeline may process data in any way."
         ),
     )
-    projects = models.ManyToManyField("main.Project", related_name="pipelines")
+    projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
     endpoint_url = models.CharField(max_length=1024)
 
     class Meta:
