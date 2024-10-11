@@ -17,7 +17,6 @@ const Plot = ({
   orientation,
   type = 'bar',
   showRangeSlider,
-  hovertemplate,
 }: PlotProps) => (
   <div
     className={classNames(styles.plot, { [styles.round]: data.x.length >= 3 })}

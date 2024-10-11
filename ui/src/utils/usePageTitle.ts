@@ -30,9 +30,5 @@ export const usePageTitle = () => {
     setPageTitle(pageTitle)
   }, [pageBreadcrumb, projectBreadcrumb, mainBreadcrumb, detailBreadcrumb])
 
-  useEffect(() => {
-    document.title = pageTitle
-  }, [pageTitle])
-
   return pageTitle
 }

@@ -4,6 +4,7 @@ import { DeploymentDetails } from 'data-services/models/deployment-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import _ from 'lodash'
 import { useContext, useEffect, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
@@ -68,6 +69,9 @@ const DeploymentDetailsDialogContent = ({
 
   return (
     <>
+      <Helmet>
+        <meta name="og:image" content={deployment.image} />
+      </Helmet>
       {!isEditing ? (
         <DeploymentDetailsInfo
           deployment={deployment}
