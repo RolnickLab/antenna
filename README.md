@@ -143,6 +143,16 @@ docker compose run --rm django python manage.py graph_models -a -o models.dot --
 dot -Tsvg  models.dot > models.svg
 ```
 
+### ML Backend
+
+Add the minio and ml_backend hostname to /etc/hosts
+```
+127.0.0.1 minio
+127.0.0.1 ml_backend
+```
+Start the ml backend using `docker compose up`.
+```
+
 ## Project Data Storage
 
 Each project manages its own external data storage where the AMI Platform will index and process images. This is most typically a public or private S3 bucket at a cloud provider that is not AWS. For example
