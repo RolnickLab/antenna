@@ -404,7 +404,7 @@ class Pipeline(BaseModel):
         ),
     )
     projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
-    endpoint_url = models.CharField(max_length=1024)
+    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
 
     class Meta:
         ordering = ["name", "version"]
