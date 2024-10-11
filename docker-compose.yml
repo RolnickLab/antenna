@@ -12,6 +12,13 @@ volumes:
 
 
 services:
+  ml_backend:
+    build:
+      context: ./ml_backends/example
+    volumes:
+      - ./ml_backends/example/:/app:ml_backend
+    ports:
+      - "2000:2000"
   django: &django
     build:
       context: .
@@ -24,6 +31,7 @@ services:
       - redis
       - mailhog
       - minio-init
+      - ml_backend
     volumes:
       - .:/app:z
     env_file:

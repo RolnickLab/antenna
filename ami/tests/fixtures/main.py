@@ -48,7 +48,7 @@ def create_ml_pipeline(project):
             ],
             "projects": {"name": project.name},
             # @TODO Replace with extra hosts
-            "endpoint_url": "https://03f9-24-114-29-178.ngrok-free.app/pipeline/process",
+            "endpoint_url": "http://ml_backend:2000/pipeline/process",
         },
     ]
 
