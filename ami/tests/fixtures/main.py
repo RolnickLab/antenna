@@ -47,7 +47,6 @@ def create_ml_pipeline(project):
                 {"name": "Always Moth Classifier", "key": 3},
             ],
             "projects": {"name": project.name},
-            # @TODO Replace with extra hosts
             "endpoint_url": "http://ml_backend:2000/pipeline/process",
         },
     ]
@@ -63,13 +62,15 @@ def create_ml_pipeline(project):
         if created:
             logger.info(f'Successfully created {pipeline_data["name"]}.')
         else:
-            logger.warning(f'Could not create {pipeline_data["name"]}.')
+            logger.info(f'Using existing pipeline {pipeline_data["name"]}.')
 
         for algorithm_data in pipeline_data["algorithms"]:
             algorithm, _ = Algorithm.objects.get_or_create(name=algorithm_data["name"], key=algorithm_data["key"])
             pipeline.algorithms.add(algorithm)
 
         pipeline.save()
+
+    return pipeline
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
