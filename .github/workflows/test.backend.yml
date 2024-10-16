@@ -39,9 +39,6 @@ jobs:
       - name: Checkout Code Repository
         uses: actions/checkout@v4
 
-      - name: Test build ml_backend service
-        run: docker compose -f docker-compose.ci.yml build ml_backend
-
       - name: Build the Stack
         run: docker compose -f docker-compose.ci.yml build
 
