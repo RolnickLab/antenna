@@ -1,4 +1,11 @@
 services:
+  ml_backend:
+    build:
+      context: ./ml_backends/example
+    volumes:
+      - ./ml_backends/example/:/app:ml_backend
+    ports:
+      - "2000:2000"
   django: &django
     build:
       context: .
