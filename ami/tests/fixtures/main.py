@@ -125,12 +125,13 @@ def create_captures(
 
 
 def create_captures_from_files(
-    deployment: Deployment,
+    deployment: Deployment, skip_existing=True
 ) -> list[tuple[SourceImage, GeneratedTestFrame]]:
     assert deployment.data_source is not None
     frame_data = populate_bucket(
         config=deployment.data_source.config,
         subdir=f"deployment_{deployment.pk}",
+        skip_existing=skip_existing,
     )
 
     deployment.sync_captures()
