@@ -15,6 +15,7 @@ services:
       - postgres
       - redis
       - minio-init
+      - ml_backend
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
