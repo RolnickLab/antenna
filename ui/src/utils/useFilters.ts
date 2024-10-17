@@ -21,6 +21,10 @@ const AVAILABLE_FILTERS = [
     label: 'Taxon',
     field: 'taxon',
   },
+  {
+    label: 'Capture collection',
+    field: 'collection',
+  },
 ]
 
 export const useFilters = () => {

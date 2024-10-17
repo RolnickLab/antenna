@@ -7,6 +7,7 @@ type FilterType =
   | 'capture'
   | 'taxon'
   | 'timestamp'
+  | 'collection'
 
 export const getAppRoute = ({
   to,
