@@ -2615,6 +2615,22 @@ class SourceImageCollectionQuerySet(models.QuerySet):
             )
         )
 
+    def with_occurrences_count(self):
+        return self.annotate(
+            occurrences_count=models.Count(
+                "images__detections__occurrence",
+                distinct=True,
+            )
+        )
+
+    def with_taxa_count(self):
+        return self.annotate(
+            taxa_count=models.Count(
+                "images__detections__occurrence__determination",
+                distinct=True,
+            )
+        )
+
 
 class SourceImageCollectionManager(models.Manager):
     def get_queryset(self) -> SourceImageCollectionQuerySet:
@@ -2663,6 +2679,14 @@ class SourceImageCollection(BaseModel):
     def source_images_with_detections_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
         # return self.images.filter(detections__isnull=False).count()
+        return None
+
+    def occurrences_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
+
+    def taxa_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
         return None
 
     def get_queryset(self):

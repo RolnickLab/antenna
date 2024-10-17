@@ -536,6 +536,8 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         SourceImageCollection.objects.all()
         .with_source_images_count()  # type: ignore
         .with_source_images_with_detections_count()
+        .with_occurrences_count()
+        .with_taxa_count()
         .prefetch_related("jobs")
     )
     serializer_class = SourceImageCollectionSerializer
@@ -721,6 +723,22 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
             return queryset
 
 
+class OccurrenceCollectionFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences by the collection their detections source images belong to.
+    """
+
+    query_param = "collection"
+
+    def filter_queryset(self, request, queryset, view):
+        collection_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        if collection_id:
+            # Here the queryset is the Occurrence queryset
+            return queryset.filter(detections__source_image__collections=collection_id)
+        else:
+            return queryset
+
+
 class OccurrenceViewSet(DefaultViewSet):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -730,8 +748,16 @@ class OccurrenceViewSet(DefaultViewSet):
 
     serializer_class = OccurrenceSerializer
     # filter_backends = [CustomDeterminationFilter, DjangoFilterBackend, NullsLastOrderingFilter, SearchFilter]
-    filter_backends = DefaultViewSetMixin.filter_backends + [CustomOccurrenceDeterminationFilter]
-    filterset_fields = ["event", "deployment", "project", "determination__rank"]
+    filter_backends = DefaultViewSetMixin.filter_backends + [
+        CustomOccurrenceDeterminationFilter,
+        OccurrenceCollectionFilter,
+    ]
+    filterset_fields = [
+        "event",
+        "deployment",
+        "project",
+        "determination__rank",
+    ]
     ordering_fields = [
         "created_at",
         "updated_at",

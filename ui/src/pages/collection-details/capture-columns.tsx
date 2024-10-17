@@ -89,7 +89,14 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Capture) => (
-      <BasicTableCell value={item.numDetections} />
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
+          filters: { capture: item.id},
+        })}
+      >
+      <BasicTableCell value={item.numDetections} theme={CellTheme.Bubble} />
+      </Link>
     ),
   },
 ]
