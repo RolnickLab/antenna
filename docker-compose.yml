@@ -10,6 +10,7 @@ volumes:
     driver: local
   node_modules:
 
+
 services:
   django: &django
     build:
@@ -23,6 +24,7 @@ services:
       - redis
       - mailhog
       - minio-init
+      - ml_backend
     volumes:
       - .:/app:z
     env_file:
@@ -125,7 +127,7 @@ services:
       # - "9000:9000"
       - "9001:9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: [ "CMD", "mc", "ready", "local" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -146,3 +148,11 @@ services:
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
+
+  ml_backend:
+    build:
+      context: ./ml_backends/example
+    volumes:
+      - ./ml_backends/example/:/app:ml_backend
+    ports:
+      - "2000:2000"
