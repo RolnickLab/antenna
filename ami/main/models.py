@@ -2676,25 +2676,19 @@ class SourceImageCollectionQuerySet(models.QuerySet):
             )
         )
 
-    def with_occurrences_count(self, classification_threshold: float = 0):
+    def with_occurrences_count(self):
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
-                filter=models.Q(
-                    images__detections__occurrence__determination_score__gte=classification_threshold,
-                ),
                 distinct=True,
             )
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0):
+    def with_taxa_count(self):
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",
                 distinct=True,
-                filter=models.Q(
-                    images__detections__occurrence__determination_score__gte=classification_threshold,
-                ),
             )
         )
 
