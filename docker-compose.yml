@@ -12,13 +12,6 @@ volumes:
 
 
 services:
-  ml_backend:
-    build:
-      context: ./ml_backends/example
-    volumes:
-      - ./ml_backends/example/:/app:ml_backend
-    ports:
-      - "2000:2000"
   django: &django
     build:
       context: .
@@ -155,3 +148,11 @@ services:
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
+
+  ml_backend:
+    build:
+      context: ./ml_backends/example
+    volumes:
+      - ./ml_backends/example/:/app:ml_backend
+    ports:
+      - "2000:2000"
