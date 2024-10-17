@@ -153,5 +153,5 @@ class PipelineConfig(pydantic.BaseModel):
 
     name: str
     slug: str
-    description: str | None = None  # @TODO: python type annotations
+    description: str | None = None
     stages: list[PipelineStage] = []

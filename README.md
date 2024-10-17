@@ -26,7 +26,6 @@ pre-commit install  # Install the hook for our project
 
 If using VS Code, install the [formatting extensions](.vscode/extensions.json) that are automatically suggested for the project (e.g. black). Format-on-save should be turned on by default from the project's [vscode settings file](.vscode/settings.json).
 
-
 ### Frontend
 
 #### Dependencies
@@ -87,7 +86,7 @@ pip install -r requirements/local.txt
 
     docker compose logs -f
 
-#####  Create a super user account:
+##### Create a super user account:
 
     docker compose run --rm django python manage.py createsuperuser
 
@@ -145,17 +144,15 @@ dot -Tsvg  models.dot > models.svg
 
 ### ML Backend
 
-Add the minio and ml_backend hostname to /etc/hosts
+Add the minio hostname to /etc/hosts.
+
 ```
 127.0.0.1 minio
-```
-Start the ml backend using `docker compose up`.
 ```
 
 ## Project Data Storage
 
-Each project manages its own external data storage where the AMI Platform will index and process images. This is most typically a public or private S3 bucket at a cloud provider that is not AWS. For example
-the Swift object storage service at Compute Canada or a university's own storage service.
+Each project manages its own external data storage where the AMI Platform will index and process images. This is most typically a public or private S3 bucket at a cloud provider that is not AWS. For example, the Swift object storage service at Compute Canada or a university's own storage service.
 
 To test the S3 storage backend locally, Minio is configured to run as part of the docker compose stack.
 
