@@ -17,7 +17,7 @@ CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS
 
 # This is the hostname for the frontend server
 EXTERNAL_HOSTNAME=localhost:3000
-DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:3000,
+DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:4000
 
 MINIO_ENDPOINT=http://minio:9000
 MINIO_ROOT_USER=amistorage
