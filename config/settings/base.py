@@ -100,6 +100,7 @@ LOCAL_APPS = [
     "ami.jobs",
     "ami.ml",
     "ami.labelstudio",
+    "ami.exports",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -333,8 +334,8 @@ CORS_URLS_REGEX = r"^/api/.*$"
 CSRF_TRUSTED_ORIGINS = env.list(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
     default=[
-        "https://api.dev.insectai.org",
-        "http://api.dev.insectai.org",
+        "http://localhost:4000/",
+        "http://localhost:8000/",
         EXTERNAL_BASE_URL,
     ],  # type: ignore[no-untyped-call]
 )
