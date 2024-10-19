@@ -17,14 +17,14 @@ class Command(BaseCommand):
     help = "Export data by capture"
 
     def handle(self, *args, **options):
-        # for i, batch in enumerate(by_capture.get_data_in_batches()):
+        # for i, batch in enumerate(by_capture.get_data_in_batches())
         #     # print(f"Processing batch {batch}")
         #     print(f"Processing batch {i}")
 
         fname = write_export(
             "detections_by_determination_and_capture",
-            by_capture.DetectionsByDeterminatinonAndCaptureSerializer,
-            by_capture.get_data_in_batches,
+            Serializer=by_capture.DetectionsByDeterminationAndCaptureTabularSerializer,
+            QuerySet=by_capture.get_queryset().filter(occurrence__project=85).filter(source_image__collections=82),
             format="csv",
         )
         # get full path to the file
