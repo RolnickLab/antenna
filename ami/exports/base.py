@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import serializers
 from rest_framework.views import APIView
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,6 @@ class BaseExportView(APIView):
 def get_data_in_batches(QuerySet: models.QuerySet, Serializer: Type[serializers.Serializer], batch_size=1000):
     items = QuerySet.iterator(chunk_size=batch_size)
     batch = []
-    logger.info(f"QuerySet: {QuerySet}")
     for i, item in enumerate(items):
         # logger.info(f"Processing item {i}")
         try:
@@ -47,10 +47,8 @@ def get_data_in_batches(QuerySet: models.QuerySet, Serializer: Type[serializers.
             serializer = Serializer(item)
             item_data = serializer.data
             batch.append(item_data)
-            logger.info(item_data)
 
             if len(batch) >= batch_size:
-                logger.info(f"Yielding batch {i}")
                 yield batch
                 batch = []
         except Exception as e:
@@ -60,37 +58,27 @@ def get_data_in_batches(QuerySet: models.QuerySet, Serializer: Type[serializers.
         yield batch
 
 
-def write_export(report_name, Serializer: Type[serializers.Serializer], QuerySet: models.QuerySet, format="csv"):
+def write_export(report_name, Serializer: Type[serializers.Serializer], QuerySet: models.QuerySet):
     timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")
-    file_name = f"{slugify(report_name)}-{timestamp}.{format}"
-    # file_path = f"exports/{file_name}"
+    file_name = f"{slugify(report_name)}-{timestamp}.csv"
     file_path = file_name
 
     try:
         with default_storage.open(file_path, "w") as file:
-            if format == "csv":
-                writer = csv.writer(file)
-                writer.writerow(Serializer().fields.keys())  # Write header
+            writer = csv.writer(file)
+            writer.writerow(Serializer().fields.keys())  # Write header
+
+            # Calculate total items for progress bar
+            total_items = QuerySet.count()
+
+            with tqdm(total=total_items, desc="Exporting data", unit="items") as pbar:
                 for batch in get_data_in_batches(Serializer=Serializer, QuerySet=QuerySet):
                     for item in batch:
-                        print(item)
                         writer.writerow(item.values())
-            else:  # JSON
-                file.write("[")
-                first = True
-                for batch in get_data_in_batches(Serializer=Serializer, QuerySet=QuerySet):
-                    for item in batch:
-                        if not first:
-                            file.write(",")
-                        json.dump(item, file)
-                        first = False
-                file.write("]")
+                        pbar.update(1)
 
-        # Cache the file path
-        cache.set(f"export_{report_name}_{format}", file_path, 3600)  # Cache for 1 hour
-
-        logger.info(f"Export generated successfully: {file_path}")
+        logger.info(f"CSV export generated successfully: {file_path}")
         return file_path
     except Exception as e:
-        logger.error(f"Error generating export: {str(e)}")
+        logger.error(f"Error generating CSV export: {str(e)}")
         raise

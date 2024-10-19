@@ -24,8 +24,9 @@ class Command(BaseCommand):
         fname = write_export(
             "detections_by_determination_and_capture",
             Serializer=by_capture.DetectionsByDeterminationAndCaptureTabularSerializer,
-            QuerySet=by_capture.get_queryset().filter(occurrence__project=85).filter(source_image__collections=82),
-            format="csv",
+            QuerySet=by_capture.get_queryset()
+            .filter(occurrence__project=85)
+            .filter(source_image__collections__in=[82]),
         )
         # get full path to the file
         print(f"Exported to {fname}")
