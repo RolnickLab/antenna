@@ -7,7 +7,7 @@ import logging
 
 from django.core.management.base import BaseCommand
 
-from ami.exports import by_capture
+from ami.exports import by_detection
 from ami.exports.base import write_export
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,9 @@ class Command(BaseCommand):
         #     print(f"Processing batch {i}")
 
         fname = write_export(
-            "detections_by_determination_and_capture",
-            Serializer=by_capture.DetectionsByDeterminationAndCaptureTabularSerializer,
-            QuerySet=by_capture.get_queryset()
+            "detections",
+            Serializer=by_detection.DetectionsTabularSerializer,
+            QuerySet=by_detection.get_queryset()
             .filter(occurrence__project=85)
             .filter(source_image__collections__in=[82, 79]),
             # .filter(source_image__collections__in=[82]),
