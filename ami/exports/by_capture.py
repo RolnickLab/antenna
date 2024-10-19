@@ -33,6 +33,7 @@ This export should contain the following fields:
 import logging
 import typing
 
+from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import models
 from rest_framework import serializers
 
@@ -46,13 +47,9 @@ class DetectionsByDeterminationAndCaptureTabularSerializer(serializers.Serialize
     Specify the field names, order of fields, and the format of each field value for the export.
     """
 
-    detection_id = serializers.IntegerField(source="id")
-    occurrence_id = serializers.IntegerField()
     capture_id = serializers.IntegerField(source="source_image_id")
     latitude = serializers.FloatField()
     longitude = serializers.FloatField()
-    station_name = serializers.CharField()
-    station_id = serializers.IntegerField()
     datetime_observed = serializers.DateTimeField()
     # date_observed = serializers.DateField()
     # time_observed = serializers.TimeField()
@@ -61,17 +58,21 @@ class DetectionsByDeterminationAndCaptureTabularSerializer(serializers.Serialize
     session_end_datetime = serializers.DateTimeField()
     session_duration = serializers.DurationField()
     # date_observed = serializers.DateField(# Views, serializers and queries for the by_capture export type
-    determination_score = serializers.FloatField()
-    # taxon_scientific_name = serializers.CharField()
-    # taxon_rank = serializers.CharField()
     taxon_id = serializers.IntegerField()
     taxon_name = serializers.CharField()
+    taxon_rank = serializers.CharField()
+    taxon_count = serializers.IntegerField()
+    determination_score_max = serializers.FloatField()
+    detection_ids = serializers.CharField()
+    occurrence_ids = serializers.CharField()
+    station_name = serializers.CharField()
+    station_id = serializers.IntegerField()
     device_id = serializers.IntegerField()
     device_name = serializers.CharField()
 
     def to_representation(self, instance: typing.Any) -> dict[str, typing.Any]:
         data = super().to_representation(instance)
-        taxon: Taxon = instance.occurrence.determination
+        taxon: Taxon = Taxon.objects.get(id=data["taxon_id"])
 
         for taxon_rank in taxon.parents_json:
             field_name = f"taxon_{taxon_rank.rank.name.lower()}"
@@ -95,19 +96,11 @@ def get_queryset():
             "occurrence__determination",
             "source_image",
         )
-        .prefetch_related()
-        # .values(
-        #     "id",
-        #     "occurrence_id",
-        #     "source_image_id",
-        #     "source_image__timestamp",
-        #     "source_image__deployment__latitude",
-        #     "source_image__deployment__longitude",
-        #     "occurrence__determination_id",
-        #     "occurrence__determination_score",
-        # )
+        .values(
+            "source_image_id",
+            "occurrence__determination_id",
+        )
         .annotate(
-            detection_id=models.F("id"),
             # occurrence_id=models.F("occurrence_id"),
             capture_id=models.F("source_image_id"),
             datetime_observed=models.F("source_image__timestamp"),
@@ -120,13 +113,15 @@ def get_queryset():
             session_end_datetime=models.F("source_image__event__end"),
             # Calculate session duration
             session_duration=models.F("source_image__event__end") - models.F("source_image__event__start"),
-            taxon_scientific_name=models.F("occurrence__determination__display_name"),
-            taxon_rank=models.F("occurrence__determination__rank"),
             station_name=models.F("source_image__deployment__name"),
             station_id=models.F("source_image__deployment_id"),
             taxon_id=models.F("occurrence__determination_id"),
             taxon_name=models.F("occurrence__determination__name"),
-            determination_score=models.F("occurrence__determination_score"),
+            taxon_rank=models.F("occurrence__determination__rank"),
+            determination_score_max=models.Max("occurrence__determination_score"),
+            taxon_count=models.Count("id"),
+            detection_ids=ArrayAgg("id"),
+            occurrence_ids=ArrayAgg("occurrence_id"),
             device_id=models.F("source_image__deployment__device_id"),
             device_name=models.F("source_image__deployment__device__name"),
             # classification_algorithm_id=models.F("occurrence__determination__classification_algorithm_id"),
@@ -137,4 +132,5 @@ def get_queryset():
             # verification_user_ids=F("occurrence__source_image__collection__session__device__verification_users"),
         )
         # Group the detections by capture and add a count of detections in each capture
+        .order_by("source_image_id", "-taxon_count", "-determination_score_max")
     )
