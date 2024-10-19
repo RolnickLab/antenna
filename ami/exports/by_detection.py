@@ -38,7 +38,7 @@ class DetectionsTabularSerializer(serializers.Serializer):
 
     def to_representation(self, instance: typing.Any) -> dict[str, typing.Any]:
         data = super().to_representation(instance)
-        taxon: Taxon = Taxon.objects.get(id=data["taxon_id"])
+        taxon: Taxon = instance.occurrence.determination
 
         for taxon_rank in taxon.parents_json:
             field_name = f"taxon_{taxon_rank.rank.name.lower()}"
