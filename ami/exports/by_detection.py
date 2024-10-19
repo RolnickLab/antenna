@@ -1,7 +1,6 @@
 import logging
 import typing
 
-from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import models
 from django.db.models.functions import TruncDate, TruncTime
 from rest_framework import serializers
@@ -11,7 +10,9 @@ from ami.main.models import Detection, Taxon, TaxonRank
 logger = logging.getLogger(__name__)
 
 
-class DetectionsByDeterminationAndCaptureTabularSerializer(serializers.Serializer):
+class DetectionsTabularSerializer(serializers.Serializer):
+    detection_id = serializers.IntegerField(source="id")
+    occurrence_id = serializers.IntegerField()
     capture_id = serializers.IntegerField(source="source_image_id")
     latitude = serializers.FloatField()
     longitude = serializers.FloatField()
@@ -29,10 +30,7 @@ class DetectionsByDeterminationAndCaptureTabularSerializer(serializers.Serialize
     taxon_id = serializers.IntegerField()
     taxon_name = serializers.CharField()
     taxon_rank = serializers.CharField()
-    taxon_count = serializers.IntegerField()
-    determination_score_max = serializers.FloatField()
-    detection_ids = serializers.CharField()
-    occurrence_ids = serializers.CharField()
+    determination_score = serializers.FloatField()
     station_name = serializers.CharField()
     station_id = serializers.IntegerField()
     device_id = serializers.IntegerField()
@@ -64,10 +62,6 @@ def get_queryset():
             "occurrence__determination",
             "source_image",
         )
-        .values(
-            "source_image_id",
-            "occurrence__determination_id",
-        )
         .annotate(
             capture_id=models.F("source_image_id"),
             datetime_observed=models.F("source_image__timestamp"),
@@ -88,12 +82,10 @@ def get_queryset():
             taxon_id=models.F("occurrence__determination_id"),
             taxon_name=models.F("occurrence__determination__name"),
             taxon_rank=models.F("occurrence__determination__rank"),
-            determination_score_max=models.Max("occurrence__determination_score"),
+            determination_score=models.F("occurrence__determination_score"),
             taxon_count=models.Count("id"),
-            detection_ids=ArrayAgg("id"),
-            occurrence_ids=ArrayAgg("occurrence_id"),
             device_id=models.F("source_image__deployment__device_id"),
             device_name=models.F("source_image__deployment__device__name"),
         )
-        .order_by("source_image_id", "-taxon_count", "-determination_score_max")
+        .order_by("source_image_id", "-determination_score")
     )
