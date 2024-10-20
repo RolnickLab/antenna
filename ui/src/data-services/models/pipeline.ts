@@ -35,6 +35,10 @@ export class Pipeline {
     return `${this._pipeline.id}`
   }
 
+  get slug(): string {
+    return `${this._pipeline.slug}`
+  }
+
   get name(): string {
     return this._pipeline.name
   }

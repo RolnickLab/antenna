@@ -13,6 +13,20 @@ from ami.ml.schemas import (
     PipelineResponse,
     SourceImageResponse,
 )
+from ami.tests.fixtures.main import create_captures_from_files, create_ml_pipeline, setup_test_project
+
+
+class TestPipelineWithMLBackend(TestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        self.captures = create_captures_from_files(self.deployment, skip_existing=False)
+        self.test_images = [image for image, frame in self.captures]
+        self.pipeline = create_ml_pipeline(self.project)
+
+    def test_run_pipeline(self):
+        # Send images to ML backend to process and return detections
+        pipeline_response = self.pipeline.process_images(self.test_images)
+        assert pipeline_response.detections
 
 
 class TestPipeline(TestCase):
