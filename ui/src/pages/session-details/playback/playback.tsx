@@ -6,7 +6,7 @@ import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { ActivityPlot } from './activity-plot/activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
@@ -23,6 +23,8 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   } = useUserPreferences()
   const { timeline = [] } = useSessionTimeline(session.id)
   const [showDetections, setShowDetections] = useState(true)
+  const [showDetectionsBelowThreshold, setShowDetectionsBelowThreshold] =
+    useState(false)
   const [snapToDetections, setSnapToDetections] = useState(true)
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
@@ -30,6 +32,20 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   const { capture: activeCapture } = useCaptureDetails(
     activeCaptureId as string
   )
+
+  const detections = useMemo(() => {
+    if (!activeCapture?.detections) {
+      return []
+    }
+
+    if (showDetectionsBelowThreshold) {
+      return activeCapture.detections
+    }
+
+    return activeCapture.detections.filter(
+      (detection) => detection.score >= scoreThreshold
+    )
+  }, [activeCapture, scoreThreshold, showDetectionsBelowThreshold])
 
   if (!session.firstCapture) {
     return null
@@ -52,6 +68,13 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
             <span className={styles.title}>View settings</span>
             <ThresholdSlider />
             <Checkbox
+              id="show-detections-below-threshold"
+              label="Show detections below threshold"
+              checked={showDetectionsBelowThreshold}
+              onCheckedChange={setShowDetectionsBelowThreshold}
+              theme={CheckboxTheme.Neutral}
+            />
+            <Checkbox
               id="show-detections"
               label="Show detection frames"
               checked={showDetections}
@@ -72,7 +95,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         src={activeCapture?.src}
         width={activeCapture?.width ?? session.firstCapture.width}
         height={activeCapture?.height ?? session.firstCapture.height}
-        detections={activeCapture?.detections ?? []}
+        detections={detections}
         showDetections={showDetections}
         threshold={scoreThreshold}
       />
