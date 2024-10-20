@@ -240,12 +240,14 @@ class ProjectListSerializer(DefaultSerializer):
 
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
+    owner = UserNestedSerializer(read_only=True)
 
     class Meta:
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
             "summary_data",  # @TODO move to a 2nd request, it's too slow
+            "owner",
         ]
 
 

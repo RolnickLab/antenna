@@ -129,6 +129,11 @@ class ProjectViewSet(DefaultViewSet):
         else:
             return ProjectSerializer
 
+    def perform_create(self, serializer):
+        # Add current user as project owner
+        assert self.request.user.is_authenticated, "User must be authenticated to create a project."
+        serializer.save(owner=self.request.user)
+
 
 class DeploymentViewSet(DefaultViewSet):
     """

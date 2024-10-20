@@ -102,6 +102,7 @@ class Project(BaseModel):
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField()
     image = models.ImageField(upload_to="projects", blank=True, null=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
 
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
