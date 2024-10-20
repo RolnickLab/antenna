@@ -52,6 +52,7 @@ export class Job {
 
     return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
   }
+
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return
