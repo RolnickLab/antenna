@@ -21,17 +21,26 @@ const AVAILABLE_FILTERS = [
     label: 'Taxon',
     field: 'taxon',
   },
+  {
+    label: 'Score threshold',
+    field: 'classification_threshold',
+  },
 ]
 
-export const useFilters = () => {
+export const useFilters = (
+  defaultFilters?: { field: string; value: string }[]
+) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const filters = AVAILABLE_FILTERS.map((filter) => {
-    const values = searchParams.getAll(filter.field)
+    const value = searchParams.getAll(filter.field)[0]
+    const defaultValue = defaultFilters?.find(
+      (defaultFilter) => defaultFilter.field === filter.field
+    )?.value
 
     return {
       ...filter,
-      value: values[0],
+      value: value ?? defaultValue,
     }
   })
 

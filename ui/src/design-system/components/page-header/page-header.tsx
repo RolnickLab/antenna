@@ -9,22 +9,24 @@ import { Tooltip } from '../tooltip/tooltip'
 import styles from './page-header.module.scss'
 
 interface PageHeaderProps {
-  title: string
-  subTitle: string
-  tooltip?: string
-  isLoading?: boolean
+  defaultFilters?: { field: string; value: string }[]
   isFetching?: boolean
+  isLoading?: boolean
   showAppliedFilters?: boolean
+  subTitle: string
+  title: string
+  tooltip?: string
   children?: ReactNode
 }
 
 export const PageHeader = ({
-  title,
-  subTitle,
-  tooltip,
-  isLoading,
+  defaultFilters,
   isFetching,
+  isLoading,
   showAppliedFilters,
+  subTitle,
+  title,
+  tooltip,
   children,
 }: PageHeaderProps) => (
   <div className={styles.wrapper}>
@@ -44,7 +46,9 @@ export const PageHeader = ({
           </h2>
           {!isLoading && isFetching && <LoadingSpinner size={12} />}
         </div>
-        {showAppliedFilters && <AppliedFilters />}
+        {showAppliedFilters && (
+          <AppliedFilters defaultFilters={defaultFilters} />
+        )}
       </div>
     </div>
     <div className={styles.row}>{children}</div>

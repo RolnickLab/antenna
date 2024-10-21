@@ -23,12 +23,19 @@ import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
 import styles from './species.module.scss'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const Species = () => {
+  const {
+    userPreferences: { scoreThreshold },
+  } = useUserPreferences()
   const { projectId, id } = useParams()
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters()
+  const defaultFilters = [
+    { field: 'classification_threshold', value: `${scoreThreshold}` },
+  ]
+  const { filters } = useFilters(defaultFilters)
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -44,13 +51,14 @@ export const Species = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_SPECIES)}
+        defaultFilters={defaultFilters}
+        isFetching={isFetching}
+        isLoading={isLoading}
+        showAppliedFilters
         subTitle={translate(STRING.RESULTS, {
           total,
         })}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        showAppliedFilters
+        title={translate(STRING.NAV_ITEM_SPECIES)}
       >
         <TaxonFilter />
         <ToggleGroup
