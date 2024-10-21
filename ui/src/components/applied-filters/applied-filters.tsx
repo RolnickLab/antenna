@@ -6,8 +6,12 @@ import { IconType } from 'design-system/components/icon/icon'
 import { useFilters } from 'utils/useFilters'
 import styles from './applied-filters.module.scss'
 
-export const AppliedFilters = () => {
-  const { filters, clearFilter } = useFilters()
+interface AppliedFiltersProps {
+  defaultFilters?: { field: string; value: string }[]
+}
+
+export const AppliedFilters = ({ defaultFilters }: AppliedFiltersProps) => {
+  const { filters, clearFilter } = useFilters(defaultFilters)
 
   return (
     <>
@@ -18,12 +22,17 @@ export const AppliedFilters = () => {
             <span>
               {filter.label} {filter.value}
             </span>
-            <IconButton
-              customClass={styles.clearButton}
-              icon={IconType.Cross}
-              theme={IconButtonTheme.Plain}
-              onClick={() => clearFilter(filter.field)}
-            />
+            {!defaultFilters?.some(
+              (defaultFilter) =>
+                defaultFilter.field === filter.field && defaultFilter.value
+            ) && (
+              <IconButton
+                customClass={styles.clearButton}
+                icon={IconType.Cross}
+                theme={IconButtonTheme.Plain}
+                onClick={() => clearFilter(filter.field)}
+              />
+            )}
           </div>
         ))}
     </>
