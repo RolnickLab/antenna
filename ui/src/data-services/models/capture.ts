@@ -101,6 +101,14 @@ export class Capture {
     return this._capture.detections_count ?? 0
   }
 
+  get numOccurrences(): number {
+    return this._capture.occurrences_count ?? 0
+  }
+
+  get numTaxa(): number {
+    return this._capture.taxa_count ?? 0
+  }
+
   get sessionId(): string | undefined {
     return this._capture.event?.id
   }

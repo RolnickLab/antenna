@@ -21,6 +21,14 @@ const AVAILABLE_FILTERS = [
     label: 'Taxon',
     field: 'taxon',
   },
+  {
+    label: 'Capture collection',
+    field: 'collection',
+  },
+  {
+    label: 'Capture',
+    field: 'detections__source_image',
+  },
 ]
 
 export const useFilters = () => {
