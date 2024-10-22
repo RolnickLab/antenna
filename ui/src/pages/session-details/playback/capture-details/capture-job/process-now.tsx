@@ -20,6 +20,8 @@ export const ProcessNow = ({
   const icon = isSuccess ? IconType.RadixCheck : undefined
   const disabled = !capture || capture.hasJobInProgress || !pipelineId
 
+  // @TODO: hasJobInProgress, replace with if pipeline is healthy/available
+
   if (disabled) {
     return (
       <Button
