@@ -79,14 +79,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Collection) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.SPECIES({ projectId }),
-          filters: { collection: item.id},
-        })}
-      >
-      <BasicTableCell value={item.numTaxa} theme={CellTheme.Bubble} />
-      </Link>
+      <BasicTableCell value={item.numTaxa} />
     ),
   },
   {

@@ -739,6 +739,22 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
+class TaxonCollectionFilter(filters.BaseFilterBackend):
+    """
+    Filter taxa by the collection their occurrences belong to.
+    """
+
+    query_param = "collection"
+
+    def filter_queryset(self, request, queryset, view):
+        collection_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        if collection_id:
+            # Here the queryset is the Taxon queryset
+            return queryset.filter(occurrences__detections__source_image__collections=collection_id)
+        else:
+            return queryset
+
+
 class OccurrenceViewSet(DefaultViewSet):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -900,29 +916,37 @@ class TaxonViewSet(DefaultViewSet):
             "occurrences__deployment"
         )
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
+        collection_id = self.request.query_params.get("collection")
 
-        filter_active = any([occurrence_id, project_id, deployment_id, event_id])
+        filter_active = any([occurrence_id, project_id, deployment_id, event_id, collection_id])
 
+        if not project_id:
+            # Raise a 400 if no project is specified
+            raise api_exceptions.ValidationError(detail="A project must be specified")
+
+        queryset = super().get_queryset()
         try:
+            if project_id:
+                project = Project.objects.get(id=project_id)
+                queryset = queryset.filter(occurrences__project=project)
             if occurrence_id:
                 occurrence = Occurrence.objects.get(id=occurrence_id)
                 # This query does not need the same filtering as the others
-                return queryset.filter(occurrences=occurrence).distinct(), True
-            elif project_id:
-                project = Project.objects.get(id=project_id)
-                queryset = super().get_queryset().filter(occurrences__project=project)
-            elif deployment_id:
+                queryset = queryset.filter(occurrences=occurrence)
+            if deployment_id:
                 deployment = Deployment.objects.get(id=deployment_id)
-                queryset = super().get_queryset().filter(occurrences__deployment=deployment)
-            elif event_id:
+                queryset = queryset.filter(occurrences__deployment=deployment)
+            if event_id:
                 event = Event.objects.get(id=event_id)
-                queryset = super().get_queryset().filter(occurrences__event=event)
+                queryset = queryset.filter(occurrences__event=event)
+            if collection_id:
+                queryset = queryset.filter(occurrences__detections__source_image__collections=collection_id)
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
             raise NotFound(detail=str(e))
 
         # @TODO need to return the models.Q filter used, so we can use it for counts and related occurrences.
-        return queryset, filter_active
+        return queryset.distinct(), filter_active
 
     def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
         """
