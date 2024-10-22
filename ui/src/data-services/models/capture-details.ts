@@ -46,7 +46,7 @@ export class CaptureDetails extends Capture {
   }
 
   get sizeLabel(): string {
-    return `${this._capture.size} B`
+    return `${this._capture.size_display}`
   }
 
   get totalCaptures(): number | undefined {

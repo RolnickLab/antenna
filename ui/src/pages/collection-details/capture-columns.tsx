@@ -83,8 +83,19 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   },
   {
     id: 'detections',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
+    name: 'Detections',
     sortField: 'detections_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Capture) => (
+      <BasicTableCell value={item.numDetections} />
+    ),
+  },
+  {
+    id: 'occurrences',
+    name: 'Occurrences',
+    sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -92,11 +103,22 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { capture: item.id},
+          filters: { detections__source_image: item.id},
         })}
       >
-      <BasicTableCell value={item.numDetections} theme={CellTheme.Bubble} />
+      <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
+    ),
+  },
+  {
+    id: 'taxa',
+    name: 'Taxa',
+    sortField: 'taxa_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Capture) => (
+      <BasicTableCell value={item.numTaxa} />
     ),
   },
 ]

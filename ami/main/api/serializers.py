@@ -841,7 +841,10 @@ class SourceImageListSerializer(DefaultSerializer):
             "width",
             "height",
             "size",
+            "size_display",
             "detections_count",
+            "occurrences_count",
+            "taxa_count",
             "detections",
         ]
 

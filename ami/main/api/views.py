@@ -375,7 +375,12 @@ class SourceImageViewSet(DefaultViewSet):
     GET /captures/1/
     """
 
-    queryset = SourceImage.objects.all()
+    queryset = (
+        SourceImage.objects.all()
+        .with_occurrences_count()  # type: ignore
+        .with_taxa_count()
+        # .with_detections_count()
+    )
 
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment", "deployment__project", "collections"]
@@ -385,6 +390,8 @@ class SourceImageViewSet(DefaultViewSet):
         "timestamp",
         "size",
         "detections_count",
+        "occurrences_count",
+        "taxa_count",
         "deployment__name",
         "event__start",
     ]
@@ -550,6 +557,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         "method",
         "source_images_count",
         "source_images_with_detections_count",
+        "occurrences_count",
     ]
 
     @action(detail=True, methods=["post"], name="populate")
@@ -773,6 +781,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "deployment",
         "project",
         "determination__rank",
+        "detections__source_image",
     ]
     ordering_fields = [
         "created_at",

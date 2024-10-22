@@ -25,6 +25,10 @@ const AVAILABLE_FILTERS = [
     label: 'Capture collection',
     field: 'collection',
   },
+  {
+    label: 'Capture',
+    field: 'detections__source_image',
+  },
 ]
 
 export const useFilters = () => {

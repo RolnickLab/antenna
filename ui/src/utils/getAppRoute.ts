@@ -5,6 +5,7 @@ type FilterType =
   | 'occurrences__event'
   | 'occurrence'
   | 'capture'
+  | 'detections__source_image'
   | 'taxon'
   | 'timestamp'
   | 'collection'
