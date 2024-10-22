@@ -103,10 +103,10 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { detections__source_image: item.id},
+          filters: { detections__source_image: item.id },
         })}
       >
-      <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -117,8 +117,6 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Capture) => (
-      <BasicTableCell value={item.numTaxa} />
-    ),
+    renderCell: (item: Capture) => <BasicTableCell value={item.numTaxa} />,
   },
 ]

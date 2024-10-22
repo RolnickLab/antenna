@@ -50,7 +50,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Collection) => (
-      <BasicTableCell value={item.numImagesWithDetectionsLabel}/>
+      <BasicTableCell value={item.numImagesWithDetectionsLabel} />
     ),
   },
   {
@@ -64,10 +64,10 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { collection: item.id},
+          filters: { collection: item.id },
         })}
       >
-      <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -78,9 +78,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => (
-      <BasicTableCell value={item.numTaxa} />
-    ),
+    renderCell: (item: Collection) => <BasicTableCell value={item.numTaxa} />,
   },
   {
     id: 'updated-at',
