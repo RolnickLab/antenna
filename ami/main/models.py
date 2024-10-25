@@ -1144,6 +1144,35 @@ def delete_source_image(sender, instance, **kwargs):
     instance.deployment.save()
 
 
+class SourceImageQuerySet(models.QuerySet):
+    def with_occurrences_count(self):
+        return self.annotate(
+            occurrences_count=models.Count(
+                "detections__occurrence",
+                filter=models.Q(
+                    detections__occurrence__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD
+                ),
+                distinct=True,
+            )
+        )
+
+    def with_taxa_count(self):
+        return self.annotate(
+            taxa_count=models.Count(
+                "detections__occurrence__determination",
+                filter=models.Q(
+                    detections__occurrence__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD
+                ),
+                distinct=True,
+            )
+        )
+
+
+class SourceImageManager(models.Manager):
+    def get_queryset(self) -> SourceImageQuerySet:
+        return SourceImageQuerySet(self.model, using=self._db)
+
+
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
@@ -1176,6 +1205,8 @@ class SourceImage(BaseModel):
 
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]
+
+    objects = SourceImageManager()
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
@@ -1223,6 +1254,15 @@ class SourceImage(BaseModel):
 
     # backwards compatibility
     url = public_url
+
+    def size_display(self) -> str:
+        """
+        Return the size of the image in human-readable format.
+        """
+        if self.size is None:
+            return filesizeformat(0)
+        else:
+            return filesizeformat(self.size)
 
     def get_detections_count(self) -> int:
         return self.detections.distinct().count()
@@ -1317,6 +1357,14 @@ class SourceImage(BaseModel):
                 self.save()
                 return self.width, self.height
         return None, None
+
+    def occurrences_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
+
+    def taxa_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
 
     def update_calculated_fields(self, save=False):
         if self.path and not self.timestamp:
@@ -2615,6 +2663,25 @@ class SourceImageCollectionQuerySet(models.QuerySet):
             )
         )
 
+    def with_occurrences_count(self):
+        return self.annotate(
+            occurrences_count=models.Count(
+                "images__detections__occurrence",
+                filter=models.Q(
+                    images__detections__occurrence__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD
+                ),
+                distinct=True,
+            )
+        )
+
+    def with_taxa_count(self):
+        return self.annotate(
+            taxa_count=models.Count(
+                "images__detections__occurrence__determination",
+                distinct=True,
+            )
+        )
+
 
 class SourceImageCollectionManager(models.Manager):
     def get_queryset(self) -> SourceImageCollectionQuerySet:
@@ -2663,6 +2730,14 @@ class SourceImageCollection(BaseModel):
     def source_images_with_detections_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
         # return self.images.filter(detections__isnull=False).count()
+        return None
+
+    def occurrences_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
+
+    def taxa_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
         return None
 
     def get_queryset(self):

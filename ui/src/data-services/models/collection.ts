@@ -50,4 +50,12 @@ export class Collection extends Entity {
       0
     )}%)`
   }
+
+  get numOccurrences(): number {
+    return this._data.occurrences_count
+  }
+
+  get numTaxa(): number {
+    return this._data.taxa_count
+  }
 }

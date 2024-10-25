@@ -841,7 +841,10 @@ class SourceImageListSerializer(DefaultSerializer):
             "width",
             "height",
             "size",
+            "size_display",
             "detections_count",
+            "occurrences_count",
+            "taxa_count",
             "detections",
         ]
 
@@ -986,6 +989,8 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "source_images",
             "source_images_count",
             "source_images_with_detections_count",
+            "occurrences_count",
+            "taxa_count",
             "jobs",
             "created_at",
             "updated_at",

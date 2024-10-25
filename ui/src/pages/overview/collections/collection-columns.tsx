@@ -11,6 +11,7 @@ import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialo
 import styles from 'pages/overview/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { PopulateCollection } from './collection-actions'
 import { editableSamplingMethods } from './constants'
@@ -53,10 +54,31 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     ),
   },
   {
-    id: 'created-at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    sortField: 'created_at',
-    renderCell: (item: Collection) => <BasicTableCell value={item.createdAt} />,
+    id: 'occurrences',
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    sortField: 'occurrences_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
+          filters: { collection: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
+    id: 'taxa',
+    name: translate(STRING.FIELD_LABEL_SPECIES),
+    sortField: 'taxa_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => <BasicTableCell value={item.numTaxa} />,
   },
   {
     id: 'updated-at',

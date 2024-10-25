@@ -25,6 +25,14 @@ const AVAILABLE_FILTERS = [
     label: 'Score threshold',
     field: 'classification_threshold',
   },
+  {
+    label: 'Capture collection',
+    field: 'collection',
+  },
+  {
+    label: 'Capture',
+    field: 'detections__source_image',
+  },
 ]
 
 export const useFilters = (

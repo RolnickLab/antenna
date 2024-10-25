@@ -33,6 +33,46 @@ def update_site_settings(**kwargs):
     return site
 
 
+def create_ml_pipeline(project):
+    from ami.ml.models import Algorithm, Pipeline
+
+    pipelines_to_add = [
+        {
+            "name": "ML Dummy Backend",
+            "slug": "dummy",
+            "version": 1,
+            "algorithms": [
+                {"name": "Dummy Detector", "key": 1},
+                {"name": "Random Detector", "key": 2},
+                {"name": "Always Moth Classifier", "key": 3},
+            ],
+            "projects": {"name": project.name},
+            "endpoint_url": "http://ml_backend:2000/pipeline/process",
+        },
+    ]
+
+    for pipeline_data in pipelines_to_add:
+        pipeline, created = Pipeline.objects.get_or_create(
+            name=pipeline_data["name"],
+            slug=pipeline_data["slug"],
+            version=pipeline_data["version"],
+            endpoint_url=pipeline_data["endpoint_url"],
+        )
+
+        if created:
+            logger.info(f'Successfully created {pipeline_data["name"]}.')
+        else:
+            logger.info(f'Using existing pipeline {pipeline_data["name"]}.')
+
+        for algorithm_data in pipeline_data["algorithms"]:
+            algorithm, _ = Algorithm.objects.get_or_create(name=algorithm_data["name"], key=algorithm_data["key"])
+            pipeline.algorithms.add(algorithm)
+
+        pipeline.save()
+
+    return pipeline
+
+
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     if reuse:
         project, _ = Project.objects.get_or_create(name="Test Project")
@@ -40,6 +80,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
         deployment, _ = Deployment.objects.get_or_create(
             project=project, name="Test Deployment", defaults=dict(data_source=data_source)
         )
+        create_ml_pipeline(project)
     else:
         short_id = uuid.uuid4().hex[:8]
         project = Project.objects.create(name=f"Test Project {short_id}")
@@ -47,6 +88,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
         deployment = Deployment.objects.create(
             project=project, name=f"Test Deployment {short_id}", data_source=data_source
         )
+        create_ml_pipeline(project)
     return project, deployment
 
 
@@ -83,12 +125,13 @@ def create_captures(
 
 
 def create_captures_from_files(
-    deployment: Deployment,
+    deployment: Deployment, skip_existing=True
 ) -> list[tuple[SourceImage, GeneratedTestFrame]]:
     assert deployment.data_source is not None
     frame_data = populate_bucket(
         config=deployment.data_source.config,
         subdir=f"deployment_{deployment.pk}",
+        skip_existing=skip_existing,
     )
 
     deployment.sync_captures()

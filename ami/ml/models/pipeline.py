@@ -173,7 +173,17 @@ def process_images(
     )
 
     resp = requests.post(endpoint_url, json=request_data.dict())
-    resp.raise_for_status()
+    if not resp.ok:
+        if job:
+            try:
+                msg = resp.json()["detail"]
+            except Exception:
+                msg = resp.content
+
+            job.logger.error(msg)
+
+        resp.raise_for_status()
+
     results = resp.json()
     results = PipelineResponse(**results)
 
@@ -393,8 +403,8 @@ class Pipeline(BaseModel):
             "The backend implementation of the pipeline may process data in any way."
         ),
     )
-    projects = models.ManyToManyField("main.Project", related_name="pipelines")
-    endpoint_url = models.URLField(null=True, blank=True)
+    projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
+    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
 
     class Meta:
         ordering = ["name", "version"]
