@@ -3,6 +3,7 @@
 
 .appliedFilter {
   @include bubble-label();
+  background-color: $color-generic-white;
   display: flex;
   align-items: center;
   justify-content: center;

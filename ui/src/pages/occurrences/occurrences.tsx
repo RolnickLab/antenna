@@ -28,9 +28,13 @@ import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
 import { TaxonFilter } from './taxon-filter/taxon-filter'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const Occurrences = () => {
   const { user } = useUser()
+  const {
+    userPreferences: { scoreThreshold },
+  } = useUserPreferences()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -51,7 +55,10 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters()
+  const defaultFilters = [
+    { field: 'classification_threshold', value: `${scoreThreshold}` },
+  ]
+  const { filters } = useFilters(defaultFilters)
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -71,13 +78,14 @@ export const Occurrences = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_OCCURRENCES)}
+        defaultFilters={defaultFilters}
+        isFetching={isFetching}
+        isLoading={isLoading}
+        showAppliedFilters
         subTitle={translate(STRING.RESULTS, {
           total,
         })}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        showAppliedFilters
+        title={translate(STRING.NAV_ITEM_OCCURRENCES)}
         tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
       >
         <TaxonFilter />
