@@ -3,6 +3,7 @@ import 'nova-ui-kit/dist/style.css'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './app'
+import './index.css'
 
 if (process.env.NODE_ENV !== 'development') {
   Sentry.init({

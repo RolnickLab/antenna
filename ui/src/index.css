@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 body {
   margin: 0;
   font-family: 'Mazzard', sans-serif;
@@ -5,7 +9,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-button,
 fieldset,
 input,
 li,
