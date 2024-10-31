@@ -8,7 +8,7 @@ import {
 } from 'design-system/components/checkbox/checkbox'
 import { useMemo, useState } from 'react'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
-import { ActivityPlot } from './activity-plot/activity-plot'
+import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
 import { Frame } from './frame/frame'
