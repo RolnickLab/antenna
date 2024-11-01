@@ -1,9 +1,8 @@
-import { SessionDetails } from 'data-services/models/session-details'
-import { TimelineTick } from 'data-services/models/timeline-tick'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { findClosestCaptureId } from '../utils'
+import { ActivityPlotProps } from './types'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 
 const fontFamily = 'Mazzard, sans-serif'
@@ -14,17 +13,12 @@ const textColor = '#303137'
 const tooltipBgColor = '#FFFFFF'
 const tooltipBorderColor = '#303137'
 
-export const ActivityPlot = ({
+const ActivityPlot = ({
   session,
   snapToDetections,
   timeline,
   setActiveCaptureId,
-}: {
-  session: SessionDetails
-  snapToDetections?: boolean
-  timeline: TimelineTick[]
-  setActiveCaptureId: (captureId: string) => void
-}) => {
+}: ActivityPlotProps) => {
   const containerRef = useRef(null)
   const width = useDynamicPlotWidth(containerRef)
 
@@ -170,3 +164,5 @@ export const ActivityPlot = ({
     </div>
   )
 }
+
+export default ActivityPlot
