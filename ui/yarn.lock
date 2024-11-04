@@ -4547,7 +4547,7 @@ __metadata:
     jest-environment-jsdom: "npm:^29.7.0"
     leaflet: "npm:^1.9.3"
     lodash: "npm:^4.17.21"
-    nova-ui-kit: "npm:^0.0.10"
+    nova-ui-kit: "npm:^1.0.1"
     plotly.js: "npm:^2.25.2"
     postcss: "npm:^8.4.47"
     prettier: "npm:2.8.4"
@@ -9893,9 +9893,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nova-ui-kit@npm:^0.0.10":
-  version: 0.0.10
-  resolution: "nova-ui-kit@npm:0.0.10"
+"nova-ui-kit@npm:^1.0.1":
+  version: 1.0.1
+  resolution: "nova-ui-kit@npm:1.0.1"
   dependencies:
     "@radix-ui/react-select": "npm:^2.1.2"
     "@radix-ui/react-slider": "npm:^1.2.1"
@@ -9906,7 +9906,7 @@ __metadata:
     react-dom: "npm:^18.3.1"
     tailwind-merge: "npm:^2.5.4"
     tailwindcss-animate: "npm:^1.0.7"
-  checksum: 7e35bc9d03ed2fd5dbc6a9b488dde306bcdc26aaea2c6aca781dd50702c391a0e021a092606d7b3182d356d4738b070fa4eb5360eee645e7d6ded6a87e81697f
+  checksum: 304fffb65b93e630d45b7f1e56895376f3abfe1e55f60963279d7f6e4a91d1624a894aa8f4b5e7e5d8a7fbb8aaaf85ad145458ac023ada2c871f7059bb50c626
   languageName: node
   linkType: hard
 
