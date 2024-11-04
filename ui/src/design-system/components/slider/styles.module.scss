@@ -85,7 +85,7 @@
   .label {
     @include paragraph-xx-small();
     text-transform: uppercase;
-    font-weight: 700;
+    font-weight: 600;
     color: $color-generic-white;
     margin: 0;
   }
@@ -93,7 +93,7 @@
   .value {
     display: block;
     @include paragraph-x-small();
-    font-weight: 700;
+    font-weight: 600;
     color: $color-generic-white;
     width: 32px;
     text-align: right;
