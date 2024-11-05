@@ -3,12 +3,20 @@ import { ReactNode } from 'react'
 import { CollectionFilter } from './controls/collection-filter'
 
 interface FilteringProps {
-  config?: {}
+  config?: {
+    collection?: boolean
+  }
 }
 
 export const Filtering = ({ config = {} }: FilteringProps) => (
   <Box className="w-72 h-min shrink-0 sticky top-6 space-y-4" label="Filters">
-    <div className="space-y-6"></div>
+    <div className="space-y-6">
+      {config.collection && (
+        <FilterControl label="Collection">
+          <CollectionFilter />
+        </FilterControl>
+      )}
+    </div>
   </Box>
 )
 
