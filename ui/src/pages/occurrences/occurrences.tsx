@@ -78,7 +78,7 @@ export const Occurrences = () => {
   return (
     <>
       <div className="flex gap-6">
-        <Filtering config={{ collection: true }} />
+        <Filtering config={{ collection: true, station: true }} />
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}
