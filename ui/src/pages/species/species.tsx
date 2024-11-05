@@ -26,16 +26,10 @@ import styles from './species.module.scss'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const Species = () => {
-  const {
-    userPreferences: { scoreThreshold },
-  } = useUserPreferences()
   const { projectId, id } = useParams()
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const defaultFilters = [
-    { field: 'classification_threshold', value: `${scoreThreshold}` },
-  ]
-  const { filters } = useFilters(defaultFilters)
+  const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -51,7 +45,6 @@ export const Species = () => {
   return (
     <>
       <PageHeader
-        defaultFilters={defaultFilters}
         isFetching={isFetching}
         isLoading={isLoading}
         showAppliedFilters

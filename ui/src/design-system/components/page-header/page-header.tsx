@@ -9,7 +9,6 @@ import { Tooltip } from '../tooltip/tooltip'
 import styles from './page-header.module.scss'
 
 interface PageHeaderProps {
-  defaultFilters?: { field: string; value: string }[]
   isFetching?: boolean
   isLoading?: boolean
   showAppliedFilters?: boolean
@@ -20,7 +19,6 @@ interface PageHeaderProps {
 }
 
 export const PageHeader = ({
-  defaultFilters,
   isFetching,
   isLoading,
   showAppliedFilters,
@@ -46,9 +44,7 @@ export const PageHeader = ({
           </h2>
           {!isLoading && isFetching && <LoadingSpinner size={12} />}
         </div>
-        {showAppliedFilters && (
-          <AppliedFilters defaultFilters={defaultFilters} />
-        )}
+        {showAppliedFilters && <AppliedFilters />}
       </div>
     </div>
     <div className={styles.row}>{children}</div>

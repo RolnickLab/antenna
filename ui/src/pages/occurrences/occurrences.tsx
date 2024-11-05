@@ -28,13 +28,9 @@ import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const Occurrences = () => {
   const { user } = useUser()
-  const {
-    userPreferences: { scoreThreshold },
-  } = useUserPreferences()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -55,10 +51,7 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const defaultFilters = [
-    { field: 'classification_threshold', value: `${scoreThreshold}` },
-  ]
-  const { filters } = useFilters(defaultFilters)
+  const { filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -78,7 +71,9 @@ export const Occurrences = () => {
   return (
     <>
       <div className="flex gap-6">
-        <Filtering config={{ collection: true, station: true }} />
+        <Filtering
+          config={{ collection: true, station: true, scoreThreshold: true }}
+        />
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}
