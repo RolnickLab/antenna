@@ -6,15 +6,19 @@ import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext
 const FILTER_FIELD = 'classification_threshold'
 
 export const ScoreFilter = () => {
-  const { addFilter } = useFilters()
+  const { filters, addFilter } = useFilters()
   const { userPreferences, setUserPreferences } = useUserPreferences()
   const [displayValue, setDisplayValue] = useState(
     userPreferences.scoreThreshold
   )
 
+  const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
+
   useEffect(() => {
-    addFilter(FILTER_FIELD, `${userPreferences.scoreThreshold}`)
-  }, [])
+    if (value?.length) {
+      setDisplayValue(Number(value))
+    }
+  }, [value])
 
   return (
     <div className="h-12 flex items-center">

@@ -17,13 +17,13 @@ export const CollectionFilter = () => {
   return (
     <Select.Root
       disabled={isLoading}
-      value={value}
+      value={value ?? ''}
       onValueChange={(value) => addFilter(FILTER_FIELD, value)}
     >
       <Select.Trigger>
         <Select.Value placeholder="All collections" />
       </Select.Trigger>
-      <Select.Content>
+      <Select.Content avoidCollisions={false} className="max-h-72">
         {collections.map((c) => (
           <Select.Item key={c.id} value={c.id}>
             {c.name}

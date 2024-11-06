@@ -1,5 +1,6 @@
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { Select } from 'nova-ui-kit'
+import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useFilters } from 'utils/useFilters'
 
@@ -17,13 +18,13 @@ export const StationFilter = () => {
   return (
     <Select.Root
       disabled={isLoading}
-      value={value}
+      value={value ?? ''}
       onValueChange={(value) => addFilter(FILTER_FIELD, value)}
     >
       <Select.Trigger>
         <Select.Value placeholder="All stations" />
       </Select.Trigger>
-      <Select.Content>
+      <Select.Content avoidCollisions={false} className="max-h-72">
         {deployments.map((d) => (
           <Select.Item key={d.id} value={d.id}>
             {d.name}
