@@ -3,12 +3,14 @@ import { ReactNode } from 'react'
 import { CollectionFilter } from './controls/collection-filter'
 import { ScoreFilter } from './controls/score-filter'
 import { StationFilter } from './controls/station-filter'
+import { TaxonFilter } from './controls/taxon-filter'
 
 interface FilteringProps {
   config?: {
     collection?: boolean
     scoreThreshold?: boolean
     station?: boolean
+    taxon?: boolean
   }
 }
 
@@ -23,6 +25,11 @@ export const Filtering = ({ config = {} }: FilteringProps) => (
       {config.station && (
         <FilterControl label="Station">
           <StationFilter />
+        </FilterControl>
+      )}
+      {config.taxon && (
+        <FilterControl label="Taxon">
+          <TaxonFilter />
         </FilterControl>
       )}
       {config.scoreThreshold && (

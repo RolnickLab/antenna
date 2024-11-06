@@ -72,7 +72,12 @@ export const Occurrences = () => {
     <>
       <div className="flex gap-6">
         <Filtering
-          config={{ collection: true, station: true, scoreThreshold: true }}
+          config={{
+            collection: true,
+            station: true,
+            scoreThreshold: true,
+            taxon: true,
+          }}
         />
         <div className="w-full overflow-hidden">
           <PageHeader

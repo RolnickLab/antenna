@@ -23,7 +23,6 @@ import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
 import styles from './species.module.scss'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const Species = () => {
   const { projectId, id } = useParams()
