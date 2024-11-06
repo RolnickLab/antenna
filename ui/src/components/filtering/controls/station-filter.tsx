@@ -1,6 +1,5 @@
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { Select } from 'nova-ui-kit'
-import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useFilters } from 'utils/useFilters'
 
