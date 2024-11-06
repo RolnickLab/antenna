@@ -49,7 +49,7 @@ export const getFetchDetailsUrl = ({
   queryParams = {},
 }: {
   collection: string
-  itemId: string
+  itemId?: string
   queryParams?: QueryParams
 }) => {
   const baseUrl = `${API_URL}/${collection}/${itemId}`

@@ -74,8 +74,9 @@ export const Occurrences = () => {
         <Filtering
           config={{
             collection: true,
-            station: true,
             scoreThreshold: true,
+            session: true,
+            station: true,
             taxon: true,
           }}
         />

@@ -12,8 +12,8 @@ const convertServerRecord = (record: ServerEventDetails) =>
   new SessionDetails(record)
 
 export const useSessionDetails = (
-  id: string,
-  params: { occurrence?: string; capture?: string }
+  id: string | undefined,
+  params?: { occurrence?: string; capture?: string }
 ): {
   session?: SessionDetails
   isLoading: boolean
@@ -29,6 +29,7 @@ export const useSessionDetails = (
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<
     ServerEventDetails[]
   >({
+    enabled: !!id,
     queryKey: [API_ROUTES.SESSIONS, id],
     url: fetchUrl,
   })
