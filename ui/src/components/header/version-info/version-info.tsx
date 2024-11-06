@@ -14,7 +14,7 @@ export const VersionInfo = () => (
   <div
     className={classNames(styles.wrapper, {
       [styles.deprecated]: (COPY.LABEL as string)
-        .toLocaleLowerCase()
+        .toLowerCase()
         .includes('deprecated'),
     })}
   >
