@@ -3,6 +3,7 @@ from django_pydantic_field.rest_framework import SchemaField
 from ami.main.api.serializers import DefaultSerializer
 
 from .models.algorithm import Algorithm
+from .models.backend import Backend
 from .models.pipeline import Pipeline, PipelineStage
 
 
@@ -70,3 +71,9 @@ class PipelineNestedSerializer(DefaultSerializer):
             "version",
             "version_name",
         ]
+
+
+class BackendSerializer(DefaultSerializer):
+    class Meta:
+        model = Backend
+        fields = ["id", "details", "projects", "endpoint_url"]
