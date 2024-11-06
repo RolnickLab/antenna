@@ -1933,11 +1933,32 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
-@final
+class OccurrenceQuerySet(models.QuerySet):
+    def with_detections_count(self) -> models.QuerySet:
+        return self.annotate(detections_count=models.Count("detections", distinct=True))
+
+    def with_timestamps(self) -> models.QuerySet:
+        """
+        These are timestamps used for filtering and ordering in the UI.
+        """
+        return self.annotate(
+            first_appearance_timestamp=models.Min("detections__timestamp"),
+            last_appearance_timestamp=models.Max("detections__timestamp"),
+            first_appearance_time=models.Min("detections__timestamp__time"),
+            duration=models.ExpressionWrapper(
+                models.F("last_appearance_timestamp") - models.F("first_appearance_timestamp"),
+                output_field=models.DurationField(),
+            ),
+        )
+
+
 class OccurrenceManager(models.Manager):
-    def get_queryset(self):
-        # prefetch determination, deployment, project
-        return super().get_queryset().select_related("determination", "deployment", "project")
+    def get_queryset(self) -> OccurrenceQuerySet:
+        return OccurrenceQuerySet(self.model, using=self._db).select_related(
+            "determination",
+            "deployment",
+            "project",
+        )
 
 
 @final

@@ -861,12 +861,8 @@ class OccurrenceViewSet(DefaultViewSet):
             "determination",
             "deployment",
             "event",
-        ).annotate(
-            detections_count=models.Count("detections", distinct=True),
-            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
-            first_appearance_timestamp=models.Min("detections__timestamp"),
-            first_appearance_time=models.Min("detections__timestamp__time"),
         )
+        qs = qs.with_detections_count().with_timestamps()  # type: ignore
         if self.action == "list":
             qs = (
                 qs.all()
