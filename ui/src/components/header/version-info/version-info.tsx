@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import styles from './version-info.module.scss'
 
@@ -10,7 +11,13 @@ const COPY = {
 }
 
 export const VersionInfo = () => (
-  <div className={styles.wrapper}>
+  <div
+    className={classNames(styles.wrapper, {
+      [styles.deprecated]: (COPY.LABEL as string)
+        .toLocaleLowerCase()
+        .includes('deprecated'),
+    })}
+  >
     <Tooltip content={COPY.INFO}>
       <div className={styles.badge}>{COPY.LABEL}</div>
     </Tooltip>
