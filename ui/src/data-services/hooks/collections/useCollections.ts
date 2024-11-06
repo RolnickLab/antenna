@@ -11,7 +11,8 @@ const REFETCH_INTERVAL = 10000 // Refetch every 10 second
 const convertServerRecord = (record: ServerCollection) => new Collection(record)
 
 export const useCollections = (
-  params?: FetchParams
+  params: FetchParams | undefined,
+  refetchInterval = REFETCH_INTERVAL
 ): {
   collections?: Collection[]
   total: number
@@ -29,7 +30,7 @@ export const useCollections = (
   }>({
     queryKey: [API_ROUTES.COLLECTIONS, params],
     url: fetchUrl,
-    refetchInterval: REFETCH_INTERVAL,
+    refetchInterval,
   })
 
   const collections = useMemo(

@@ -8,9 +8,12 @@ const FILTER_FIELD = 'collection'
 export const CollectionFilter = () => {
   const { filters, addFilter } = useFilters()
   const { projectId } = useParams()
-  const { collections = [], isLoading } = useCollections({
-    projectId: projectId as string,
-  })
+  const { collections = [], isLoading } = useCollections(
+    {
+      projectId: projectId as string,
+    },
+    0
+  )
 
   const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
 
