@@ -1,8 +1,20 @@
+import datetime
+import logging
+from urllib.parse import urljoin
+
+import requests
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
 from ami.main.api.views import DefaultViewSet
 
 from .models.algorithm import Algorithm
+from .models.backend import Backend
 from .models.pipeline import Pipeline
-from .serializers import AlgorithmSerializer, PipelineSerializer
+from .schemas import BackendResponse
+from .serializers import AlgorithmSerializer, BackendSerializer, PipelineSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class AlgorithmViewSet(DefaultViewSet):
@@ -38,3 +50,42 @@ class PipelineViewSet(DefaultViewSet):
     # Don't enable projects filter until we can use the current users
     # membership to filter the projects.
     # filterset_fields = ["projects"]
+
+
+class BackendViewSet(DefaultViewSet):
+    """
+    API endpoint that allows ML processing backends to be viewed or edited.
+    """
+
+    queryset = Backend.objects.all()
+    serializer_class = BackendSerializer
+    filterset_fields = ["projects"]
+    ordering_fields = ["id"]
+
+    @action(detail=True, methods=["get"])
+    def status(self, request, pk=None):
+        backend = Backend.objects.get(pk=pk)
+        endpoint_url = backend.endpoint_url
+        info_url = urljoin(endpoint_url, "info")
+
+        resp = requests.get(info_url)
+        if not resp.ok:
+            try:
+                msg = resp.json()["detail"]
+            except Exception:
+                msg = resp.content
+
+            logger.error(msg)
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        pipeline_configs = resp.json() if resp.ok else []
+        error = f"{resp.status_code} - {msg}" if not resp.ok else None
+
+        response = BackendResponse(
+            timestamp=timestamp,
+            success=resp.ok,
+            pipeline_configs=pipeline_configs,
+            error=error,
+        )
+
+        return Response(response.dict())
