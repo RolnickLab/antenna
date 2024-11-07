@@ -55,7 +55,7 @@ async def livez():
 async def readyz():
     if pipelines:
         return fastapi.responses.JSONResponse(
-            status_code=200, content={"status": [pipeline.name for pipeline in pipelines]}
+            status_code=200, content={"status": [pipeline.slug for pipeline in pipelines]}
         )
     else:
         return fastapi.responses.JSONResponse(status_code=503, content={"status": "pipelines unavailable"})
