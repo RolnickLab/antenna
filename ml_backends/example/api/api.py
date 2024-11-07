@@ -50,11 +50,13 @@ async def livez():
     return fastapi.responses.JSONResponse(status_code=200, content={"status": "ok"})
 
 
-# Check if the server is ready to process data
+# Check if the pipelines are ready to process data
 @app.get("/readyz", tags=["health checks"])
 async def readyz():
     if pipelines:
-        return fastapi.responses.JSONResponse(status_code=200, content={"status": "ok"})
+        return fastapi.responses.JSONResponse(
+            status_code=200, content={"status": [pipeline.name for pipeline in pipelines]}
+        )
     else:
         return fastapi.responses.JSONResponse(status_code=503, content={"status": "pipelines unavailable"})
 

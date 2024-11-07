@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 
 import requests
 from rest_framework.decorators import action
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ami.main.api.views import DefaultViewSet
@@ -63,7 +64,10 @@ class BackendViewSet(DefaultViewSet):
     ordering_fields = ["id"]
 
     @action(detail=True, methods=["get"])
-    def status(self, request, pk=None):
+    def status(self, request: Request, pk=None) -> Response:
+        """
+        Test the connection to the processing backend.
+        """
         backend = Backend.objects.get(pk=pk)
         endpoint_url = backend.endpoint_url
         info_url = urljoin(endpoint_url, "info")
@@ -81,9 +85,14 @@ class BackendViewSet(DefaultViewSet):
         pipeline_configs = resp.json() if resp.ok else []
         error = f"{resp.status_code} - {msg}" if not resp.ok else None
 
+        server_live = requests.get(urljoin(endpoint_url, "livez")).json().get("status")
+        pipelines_online = requests.get(urljoin(endpoint_url, "readyz")).json().get("status")
+
         response = BackendResponse(
             timestamp=timestamp,
             success=resp.ok,
+            server_online=server_live,
+            pipelines_online=pipelines_online,
             pipeline_configs=pipeline_configs,
             error=error,
         )

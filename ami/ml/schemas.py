@@ -98,3 +98,5 @@ class BackendResponse(pydantic.BaseModel):
     success: bool
     pipeline_configs: list[PipelineConfig] = []
     error: str | None = None
+    server_online: str
+    pipelines_online: list[str] | str
