@@ -4,7 +4,7 @@ from django.http.request import HttpRequest
 
 from ami.main.admin import AdminBase
 
-from .models import Job
+from .models import Job, get_job_type_by_inferred_key
 
 
 @admin.register(Job)
@@ -20,7 +20,7 @@ class JobAdmin(AdminBase):
         "finished_at",
         "duration",
         "job_type_key",
-        "get_job_type_display",
+        "inferred_job_type",
     )
 
     @admin.action()
@@ -29,9 +29,15 @@ class JobAdmin(AdminBase):
             job.enqueue()
         self.message_user(request, f"Queued {queryset.count()} job(s).")
 
-    @admin.display(description="Job Type")
-    def get_job_type_display(self, obj: Job) -> str:
-        return obj.job_type().name
+    @admin.display(description="Inferred Job Type")
+    def inferred_job_type(self, obj: Job) -> str:
+        """
+        @TODO Remove this after running migration 0011_job_job_type_key.py and troubleshooting.
+        """
+        job_type = get_job_type_by_inferred_key(obj)
+        return job_type.name if job_type else "Could not infer"
+
+        # return obj.job_type().name
 
     actions = [enqueue_jobs]
 

@@ -11,10 +11,10 @@ def set_job_type_key(apps, schema_editor):
     for job in Job.objects.all():
         inferred_key = get_job_type_by_inferred_key(job)
         if inferred_key:
-            job.job_type_key = inferred_key
+            job.job_type_key = inferred_key.key
         else:
             job.job_type_key = UnknownJobType.key
-            job.save()
+        job.save()
 
 
 class Migration(migrations.Migration):
