@@ -10,7 +10,7 @@ const convertServerRecord = (record: ServerCaptureDetails) =>
   new CaptureDetails(record)
 
 export const useCaptureDetails = (
-  id: string
+  id?: string
 ): {
   capture?: CaptureDetails
   isLoading: boolean
@@ -19,6 +19,7 @@ export const useCaptureDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<CaptureDetails>({
+      enabled: !!id,
       queryKey: [API_ROUTES.CAPTURES, id],
       url: `${API_URL}/${API_ROUTES.CAPTURES}/${id}/`,
     })

@@ -1,21 +1,13 @@
 import { useSearchParams } from 'react-router-dom'
 
-const AVAILABLE_FILTERS = [
+export const AVAILABLE_FILTERS = [
   {
     label: 'Station',
     field: 'deployment',
   },
   {
-    label: 'Occurrence station',
-    field: 'occurrences__deployment',
-  },
-  {
     label: 'Session',
     field: 'event',
-  },
-  {
-    label: 'Occurrence session',
-    field: 'occurrences__event',
   },
   {
     label: 'Taxon',
@@ -26,11 +18,11 @@ const AVAILABLE_FILTERS = [
     field: 'classification_threshold',
   },
   {
-    label: 'Capture collection',
+    label: 'Collection',
     field: 'collection',
   },
   {
-    label: 'Capture',
+    label: 'Image',
     field: 'detections__source_image',
   },
 ]

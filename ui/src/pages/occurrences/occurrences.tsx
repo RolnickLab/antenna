@@ -73,6 +73,7 @@ export const Occurrences = () => {
       <div className="flex gap-6">
         <Filtering
           config={{
+            capture: true,
             collection: true,
             scoreThreshold: true,
             session: true,

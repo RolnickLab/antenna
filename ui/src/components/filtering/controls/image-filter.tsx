@@ -1,21 +1,21 @@
-import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
+import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
 import { useFilters } from 'utils/useFilters'
 
-const FILTER_FIELD = 'event'
+const FILTER_FIELD = 'detections__source_image'
 
-export const SessionFilter = () => {
+export const ImageFilter = () => {
   const { filters } = useFilters()
   const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
-  const { session, isLoading } = useSessionDetails(value)
+  const { capture, isLoading } = useCaptureDetails(value)
 
   const label = (() => {
-    if (session) {
-      return session.label
+    if (capture) {
+      return capture?.dateTimeLabel
     }
     if (value && isLoading) {
       return 'Loading...'
     }
-    return 'All sessions'
+    return 'All images'
   })()
 
   return (

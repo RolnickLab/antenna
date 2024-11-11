@@ -138,7 +138,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.SPECIES({ projectId }),
-          filters: { occurrences__event: item.id },
+          filters: { event: item.id },
         })}
       >
         <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
