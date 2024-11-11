@@ -2747,17 +2747,25 @@ class SourceImageCollection(BaseModel):
     def sampling_methods(cls):
         return [method for method in dir(cls) if method.startswith("sample_")]
 
-    def populate_sample(self):
+    def populate_sample(self, job: "Job | None" = None):
         """Create a sample of source images based on the method and kwargs"""
         kwargs = self.kwargs or {}
+
+        if job:
+            task_logger = job.logger
+        else:
+            task_logger = logger
 
         method_name = f"sample_{self.method}"
         if not hasattr(self, method_name):
             raise ValueError(f"Invalid sampling method: {self.method}. Choices are: {_SOURCE_IMAGE_SAMPLING_METHODS}")
         else:
+            task_logger.info(f"Sampling using method '{method_name}' with params: {kwargs}")
             method = getattr(self, method_name)
+            task_logger.info(f"Sampling and saving captures to {self}")
             self.images.set(method(**kwargs))
             self.save()
+            task_logger.info(f"Done sampling and saving captures to {self}")
 
     def sample_random(self, size: int = 100):
         """Create a random sample of source images"""

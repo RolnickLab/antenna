@@ -19,6 +19,7 @@ class JobAdmin(AdminBase):
         "started_at",
         "finished_at",
         "duration",
+        "job_type_key",
         "get_job_type_display",
     )
 
