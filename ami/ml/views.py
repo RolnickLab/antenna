@@ -1,18 +1,15 @@
-import datetime
 import logging
-from urllib.parse import urljoin
 
-import requests
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ami.main.api.views import DefaultViewSet
+from ami.main.models import SourceImage
 
 from .models.algorithm import Algorithm
 from .models.backend import Backend
 from .models.pipeline import Pipeline
-from .schemas import BackendResponse
 from .serializers import AlgorithmSerializer, BackendSerializer, PipelineSerializer
 
 logger = logging.getLogger(__name__)
@@ -52,6 +49,19 @@ class PipelineViewSet(DefaultViewSet):
     # membership to filter the projects.
     # filterset_fields = ["projects"]
 
+    @action(detail=True, methods=["post"])
+    def test_process(self, request: Request, pk=None) -> Response:
+        """
+        Process images using the pipeline.
+        """
+        pipeline = Pipeline.objects.get(pk=pk)
+        random_image = (
+            SourceImage.objects.all().order_by("?").first()
+        )  # TODO: Filter images by projects user has access to
+        results = pipeline.process_images(images=[random_image], job_id=None)
+        # @TODO: Add error or info messages to the response if image already processed or no detections returned
+        return Response(results.dict())
+
 
 class BackendViewSet(DefaultViewSet):
     """
@@ -61,7 +71,7 @@ class BackendViewSet(DefaultViewSet):
     queryset = Backend.objects.all()
     serializer_class = BackendSerializer
     filterset_fields = ["projects"]
-    ordering_fields = ["id"]
+    ordering_fields = ["id", "created_at", "updated_at"]
 
     @action(detail=True, methods=["get"])
     def status(self, request: Request, pk=None) -> Response:
@@ -69,32 +79,5 @@ class BackendViewSet(DefaultViewSet):
         Test the connection to the processing backend.
         """
         backend = Backend.objects.get(pk=pk)
-        endpoint_url = backend.endpoint_url
-        info_url = urljoin(endpoint_url, "info")
-
-        resp = requests.get(info_url)
-        if not resp.ok:
-            try:
-                msg = resp.json()["detail"]
-            except Exception:
-                msg = resp.content
-
-            logger.error(msg)
-
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        pipeline_configs = resp.json() if resp.ok else []
-        error = f"{resp.status_code} - {msg}" if not resp.ok else None
-
-        server_live = requests.get(urljoin(endpoint_url, "livez")).json().get("status")
-        pipelines_online = requests.get(urljoin(endpoint_url, "readyz")).json().get("status")
-
-        response = BackendResponse(
-            timestamp=timestamp,
-            success=resp.ok,
-            server_online=server_live,
-            pipelines_online=pipelines_online,
-            pipeline_configs=pipeline_configs,
-            error=error,
-        )
-
+        response = backend.get_status()
         return Response(response.dict())

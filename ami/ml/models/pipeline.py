@@ -1,5 +1,6 @@
 import logging
 import typing
+from urllib.parse import urljoin
 
 import requests
 from django.db import models, transaction
@@ -404,7 +405,12 @@ class Pipeline(BaseModel):
         ),
     )
     projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
-    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
+    backend = models.ForeignKey(
+        "ml.Backend",
+        on_delete=models.SET_NULL,  # TODO: Pipelines should support multiple backends
+        related_name="pipelines",
+        null=True,
+    )
 
     class Meta:
         ordering = ["name", "version"]
@@ -431,10 +437,10 @@ class Pipeline(BaseModel):
         )
 
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        if not self.endpoint_url:
+        if not self.backend.endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
-            endpoint_url=self.endpoint_url,
+            endpoint_url=urljoin(self.backend.endpoint_url, "/process_images"),
             pipeline=self,
             images=images,
             job_id=job_id,

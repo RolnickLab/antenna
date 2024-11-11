@@ -148,10 +148,22 @@ class PipelineStage(pydantic.BaseModel):
     description: str | None = None
 
 
+class ProjectConfig(pydantic.BaseModel):
+    name: str
+
+
+class AlgorithmConfig(pydantic.BaseModel):
+    name: str
+    key: str
+
+
 class PipelineConfig(pydantic.BaseModel):
     """A configurable pipeline."""
 
     name: str
     slug: str
+    version: int
     description: str | None = None
+    algorithms: list[AlgorithmConfig] = []
     stages: list[PipelineStage] = []
+    projects: list[ProjectConfig] = []

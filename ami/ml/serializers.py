@@ -53,7 +53,7 @@ class PipelineSerializer(DefaultSerializer):
             "version_name",
             "algorithms",
             "stages",
-            "endpoint_url",
+            "backend",
             "created_at",
             "updated_at",
         ]
