@@ -101,7 +101,7 @@ class JobViewSet(DefaultViewSet):
         """
 
         # All jobs created from the Jobs UI are ML jobs.
-        # @TODO Remove this when the UI is updated to allow selecting the job type
+        # @TODO Remove this when the UI is updated pass a job type
         if not serializer.validated_data.get("job_type_key"):
             serializer.validated_data["job_type_key"] = MLJob.key
 

@@ -443,10 +443,10 @@ class SourceImageCollectionPopulateJob(JobType):
         job.progress.update_stage(
             cls.key,
             status=JobState.STARTED,
-            progress=0,
+            progress=0.10,
             captures_added=0,
         )
-        job.save()
+        job.update_progress(save=True)
 
         job.source_image_collection.populate_sample(job=job)
         job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
@@ -461,10 +461,9 @@ class SourceImageCollectionPopulateJob(JobType):
             progress=1,
             captures_added=captures_added,
         )
-        job.update_status(JobState.SUCCESS)
-
-        job.update_progress()
         job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=False)
+        job.update_progress(save=False)
         job.save()
 
 
