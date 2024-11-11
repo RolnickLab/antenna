@@ -17,7 +17,7 @@ interface FilteringProps {
 }
 
 export const Filtering = ({ config = {} }: FilteringProps) => (
-  <Box className="w-72 h-min shrink-0 sticky top-6 space-y-4" label="Filters">
+  <Box className="w-72 h-min shrink-0 space-y-4" label="Filters">
     <div className="space-y-6">
       {config.collection && (
         <FilterControl label="Collection">
