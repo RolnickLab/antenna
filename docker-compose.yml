@@ -1,5 +1,6 @@
 volumes:
   ami_local_postgres_data: {}
+  ami_local_postgres_replica_data: {}
   ami_local_postgres_data_backups:
     driver: local
     driver_opts:
@@ -43,8 +44,36 @@ services:
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
       - ami_local_postgres_data_backups:/backups
+      - ./compose/local/postgres/primary.conf:/var/lib/postgresql/data/postgresql.auto.conf
+      - ./compose/local/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     env_file:
       - ./.envs/.local/.postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  postgres_replica3:
+    build:
+      context: .
+      dockerfile: ./compose/local/postgres/Dockerfile
+    ports:
+      - "5445:5432"
+    volumes:
+      # - ami_local_postgres_replica_data:/var/lib/postgresql/data
+      - ./compose/local/postgres/replica.conf:/etc/postgresql/postgresql.conf:ro
+      - ./compose/local/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: |
+      bash -c "
+        su postgres -c 'touch /var/lib/postgresql/data/standby.signal' &&
+        postgres -c config_file=/etc/postgresql/postgresql.conf"
+    env_file:
+      - ./.envs/.local/.postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   ui:
     image: ami_local_ui
