@@ -22,6 +22,7 @@ import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
@@ -31,6 +32,7 @@ import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
   const { user } = useUser()
+  const { userPreferences } = useUserPreferences()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -51,7 +53,9 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters()
+  const { filters } = useFilters({
+    classification_threshold: `${userPreferences.scoreThreshold}`,
+  })
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,

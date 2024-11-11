@@ -27,7 +27,7 @@ export const AVAILABLE_FILTERS = [
   },
 ]
 
-export const useFilters = () => {
+export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const filters = AVAILABLE_FILTERS.map((filter) => {
@@ -35,7 +35,7 @@ export const useFilters = () => {
 
     return {
       ...filter,
-      value,
+      value: value ?? defaultFilters?.[filter.field],
     }
   })
 
