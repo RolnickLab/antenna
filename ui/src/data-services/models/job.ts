@@ -12,6 +12,7 @@ export enum JobStatus {
   Canceling = 'canceling',
   Revoked = 'revoked',
   Failed = 'failed',
+  Retrying = 'retrying',
   Unknown = 'unknown',
 }
 
@@ -30,7 +31,7 @@ export class Job {
   get canCancel(): boolean {
     return (
       this._job.user_permissions.includes(UserPermission.Update) &&
-      this.status === JobStatus.Started
+      (this.status === JobStatus.Started || this.status === JobStatus.Pending)
     )
   }
 
@@ -45,6 +46,13 @@ export class Job {
     )
   }
 
+  get canRetry(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Update) &&
+      (this.status !== JobStatus.Created && this.status !== JobStatus.Started && this.status !== JobStatus.Pending)
+    )
+  }
+
   get createdAt(): string | undefined {
     if (!this._job.created_at) {
       return
@@ -52,6 +60,15 @@ export class Job {
 
     return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
   }
+
+  get updatedAt(): string | undefined {
+    if (!this._job.updated_at) {
+      return
+    }
+
+    return getFormatedDateTimeString({ date: new Date(this._job.updated_at) })
+  }
+
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return
@@ -108,12 +125,16 @@ export class Job {
         return JobStatus.Pending
       case 'STARTED':
         return JobStatus.Started
+      case 'RUNNING':
+        return JobStatus.Started
       case 'SUCCESS':
         return JobStatus.Success
       case 'CANCELING':
         return JobStatus.Canceling
       case 'REVOKED':
         return JobStatus.Revoked
+      case 'RETRY':
+        return JobStatus.Retrying
       case 'FAILURE':
         return JobStatus.Failed
       default:

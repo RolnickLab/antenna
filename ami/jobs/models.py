@@ -681,6 +681,18 @@ class Job(BaseModel):
         job_type.run(job=self)
         return None
 
+    def retry(self, async_task=True):
+        """
+        Retry the job.
+        """
+        self.logger.info(f"Re-running job {self}")
+        self.status = JobState.RETRY
+        self.save()
+        if async_task:
+            self.enqueue()
+        else:
+            self.run()
+
     def cancel(self):
         """
         Terminate the celery task.
@@ -691,7 +703,6 @@ class Job(BaseModel):
             task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
-                self.status = task.status
                 self.save()
         else:
             self.status = JobState.REVOKED

@@ -85,6 +85,20 @@ class JobViewSet(DefaultViewSet):
         job.refresh_from_db()
         return Response(self.get_serializer(job).data)
 
+    @action(detail=True, methods=["post"], name="retry")
+    def retry(self, request, pk=None):
+        """
+        Re-run a job
+        """
+        job: Job = self.get_object()
+        no_async = url_boolean_param(request, "no_async", default=False)
+        if no_async:
+            job.retry(async_task=False)
+        else:
+            job.retry(async_task=True)
+        job.refresh_from_db()
+        return Response(self.get_serializer(job).data)
+
     @action(detail=True, methods=["post"], name="cancel")
     def cancel(self, request, pk=None):
         """
