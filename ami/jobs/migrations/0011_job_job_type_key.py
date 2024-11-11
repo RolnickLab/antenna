@@ -29,12 +29,13 @@ class Migration(migrations.Migration):
             field=models.CharField(
                 choices=[
                     ("ml", "ML pipeline"),
-                    ("populate_collection", "Populate Source Image Collection"),
+                    ("populate_captures_collection", "Populate Captures Collection"),
                     ("data_storage_sync", "Data storage sync"),
                     ("unknown", "Unknown"),
                 ],
                 default="unknown",
                 max_length=255,
+                verbose_name="Job Type",
             ),
         ),
         migrations.RunPython(set_job_type_key, reverse_code=migrations.RunPython.noop),
