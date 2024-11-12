@@ -46,8 +46,8 @@ export const Species = () => {
       <div className="flex flex-col gap-6 md:flex-row">
         <Filtering
           config={{
-            session: true,
-            station: true,
+            session: false, // TODO: Update when working
+            station: false, // TODO: Update when working
             taxon: true,
           }}
         />
