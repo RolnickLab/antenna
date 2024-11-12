@@ -1,18 +1,13 @@
 import { Slider } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
-import { useFilters } from 'utils/useFilters'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
+import { FilterProps } from './types'
 
-const FILTER_FIELD = 'classification_threshold'
-
-export const ScoreFilter = () => {
-  const { filters, addFilter } = useFilters()
+export const ScoreFilter = ({ value, onAdd }: FilterProps) => {
   const { userPreferences, setUserPreferences } = useUserPreferences()
   const [displayValue, setDisplayValue] = useState(
     userPreferences.scoreThreshold
   )
-
-  const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
 
   useEffect(() => {
     if (value?.length) {
@@ -30,7 +25,7 @@ export const ScoreFilter = () => {
         onValueChange={([value]) => setDisplayValue(value)}
         onValueCommit={([value]) => {
           setDisplayValue(value)
-          addFilter(FILTER_FIELD, `${value}`)
+          onAdd(`${value}`)
           setUserPreferences({ ...userPreferences, scoreThreshold: value })
         }}
       />

@@ -1,16 +1,10 @@
-import { ChevronsUpDown, X } from 'lucide-react'
+import { BREAKPOINTS } from 'components/constants'
+import { ChevronsUpDown } from 'lucide-react'
 import { Box, Button, Collapsible } from 'nova-ui-kit'
-import { ReactNode } from 'react'
-import { AVAILABLE_FILTERS, useFilters } from 'utils/useFilters'
-import { CollectionFilter } from './controls/collection-filter'
-import { ImageFilter } from './controls/image-filter'
-import { ScoreFilter } from './controls/score-filter'
-import { SessionFilter } from './controls/session-filter'
-import { StationFilter } from './controls/station-filter'
-import { TaxonFilter } from './controls/taxon-filter'
+import { FilterControl } from './filter-control'
 
 interface FilteringProps {
-  config?: {
+  config: {
     capture?: boolean
     collection?: boolean
     scoreThreshold?: boolean
@@ -20,11 +14,11 @@ interface FilteringProps {
   }
 }
 
-export const Filtering = ({ config = {} }: FilteringProps) => (
+export const Filtering = ({ config }: FilteringProps) => (
   <Box className="w-full h-min shrink-0 rounded-lg md:rounded-xl md:w-72">
     <Collapsible.Root
       className="space-y-4"
-      defaultOpen={window.innerWidth >= 768}
+      defaultOpen={window.innerWidth >= BREAKPOINTS.MD}
     >
       <div className="flex items-center justify-between ml-2">
         <span className="body-overline font-bold">Filters</span>
@@ -35,84 +29,17 @@ export const Filtering = ({ config = {} }: FilteringProps) => (
         </Collapsible.Trigger>
       </div>
       <Collapsible.Content className="space-y-6">
+        {config.collection && <FilterControl field="collection" />}
         {config.capture && (
-          <FilterControl field="detections__source_image" readonly>
-            <ImageFilter />
-          </FilterControl>
-        )}
-        {config.session && (
-          <FilterControl field="event" readonly>
-            <SessionFilter />
-          </FilterControl>
-        )}
-        {config.collection && (
-          <FilterControl field="collection">
-            <CollectionFilter />
-          </FilterControl>
-        )}
-        {config.station && (
-          <FilterControl field="deployment">
-            <StationFilter />
-          </FilterControl>
-        )}
-        {config.taxon && (
-          <FilterControl field="taxon">
-            <TaxonFilter />
-          </FilterControl>
+          <FilterControl field="detections__source_image" readonly />
         )}
         {config.scoreThreshold && (
-          <FilterControl clearable={false} field="classification_threshold">
-            <ScoreFilter />
-          </FilterControl>
+          <FilterControl clearable={false} field="classification_threshold" />
         )}
+        {config.session && <FilterControl field="event" readonly />}
+        {config.station && <FilterControl field="deployment" />}
+        {config.taxon && <FilterControl field="taxon" />}
       </Collapsible.Content>
     </Collapsible.Root>
   </Box>
 )
-
-const FilterControl = ({
-  clearable = true,
-  field,
-  readonly,
-  children,
-}: {
-  clearable?: boolean
-  field: string
-  readonly?: boolean
-  children?: ReactNode
-}) => {
-  const { filters, clearFilter } = useFilters()
-  const label = AVAILABLE_FILTERS.find(
-    (filter) => filter.field === field
-  )?.label
-  const value = filters.find((filter) => filter.field === field)?.value
-
-  if (!label) {
-    return null
-  }
-
-  if (readonly && !value) {
-    return null
-  }
-
-  return (
-    <div>
-      <label className="flex pl-2 pb-3 text-muted-foreground body-overline-small font-bold">
-        {label}
-      </label>
-      <div className="flex items-center justify-between gap-2">
-        {children}
-        {clearable && value && (
-          <Button
-            size="icon"
-            className="shrink-0 text-muted-foreground"
-            variant="ghost"
-            onClick={() => clearFilter(field)}
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        )}
-      </div>
-    </div>
-  )
-}

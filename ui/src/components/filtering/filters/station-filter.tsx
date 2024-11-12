@@ -1,26 +1,21 @@
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
-import { useFilters } from 'utils/useFilters'
+import { FilterProps } from './types'
 
-const FILTER_FIELD = 'deployment'
-
-export const StationFilter = () => {
-  const { filters, addFilter } = useFilters()
+export const StationFilter = ({ value, onAdd }: FilterProps) => {
   const { projectId } = useParams()
   const { deployments = [], isLoading } = useDeployments({
     projectId: projectId as string,
   })
 
-  const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
-
   return (
     <Select.Root
-      disabled={isLoading}
+      disabled={deployments.length === 0}
       value={value ?? ''}
-      onValueChange={(value) => addFilter(FILTER_FIELD, value)}
+      onValueChange={onAdd}
     >
-      <Select.Trigger>
+      <Select.Trigger loading={isLoading}>
         <Select.Value placeholder="All stations" />
       </Select.Trigger>
       <Select.Content avoidCollisions={false} className="max-h-72">

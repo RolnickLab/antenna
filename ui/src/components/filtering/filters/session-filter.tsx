@@ -1,11 +1,7 @@
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
-import { useFilters } from 'utils/useFilters'
+import { FilterProps } from './types'
 
-const FILTER_FIELD = 'event'
-
-export const SessionFilter = () => {
-  const { filters } = useFilters()
-  const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
+export const SessionFilter = ({ value }: FilterProps) => {
   const { session, isLoading } = useSessionDetails(value)
 
   const label = (() => {

@@ -4,15 +4,11 @@ import { ChevronDownIcon, Loader2 } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useFilters } from 'utils/useFilters'
+import { FilterProps } from './types'
 
-const FILTER_FIELD = 'taxon'
-
-export const TaxonFilter = () => {
+export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
   const { projectId } = useParams()
   const [open, setOpen] = useState(false)
-  const { filters, addFilter, clearFilter } = useFilters()
-  const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
   const { species: taxon, isLoading } = useSpeciesDetails(value, projectId)
 
   const triggerLabel = (() => {
@@ -53,9 +49,9 @@ export const TaxonFilter = () => {
           taxon={taxon}
           onTaxonChange={(taxon) => {
             if (taxon) {
-              addFilter(FILTER_FIELD, taxon?.id)
+              onAdd(taxon.id)
             } else {
-              clearFilter(FILTER_FIELD)
+              onClear()
             }
             setOpen(false)
           }}

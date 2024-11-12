@@ -1,12 +1,9 @@
 import { useCollections } from 'data-services/hooks/collections/useCollections'
 import { Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
-import { useFilters } from 'utils/useFilters'
+import { FilterProps } from './types'
 
-const FILTER_FIELD = 'collection'
-
-export const CollectionFilter = () => {
-  const { filters, addFilter } = useFilters()
+export const CollectionFilter = ({ value, onAdd }: FilterProps) => {
   const { projectId } = useParams()
   const { collections = [], isLoading } = useCollections(
     {
@@ -15,15 +12,13 @@ export const CollectionFilter = () => {
     0
   )
 
-  const value = filters.find((filter) => filter.field === FILTER_FIELD)?.value
-
   return (
     <Select.Root
-      disabled={isLoading}
+      disabled={collections.length === 0}
       value={value ?? ''}
-      onValueChange={(value) => addFilter(FILTER_FIELD, value)}
+      onValueChange={onAdd}
     >
-      <Select.Trigger>
+      <Select.Trigger loading={isLoading}>
         <Select.Value placeholder="All collections" />
       </Select.Trigger>
       <Select.Content avoidCollisions={false} className="max-h-72">
