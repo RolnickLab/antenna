@@ -49,7 +49,9 @@ export class Job {
   get canRetry(): boolean {
     return (
       this._job.user_permissions.includes(UserPermission.Update) &&
-      (this.status !== JobStatus.Created && this.status !== JobStatus.Started && this.status !== JobStatus.Pending)
+      this.status !== JobStatus.Created &&
+      this.status !== JobStatus.Started &&
+      this.status !== JobStatus.Pending
     )
   }
 
