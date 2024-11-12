@@ -1,5 +1,7 @@
 import classNames from 'classnames'
 import { Command } from 'cmdk'
+import { buildTree } from 'components/taxon-search/buildTree'
+import { Node } from 'components/taxon-search/types'
 import {
   IconButton,
   IconButtonTheme,
@@ -8,11 +10,10 @@ import { IconType } from 'design-system/components/icon/icon'
 import { RefObject, useMemo, useState } from 'react'
 import { LoadingSpinner } from '../../loading-spinner/loading-spinner'
 import styles from '../styles.module.scss'
-import { buildTree } from './buildTree'
 import { ComboBoxTreeItem } from './combo-box-tree-item'
-import { Node } from './types'
 import { useBottomAnchor } from './useBottomAnchor'
 
+/** Deprecated in favor of /components/taxon-search/ */
 export const ComboBoxTree = ({
   autoFocus = true,
   containerRef,

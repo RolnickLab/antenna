@@ -4,6 +4,7 @@
 .root {
   display: flex;
   gap: 2px;
+  height: 28px;
   border: 1px solid $color-neutral-100;
   background-color: $color-generic-white;
   box-sizing: border-box;
@@ -14,8 +15,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  aspect-ratio: 1;
+  height: 100%;
+  outline: none;
 
   &[data-state='on'] {
     background-color: $color-neutral-600;

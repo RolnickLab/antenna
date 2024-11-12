@@ -22,6 +22,7 @@ $accessory-wrapper-size: 38px;
 }
 
 .input {
+  all: unset;
   display: flex;
   align-items: center;
   justify-content: flex-start;
