@@ -15,7 +15,7 @@ interface FilteringProps {
 }
 
 export const Filtering = ({ config }: FilteringProps) => (
-  <Box className="w-full h-min shrink-0 rounded-lg md:rounded-xl md:w-72">
+  <Box className="w-full h-min shrink-0 p-2 rounded-lg md:w-72 md:p-4 md:rounded-xl">
     <Collapsible.Root
       className="space-y-4"
       defaultOpen={window.innerWidth >= BREAKPOINTS.MD}
