@@ -29,6 +29,7 @@ import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
+import { AdvancedFiltering } from 'components/filtering/advanced-filtering'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -75,16 +76,24 @@ export const Occurrences = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <Filtering
-          config={{
-            capture: true,
-            collection: true,
-            scoreThreshold: true,
-            session: true,
-            station: true,
-            taxon: true,
-          }}
-        />
+        <div className="space-y-6">
+          <Filtering
+            config={{
+              capture: true,
+              scoreThreshold: true,
+              session: true,
+              station: true,
+              taxon: true,
+            }}
+          />
+          <AdvancedFiltering
+            config={{
+              algorithm: true,
+              collection: true,
+              notAlgorithm: true,
+            }}
+          />
+        </div>
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}

@@ -2,20 +2,8 @@ import { useSearchParams } from 'react-router-dom'
 
 export const AVAILABLE_FILTERS = [
   {
-    label: 'Station',
-    field: 'deployment',
-  },
-  {
-    label: 'Session',
-    field: 'event',
-  },
-  {
-    label: 'Taxon',
-    field: 'taxon',
-  },
-  {
-    label: 'Score threshold',
-    field: 'classification_threshold',
+    label: 'Include algorithm',
+    field: 'algorithm',
   },
   {
     label: 'Collection',
@@ -24,6 +12,27 @@ export const AVAILABLE_FILTERS = [
   {
     label: 'Image',
     field: 'detections__source_image',
+  },
+  {
+    label: 'Exclude algorithm',
+    field: 'not_algorithm',
+  },
+  {
+    label: 'Score threshold',
+    field: 'classification_threshold',
+  },
+  {
+    label: 'Session',
+    field: 'event',
+  },
+
+  {
+    label: 'Station',
+    field: 'deployment',
+  },
+  {
+    label: 'Taxon',
+    field: 'taxon',
   },
 ]
 
