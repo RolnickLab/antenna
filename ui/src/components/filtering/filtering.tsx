@@ -1,4 +1,4 @@
-import { ChevronsUpDown } from 'lucide-react'
+import { ChevronsUpDown, X } from 'lucide-react'
 import { Box, Button, Collapsible } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { AVAILABLE_FILTERS, useFilters } from 'utils/useFilters'
@@ -55,14 +55,13 @@ export const Filtering = ({ config = {} }: FilteringProps) => (
             <StationFilter />
           </FilterControl>
         )}
-
         {config.taxon && (
           <FilterControl field="taxon">
             <TaxonFilter />
           </FilterControl>
         )}
         {config.scoreThreshold && (
-          <FilterControl field="classification_threshold">
+          <FilterControl clearable={false} field="classification_threshold">
             <ScoreFilter />
           </FilterControl>
         )}
@@ -72,28 +71,28 @@ export const Filtering = ({ config = {} }: FilteringProps) => (
 )
 
 const FilterControl = ({
+  clearable = true,
   field,
   readonly,
   children,
 }: {
+  clearable?: boolean
   field: string
   readonly?: boolean
   children?: ReactNode
 }) => {
-  const { filters } = useFilters()
+  const { filters, clearFilter } = useFilters()
   const label = AVAILABLE_FILTERS.find(
     (filter) => filter.field === field
   )?.label
+  const value = filters.find((filter) => filter.field === field)?.value
 
   if (!label) {
     return null
   }
 
-  if (readonly) {
-    const value = filters.find((filter) => filter.field === field)?.value
-    if (!value) {
-      return null
-    }
+  if (readonly && !value) {
+    return null
   }
 
   return (
@@ -101,7 +100,19 @@ const FilterControl = ({
       <label className="flex pl-2 pb-3 text-muted-foreground body-overline-small font-bold">
         {label}
       </label>
-      {children}
+      <div className="flex items-center justify-between gap-2">
+        {children}
+        {clearable && value && (
+          <Button
+            size="icon"
+            className="shrink-0 text-muted-foreground"
+            variant="ghost"
+            onClick={() => clearFilter(field)}
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

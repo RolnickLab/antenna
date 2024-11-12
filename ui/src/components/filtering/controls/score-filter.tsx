@@ -21,7 +21,7 @@ export const ScoreFilter = () => {
   }, [value])
 
   return (
-    <div className="h-12 flex items-center">
+    <div className="w-full h-12 flex items-center">
       <Slider
         min={0}
         max={1}
