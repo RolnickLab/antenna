@@ -676,7 +676,6 @@ class Job(BaseModel):
 
         This is meant to be called by an async task, not directly.
         """
-        self.setup(save=False)
         job_type = self.job_type()
         job_type.run(job=self)
         return None
@@ -735,7 +734,8 @@ class Job(BaseModel):
         Update the total aggregate progress from the progress of each stage.
         """
         if not len(self.progress.stages):
-            total_progress = 1
+            # Need at least one stage to calculate progress
+            total_progress = 0
         else:
             for stage in self.progress.stages:
                 if stage.progress > 0 and stage.status == JobState.CREATED:
@@ -759,6 +759,19 @@ class Job(BaseModel):
             return self.finished_at - self.started_at
         return None
 
+    def save(self, *args, **kwargs):
+        """
+        Create the job stages if they don't exist.
+        """
+        if self.pk and self.progress.stages:
+            self.update_progress(save=False)
+        else:
+            self.setup(save=False)
+        super().save(*args, **kwargs)
+        logger.debug(f"Saved job {self}")
+        if self.progress.summary.status != self.status:
+            logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
+
     @classmethod
     def default_progress(cls) -> JobProgress:
         """Return the progress of each stage of this job as a dictionary"""
@@ -777,4 +790,3 @@ class Job(BaseModel):
         # permissions = [
         #     ("run_job", "Can run a job"),
         #     ("cancel_job", "Can cancel a job"),
-        # ]

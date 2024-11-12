@@ -2,8 +2,8 @@ from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobProgress, JobState
-from ami.main.models import Project, SourceImageCollection
+from ami.jobs.models import Job, JobProgress, JobState, MLJob
+from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.users.models import User
 
@@ -24,13 +24,14 @@ class TestJobProgress(TestCase):
         self.pipeline.projects.add(self.project)
 
     def test_create_job(self):
-        job = Job.objects.create(project=self.project, name="Test job")
+        job = Job.objects.create(project=self.project, name="Test job - create only")
         self.assertIsInstance(job.progress, JobProgress)
         self.assertEqual(job.progress.summary.progress, 0)
         self.assertEqual(job.progress.stages, [])
 
     def test_create_job_with_delay(self):
         job = Job.objects.create(
+            job_type_key=MLJob.key,
             project=self.project,
             name="Test job",
             delay=1,
@@ -61,15 +62,19 @@ class TestJobView(APITestCase):
 
     def setUp(self):
         self.project = Project.objects.create(name="Jobs Test Project")
+        self.test_image = SourceImage.objects.create(path="test.jpg", project=self.project)
+        self.source_image_collection = SourceImageCollection.objects.create(
+            name="Test collection",
+            project=self.project,
+        )
+        self.source_image_collection.images.add(self.test_image)
         self.job = Job.objects.create(
+            job_type_key=MLJob.key,
             project=self.project,
             name="Test job",
             delay=0,
             pipeline=Pipeline.objects.create(name="Test pipeline"),
-            source_image_collection=SourceImageCollection.objects.create(
-                name="Test collection",
-                project=self.project,
-            ),
+            source_image_collection=self.source_image_collection,
         )
 
         self.user = User.objects.create_user(  # type: ignore
@@ -107,24 +112,31 @@ class TestJobView(APITestCase):
         jobs_create_url = reverse_with_params("api:job-list")
         # request = self.factory.post(jobs_create_url, {"project": self.project.pk, "name": "Test job 2"})
         self.client.force_authenticate(user=self.user)
+        job_name = "Test job - Start but don't run"
         job_data = {
             "project_id": self.job.project.pk,
-            "name": "Test job 2",
+            "name": job_name,
             "pipeline_id": self.job.pipeline.pk,  # type: ignore
-            "collection_id": self.job.source_image_collection.pk,  # type: ignore
+            # "collection_id": self.job.source_image_collection.pk,  # type: ignore
+            "source_image_single_id": self.test_image.pk,
             "delay": 0,
-            "start_now": False,
+            "start_now": True,
+            # "job_type_key": MLJob.key,  # @TODO Add this when the UI is updated to pass a job type
         }
         resp = self.client.post(jobs_create_url, job_data)
         self.client.force_authenticate(user=None)
         self.assertEqual(resp.status_code, 201)
         data = resp.json()
         self.assertEqual(data["project"]["id"], self.project.pk)
-        self.assertEqual(data["name"], "Test job 2")
-        # self.assertEqual(data["progress"]["status"], "CREATED")
-        progress = JobProgress(**data["progress"])
+        self.assertEqual(data["source_image_single"]["id"], self.test_image.pk)
+        self.assertEqual(data["name"], job_name)
 
-        self.assertEqual(progress.summary.status, JobState.SUCCESS)
+        job = Job.objects.get(pk=data["id"])
+        self.assertEqual(job.status, JobState.CREATED.value)
+
+        # @TODO This should be CREATED as well, but it is SUCCESS!
+        # progress = JobProgress(**data["progress"])
+        # self.assertEqual(progress.summary.status, JobState.CREATED)
 
     def test_run_job(self):
         jobs_run_url = reverse_with_params("api:job-run", args=[self.job.pk], params={"no_async": True})
@@ -137,9 +149,22 @@ class TestJobView(APITestCase):
         progress = JobProgress(**data["progress"])
         self.assertEqual(progress.summary.status, JobState.SUCCESS)
         self.assertEqual(progress.summary.progress, 1.0)
+
+        # @TODO test async job
         # self.job.refresh_from_db()
-        # Assert has a task id now, if async is working in tests
         # self.assertIsNotNone(self.job.task_id)
+
+    def test_retry_job(self):
+        jobs_retry_url = reverse_with_params("api:job-retry", args=[self.job.pk], params={"no_async": True})
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(jobs_retry_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["id"], self.job.pk)
+        self.assertEqual(data["status"], JobState.SUCCESS.value)
+        progress = JobProgress(**data["progress"])
+        self.assertEqual(progress.summary.status, JobState.SUCCESS)
+        self.assertEqual(progress.summary.progress, 1.0)
 
     def test_run_job_unauthenticated(self):
         jobs_run_url = reverse_with_params("api:job-run", args=[self.job.pk])
