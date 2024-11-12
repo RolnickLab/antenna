@@ -53,7 +53,7 @@ export const SessionInfo = ({ session }: { session: Session }) => {
             value: session.numSpecies,
             to: getAppRoute({
               to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
-              filters: { occurrences__event: session.id },
+              filters: { event: session.id },
             }),
           },
         ]

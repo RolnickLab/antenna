@@ -1,10 +1,11 @@
+import { useTaxonSearch } from 'components/taxon-search/useTaxonSearch'
 import { Taxon } from 'data-services/models/taxa'
 import { ComboBoxTree } from 'design-system/components/combo-box/combo-box-tree/combo-box-tree'
 import { RefObject, useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useDebounce } from 'utils/useDebounce'
-import { useTaxonSearch } from './useTaxonSearch'
 
+/** Deprecated in favor of /components/taxon-search/ */
 export const TaxonSearch = ({
   autoFocus = true,
   containerRef,
