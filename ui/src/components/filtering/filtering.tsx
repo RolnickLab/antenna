@@ -1,4 +1,5 @@
-import { Box } from 'nova-ui-kit'
+import { ChevronsUpDown } from 'lucide-react'
+import { Box, Button, Collapsible } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { AVAILABLE_FILTERS, useFilters } from 'utils/useFilters'
 import { CollectionFilter } from './controls/collection-filter'
@@ -20,40 +21,53 @@ interface FilteringProps {
 }
 
 export const Filtering = ({ config = {} }: FilteringProps) => (
-  <Box className="w-72 h-min shrink-0 space-y-4" label="Filters">
-    <div className="space-y-6">
-      {config.capture && (
-        <FilterControl field="detections__source_image" readonly>
-          <ImageFilter />
-        </FilterControl>
-      )}
-      {config.session && (
-        <FilterControl field="event" readonly>
-          <SessionFilter />
-        </FilterControl>
-      )}
-      {config.collection && (
-        <FilterControl field="collection">
-          <CollectionFilter />
-        </FilterControl>
-      )}
-      {config.station && (
-        <FilterControl field="deployment">
-          <StationFilter />
-        </FilterControl>
-      )}
+  <Box className="w-full h-min shrink-0 rounded-lg md:rounded-xl md:w-72">
+    <Collapsible.Root
+      className="space-y-4"
+      defaultOpen={window.innerWidth >= 768}
+    >
+      <div className="flex items-center justify-between ml-2">
+        <span className="body-overline font-bold">Filters</span>
+        <Collapsible.Trigger asChild>
+          <Button size="icon" variant="ghost">
+            <ChevronsUpDown className="h-4 w-4" />
+          </Button>
+        </Collapsible.Trigger>
+      </div>
+      <Collapsible.Content className="space-y-6">
+        {config.capture && (
+          <FilterControl field="detections__source_image" readonly>
+            <ImageFilter />
+          </FilterControl>
+        )}
+        {config.session && (
+          <FilterControl field="event" readonly>
+            <SessionFilter />
+          </FilterControl>
+        )}
+        {config.collection && (
+          <FilterControl field="collection">
+            <CollectionFilter />
+          </FilterControl>
+        )}
+        {config.station && (
+          <FilterControl field="deployment">
+            <StationFilter />
+          </FilterControl>
+        )}
 
-      {config.taxon && (
-        <FilterControl field="taxon">
-          <TaxonFilter />
-        </FilterControl>
-      )}
-      {config.scoreThreshold && (
-        <FilterControl field="classification_threshold">
-          <ScoreFilter />
-        </FilterControl>
-      )}
-    </div>
+        {config.taxon && (
+          <FilterControl field="taxon">
+            <TaxonFilter />
+          </FilterControl>
+        )}
+        {config.scoreThreshold && (
+          <FilterControl field="classification_threshold">
+            <ScoreFilter />
+          </FilterControl>
+        )}
+      </Collapsible.Content>
+    </Collapsible.Root>
   </Box>
 )
 

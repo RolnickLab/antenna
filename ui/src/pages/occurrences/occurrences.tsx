@@ -74,7 +74,7 @@ export const Occurrences = () => {
 
   return (
     <>
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-6 md:flex-row">
         <Filtering
           config={{
             capture: true,
