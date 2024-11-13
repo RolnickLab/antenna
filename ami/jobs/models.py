@@ -411,6 +411,53 @@ class MLJob(JobType):
         job.save()
 
 
+class DataStorageSyncJob(JobType):
+    name = "Data storage sync"
+    key = "data_storage_sync"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        """
+        Run the data storage sync job.
+
+        This is meant to be called by an async task, not directly.
+        """
+
+        job.progress.add_stage(cls.name)
+        job.progress.add_stage_param(cls.key, "Total files", "")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        if job.deployment:
+            job.logger.info(f"Syncing captures for deployment {job.deployment}")
+            job.progress.update_stage(
+                cls.key,
+                status=JobState.STARTED,
+                progress=0,
+                total_files=0,
+            )
+            job.save()
+
+            job.deployment.sync_captures(job=job)
+
+            job.logger.info(f"Finished syncing captures for deployment {job.deployment}")
+            job.progress.update_stage(
+                cls.key,
+                status=JobState.SUCCESS,
+                progress=1,
+            )
+            job.update_status(JobState.SUCCESS)
+            job.save()
+        else:
+            job.update_status(JobState.FAILURE)
+
+        job.update_progress()
+        job.finished_at = datetime.datetime.now()
+        job.save()
+
+
 class SourceImageCollectionPopulateJob(JobType):
     name = "Populate Captures Collection"
     key = "populate_captures_collection"
@@ -464,53 +511,6 @@ class SourceImageCollectionPopulateJob(JobType):
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS, save=False)
         job.update_progress(save=False)
-        job.save()
-
-
-class DataStorageSyncJob(JobType):
-    name = "Data storage sync"
-    key = "data_storage_sync"
-
-    @classmethod
-    def run(cls, job: "Job"):
-        """
-        Run the data storage sync job.
-
-        This is meant to be called by an async task, not directly.
-        """
-
-        job.progress.add_stage(cls.name)
-        job.progress.add_stage_param(cls.key, "Total files", "")
-        job.update_status(JobState.STARTED)
-        job.started_at = datetime.datetime.now()
-        job.finished_at = None
-        job.save()
-
-        if job.deployment:
-            job.logger.info(f"Syncing captures for deployment {job.deployment}")
-            job.progress.update_stage(
-                cls.key,
-                status=JobState.STARTED,
-                progress=0,
-                total_files=0,
-            )
-            job.save()
-
-            job.deployment.sync_captures(job=job)
-
-            job.logger.info(f"Finished syncing captures for deployment {job.deployment}")
-            job.progress.update_stage(
-                cls.key,
-                status=JobState.SUCCESS,
-                progress=1,
-            )
-            job.update_status(JobState.SUCCESS)
-            job.save()
-        else:
-            job.update_status(JobState.FAILURE)
-
-        job.update_progress()
-        job.finished_at = datetime.datetime.now()
         job.save()
 
 
