@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
             field=models.CharField(
                 choices=[
                     ("ml", "ML pipeline"),
-                    ("populate_captures_collection", "Populate Captures Collection"),
+                    ("populate_captures_collection", "Populate captures collection"),
                     ("data_storage_sync", "Data storage sync"),
                     ("unknown", "Unknown"),
                 ],

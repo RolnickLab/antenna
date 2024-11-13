@@ -469,7 +469,7 @@ class DataStorageSyncJob(JobType):
 
 
 class SourceImageCollectionPopulateJob(JobType):
-    name = "Populate Captures Collection"
+    name = "Populate captures collection"
     key = "populate_captures_collection"
 
     @classmethod
