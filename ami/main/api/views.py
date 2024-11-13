@@ -563,7 +563,8 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         classification_threshold = get_active_classification_threshold(self.request)
         queryset = (
-            super().get_queryset()
+            super()
+            .get_queryset()
             .with_occurrences_count(classification_threshold=classification_threshold)  # type: ignore
             .with_taxa_count(classification_threshold=classification_threshold)
         )
