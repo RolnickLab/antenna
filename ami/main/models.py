@@ -580,7 +580,6 @@ class Deployment(BaseModel):
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
         self.occurrences_count = (
             self.occurrences.filter(
-                determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 event__isnull=False,
             )
             .distinct()
@@ -589,7 +588,6 @@ class Deployment(BaseModel):
         self.taxa_count = (
             Taxon.objects.filter(
                 occurrences__deployment=self,
-                occurrences__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 occurrences__event__isnull=False,
             )
             .distinct()
@@ -710,12 +708,8 @@ class Event(BaseModel):
     def get_detections_count(self) -> int | None:
         return Detection.objects.filter(Q(source_image__event=self)).count()
 
-    def get_occurrences_count(self, classification_threshold: int | None = None) -> int:
-        return (
-            self.occurrences.distinct()
-            .filter(determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD)
-            .count()
-        )
+    def get_occurrences_count(self, classification_threshold: float = 0) -> int:
+        return self.occurrences.distinct().filter(determination_score__gte=classification_threshold).count()
 
     def stats(self) -> dict[str, int | None]:
         return (
@@ -728,15 +722,15 @@ class Event(BaseModel):
             )
         )
 
-    def taxa_count(self, classification_threshold: int | None = None) -> int:
+    def taxa_count(self, classification_threshold: float = 0) -> int:
         # Move this to a pre-calculated field or prefetch_related in the view
         # return self.taxa(classification_threshold).count()
         return 0
 
-    def taxa(self, classification_threshold: int | None = None) -> models.QuerySet["Taxon"]:
+    def taxa(self, classification_threshold: float = 0) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(
             Q(occurrences__event=self),
-            occurrences__determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD,
+            occurrences__determination_score__gte=classification_threshold,
         ).distinct()
 
     def first_capture(self):
@@ -1145,23 +1139,23 @@ def delete_source_image(sender, instance, **kwargs):
 
 
 class SourceImageQuerySet(models.QuerySet):
-    def with_occurrences_count(self):
+    def with_occurrences_count(self, classification_threshold: float = 0):
         return self.annotate(
             occurrences_count=models.Count(
                 "detections__occurrence",
                 filter=models.Q(
-                    detections__occurrence__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD
+                    detections__occurrence__determination_score__gte=classification_threshold,
                 ),
                 distinct=True,
             )
         )
 
-    def with_taxa_count(self):
+    def with_taxa_count(self, classification_threshold: float = 0):
         return self.annotate(
             taxa_count=models.Count(
                 "detections__occurrence__determination",
                 filter=models.Q(
-                    detections__occurrence__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD
+                    detections__occurrence__determination_score__gte=classification_threshold,
                 ),
                 distinct=True,
             )
@@ -2475,7 +2469,7 @@ class Taxon(BaseModel):
         self,
         limit: int | None = 10,
         project_id: int | None = None,
-        classification_threshold: float | None = None,
+        classification_threshold: float = 0,
     ) -> list[str]:
         """
         Return one image from each occurrence of this Taxon.
@@ -2488,8 +2482,6 @@ class Taxon(BaseModel):
         Use the request.user to filter by the user's access.
         Use the request to generate the full media URLs.
         """
-
-        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
 
         # Retrieve the URLs using a single optimized query
         qs = (
@@ -2663,22 +2655,25 @@ class SourceImageCollectionQuerySet(models.QuerySet):
             )
         )
 
-    def with_occurrences_count(self):
+    def with_occurrences_count(self, classification_threshold: float = 0):
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
                 filter=models.Q(
-                    images__detections__occurrence__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD
+                    images__detections__occurrence__determination_score__gte=classification_threshold,
                 ),
                 distinct=True,
             )
         )
 
-    def with_taxa_count(self):
+    def with_taxa_count(self, classification_threshold: float = 0):
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",
                 distinct=True,
+                filter=models.Q(
+                    images__detections__occurrence__determination_score__gte=classification_threshold,
+                ),
             )
         )
 
