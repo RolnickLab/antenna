@@ -20,7 +20,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
@@ -194,8 +193,8 @@ class DeploymentViewSet(DefaultViewSet):
                 name=f"Sync captures for deployment {deployment.pk}",
                 deployment=deployment,
                 project=deployment.project,
+                job_type_key=DataStorageSyncJob.key,
             )
-            job.progress.add_stage(DataStorageSyncJob.name)
             job.enqueue()
             msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
             logger.info(msg)
@@ -565,10 +564,24 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         """
         Populate a collection with source images using the configured sampling method and arguments.
         """
-        collection = self.get_object()
-        collection.images.clear()
-        task = tasks.populate_collection.apply_async([collection.pk])
-        return Response({"task": task.id})
+        collection: SourceImageCollection = self.get_object()
+
+        if collection:
+            from ami.jobs.models import Job, SourceImageCollectionPopulateJob
+
+            assert collection.project, "Collection must be associated with a project"
+            job = Job.objects.create(
+                name=f"Populate captures for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=SourceImageCollectionPopulateJob.key,
+            )
+            job.enqueue()
+            msg = f"Populating captures for collection {collection.pk} in background."
+            logger.info(msg)
+            return Response({"job_id": job.pk, "project_id": collection.project.pk})
+        else:
+            raise api_exceptions.ValidationError(detail="Invalid collection requested")
 
     def _get_source_image(self):
         """

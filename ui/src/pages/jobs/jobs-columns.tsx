@@ -66,10 +66,10 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     renderCell: (item: Job) => <BasicTableCell value={item.createdAt} />,
   },
   {
-    id: 'started-at',
-    name: translate(STRING.FIELD_LABEL_STARTED_AT),
-    sortField: 'started_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Job) => <BasicTableCell value={item.updatedAt} />,
   },
   {
     id: 'finished-at',

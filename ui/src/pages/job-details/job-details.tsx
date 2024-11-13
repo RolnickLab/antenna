@@ -24,6 +24,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { CancelJob } from './job-actions/cancel-job'
 import { QueueJob } from './job-actions/queue-job'
+import { RetryJob } from './job-actions/retry-job'
 import styles from './job-details.module.scss'
 import { JobStageLabel } from './job-stage-label/job-stage-label'
 
@@ -46,6 +47,7 @@ export const JobDetails = ({
         </div>
         {job.canQueue && <QueueJob jobId={job.id} />}
         {job.canCancel && <CancelJob jobId={job.id} />}
+        {job.canRetry && <RetryJob jobId={job.id} />}
         {job.canDelete && <DeleteJobsDialog id={job.id} onDelete={onDelete} />}
       </div>
     </Dialog.Header>
@@ -75,6 +77,8 @@ const JobSummary = ({ job }: { job: Job }) => {
         return Status.Warning
       case JobStatus.Success:
         return Status.Success
+      case JobStatus.Retrying:
+        return Status.Warning
       case JobStatus.Canceling:
         return Status.Warning
       case JobStatus.Revoked:
