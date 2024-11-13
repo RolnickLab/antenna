@@ -189,6 +189,16 @@ class JobProgress(pydantic.BaseModel):
                     self.add_or_update_stage_param(stage_key, k, v)
             return stage
 
+    def reset(self, status: JobState = JobState.CREATED):
+        """
+        Set the progress of summary and all stages to 0.
+        """
+        self.summary.progress = 0
+        self.summary.status = status
+        for stage in self.stages:
+            stage.progress = 0
+            stage.status = status
+
     class Config:
         use_enum_values = True
         as_dict = True
@@ -685,6 +695,7 @@ class Job(BaseModel):
         Retry the job.
         """
         self.logger.info(f"Re-running job {self}")
+        self.progress.reset()
         self.status = JobState.RETRY
         self.save()
         if async_task:
