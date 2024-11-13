@@ -92,8 +92,8 @@ export const Occurrences = () => {
             config={{
               algorithm: true,
               collection: true,
-              notAlgorithm: true,
               identified: true,
+              not_algorithm: true,
             }}
           />
         </div>
