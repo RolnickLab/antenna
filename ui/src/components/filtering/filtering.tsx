@@ -6,9 +6,11 @@ import { FilterControl } from './filter-control'
 interface FilteringProps {
   config: {
     capture?: boolean
+    endDate?: boolean
     scoreThreshold?: boolean
     session?: boolean
     station?: boolean
+    startDate?: boolean
     taxon?: boolean
   }
 }
@@ -33,6 +35,8 @@ export const Filtering = ({ config }: FilteringProps) => (
         )}
         {config.session && <FilterControl field="event" readonly />}
         {config.station && <FilterControl field="deployment" />}
+        {config.startDate && <FilterControl field="date_start" />}
+        {config.endDate && <FilterControl field="date_end" />}
         {config.taxon && <FilterControl field="taxon" />}
         {config.scoreThreshold && (
           <FilterControl clearable={false} field="classification_threshold" />

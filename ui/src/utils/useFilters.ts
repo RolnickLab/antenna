@@ -6,29 +6,40 @@ export const AVAILABLE_FILTERS = [
     field: 'algorithm',
   },
   {
+    label: 'Score threshold',
+    field: 'classification_threshold',
+  },
+  {
     label: 'Collection',
     field: 'collection',
+  },
+  {
+    label: 'Station',
+    field: 'deployment',
+  },
+  {
+    label: 'End date',
+    field: 'date_end',
+  },
+  {
+    label: 'Start date',
+    field: 'date_start',
+  },
+  {
+    label: 'Station',
+    field: 'deployment',
   },
   {
     label: 'Image',
     field: 'detections__source_image',
   },
   {
-    label: 'Exclude algorithm',
-    field: 'not_algorithm',
-  },
-  {
-    label: 'Score threshold',
-    field: 'classification_threshold',
-  },
-  {
     label: 'Session',
     field: 'event',
   },
-
   {
-    label: 'Station',
-    field: 'deployment',
+    label: 'Exclude algorithm',
+    field: 'not_algorithm',
   },
   {
     label: 'Taxon',

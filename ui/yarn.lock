@@ -4659,7 +4659,7 @@ __metadata:
     leaflet: "npm:^1.9.3"
     lodash: "npm:^4.17.21"
     lucide-react: "npm:^0.454.0"
-    nova-ui-kit: "npm:^1.1.6"
+    nova-ui-kit: "npm:^1.1.9"
     plotly.js: "npm:^2.25.2"
     postcss: "npm:^8.4.47"
     prettier: "npm:2.8.4"
@@ -5994,6 +5994,13 @@ __metadata:
     whatwg-mimetype: "npm:^3.0.0"
     whatwg-url: "npm:^11.0.0"
   checksum: 051c3aaaf3e961904f136aab095fcf6dff4db23a7fc759dd8ba7b3e6ba03fc07ef608086caad8ab910d864bd3b5e57d0d2f544725653d77c96a2c971567045f4
+  languageName: node
+  linkType: hard
+
+"date-fns@npm:^3.6.0":
+  version: 3.6.0
+  resolution: "date-fns@npm:3.6.0"
+  checksum: 0b5fb981590ef2f8e5a3ba6cd6d77faece0ea7f7158948f2eaae7bbb7c80a8f63ae30b01236c2923cf89bb3719c33aeb150c715ea4fe4e86e37dcf06bed42fb6
   languageName: node
   linkType: hard
 
@@ -10029,9 +10036,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nova-ui-kit@npm:^1.1.6":
-  version: 1.1.6
-  resolution: "nova-ui-kit@npm:1.1.6"
+"nova-ui-kit@npm:^1.1.9":
+  version: 1.1.9
+  resolution: "nova-ui-kit@npm:1.1.9"
   dependencies:
     "@radix-ui/react-collapsible": "npm:^1.1.1"
     "@radix-ui/react-popover": "npm:^1.1.2"
@@ -10041,12 +10048,14 @@ __metadata:
     class-variance-authority: "npm:^0.7.0"
     clsx: "npm:^2.1.1"
     cmdk: "npm:^1.0.0"
+    date-fns: "npm:^3.6.0"
     lucide-react: "npm:^0.452.0"
     react: "npm:^18.3.1"
+    react-day-picker: "npm:^8.10.1"
     react-dom: "npm:^18.3.1"
     tailwind-merge: "npm:^2.5.4"
     tailwindcss-animate: "npm:^1.0.7"
-  checksum: 91aec7cef58b1802484ce20049b19e574721d0e0f0f8ca79c81b7182de6affcd81dc6bcc07d0f67e0fa0dc9a7b1991e2e8f4c3167baa581e84e3601429de35a1
+  checksum: 17dac170fa20340499bf3a929dc21a6633627a8df1f0798a2cfe619b9fcc536c498ffccc142aefc7b975b8aed48e51a898c249bfbe637c9b23b0e6a179b126ef
   languageName: node
   linkType: hard
 
@@ -10803,6 +10812,16 @@ __metadata:
   dependencies:
     performance-now: "npm:^2.1.0"
   checksum: 337f0853c9e6a77647b0f499beedafea5d6facfb9f2d488a624f88b03df2be72b8a0e7f9118a3ff811377d534912039a3311815700d2b6d2313f82f736f9eb6e
+  languageName: node
+  linkType: hard
+
+"react-day-picker@npm:^8.10.1":
+  version: 8.10.1
+  resolution: "react-day-picker@npm:8.10.1"
+  peerDependencies:
+    date-fns: ^2.28.0 || ^3.0.0
+    react: ^16.8.0 || ^17.0.0 || ^18.0.0
+  checksum: a0ff28c4b61b3882e6a825b19e5679e2fdf3256cf1be8eb0a0c028949815c1ae5a6561474c2c19d231c010c8e0e0b654d3a322610881e0655abca05a2e03d9df
   languageName: node
   linkType: hard
 

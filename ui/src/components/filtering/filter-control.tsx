@@ -9,12 +9,15 @@ import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { FilterProps } from './filters/types'
+import { DateFilter } from './filters/date-filter'
 
 const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
   algorithm: AlgorithmFilter,
   classification_threshold: ScoreFilter,
+  date_start: DateFilter,
+  date_end: DateFilter,
   collection: CollectionFilter,
   deployment: StationFilter,
   detections__source_image: ImageFilter,

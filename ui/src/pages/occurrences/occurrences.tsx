@@ -80,8 +80,10 @@ export const Occurrences = () => {
           <Filtering
             config={{
               capture: true,
+              endDate: true,
               scoreThreshold: true,
               session: true,
+              startDate: true,
               station: true,
               taxon: true,
             }}
