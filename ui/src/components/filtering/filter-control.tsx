@@ -3,13 +3,14 @@ import { Button } from 'nova-ui-kit'
 import { AVAILABLE_FILTERS, useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { CollectionFilter } from './filters/collection-filter'
+import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
 import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { FilterProps } from './filters/types'
-import { DateFilter } from './filters/date-filter'
+import { VerificationStatusFilter } from './filters/verification-status-filter'
 
 const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
@@ -22,6 +23,7 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
+  identified: VerificationStatusFilter,
   not_algorithm: NotAlgorithmFilter,
   taxon: TaxonFilter,
 }

@@ -38,12 +38,12 @@ export const AVAILABLE_FILTERS = [
     field: 'event',
   },
   {
-    label: 'Exclude algorithm',
-    field: 'not_algorithm',
+    label: 'Verification status',
+    field: 'identified',
   },
   {
-    label: 'Taxon',
-    field: 'taxon',
+    label: 'Exclude algorithm',
+    field: 'not_algorithm',
   },
 ]
 
