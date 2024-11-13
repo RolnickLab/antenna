@@ -20,7 +20,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami import tasks
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
@@ -194,8 +193,8 @@ class DeploymentViewSet(DefaultViewSet):
                 name=f"Sync captures for deployment {deployment.pk}",
                 deployment=deployment,
                 project=deployment.project,
+                job_type_key=DataStorageSyncJob.key,
             )
-            job.progress.add_stage(DataStorageSyncJob.name)
             job.enqueue()
             msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
             logger.info(msg)
@@ -565,10 +564,24 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         """
         Populate a collection with source images using the configured sampling method and arguments.
         """
-        collection = self.get_object()
-        collection.images.clear()
-        task = tasks.populate_collection.apply_async([collection.pk])
-        return Response({"task": task.id})
+        collection: SourceImageCollection = self.get_object()
+
+        if collection:
+            from ami.jobs.models import Job, SourceImageCollectionPopulateJob
+
+            assert collection.project, "Collection must be associated with a project"
+            job = Job.objects.create(
+                name=f"Populate captures for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=SourceImageCollectionPopulateJob.key,
+            )
+            job.enqueue()
+            msg = f"Populating captures for collection {collection.pk} in background."
+            logger.info(msg)
+            return Response({"job_id": job.pk, "project_id": collection.project.pk})
+        else:
+            raise api_exceptions.ValidationError(detail="Invalid collection requested")
 
     def _get_source_image(self):
         """
@@ -771,6 +784,51 @@ class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceIdentified(filters.BaseFilterBackend):
+    """
+    Filter occurrences that have been or not been identified by any user.
+    """
+
+    query_param = "identified"
+
+    def filter_queryset(self, request, queryset, view):
+        # Check presence of the query param before attempting to cast None to a boolean
+        if self.query_param in request.query_params:
+            identified = BooleanField(required=False).clean(request.query_params.get(self.query_param))
+            if identified:
+                queryset = queryset.filter(identifications__isnull=False)
+            else:
+                queryset = queryset.filter(identifications__isnull=True)
+
+        return queryset
+
+
+class OccurrenceIdentifiedByFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences by the users that have or have not identified them.
+
+    Accepts a list of user ids to filter by or exclude by.
+
+    This filter can be both inclusive and exclusive.
+
+    Useful for filtering occurrences that have been identified by the current user.
+    """
+
+    query_param = "identified_by"
+    query_param_exclusive = f"not_{query_param}"
+
+    def filter_queryset(self, request, queryset, view):
+        user_ids = request.query_params.getlist(self.query_param)
+        user_ids_exclusive = request.query_params.getlist(self.query_param_exclusive)
+
+        if user_ids:
+            queryset = queryset.filter(identifications__user__in=user_ids)
+        if user_ids_exclusive:
+            queryset = queryset.exclude(identifications__user__in=user_ids_exclusive)
+
+        return queryset
+
+
 class OccurrenceDateFilter(filters.BaseFilterBackend):
     """
     Filter occurrences within a date range that their detections were observed.
@@ -822,6 +880,8 @@ class OccurrenceViewSet(DefaultViewSet):
         OccurrenceCollectionFilter,
         OccurrenceAlgorithmFilter,
         OccurrenceDateFilter,
+        OccurrenceIdentified,
+        OccurrenceIdentifiedByFilter,
     ]
     filterset_fields = [
         "event",
