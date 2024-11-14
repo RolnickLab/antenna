@@ -1,3 +1,4 @@
+import { AdvancedFiltering } from 'components/filtering/advanced-filtering'
 import { Filtering } from 'components/filtering/filtering'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
@@ -75,16 +76,27 @@ export const Occurrences = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <Filtering
-          config={{
-            capture: true,
-            collection: true,
-            scoreThreshold: true,
-            session: true,
-            station: true,
-            taxon: true,
-          }}
-        />
+        <div className="space-y-6">
+          <Filtering
+            config={{
+              capture: true,
+              endDate: true,
+              scoreThreshold: true,
+              session: true,
+              startDate: true,
+              taxon: true,
+              verified: true,
+            }}
+          />
+          <AdvancedFiltering
+            config={{
+              algorithm: true,
+              collection: true,
+              station: true,
+              not_algorithm: true,
+            }}
+          />
+        </div>
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}

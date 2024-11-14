@@ -18,7 +18,7 @@ export const StationFilter = ({ value, onAdd }: FilterProps) => {
       <Select.Trigger loading={isLoading}>
         <Select.Value placeholder="All stations" />
       </Select.Trigger>
-      <Select.Content avoidCollisions={false} className="max-h-72">
+      <Select.Content className="max-h-72">
         {deployments.map((d) => (
           <Select.Item key={d.id} value={d.id}>
             {d.name}

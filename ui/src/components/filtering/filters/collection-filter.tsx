@@ -21,7 +21,7 @@ export const CollectionFilter = ({ value, onAdd }: FilterProps) => {
       <Select.Trigger loading={isLoading}>
         <Select.Value placeholder="All collections" />
       </Select.Trigger>
-      <Select.Content avoidCollisions={false} className="max-h-72">
+      <Select.Content className="max-h-72">
         {collections.map((c) => (
           <Select.Item key={c.id} value={c.id}>
             {c.name}

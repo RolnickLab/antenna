@@ -7,7 +7,7 @@ from django.core import exceptions
 from django.db import models
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
-from django.forms import BooleanField, CharField, IntegerField
+from django.forms import BooleanField, CharField, DateField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
@@ -770,6 +770,88 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
+class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences by the detection algorithm that detected them.
+
+    Accepts a list of algorithm ids to filter by or exclude by.
+
+    This filter can be both inclusive and exclusive.
+    """
+
+    query_param = "algorithm"
+    query_param_exclusive = f"not_{query_param}"
+
+    def filter_queryset(self, request, queryset, view):
+        algorithm_ids = request.query_params.getlist(self.query_param)
+        algorithm_ids_exclusive = request.query_params.getlist(self.query_param_exclusive)
+
+        if algorithm_ids:
+            queryset = queryset.filter(detections__classifications__algorithm__in=algorithm_ids)
+        if algorithm_ids_exclusive:
+            queryset = queryset.exclude(detections__classifications__algorithm__in=algorithm_ids_exclusive)
+
+        return queryset
+
+
+class OccurrenceVerified(filters.BaseFilterBackend):
+    """
+    Filter occurrences that have been or not been identified by any user.
+    """
+
+    query_param = "verified"
+
+    def filter_queryset(self, request, queryset, view):
+        # Check presence of the query param before attempting to cast None to a boolean
+        if self.query_param in request.query_params:
+            verified = BooleanField(required=False).clean(request.query_params.get(self.query_param))
+            if verified:
+                queryset = queryset.filter(identifications__isnull=False)
+            else:
+                queryset = queryset.filter(identifications__isnull=True)
+
+        return queryset
+
+
+class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences that have been or not been identified by the current user.
+    """
+
+    query_param = "verified_by_me"
+
+    def filter_queryset(self, request: Request, queryset, view):
+        if self.query_param in request.query_params and request.user and request.user.is_authenticated:
+            verified_by_me = BooleanField(required=False).clean(request.query_params.get(self.query_param))
+            if verified_by_me:
+                queryset = queryset.filter(identifications__user=request.user)
+            else:
+                queryset = queryset.exclude(identifications__user=request.user)
+
+        return queryset
+
+
+class OccurrenceDateFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences within a date range that their detections were observed.
+    """
+
+    query_param_start = "date_start"
+    query_param_end = "date_end"
+
+    def filter_queryset(self, request, queryset, view):
+        # Validate and clean the query params. They should be in ISO format.
+        start_date = DateField(required=False).clean(request.query_params.get(self.query_param_start))
+        end_date = DateField(required=False).clean(request.query_params.get(self.query_param_end))
+
+        if start_date:
+            queryset = queryset.filter(detections__timestamp__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(detections__timestamp__date__lte=end_date)
+
+        return queryset
+
+
 class TaxonCollectionFilter(filters.BaseFilterBackend):
     """
     Filter taxa by the collection their occurrences belong to.
@@ -798,6 +880,10 @@ class OccurrenceViewSet(DefaultViewSet):
     filter_backends = DefaultViewSetMixin.filter_backends + [
         CustomOccurrenceDeterminationFilter,
         OccurrenceCollectionFilter,
+        OccurrenceAlgorithmFilter,
+        OccurrenceDateFilter,
+        OccurrenceVerified,
+        OccurrenceVerifiedByMeFilter,
     ]
     filterset_fields = [
         "event",
@@ -837,12 +923,8 @@ class OccurrenceViewSet(DefaultViewSet):
             "determination",
             "deployment",
             "event",
-        ).annotate(
-            detections_count=models.Count("detections", distinct=True),
-            duration=models.Max("detections__timestamp") - models.Min("detections__timestamp"),
-            first_appearance_timestamp=models.Min("detections__timestamp"),
-            first_appearance_time=models.Min("detections__timestamp__time"),
         )
+        qs = qs.with_detections_count().with_timestamps()  # type: ignore
         if self.action == "list":
             qs = (
                 qs.all()

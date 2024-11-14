@@ -1,22 +1,30 @@
 import { X } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { AVAILABLE_FILTERS, useFilters } from 'utils/useFilters'
+import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { CollectionFilter } from './filters/collection-filter'
+import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
 import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { FilterProps } from './filters/types'
+import { VerificationStatusFilter } from './filters/verification-status-filter'
 
 const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
+  algorithm: AlgorithmFilter,
   classification_threshold: ScoreFilter,
+  date_start: DateFilter,
+  date_end: DateFilter,
   collection: CollectionFilter,
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
+  verified: VerificationStatusFilter,
+  not_algorithm: NotAlgorithmFilter,
   taxon: TaxonFilter,
 }
 
@@ -38,7 +46,7 @@ export const FilterControl = ({
   const value = filters.find((filter) => filter.field === field)?.value
   const FilterComponent = ComponentMap[field]
 
-  if (!label) {
+  if (!label || !FilterComponent) {
     return null
   }
 

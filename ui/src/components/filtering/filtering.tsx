@@ -6,11 +6,13 @@ import { FilterControl } from './filter-control'
 interface FilteringProps {
   config: {
     capture?: boolean
-    collection?: boolean
+    endDate?: boolean
     scoreThreshold?: boolean
     session?: boolean
+    startDate?: boolean
     station?: boolean
     taxon?: boolean
+    verified?: boolean
   }
 }
 
@@ -29,16 +31,18 @@ export const Filtering = ({ config }: FilteringProps) => (
         </Collapsible.Trigger>
       </div>
       <Collapsible.Content className="space-y-6">
-        {config.collection && <FilterControl field="collection" />}
         {config.capture && (
           <FilterControl field="detections__source_image" readonly />
         )}
+        {config.session && <FilterControl field="event" readonly />}
+        {config.startDate && <FilterControl field="date_start" />}
+        {config.endDate && <FilterControl field="date_end" />}
+        {config.taxon && <FilterControl field="taxon" />}
         {config.scoreThreshold && (
           <FilterControl clearable={false} field="classification_threshold" />
         )}
-        {config.session && <FilterControl field="event" readonly />}
+        {config.verified && <FilterControl field="verified" />}
         {config.station && <FilterControl field="deployment" />}
-        {config.taxon && <FilterControl field="taxon" />}
       </Collapsible.Content>
     </Collapsible.Root>
   </Box>
