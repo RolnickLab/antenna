@@ -804,8 +804,8 @@ class OccurrenceVerified(filters.BaseFilterBackend):
     def filter_queryset(self, request, queryset, view):
         # Check presence of the query param before attempting to cast None to a boolean
         if self.query_param in request.query_params:
-            identified = BooleanField(required=False).clean(request.query_params.get(self.query_param))
-            if identified:
+            verified = BooleanField(required=False).clean(request.query_params.get(self.query_param))
+            if verified:
                 queryset = queryset.filter(identifications__isnull=False)
             else:
                 queryset = queryset.filter(identifications__isnull=True)
@@ -819,13 +819,14 @@ class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
     """
 
     query_param = "verified_by_me"
-    query_param_exclusive = f"not_{query_param}"
 
     def filter_queryset(self, request: Request, queryset, view):
-        if not request.user or not request.user.is_authenticated:
-            return queryset
-
-        queryset = queryset.filter(identifications__user=request.user)
+        if self.query_param in request.query_params and request.user and request.user.is_authenticated:
+            verified_by_me = BooleanField(required=False).clean(request.query_params.get(self.query_param))
+            if verified_by_me:
+                queryset = queryset.filter(identifications__user=request.user)
+            else:
+                queryset = queryset.exclude(identifications__user=request.user)
 
         return queryset
 
