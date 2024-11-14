@@ -374,12 +374,7 @@ class SourceImageViewSet(DefaultViewSet):
     GET /captures/1/
     """
 
-    queryset = (
-        SourceImage.objects.all()
-        .with_occurrences_count()  # type: ignore
-        .with_taxa_count()
-        # .with_detections_count()
-    )
+    queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
     filterset_fields = ["event", "deployment", "deployment__project", "collections"]
@@ -410,6 +405,13 @@ class SourceImageViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         with_detections_default = False
+
+        classification_threshold = get_active_classification_threshold(self.request)
+        queryset = queryset.with_occurrences_count(  # type: ignore
+            classification_threshold=classification_threshold
+        ).with_taxa_count(  # type: ignore
+            classification_threshold=classification_threshold
+        )
 
         queryset.select_related(
             "event",
@@ -542,8 +544,6 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         SourceImageCollection.objects.all()
         .with_source_images_count()  # type: ignore
         .with_source_images_with_detections_count()
-        .with_occurrences_count()
-        .with_taxa_count()
         .prefetch_related("jobs")
     )
     serializer_class = SourceImageCollectionSerializer
@@ -558,6 +558,16 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         "source_images_with_detections_count",
         "occurrences_count",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        classification_threshold = get_active_classification_threshold(self.request)
+        queryset = (
+            super()
+            .get_queryset()
+            .with_occurrences_count(classification_threshold=classification_threshold)  # type: ignore
+            .with_taxa_count(classification_threshold=classification_threshold)
+        )
+        return queryset
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
