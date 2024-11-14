@@ -9,9 +9,9 @@ interface FilteringProps {
     endDate?: boolean
     scoreThreshold?: boolean
     session?: boolean
-    station?: boolean
     startDate?: boolean
     taxon?: boolean
+    verified?: boolean
   }
 }
 
@@ -34,13 +34,13 @@ export const Filtering = ({ config }: FilteringProps) => (
           <FilterControl field="detections__source_image" readonly />
         )}
         {config.session && <FilterControl field="event" readonly />}
-        {config.station && <FilterControl field="deployment" />}
         {config.startDate && <FilterControl field="date_start" />}
         {config.endDate && <FilterControl field="date_end" />}
         {config.taxon && <FilterControl field="taxon" />}
         {config.scoreThreshold && (
           <FilterControl clearable={false} field="classification_threshold" />
         )}
+        {config.verified && <FilterControl field="verified" />}
       </Collapsible.Content>
     </Collapsible.Root>
   </Box>

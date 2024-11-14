@@ -8,7 +8,8 @@ interface FilteringProps {
   config: {
     algorithm?: boolean
     collection?: boolean
-    identified?: boolean
+    station?: boolean
+    verified?: boolean
     not_algorithm?: boolean
   }
 }
@@ -40,7 +41,7 @@ export const AdvancedFiltering = ({ config }: FilteringProps) => {
         </div>
         <Collapsible.Content className="space-y-6">
           {config.collection && <FilterControl field="collection" />}
-          {config.identified && <FilterControl field="identified" />}
+          {config.station && <FilterControl field="deployment" />}
           {config.algorithm && <FilterControl field="algorithm" />}
           {config.not_algorithm && <FilterControl field="not_algorithm" />}
         </Collapsible.Content>

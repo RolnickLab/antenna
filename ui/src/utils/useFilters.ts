@@ -39,7 +39,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Verification status',
-    field: 'identified',
+    field: 'verified',
   },
   {
     label: 'Exclude algorithm',

@@ -784,12 +784,12 @@ class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
         return queryset
 
 
-class OccurrenceIdentified(filters.BaseFilterBackend):
+class OccurrenceVerified(filters.BaseFilterBackend):
     """
     Filter occurrences that have been or not been identified by any user.
     """
 
-    query_param = "identified"
+    query_param = "verified"
 
     def filter_queryset(self, request, queryset, view):
         # Check presence of the query param before attempting to cast None to a boolean
@@ -803,28 +803,19 @@ class OccurrenceIdentified(filters.BaseFilterBackend):
         return queryset
 
 
-class OccurrenceIdentifiedByFilter(filters.BaseFilterBackend):
+class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the users that have or have not identified them.
-
-    Accepts a list of user ids to filter by or exclude by.
-
-    This filter can be both inclusive and exclusive.
-
-    Useful for filtering occurrences that have been identified by the current user.
+    Filter occurrences that have been or not been identified by the current user.
     """
 
-    query_param = "identified_by"
+    query_param = "verified_by_me"
     query_param_exclusive = f"not_{query_param}"
 
-    def filter_queryset(self, request, queryset, view):
-        user_ids = request.query_params.getlist(self.query_param)
-        user_ids_exclusive = request.query_params.getlist(self.query_param_exclusive)
+    def filter_queryset(self, request: Request, queryset, view):
+        if not request.user or not request.user.is_authenticated:
+            return queryset
 
-        if user_ids:
-            queryset = queryset.filter(identifications__user__in=user_ids)
-        if user_ids_exclusive:
-            queryset = queryset.exclude(identifications__user__in=user_ids_exclusive)
+        queryset = queryset.filter(identifications__user=request.user)
 
         return queryset
 
@@ -880,8 +871,8 @@ class OccurrenceViewSet(DefaultViewSet):
         OccurrenceCollectionFilter,
         OccurrenceAlgorithmFilter,
         OccurrenceDateFilter,
-        OccurrenceIdentified,
-        OccurrenceIdentifiedByFilter,
+        OccurrenceVerified,
+        OccurrenceVerifiedByMeFilter,
     ]
     filterset_fields = [
         "event",

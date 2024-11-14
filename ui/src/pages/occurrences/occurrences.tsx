@@ -1,3 +1,4 @@
+import { AdvancedFiltering } from 'components/filtering/advanced-filtering'
 import { Filtering } from 'components/filtering/filtering'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
@@ -29,7 +30,6 @@ import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
-import { AdvancedFiltering } from 'components/filtering/advanced-filtering'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -84,15 +84,15 @@ export const Occurrences = () => {
               scoreThreshold: true,
               session: true,
               startDate: true,
-              station: true,
               taxon: true,
+              verified: true,
             }}
           />
           <AdvancedFiltering
             config={{
               algorithm: true,
               collection: true,
-              identified: true,
+              station: true,
               not_algorithm: true,
             }}
           />

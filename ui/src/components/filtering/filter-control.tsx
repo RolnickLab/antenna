@@ -23,7 +23,7 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
-  identified: VerificationStatusFilter,
+  verified: VerificationStatusFilter,
   not_algorithm: NotAlgorithmFilter,
   taxon: TaxonFilter,
 }
