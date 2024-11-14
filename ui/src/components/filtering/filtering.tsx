@@ -10,6 +10,7 @@ interface FilteringProps {
     scoreThreshold?: boolean
     session?: boolean
     startDate?: boolean
+    station?: boolean
     taxon?: boolean
     verified?: boolean
   }
@@ -41,6 +42,7 @@ export const Filtering = ({ config }: FilteringProps) => (
           <FilterControl clearable={false} field="classification_threshold" />
         )}
         {config.verified && <FilterControl field="verified" />}
+        {config.station && <FilterControl field="deployment" />}
       </Collapsible.Content>
     </Collapsible.Root>
   </Box>

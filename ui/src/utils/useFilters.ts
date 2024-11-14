@@ -26,10 +26,6 @@ export const AVAILABLE_FILTERS = [
     field: 'date_start',
   },
   {
-    label: 'Station',
-    field: 'deployment',
-  },
-  {
     label: 'Image',
     field: 'detections__source_image',
   },
@@ -44,6 +40,10 @@ export const AVAILABLE_FILTERS = [
   {
     label: 'Exclude algorithm',
     field: 'not_algorithm',
+  },
+  {
+    label: 'Taxon',
+    field: 'taxon',
   },
 ]
 
