@@ -1,10 +1,5 @@
-import * as _Slider from '@radix-ui/react-slider'
-import classNames from 'classnames'
-import _ from 'lodash'
+import { Slider } from 'nova-ui-kit'
 import { useState } from 'react'
-import { Tooltip } from '../tooltip/tooltip'
-import { getThumbInBoundsOffset } from './getThumbInBoundsOffset'
-import styles from './styles.module.scss'
 
 interface ScoreSliderSliderProps {
   defaultValue: number
@@ -22,13 +17,12 @@ export const ScoreSlider = ({
   onValueCommit,
 }: ScoreSliderSliderProps) => {
   const [active, setActive] = useState(false)
-  const percent = _.round(value * 100, 0)
 
   return (
-    <div className={styles.scoreSlider}>
-      <span className={styles.label}>{label}</span>
-      <_Slider.Root
-        className={styles.sliderRoot}
+    <div className="w-full h-12 flex items-center gap-4 text-generic-white">
+      <span className="body-overline-small font-bold">{label}</span>
+      <Slider
+        invertedColors
         defaultValue={[defaultValue]}
         min={0}
         max={1}
@@ -43,46 +37,8 @@ export const ScoreSlider = ({
             onValueCommit(value)
           }
         }}
-      >
-        <_Slider.Track className={styles.sliderTrack}>
-          <_Slider.Range className={styles.sliderRange} />
-        </_Slider.Track>
-        <DefaultValueThumb
-          defaultValue={defaultValue}
-          value={value}
-          onClick={() => onValueCommit(defaultValue)}
-        />
-        <_Slider.Thumb className={styles.sliderThumb} />
-      </_Slider.Root>
-      <span className={styles.value}>{percent}%</span>
-    </div>
-  )
-}
-
-const DefaultValueThumb = ({
-  defaultValue,
-  value,
-  onClick,
-}: {
-  defaultValue: number
-  value: number
-  onClick: () => void
-}) => {
-  const percent = _.round(defaultValue * 100, 0)
-
-  return (
-    <Tooltip content="Default threshold">
-      <div
-        className={classNames(styles.sliderThumb, styles.default, {
-          [styles.primary]: value > defaultValue,
-        })}
-        onPointerDown={(e) => e.preventDefault()}
-        onPointerUp={(e) => e.preventDefault()}
-        style={{
-          left: `calc(${percent}% + ${getThumbInBoundsOffset(20, percent)}px)`,
-        }}
-        onClick={onClick}
       />
-    </Tooltip>
+      <span className="w-12 text-right body-overline">{value}</span>
+    </div>
   )
 }
