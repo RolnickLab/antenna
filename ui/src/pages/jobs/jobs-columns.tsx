@@ -41,10 +41,19 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
           case JobStatus.Created:
             return Status.Neutral
           case JobStatus.Pending:
+            return Status.Warning
           case JobStatus.Started:
             return Status.Warning
           case JobStatus.Success:
             return Status.Success
+          case JobStatus.Retrying:
+            return Status.Warning
+          case JobStatus.Canceling:
+            return Status.Warning
+          case JobStatus.Revoked:
+            return Status.Error
+          case JobStatus.Failed:
+            return Status.Error
           default:
             return Status.Error
         }
