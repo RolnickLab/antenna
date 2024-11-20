@@ -1,6 +1,5 @@
 import { Slider } from 'nova-ui-kit'
 import { useState } from 'react'
-import { STRING, translate } from 'utils/language'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const ThresholdSlider = () => {
@@ -19,11 +18,9 @@ export const ThresholdSlider = () => {
   }
 
   return (
-    <div className="w-full h-12 flex items-center gap-4 text-generic-white">
-      <span className="body-overline-small font-bold">
-        {translate(STRING.FIELD_LABEL_SCORE)}
-      </span>
+    <div className="w-full h-12 flex items-center text-generic-white">
       <Slider
+        className="[&_.track]:bg-secondary [&_.thumb]:border-secondary"
         invertedColors
         defaultValue={[userPreferences.scoreThreshold]}
         min={0}
