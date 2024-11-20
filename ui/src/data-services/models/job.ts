@@ -1,6 +1,7 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
+import { Pipeline } from './pipeline'
 
 export type ServerJob = any // TODO: Update this type
 
@@ -93,6 +94,10 @@ export class Job {
 
   get name(): string {
     return this._job.name
+  }
+
+  get pipeline(): Pipeline | undefined {
+    return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
   }
 
   get project(): string {

@@ -1,5 +1,4 @@
 import { Job, JobStatus, ServerJob } from './job'
-import { Pipeline } from './pipeline'
 
 export type ServerJobDetails = ServerJob & any // TODO: Update this type
 
@@ -18,10 +17,6 @@ export class JobDetails extends Job {
 
   get errors(): string[] {
     return this._job.progress.errors ?? []
-  }
-
-  get pipeline(): Pipeline | undefined {
-    return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
   }
 
   get logs(): string[] {

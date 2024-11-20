@@ -69,6 +69,17 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     },
   },
   {
+    id: 'job-type',
+    name: 'Type',
+    renderCell: (item: Job) => <BasicTableCell value={item.jobType.name} />,
+  },
+  {
+    id: 'pipeline',
+    name: translate(STRING.FIELD_LABEL_PIPELINE),
+    renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
+  },
+
+  {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
@@ -86,11 +97,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     sortField: 'finished_at',
     renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
   },
-  {
-    id: 'job-type',
-    name: 'Type',
-    renderCell: (item: Job) => <BasicTableCell value={item.jobType.name} />,
-  },
+
   {
     id: 'actions',
     name: '',
