@@ -108,6 +108,14 @@ export class Job {
     return this._job.job_type
   }
 
+  get sourceImages(): { id: string; name: string } | undefined {
+    const collection = this._job.source_image_collection
+
+    return collection
+      ? { id: `${collection.id}`, name: collection.name }
+      : undefined
+  }
+
   get status(): JobStatus {
     return this.getStatus(this._job.status)
   }

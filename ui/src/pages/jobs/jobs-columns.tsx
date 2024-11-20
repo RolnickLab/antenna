@@ -78,7 +78,13 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     name: translate(STRING.FIELD_LABEL_PIPELINE),
     renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
   },
-
+  {
+    id: 'source_image_collection',
+    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
+    renderCell: (item: Job) => (
+      <BasicTableCell value={item.sourceImages?.name} />
+    ),
+  },
   {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),

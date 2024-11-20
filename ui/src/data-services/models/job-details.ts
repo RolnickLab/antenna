@@ -52,14 +52,6 @@ export class JobDetails extends Job {
     })
   }
 
-  get sourceImages(): { id: string; name: string } | undefined {
-    const collection = this._job.source_image_collection
-
-    return collection
-      ? { id: `${collection.id}`, name: collection.name }
-      : undefined
-  }
-
   get sourceImage() {
     const capture = this._job.source_image_single
 
