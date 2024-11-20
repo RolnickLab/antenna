@@ -18,6 +18,10 @@ export const AVAILABLE_FILTERS = [
     field: 'deployment',
   },
   {
+    label: 'Station',
+    field: 'deployment_id', // TODO: Can we update this key to "deployment" to streamline?
+  },
+  {
     label: 'End date',
     field: 'date_end',
   },
@@ -34,8 +38,8 @@ export const AVAILABLE_FILTERS = [
     field: 'event',
   },
   {
-    label: 'Verification status',
-    field: 'verified',
+    label: 'Pipeline',
+    field: 'pipeline_id', // TODO: Can we update this key to "pipeline" to streamline?
   },
   {
     label: 'Exclude algorithm',
@@ -44,6 +48,14 @@ export const AVAILABLE_FILTERS = [
   {
     label: 'Taxon',
     field: 'taxon',
+  },
+  {
+    label: 'Source image collection',
+    field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
+  },
+  {
+    label: 'Verification status',
+    field: 'verified',
   },
 ]
 

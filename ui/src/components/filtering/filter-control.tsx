@@ -5,6 +5,7 @@ import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { CollectionFilter } from './filters/collection-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
+import { PipelineFilter } from './filters/pipeline-filter'
 import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
@@ -21,11 +22,15 @@ const ComponentMap: {
   date_end: DateFilter,
   collection: CollectionFilter,
   deployment: StationFilter,
+  deployment_id: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
-  verified: VerificationStatusFilter,
+  pipeline: PipelineFilter,
+  pipeline_id: PipelineFilter,
   not_algorithm: NotAlgorithmFilter,
+  source_image_collection: CollectionFilter,
   taxon: TaxonFilter,
+  verified: VerificationStatusFilter,
 }
 
 interface FilterControlProps {

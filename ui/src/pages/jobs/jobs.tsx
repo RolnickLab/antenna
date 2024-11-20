@@ -1,3 +1,5 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { Filtering } from 'components/filtering/filtering'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -15,6 +17,7 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSort } from 'utils/useSort'
 import { UserPermission } from 'utils/user/types'
@@ -23,12 +26,14 @@ import { columns } from './jobs-columns'
 export const Jobs = () => {
   const { projectId, id } = useParams()
   const { pagination, setPage } = usePagination()
+  const { filters } = useFilters()
   const { sort, setSort } = useSort({ field: 'created_at', order: 'desc' })
   const { jobs, userPermissions, total, isLoading, isFetching, error } =
     useJobs({
       projectId,
-      pagination,
       sort,
+      pagination,
+      filters,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
@@ -37,26 +42,35 @@ export const Jobs = () => {
   }
 
   return (
-    <>
-      <PageHeader
-        title={translate(STRING.NAV_ITEM_JOBS)}
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        tooltip={translate(STRING.TOOLTIP_JOB)}
-      >
-        {canCreate ? <NewJobDialog /> : null}
-      </PageHeader>
-      <Table
-        items={jobs}
-        isLoading={!id && isLoading}
-        columns={columns(projectId as string)}
-        sortable
-        sortSettings={sort}
-        onSortSettingsChange={setSort}
-      />
+    <div className="flex flex-col gap-6 md:flex-row">
+      <div className="space-y-6">
+        <Filtering>
+          <FilterControl field="deployment_id" />
+          <FilterControl field="pipeline_id" />
+          <FilterControl field="source_image_collection" />
+        </Filtering>
+      </div>
+      <div className="w-full overflow-hidden">
+        <PageHeader
+          title={translate(STRING.NAV_ITEM_JOBS)}
+          subTitle={translate(STRING.RESULTS, {
+            total,
+          })}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          tooltip={translate(STRING.TOOLTIP_JOB)}
+        >
+          {canCreate ? <NewJobDialog /> : null}
+        </PageHeader>
+        <Table
+          items={jobs}
+          isLoading={!id && isLoading}
+          columns={columns(projectId as string)}
+          sortable
+          sortSettings={sort}
+          onSortSettingsChange={setSort}
+        />
+      </div>
       <PageFooter>
         {jobs?.length ? (
           <PaginationBar
@@ -67,7 +81,7 @@ export const Jobs = () => {
         ) : null}
       </PageFooter>
       {id ? <JobDetailsDialog id={id} /> : null}
-    </>
+    </div>
   )
 }
 
