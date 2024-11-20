@@ -1,22 +1,13 @@
 import { BREAKPOINTS } from 'components/constants'
 import { ChevronsUpDown } from 'lucide-react'
 import { Box, Button, Collapsible } from 'nova-ui-kit'
-import { FilterControl } from './filter-control'
+import { ReactNode } from 'react'
 
 interface FilteringProps {
-  config: {
-    capture?: boolean
-    endDate?: boolean
-    scoreThreshold?: boolean
-    session?: boolean
-    startDate?: boolean
-    station?: boolean
-    taxon?: boolean
-    verified?: boolean
-  }
+  children?: ReactNode
 }
 
-export const Filtering = ({ config }: FilteringProps) => (
+export const Filtering = ({ children }: FilteringProps) => (
   <Box className="w-full h-min shrink-0 p-2 rounded-lg md:w-72 md:p-4 md:rounded-xl">
     <Collapsible.Root
       className="space-y-4"
@@ -31,18 +22,7 @@ export const Filtering = ({ config }: FilteringProps) => (
         </Collapsible.Trigger>
       </div>
       <Collapsible.Content className="space-y-6">
-        {config.capture && (
-          <FilterControl field="detections__source_image" readonly />
-        )}
-        {config.session && <FilterControl field="event" readonly />}
-        {config.startDate && <FilterControl field="date_start" />}
-        {config.endDate && <FilterControl field="date_end" />}
-        {config.taxon && <FilterControl field="taxon" />}
-        {config.scoreThreshold && (
-          <FilterControl clearable={false} field="classification_threshold" />
-        )}
-        {config.verified && <FilterControl field="verified" />}
-        {config.station && <FilterControl field="deployment" />}
+        {children}
       </Collapsible.Content>
     </Collapsible.Root>
   </Box>

@@ -1,4 +1,5 @@
 import { AdvancedFiltering } from 'components/filtering/advanced-filtering'
+import { FilterControl } from 'components/filtering/filter-control'
 import { Filtering } from 'components/filtering/filtering'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
@@ -77,17 +78,15 @@ export const Occurrences = () => {
     <>
       <div className="flex flex-col gap-6 md:flex-row">
         <div className="space-y-6">
-          <Filtering
-            config={{
-              capture: true,
-              endDate: true,
-              scoreThreshold: true,
-              session: true,
-              startDate: true,
-              taxon: true,
-              verified: true,
-            }}
-          />
+          <Filtering>
+            <FilterControl field="detections__source_image" readonly />
+            <FilterControl field="event" readonly />
+            <FilterControl field="date_start" />
+            <FilterControl field="date_end" />
+            <FilterControl field="taxon" />
+            <FilterControl clearable={false} field="classification_threshold" />
+            <FilterControl field="verified" />
+          </Filtering>
           <AdvancedFiltering
             config={{
               algorithm: true,

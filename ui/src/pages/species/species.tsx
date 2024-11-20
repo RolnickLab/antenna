@@ -1,3 +1,4 @@
+import { FilterControl } from 'components/filtering/filter-control'
 import { Filtering } from 'components/filtering/filtering'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
@@ -44,13 +45,11 @@ export const Species = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <Filtering
-          config={{
-            session: true,
-            station: true,
-            taxon: true,
-          }}
-        />
+        <Filtering>
+          <FilterControl field="event" readonly />
+          <FilterControl field="deployment" />
+          <FilterControl field="taxon" />
+        </Filtering>
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}
