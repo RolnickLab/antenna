@@ -74,6 +74,11 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     renderCell: (item: Job) => <BasicTableCell value={item.jobType.name} />,
   },
   {
+    id: 'deployment',
+    name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    renderCell: (item: Job) => <BasicTableCell value={item.deployment?.name} />,
+  },
+  {
     id: 'pipeline',
     name: translate(STRING.FIELD_LABEL_PIPELINE),
     renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,

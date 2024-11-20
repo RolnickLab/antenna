@@ -64,13 +64,15 @@ export class Job {
     return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
   }
 
-  get updatedAt(): string | undefined {
-    if (!this._job.updated_at) {
-      return
-    }
+  get sourceImages(): { id: string; name: string } | undefined {
+    const collection = this._job.source_image_collection
 
-    return getFormatedDateTimeString({ date: new Date(this._job.updated_at) })
+    return collection
+      ? { id: `${collection.id}`, name: collection.name }
+      : undefined
   }
+
+
 
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
@@ -108,11 +110,11 @@ export class Job {
     return this._job.job_type
   }
 
-  get sourceImages(): { id: string; name: string } | undefined {
-    const collection = this._job.source_image_collection
+  get deployment(): { id: string; name: string } | undefined {
+    const deployment = this._job.deployment
 
-    return collection
-      ? { id: `${collection.id}`, name: collection.name }
+    return deployment
+      ? { id: `${deployment.id}`, name: deployment.name }
       : undefined
   }
 
@@ -130,6 +132,14 @@ export class Job {
 
   get statusLabel(): string {
     return this.getStatusLabel(this.status)
+  }
+
+  get updatedAt(): string | undefined {
+    if (!this._job.updated_at) {
+      return
+    }
+
+    return getFormatedDateTimeString({ date: new Date(this._job.updated_at) })
   }
 
   protected getStatus(status: string): JobStatus {
