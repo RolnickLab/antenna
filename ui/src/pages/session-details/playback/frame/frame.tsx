@@ -4,19 +4,19 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, SCORE_THRESHOLDS } from 'utils/constants'
 import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
 
 const FALLBACK_RATIO = 16 / 9
+
 interface FrameProps {
   src?: string
   width: number | null
   height: number | null
   detections: CaptureDetection[]
   showDetections?: boolean
-  threshold: number
 }
 
 export const Frame = ({
@@ -25,7 +25,6 @@ export const Frame = ({
   height,
   detections,
   showDetections,
-  threshold,
 }: FrameProps) => {
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -123,7 +122,6 @@ export const Frame = ({
           boxStyles={boxStyles}
           detections={detections}
           showDetections={showDetections}
-          threshold={threshold}
         />
       </div>
       {isLoading && (
@@ -170,12 +168,10 @@ const FrameDetections = ({
   boxStyles,
   detections,
   showDetections,
-  threshold,
 }: {
   boxStyles: { [key: number]: BoxStyle }
   detections: CaptureDetection[]
   showDetections?: boolean
-  threshold: number
 }) => {
   const { projectId } = useParams()
   const containerRef = useRef(null)
@@ -225,8 +221,8 @@ const FrameDetections = ({
               style={style}
               className={classNames(styles.detection, {
                 [styles.active]: isActive,
-                [styles.meetsThreshold]:
-                  detection.score && detection.score >= threshold,
+                [styles.warning]: detection.score < SCORE_THRESHOLDS.WARNING,
+                [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                 [styles.clickable]: !!detection.occurrenceId,
               })}
               onClick={() => {

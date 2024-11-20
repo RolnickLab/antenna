@@ -97,7 +97,6 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         height={activeCapture?.height ?? session.firstCapture.height}
         detections={detections}
         showDetections={showDetections}
-        threshold={scoreThreshold}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>
