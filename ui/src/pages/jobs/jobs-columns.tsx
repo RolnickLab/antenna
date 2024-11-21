@@ -43,7 +43,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     ),
   },
   {
-    id: 'job_type',
+    id: 'job-type',
     name: 'Type',
     renderCell: (item: Job) => <BasicTableCell value={item.type.label} />,
   },

@@ -6,6 +6,7 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import _ from 'lodash'
 import { Error } from 'pages/error/error'
@@ -17,6 +18,7 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSort } from 'utils/useSort'
@@ -28,6 +30,13 @@ export const Jobs = () => {
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { sort, setSort } = useSort({ field: 'created_at', order: 'desc' })
+  const { columnSettings, setColumnSettings } = useColumnSettings('jobs', {
+    name: true,
+    status: true,
+    'job-type': true,
+    pipeline: true,
+    'created-at': true,
+  })
   const { jobs, userPermissions, total, isLoading, isFetching, error } =
     useJobs({
       projectId,
@@ -63,12 +72,19 @@ export const Jobs = () => {
           isFetching={isFetching}
           tooltip={translate(STRING.TOOLTIP_JOB)}
         >
+          <ColumnSettings
+            columns={columns(projectId as string)}
+            columnSettings={columnSettings}
+            onColumnSettingsChange={setColumnSettings}
+          />
           {canCreate ? <NewJobDialog /> : null}
         </PageHeader>
         <Table
           items={jobs}
           isLoading={!id && isLoading}
-          columns={columns(projectId as string)}
+          columns={columns(projectId as string).filter(
+            (column) => !!columnSettings[column.id]
+          )}
           sortable
           sortSettings={sort}
           onSortSettingsChange={setSort}
