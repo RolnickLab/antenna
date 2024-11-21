@@ -43,26 +43,57 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     ),
   },
   {
-    id: 'job-type',
+    id: 'job_type',
     name: 'Type',
     renderCell: (item: Job) => <BasicTableCell value={item.jobType.name} />,
   },
   {
     id: 'deployment',
+    sortField: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
-    renderCell: (item: Job) => <BasicTableCell value={item.deployment?.name} />,
+    renderCell: (item: Job) =>
+      item.deployment ? (
+        <Link
+          to={APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId,
+            deploymentId: item.deployment?.id,
+          })}
+        >
+          <BasicTableCell
+            value={item.deployment?.name}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      ) : (
+        <></>
+      ),
   },
   {
     id: 'pipeline',
+    sortField: 'pipeline',
     name: translate(STRING.FIELD_LABEL_PIPELINE),
     renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
   },
   {
-    id: 'source_image_collection',
+    id: 'source-image-collection',
+    sortField: 'source_image_collection',
     name: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
-    renderCell: (item: Job) => (
-      <BasicTableCell value={item.sourceImages?.name} />
-    ),
+    renderCell: (item: Job) =>
+      item.sourceImages ? (
+        <Link
+          to={APP_ROUTES.COLLECTION_DETAILS({
+            projectId,
+            collectionId: item.sourceImages?.id,
+          })}
+        >
+          <BasicTableCell
+            value={item.sourceImages?.name}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      ) : (
+        <></>
+      ),
   },
   {
     id: 'created-at',
@@ -77,12 +108,17 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     renderCell: (item: Job) => <BasicTableCell value={item.updatedAt} />,
   },
   {
+    id: 'started-at',
+    name: translate(STRING.FIELD_LABEL_STARTED_AT),
+    sortField: 'started_at',
+    renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
+  },
+  {
     id: 'finished-at',
     name: translate(STRING.FIELD_LABEL_FINISHED_AT),
     sortField: 'finished_at',
     renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
   },
-
   {
     id: 'actions',
     name: '',
