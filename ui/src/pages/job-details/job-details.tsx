@@ -110,6 +110,18 @@ const JobSummary = ({ job }: { job: Job }) => {
           label={translate(STRING.FIELD_LABEL_DELAY)}
           value={job.delay}
         />
+        {job.deployment ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_DEPLOYMENT)}
+            value={job.deployment.name}
+          />
+        ) : null}
+        {job.pipeline ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_PIPELINE)}
+            value={job.pipeline.name}
+          />
+        ) : null}
         {job.sourceImage ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
@@ -140,12 +152,6 @@ const JobSummary = ({ job }: { job: Job }) => {
                 : undefined
             }
             value={job.sourceImages?.name}
-          />
-        ) : null}
-        {job.pipeline ? (
-          <InputValue
-            label={translate(STRING.FIELD_LABEL_PIPELINE)}
-            value={job.pipeline.name}
           />
         ) : null}
       </FormRow>
