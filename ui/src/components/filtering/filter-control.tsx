@@ -9,6 +9,7 @@ import { PipelineFilter } from './filters/pipeline-filter'
 import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
+import { StatusFilter } from './filters/status-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { FilterProps } from './filters/types'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
@@ -27,6 +28,7 @@ const ComponentMap: {
   pipeline: PipelineFilter,
   not_algorithm: NotAlgorithmFilter,
   source_image_collection: CollectionFilter,
+  status: StatusFilter,
   taxon: TaxonFilter,
   verified: VerificationStatusFilter,
 }

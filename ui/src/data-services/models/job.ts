@@ -20,10 +20,10 @@ export const SERVER_JOB_STATUS_CODES = [
 export type ServerJobStatusCode = (typeof SERVER_JOB_STATUS_CODES)[number]
 
 export enum JobStatusType {
-  Error,
-  Neutral,
   Success,
   Warning,
+  Error,
+  Neutral,
 }
 
 export type JobType = {
@@ -131,7 +131,7 @@ export class Job {
     type: JobStatusType
     color: string
   } {
-    return this.getStatusInfo(this._job.status)
+    return Job.getStatusInfo(this._job.status)
   }
 
   get progress(): {
@@ -152,7 +152,7 @@ export class Job {
     return getFormatedDateTimeString({ date: new Date(this._job.updated_at) })
   }
 
-  protected getStatusInfo(code: ServerJobStatusCode) {
+  static getStatusInfo(code: ServerJobStatusCode) {
     const label =
       String(code).charAt(0).toUpperCase() + String(code).toLowerCase().slice(1)
 

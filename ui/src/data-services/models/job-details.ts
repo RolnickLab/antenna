@@ -48,7 +48,7 @@ export class JobDetails extends Job {
         fields,
         key: stage.key,
         name: stage.name,
-        status: this.getStatusInfo(stage.status),
+        status: Job.getStatusInfo(stage.status),
       }
     })
   }

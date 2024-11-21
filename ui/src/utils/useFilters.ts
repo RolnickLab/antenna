@@ -50,6 +50,10 @@ export const AVAILABLE_FILTERS = [
     field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
   },
   {
+    label: 'Status',
+    field: 'status',
+  },
+  {
     label: 'Verification status',
     field: 'verified',
   },
