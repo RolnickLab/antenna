@@ -2,8 +2,6 @@ import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/
 import { UserPermission } from 'utils/user/types'
 import { Pipeline } from './pipeline'
 
-export type ServerJob = any // TODO: Update this type
-
 export const SERVER_JOB_STATUS_CODES = [
   'CANCELING',
   'CREATED',
@@ -17,18 +15,24 @@ export const SERVER_JOB_STATUS_CODES = [
   'UNKNOWN',
 ] as const
 
+export const SERVER_JOB_TYPES = [
+  'ml',
+  'data_storage_sync',
+  'populate_captures_collection',
+  'unknown',
+] as const
+
+export type ServerJob = any // TODO: Update this type
+
 export type ServerJobStatusCode = (typeof SERVER_JOB_STATUS_CODES)[number]
+
+export type ServerJobType = (typeof SERVER_JOB_TYPES)[number]
 
 export enum JobStatusType {
   Success,
   Warning,
   Error,
   Neutral,
-}
-
-export type JobType = {
-  name: string
-  key: string
 }
 
 export class Job {
@@ -73,14 +77,6 @@ export class Job {
     return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
   }
 
-  get sourceImages(): { id: string; name: string } | undefined {
-    const collection = this._job.source_image_collection
-
-    return collection
-      ? { id: `${collection.id}`, name: collection.name }
-      : undefined
-  }
-
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return
@@ -109,12 +105,24 @@ export class Job {
     return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
   }
 
+  get progress(): {
+    label: string | undefined
+    value: number
+  } {
+    return {
+      label: this._job.progress?.summary.status_label,
+      value: this._job.progress?.summary.progress ?? 0,
+    }
+  }
   get project(): string {
     return this._job.project.name
   }
 
-  get jobType(): JobType {
-    return this._job.job_type
+  get type(): {
+    key: ServerJobType
+    label: string
+  } {
+    return Job.getJobTypeInfo(this._job.job_type.key)
   }
 
   get deployment(): { id: string; name: string } | undefined {
@@ -122,6 +130,26 @@ export class Job {
 
     return deployment
       ? { id: `${deployment.id}`, name: deployment.name }
+      : undefined
+  }
+
+  get sourceImage() {
+    const capture = this._job.source_image_single
+
+    return capture
+      ? {
+          id: `${capture.id}`,
+          label: `#${capture.id}`,
+          sessionId: capture.event_id ? `${capture.event_id}` : undefined,
+        }
+      : undefined
+  }
+
+  get sourceImages(): { id: string; name: string } | undefined {
+    const collection = this._job.source_image_collection
+
+    return collection
+      ? { id: `${collection.id}`, name: collection.name }
       : undefined
   }
 
@@ -134,22 +162,26 @@ export class Job {
     return Job.getStatusInfo(this._job.status)
   }
 
-  get progress(): {
-    label: string | undefined
-    value: number
-  } {
-    return {
-      label: this._job.progress?.summary.status_label,
-      value: this._job.progress?.summary.progress ?? 0,
-    }
-  }
-
   get updatedAt(): string | undefined {
     if (!this._job.updated_at) {
       return
     }
 
     return getFormatedDateTimeString({ date: new Date(this._job.updated_at) })
+  }
+
+  static getJobTypeInfo(key: ServerJobType) {
+    const label = {
+      ml: 'ML pipeline',
+      data_storage_sync: 'Data storage sync',
+      populate_captures_collection: 'Populate captures collection',
+      unknown: 'Unknown',
+    }[key]
+
+    return {
+      key,
+      label,
+    }
   }
 
   static getStatusInfo(code: ServerJobStatusCode) {

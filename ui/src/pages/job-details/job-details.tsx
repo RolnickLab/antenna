@@ -83,9 +83,15 @@ const JobSummary = ({ job }: { job: Job }) => {
           value={job.name}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_DELAY)}
-          value={job.delay}
+          label={translate(STRING.FIELD_LABEL_TYPE)}
+          value={job.type.label}
         />
+        {job.delay ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_DELAY)}
+            value={job.delay}
+          />
+        ) : null}
         {job.deployment ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_DEPLOYMENT)}

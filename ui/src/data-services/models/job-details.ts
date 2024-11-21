@@ -52,16 +52,4 @@ export class JobDetails extends Job {
       }
     })
   }
-
-  get sourceImage() {
-    const capture = this._job.source_image_single
-
-    return capture
-      ? {
-          id: `${capture.id}`,
-          label: `${capture.id}`,
-          sessionId: capture.event_id ? `${capture.event_id}` : undefined,
-        }
-      : undefined
-  }
 }

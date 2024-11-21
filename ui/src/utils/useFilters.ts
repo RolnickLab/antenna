@@ -27,7 +27,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Image',
-    field: 'detections__source_image',
+    field: 'detections__source_image', // TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Session',
@@ -46,12 +46,20 @@ export const AVAILABLE_FILTERS = [
     field: 'taxon',
   },
   {
+    label: 'Source image',
+    field: 'source_image',
+  },
+  {
     label: 'Source image collection',
     field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
   },
   {
     label: 'Status',
     field: 'status',
+  },
+  {
+    label: 'Type',
+    field: 'type',
   },
   {
     label: 'Verification status',

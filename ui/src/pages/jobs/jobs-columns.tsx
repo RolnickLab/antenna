@@ -45,7 +45,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'job_type',
     name: 'Type',
-    renderCell: (item: Job) => <BasicTableCell value={item.jobType.name} />,
+    renderCell: (item: Job) => <BasicTableCell value={item.type.label} />,
   },
   {
     id: 'deployment',
@@ -73,6 +73,31 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     sortField: 'pipeline',
     name: translate(STRING.FIELD_LABEL_PIPELINE),
     renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
+  },
+  {
+    id: 'source-image',
+    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGE),
+    renderCell: (item: Job) =>
+      item.sourceImage?.sessionId ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId as string,
+              sessionId: item.sourceImage.sessionId,
+            }),
+            filters: {
+              capture: item.sourceImage.id,
+            },
+          })}
+        >
+          <BasicTableCell
+            value={item.sourceImage?.label}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      ) : (
+        <></>
+      ),
   },
   {
     id: 'source-image-collection',
