@@ -80,14 +80,14 @@ export const useNavItems = () => {
         }),
       },
       {
-        id: 'species',
-        title: translate(STRING.NAV_ITEM_SPECIES),
+        id: 'taxa',
+        title: translate(STRING.NAV_ITEM_TAXA),
         icon: IconType.Species,
         count: status?.numSpecies,
-        path: APP_ROUTES.SPECIES({ projectId: projectId as string }),
-        matchPath: APP_ROUTES.SPECIES_DETAILS({
+        path: APP_ROUTES.TAXA({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.TAXON_DETAILS({
           projectId: ':projectId',
-          speciesId: '*',
+          taxonId: '*',
         }),
       },
     ],

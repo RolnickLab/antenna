@@ -86,7 +86,7 @@ export const App = () => (
           <Route path="sessions" element={<Sessions />} />
           <Route path="sessions/:id" element={<SessionDetails />} />
           <Route path="occurrences/:id?" element={<Occurrences />} />
-          <Route path="species/:id?" element={<Species />} />
+          <Route path="taxa/:id?" element={<Species />} />
           <Route path="collections/:id" element={<CollectionDetails />} />
           <Route path="*" element={<UnderConstruction />} />
         </Route>

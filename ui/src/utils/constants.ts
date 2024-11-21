@@ -35,11 +35,10 @@ export const APP_ROUTES = {
   OCCURRENCE_DETAILS: (params: { projectId: string; occurrenceId: string }) =>
     `/projects/${params.projectId}/occurrences/${params.occurrenceId}`,
 
-  SPECIES: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/species`,
+  TAXA: (params: { projectId: string }) => `/projects/${params.projectId}/taxa`,
 
-  SPECIES_DETAILS: (params: { projectId: string; speciesId: string }) =>
-    `/projects/${params.projectId}/species/${params.speciesId}`,
+  TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
+    `/projects/${params.projectId}/taxa/${params.taxonId}`,
 
   COLLECTIONS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/collections`,
