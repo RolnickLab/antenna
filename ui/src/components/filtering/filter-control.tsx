@@ -29,7 +29,7 @@ const ComponentMap: {
   pipeline: PipelineFilter,
   not_algorithm: NotAlgorithmFilter,
   source_image_collection: CollectionFilter,
-  source_image: ImageFilter,
+  source_image_single: ImageFilter,
   status: StatusFilter,
   taxon: TaxonFilter,
   type: TypeFilter,

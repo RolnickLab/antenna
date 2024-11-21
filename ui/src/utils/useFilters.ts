@@ -11,7 +11,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Collection',
-    field: 'collection',
+    field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
   },
   {
     label: 'Station',
@@ -47,11 +47,11 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Source image',
-    field: 'source_image',
+    field: 'source_image_single', // TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Source image collection',
-    field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
+    field: 'source_image_collection',
   },
   {
     label: 'Status',

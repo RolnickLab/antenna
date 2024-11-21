@@ -49,7 +49,7 @@ export const Jobs = () => {
           <FilterControl field="type" />
           <FilterControl field="deployment" />
           <FilterControl field="pipeline" />
-          <FilterControl field="source_image" readonly />
+          <FilterControl field="source_image_single" readonly />
           <FilterControl field="source_image_collection" />
         </Filtering>
       </div>
