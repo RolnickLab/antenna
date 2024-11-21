@@ -90,6 +90,10 @@ const JobSummary = ({ job }: { job: Job }) => {
           <InputValue
             label={translate(STRING.FIELD_LABEL_DEPLOYMENT)}
             value={job.deployment.name}
+            to={APP_ROUTES.DEPLOYMENT_DETAILS({
+              projectId: projectId as string,
+              deploymentId: job.deployment.id,
+            })}
           />
         ) : null}
         {job.pipeline ? (
@@ -119,14 +123,10 @@ const JobSummary = ({ job }: { job: Job }) => {
         ) : job.sourceImages ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
-            to={
-              job.sourceImages
-                ? APP_ROUTES.COLLECTION_DETAILS({
-                    projectId: projectId as string,
-                    collectionId: job.sourceImages.id,
-                  })
-                : undefined
-            }
+            to={APP_ROUTES.COLLECTION_DETAILS({
+              projectId: projectId as string,
+              collectionId: job.sourceImages.id,
+            })}
             value={job.sourceImages?.name}
           />
         ) : null}
