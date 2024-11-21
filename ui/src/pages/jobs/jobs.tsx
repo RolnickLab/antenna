@@ -45,8 +45,8 @@ export const Jobs = () => {
     <div className="flex flex-col gap-6 md:flex-row">
       <div className="space-y-6">
         <Filtering>
-          <FilterControl field="deployment_id" />
-          <FilterControl field="pipeline_id" />
+          <FilterControl field="deployment" />
+          <FilterControl field="pipeline" />
           <FilterControl field="source_image_collection" />
         </Filtering>
       </div>
