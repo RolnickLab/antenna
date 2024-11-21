@@ -1,6 +1,6 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FormRow, FormSection } from 'components/form/layout/layout'
-import { JobStatus } from 'data-services/models/job'
+import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
 import {
   CodeBlock,
@@ -10,7 +10,6 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { StatusBar } from 'design-system/components/status/status-bar/status-bar'
-import { Status } from 'design-system/components/status/types'
 import {
   StatusBullet,
   StatusBulletTheme,
@@ -67,38 +66,15 @@ export const JobDetails = ({
 const JobSummary = ({ job }: { job: Job }) => {
   const { projectId } = useParams()
 
-  const status = (() => {
-    switch (job.status) {
-      case JobStatus.Created:
-        return Status.Neutral
-      case JobStatus.Pending:
-        return Status.Warning
-      case JobStatus.Started:
-        return Status.Warning
-      case JobStatus.Success:
-        return Status.Success
-      case JobStatus.Retrying:
-        return Status.Warning
-      case JobStatus.Canceling:
-        return Status.Warning
-      case JobStatus.Revoked:
-        return Status.Error
-      case JobStatus.Failed:
-        return Status.Error
-      default:
-        return Status.Error
-    }
-  })()
-
   return (
     <>
       <FormRow>
         <div className={styles.status}>
           <InputContent label={translate(STRING.FIELD_LABEL_STATUS)}>
             <StatusBar
-              status={status}
-              progress={job.statusValue}
-              description={job.statusDetails}
+              color={job.status.color}
+              description={job.progress.label}
+              progress={job.progress.value}
             />
           </InputContent>
         </div>
@@ -197,32 +173,17 @@ const JobStages = ({ job }: { job: Job }) => {
       {job.stages.map((stage, index) => {
         const isOpen = activeStage === stage.key
 
-        const status = (() => {
-          switch (stage.status) {
-            case JobStatus.Created:
-              return Status.Neutral
-            case JobStatus.Pending:
-              return Status.Neutral
-            case JobStatus.Started:
-              return Status.Warning
-            case JobStatus.Success:
-              return Status.Success
-            default:
-              return Status.Error
-          }
-        })()
-
         return (
           <Wizard.Item key={stage.key} value={stage.key}>
             <div className={styles.jobStageLabel}>
               <JobStageLabel
-                label={stage.statusLabel}
-                status={status}
-                statusDetails={stage.statusDetails}
+                details={stage.details}
+                label={stage.status.label}
+                color={stage.status.color}
               />
             </div>
             <Wizard.Trigger title={stage.name}>
-              {status === Status.Success ? (
+              {stage.status.type === JobStatusType.Success ? (
                 <StatusBullet
                   icon={IconType.RadixCheck}
                   theme={StatusBulletTheme.Success}

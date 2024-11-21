@@ -447,7 +447,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_SITE]:
     'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
   [STRING.TOOLTIP_STATUS]:
-    'A status is the processing stage of a job once submitted: Created > Pending > Running > Done. A Failed status means the job stopped before it had finished.',
+    'A status is the processing stage of a job once submitted: Created > Pending > Started > Success. A Failed status means the job stopped before it had finished.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where source images are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 

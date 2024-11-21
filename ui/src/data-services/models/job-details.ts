@@ -1,4 +1,4 @@
-import { Job, JobStatus, ServerJob } from './job'
+import { Job, JobStatusType, ServerJob, ServerJobStatusCode } from './job'
 
 export type ServerJobDetails = ServerJob & any // TODO: Update this type
 
@@ -24,16 +24,18 @@ export class JobDetails extends Job {
   }
 
   get stages(): {
+    details: string
     fields: { key: string; label: string; value?: string | number }[]
-    name: string
     key: string
-    status: JobStatus
-    statusLabel: string
-    statusDetails: string
+    name: string
+    status: {
+      code: ServerJobStatusCode
+      label: string
+      type: JobStatusType
+      color: string
+    }
   }[] {
     return this._job.progress.stages.map((stage: any) => {
-      const status = this.getStatus(stage.status)
-
       const fields: { key: string; label: string; value?: string | number }[] =
         stage.params.map((param: any) => ({
           key: param.key,
@@ -42,12 +44,11 @@ export class JobDetails extends Job {
         }))
 
       return {
+        details: stage.status_label,
         fields,
         key: stage.key,
         name: stage.name,
-        status,
-        statusLabel: this.getStatusLabel(status),
-        statusDetails: stage.status_label,
+        status: this.getStatusInfo(stage.status),
       }
     })
   }

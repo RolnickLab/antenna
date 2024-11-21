@@ -1,5 +1,4 @@
-import { Job, JobStatus } from 'data-services/models/job'
-import { Status } from 'design-system/components/status/types'
+import { Job } from 'data-services/models/job'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
@@ -35,38 +34,13 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     name: translate(STRING.FIELD_LABEL_STATUS),
     tooltip: translate(STRING.TOOLTIP_STATUS),
     sortField: 'status',
-    renderCell: (item: Job) => {
-      const status = (() => {
-        switch (item.status) {
-          case JobStatus.Created:
-            return Status.Neutral
-          case JobStatus.Pending:
-            return Status.Warning
-          case JobStatus.Started:
-            return Status.Warning
-          case JobStatus.Success:
-            return Status.Success
-          case JobStatus.Retrying:
-            return Status.Warning
-          case JobStatus.Canceling:
-            return Status.Warning
-          case JobStatus.Revoked:
-            return Status.Error
-          case JobStatus.Failed:
-            return Status.Error
-          default:
-            return Status.Error
-        }
-      })()
-
-      return (
-        <StatusTableCell
-          label={item.statusLabel}
-          status={status}
-          details={item.statusDetails}
-        />
-      )
-    },
+    renderCell: (item: Job) => (
+      <StatusTableCell
+        color={item.status.color}
+        details={item.progress.label}
+        label={item.status.label}
+      />
+    ),
   },
   {
     id: 'job-type',
