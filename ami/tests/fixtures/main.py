@@ -348,3 +348,27 @@ def create_occurrences(
         assert occurrence.best_prediction is not None
         assert occurrence.determination is not None
         assert occurrence.determination_score is not None
+
+
+def create_complete_test_project():
+
+    with transaction.atomic():
+        project, deployment = setup_test_project(reuse=False)
+        frame_data = create_captures_from_files(deployment)
+        taxa_list = create_taxa(project)
+        create_occurrences_from_frame_data(frame_data, taxa_list=taxa_list)
+        logger.info(f"Created test project {project}")
+
+
+def create_local_admin_user():
+    from django.core.management import call_command
+
+    logger.info("Creating superuser with the credentials set in environment variables")
+    try:
+        call_command("createsuperuser", interactive=False)
+    except Exception as e:
+        logger.error(f"Failed to create superuser: {e}")
+
+    email = os.environ.get("DJANGO_SUPERUSER_EMAIL", "Unknown")
+    password = os.environ.get("DJANGO_SUPERUSER_PASSWORD", "Unknown")
+    logger.info(f"Test user credentials: {email} / {password}")

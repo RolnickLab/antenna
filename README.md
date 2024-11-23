@@ -15,6 +15,11 @@ The platform uses Docker Compose to run all services locally for development. In
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger Docs: http://localhost:8000/api/v2/docs/
 
+A default user will be created with the following credentials:
+
+- Email: `antenna@insectai.org`
+- Password: `localadmin`
+
 ## Development
 
 Install the pre-commit tool to run linting & formatting checks _before_ each git commit. It's typical to install this tool using your system-wide python.
