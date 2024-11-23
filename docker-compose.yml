@@ -106,6 +106,8 @@ services:
       - "minio_data:/data"
     env_file:
       - ./.envs/.local/.django
+    environment:
+      - CONSOLE_SECURE_TLS_REDIRECT=off
     ports:
       - "9001:9001"
     healthcheck:
