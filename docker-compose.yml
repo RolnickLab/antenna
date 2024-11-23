@@ -22,9 +22,6 @@ services:
     depends_on:
       - postgres
       - redis
-      - mailhog
-      - minio-init
-      - ml_backend
     volumes:
       - .:/app:z
     env_file:
@@ -78,11 +75,6 @@ services:
       - "9025:9000"
     command: /start-docs
 
-  mailhog:
-    image: mailhog/mailhog:v1.0.0
-    ports:
-      - "8025:8025"
-
   redis:
     image: redis:6
     container_name: ami_local_redis
@@ -91,20 +83,12 @@ services:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
-    depends_on:
-      - redis
-      - postgres
-      - mailhog
     ports: []
     command: /start-celeryworker
 
   celerybeat:
     <<: *django
     image: ami_local_celerybeat
-    depends_on:
-      - redis
-      - postgres
-      - mailhog
     ports: []
     command: /start-celerybeat
 
@@ -117,14 +101,12 @@ services:
 
   minio:
     image: minio/minio:latest
-    # image: quay.io/minio/minio:stable
     command: minio server --console-address ":9001" /data
     volumes:
       - "minio_data:/data"
     env_file:
       - ./.envs/.local/.django
     ports:
-      # - "9000:9000"
       - "9001:9001"
     healthcheck:
       test: [ "CMD", "mc", "ready", "local" ]
@@ -155,4 +137,4 @@ services:
     volumes:
       - ./ml_backends/example/:/app:ml_backend
     ports:
-      - "2000:2000"
+      - "2005:2000"
