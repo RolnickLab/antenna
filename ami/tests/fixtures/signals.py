@@ -1,31 +1,19 @@
 import logging
 
 from django.conf import settings
-from django.db import transaction
 
 from ami.main.models import Project
 
-from .main import (
-    create_captures_from_files,
-    create_occurrences_from_frame_data,
-    create_taxa,
-    setup_test_project,
-    update_site_settings,
-)
+from .main import create_complete_test_project, create_local_admin_user, update_site_settings
 
 logger = logging.getLogger(__name__)
 
 
-# Signal receiver function
-def setup_complete_test_project(sender, **kwargs):
-    # Test if any project exists or if force is set
-    if Project.objects.exists() and not kwargs.get("force", False):
-        return
-
-    with transaction.atomic():
+def initialize_demo_project(sender, **kwargs):
+    """
+    Signal handler to create a demo project after `migrate` is run.
+    """
+    if not Project.objects.exists():
         update_site_settings(domain=settings.EXTERNAL_HOSTNAME)
-        project, deployment = setup_test_project(reuse=False)
-        frame_data = create_captures_from_files(deployment)
-        taxa_list = create_taxa(project)
-        create_occurrences_from_frame_data(frame_data, taxa_list=taxa_list)
-        logger.info(f"Created test project {project}")
+        create_complete_test_project()
+        create_local_admin_user()
