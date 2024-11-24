@@ -81,3 +81,9 @@ class BackendViewSet(DefaultViewSet):
         backend = Backend.objects.get(pk=pk)
         response = backend.get_status()
         return Response(response.dict())
+
+    @action(detail=True, methods=["post"])
+    def register_pipelines(self, request: Request, pk=None) -> Response:
+        backend = Backend.objects.get(pk=pk)
+        response = backend.create_pipelines()
+        return Response(response.dict())

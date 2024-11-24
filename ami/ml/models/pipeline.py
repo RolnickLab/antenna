@@ -23,10 +23,11 @@ from ami.main.models import (
     TaxonRank,
     update_calculated_fields_for_events,
 )
+from ami.ml.schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from ami.ml.tasks import celery_app, create_detection_images
 
-from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from .algorithm import Algorithm
+from .backend import Backend
 
 logger = logging.getLogger(__name__)
 
@@ -161,29 +162,40 @@ def process_images(
     task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
+    source_images = [
+        SourceImageRequest(
+            id=str(source_image.pk),
+            url=url,
+        )
+        for source_image, url in zip(images, urls)
+        if url
+    ]
+
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
-        source_images=[
-            SourceImageRequest(
-                id=str(source_image.pk),
-                url=url,
-            )
-            for source_image, url in zip(images, urls)
-            if url
-        ],
+        source_images=source_images,
     )
 
     resp = requests.post(endpoint_url, json=request_data.dict())
     if not resp.ok:
+        try:
+            msg = resp.json()["detail"]
+        except Exception:
+            msg = resp.content
+
         if job:
-            try:
-                msg = resp.json()["detail"]
-            except Exception:
-                msg = resp.content
-
             job.logger.error(msg)
+        else:
+            logger.error(msg)
 
-        resp.raise_for_status()
+        results = PipelineResponse(
+            pipeline=pipeline.slug,
+            total_time=None,
+            source_images=source_images,
+            detections=[],
+            errors=msg,
+        )
+        return results
 
     results = resp.json()
     results = PipelineResponse(**results)
@@ -405,12 +417,7 @@ class Pipeline(BaseModel):
         ),
     )
     projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
-    backend = models.ForeignKey(
-        "ml.Backend",
-        on_delete=models.SET_NULL,  # TODO: Pipelines should support multiple backends
-        related_name="pipelines",
-        null=True,
-    )
+    backends: models.QuerySet[Backend]
 
     class Meta:
         ordering = ["name", "version"]

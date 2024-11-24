@@ -62,9 +62,10 @@ class PipelineRequest(pydantic.BaseModel):
 class PipelineResponse(pydantic.BaseModel):
     # pipeline: PipelineChoice
     pipeline: str
-    total_time: float
+    total_time: float | None
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
+    errors: list | str | None = None
 
 
 class PipelineStageParam(pydantic.BaseModel):
@@ -105,7 +106,7 @@ class PipelineConfig(pydantic.BaseModel):
     projects: list[ProjectConfig] = []
 
 
-class BackendResponse(pydantic.BaseModel):
+class BackendStatusResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     success: bool
     pipeline_configs: list[PipelineConfig] = []
@@ -113,3 +114,13 @@ class BackendResponse(pydantic.BaseModel):
     server_online: str
     pipelines_online: list[str] | str
     endpoint_url: str
+
+
+class PipelineRegistrationResponse(pydantic.BaseModel):
+    timestamp: datetime.datetime
+    success: bool
+    error: str | None = None
+    pipelines: list[PipelineConfig] = []
+    pipelines_created: list[str] = []
+    algorithms_created: list[str] = []
+    projects_created: list[str] = []
