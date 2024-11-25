@@ -8,10 +8,9 @@ from django.db import models
 
 from ami.base.models import BaseModel
 from ami.main.models import Project
+from ami.ml.models.algorithm import Algorithm
+from ami.ml.models.pipeline import Pipeline
 from ami.ml.schemas import BackendStatusResponse, PipelineRegistrationResponse
-
-from .algorithm import Algorithm
-from .pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ class Backend(BaseModel):
 
     projects = models.ManyToManyField("main.Project", related_name="backends", blank=True)
     endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
-    pipelines = models.ManyToManyField(Pipeline, related_name="backends", blank=True)
+    pipelines = models.ManyToManyField("ml.Pipeline", related_name="backends", blank=True)
 
     def __str__(self):
         return self.endpoint_url

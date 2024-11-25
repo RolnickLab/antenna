@@ -17,6 +17,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.backend import Backend
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
 
@@ -33,62 +34,56 @@ def update_site_settings(**kwargs):
     return site
 
 
-def create_ml_pipeline(project):
-    from ami.ml.models import Algorithm, Pipeline
-
-    pipelines_to_add = [
+# @TODO: To test this: delete project in admin, then run migrate
+# (this will execute the signal in ami-platform/ami/tests/fixtures/signals.py)
+def create_ml_backends(project):
+    backends_to_add = [
         {
-            "name": "ML Dummy Backend",
-            "slug": "dummy",
-            "version": 1,
-            "algorithms": [
-                {"name": "Dummy Detector", "key": 1},
-                {"name": "Random Detector", "key": 2},
-                {"name": "Always Moth Classifier", "key": 3},
-            ],
-            "projects": {"name": project.name},
-            "endpoint_url": "http://ml_backend:2000/pipeline/process",
+            "projects": [{"name": project.name}],
+            "endpoint_url": "http://ml_backend:2000",
         },
     ]
 
-    for pipeline_data in pipelines_to_add:
-        pipeline, created = Pipeline.objects.get_or_create(
-            name=pipeline_data["name"],
-            slug=pipeline_data["slug"],
-            version=pipeline_data["version"],
-            endpoint_url=pipeline_data["endpoint_url"],
+    for backend_data in backends_to_add:
+        backend, created = Backend.objects.get_or_create(
+            endpoint_url=backend_data["endpoint_url"],
         )
 
         if created:
-            logger.info(f'Successfully created {pipeline_data["name"]}.')
+            logger.info(f'Successfully created backend with {backend_data["endpoint_url"]}.')
         else:
-            logger.info(f'Using existing pipeline {pipeline_data["name"]}.')
+            logger.info(f'Using existing backend with {backend_data["endpoint_url"]}.')
 
-        for algorithm_data in pipeline_data["algorithms"]:
-            algorithm, _ = Algorithm.objects.get_or_create(name=algorithm_data["name"], key=algorithm_data["key"])
-            pipeline.algorithms.add(algorithm)
+        for project_data in backend_data["projects"]:
+            try:
+                project = Project.objects.get(name=project_data["name"])
+                backend.projects.add(project)
+            except Exception:
+                logger.error(f'Could not find project {project_data["name"]}.')
 
-        pipeline.save()
+        backend.save()
 
-    return pipeline
+    backend.create_pipelines()
+
+    return backend
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
+    short_id = "1ed10463"
     if reuse:
-        project, _ = Project.objects.get_or_create(name="Test Project")
+        project, _ = Project.objects.get_or_create(name=f"Test Project {short_id}")
         data_source = create_storage_source(project, "Test Data Source")
         deployment, _ = Deployment.objects.get_or_create(
             project=project, name="Test Deployment", defaults=dict(data_source=data_source)
         )
-        create_ml_pipeline(project)
+        create_ml_backends(project)
     else:
-        short_id = uuid.uuid4().hex[:8]
         project = Project.objects.create(name=f"Test Project {short_id}")
         data_source = create_storage_source(project, f"Test Data Source {short_id}")
         deployment = Deployment.objects.create(
             project=project, name=f"Test Deployment {short_id}", data_source=data_source
         )
-        create_ml_pipeline(project)
+        create_ml_backends(project)
     return project, deployment
 
 

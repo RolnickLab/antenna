@@ -30,10 +30,9 @@ from ami.main.models import (
     TaxonRank,
     update_calculated_fields_for_events,
 )
+from ami.ml.models.algorithm import Algorithm
 from ami.ml.schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from ami.ml.tasks import celery_app, create_detection_images
-
-from .algorithm import Algorithm
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +413,7 @@ class Pipeline(BaseModel):
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
     # @TODO the algorithms list be retrieved by querying the pipeline endpoint
-    algorithms = models.ManyToManyField(Algorithm, related_name="pipelines")
+    algorithms = models.ManyToManyField("ml.Algorithm", related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(
         default=default_stages,
         help_text=(
