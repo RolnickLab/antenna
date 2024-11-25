@@ -1,5 +1,6 @@
 import datetime
 import logging
+import typing
 from urllib.parse import urljoin
 
 import requests
@@ -15,12 +16,13 @@ from .pipeline import Pipeline
 logger = logging.getLogger(__name__)
 
 
+@typing.final
 class Backend(BaseModel):
     """An ML processing backend"""
 
     projects = models.ManyToManyField("main.Project", related_name="backends", blank=True)
     endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
-    pipelines = models.ManyToManyField("ml.Pipeline", related_name="backends", blank=True)
+    pipelines = models.ManyToManyField(Pipeline, related_name="backends", blank=True)
 
     def __str__(self):
         return self.endpoint_url

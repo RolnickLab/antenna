@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ami.ml.models import Backend
+
 import logging
 import typing
 from urllib.parse import urljoin
@@ -27,14 +34,13 @@ from ami.ml.schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from ami.ml.tasks import celery_app, create_detection_images
 
 from .algorithm import Algorithm
-from .backend import Backend
 
 logger = logging.getLogger(__name__)
 
 
 def filter_processed_images(
     images: typing.Iterable[SourceImage],
-    pipeline: "Pipeline",
+    pipeline: Pipeline,
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline for the first time (have no detections)
@@ -80,7 +86,7 @@ def collect_images(
     source_images: list[SourceImage] | None = None,
     deployment: Deployment | None = None,
     job_id: int | None = None,
-    pipeline: "Pipeline | None" = None,
+    pipeline: Pipeline | None = None,
     skip_processed: bool = True,
 ) -> typing.Iterable[SourceImage]:
     """
@@ -125,7 +131,7 @@ def collect_images(
 
 
 def process_images(
-    pipeline: "Pipeline",
+    pipeline: Pipeline,
     endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
