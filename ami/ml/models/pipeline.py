@@ -449,11 +449,11 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        if not self.backend.endpoint_url:
+    def process_images(self, images: typing.Iterable[SourceImage], backend_id: int, job_id: int | None = None):
+        if not self.backends.filter(pk=backend_id).first().endpoint_url:  # @TODO: use a get backend function
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
-            endpoint_url=urljoin(self.backend.endpoint_url, "/process_images"),
+            endpoint_url=urljoin(self.backends.filter(pk=backend_id).first().endpoint_url, "/process_images"),
             pipeline=self,
             images=images,
             job_id=job_id,

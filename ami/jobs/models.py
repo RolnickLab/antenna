@@ -368,7 +368,7 @@ class MLJob(JobType):
                 try:
                     results = job.pipeline.process_images(
                         images=chunk,
-                        job_id=job.pk,
+                        job_id=job.pk,  # @TODO: add backend_id
                     )
                 except Exception as e:
                     # Log error about image batch and continue
