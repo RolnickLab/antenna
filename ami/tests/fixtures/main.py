@@ -69,8 +69,8 @@ def create_ml_backends(project):
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
-    short_id = "1ed10463"
     if reuse:
+        short_id = "001"
         project, _ = Project.objects.get_or_create(name=f"Test Project {short_id}")
         data_source = create_storage_source(project, "Test Data Source")
         deployment, _ = Deployment.objects.get_or_create(
@@ -78,6 +78,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
         )
         create_ml_backends(project)
     else:
+        short_id = uuid.uuid4().hex[:8]
         project = Project.objects.create(name=f"Test Project {short_id}")
         data_source = create_storage_source(project, f"Test Data Source {short_id}")
         deployment = Deployment.objects.create(
