@@ -17,11 +17,14 @@ class BoundingBox(pydantic.BaseModel):
 
 class ClassificationResponse(pydantic.BaseModel):
     classification: str
-    labels: list[str] = []
-    scores: list[float] = []
+    labels: list[str] = []  # class names, possibly only the top N
+    scores: list[float] = (
+        []
+    )  # class probabilities / confidence scores, calibrated by the model, same length and order as labels list
     inference_time: float | None = None
     algorithm: str | None = None
     timestamp: datetime.datetime
+    logits: list[float] | None = None  # raw output from last layer of model, all classes in original order
     terminal: bool = True
 
 

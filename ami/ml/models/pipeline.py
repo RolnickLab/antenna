@@ -337,7 +337,12 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
                 taxon=taxon,
                 algorithm=classification_algo,
                 score=max(classification.scores),
-                defaults={"timestamp": classification.timestamp or now()},
+                defaults={
+                    "timestamp": classification.timestamp or now(),
+                    "logits": classification.logits,
+                    "softmax_scores": classification.scores,
+                    "category_map": classification_algo.category_map,
+                },
             )
 
             if created:
