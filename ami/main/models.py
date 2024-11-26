@@ -12,6 +12,7 @@ from typing import Final, final  # noqa: F401
 import pydantic
 from django.apps import apps
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
@@ -1730,22 +1731,17 @@ class Classification(BaseModel):
         related_name="classifications",
     )
 
-    # occurrence = models.ForeignKey(
-    #     "Occurrence",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     related_name="predictions",
-    # )
-
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
     timestamp = models.DateTimeField()
-    # terminal = models.BooleanField(
-    #     default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
-    # )
-
-    softmax_output = models.JSONField(null=True)  # scores for all classes
-    raw_output = models.JSONField(null=True)  # raw output from the model
+    terminal = models.BooleanField(
+        default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
+    )
+    logits = ArrayField(models.FloatField(), null=True)  # raw logits from last layer of model, in order of class index
+    scores = ArrayField(
+        models.FloatField(), null=True
+    )  # probabilities the model, calibrated by the model maker, in order of class index
+    category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
     algorithm = models.ForeignKey(
         "ml.Algorithm",
