@@ -25,7 +25,7 @@ from ami.main.models import (
 from ami.ml.tasks import celery_app, create_detection_images
 
 from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
-from .algorithm import Algorithm
+from .algorithm import Algorithm, AlgorithmCategoryMap
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +291,22 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
             classification_algo, _created = Algorithm.objects.get_or_create(
                 name=classification.algorithm,
             )
+            if not classification_algo.category_map:
+                logger.warning(f"Classification algorithm {classification_algo} has no category map, creating one.")
+                category_map = AlgorithmCategoryMap.objects.create(
+                    data=[
+                        {
+                            "label": label,
+                            "index": i,
+                        }
+                        for i, label in enumerate(classification.labels)
+                    ],
+                    # Use ISO 8601 timestamp format for versioning
+                    version=now().isoformat(),
+                )
+                classification_algo.category_map = category_map  # type: ignore
+                classification_algo.save()
+
             algorithms_used.add(classification_algo)
             if _created:
                 created_objects.append(classification_algo)
