@@ -6,19 +6,40 @@ Platform for processing and reviewing images from automated insect monitoring st
 
 ## Quick Start
 
-The platform uses Docker Compose to run all services locally for development. Install Docker Desktop and run the following command:
+Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/install/) to run all services locally for development.
 
-    $ docker compose up
+1) Install Docker for your host operating (Linux, macOS, Windows)
 
-- Web UI: http://localhost:4000
-- API Browser: http://localhost:8000/api/v2/
+2) Add the following to your `/etc/hosts` file in order to see and process the demo source images. This makes the hostname `minio` and alias for `localhost` so the same image URLs can be viewed in the host machine's web browser and be processed by the ML services. This can be skipped if you are using an external image storage service.
+
+```
+    127.0.0.1 minio
+```
+
+2) The following commands will build all services, run them in the background, and then stream the logs.
+
+```sh
+    docker compose up -d
+    docker compose logs -f django celeryworker ui
+    # Ctrl+c to close the logs
+```
+
+3) Access the platform the following URLs:
+
+- Primary web interface: http://localhost:4000
+- API browser: http://localhost:8000/api/v2/
 - Django admin: http://localhost:8000/admin/
-- OpenAPI / Swagger Docs: http://localhost:8000/api/v2/docs/
+- OpenAPI / Swagger documentation: http://localhost:8000/api/v2/docs/
 
-A default user will be created with the following credentials:
+A default user will be created with the following credentials. Use these to log into the web UI or the Django admin.
 
 - Email: `antenna@insectai.org`
 - Password: `localadmin`
+
+4) Stop all services with:
+
+    $ docker compose down
+
 
 ## Development
 
@@ -95,6 +116,12 @@ pip install -r requirements/local.txt
 
     docker compose run --rm django python manage.py createsuperuser
 
+##### Create a fresh demo project with synthetic data
+
+```bash
+docker compose run --rm django python manage.py create_test_project
+```
+
 ##### Run tests
 
 ```bash
@@ -111,6 +138,12 @@ docker compose run --rm django python manage.py test -k pattern
 
 ```bash
 docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+```
+
+##### Run management scripts
+
+```bash
+docker compose run django python manage.py --help
 ```
 
 ##### Launch the Django shell:
