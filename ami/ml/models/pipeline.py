@@ -340,7 +340,7 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
                 defaults={
                     "timestamp": classification.timestamp or now(),
                     "logits": classification.logits,
-                    "softmax_scores": classification.scores,
+                    "scores": classification.scores,
                     "category_map": classification_algo.category_map,
                 },
             )
