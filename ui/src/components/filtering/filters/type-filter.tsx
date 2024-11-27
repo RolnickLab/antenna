@@ -11,7 +11,7 @@ const OPTIONS = SERVER_JOB_TYPES.map((key) => {
 })
 
 export const TypeFilter = ({ value, onAdd }: FilterProps) => (
-  <Select.Root value={value ?? ''} onValueChange={onAdd} disabled>
+  <Select.Root value={value ?? ''} onValueChange={onAdd}>
     <Select.Trigger>
       <Select.Value placeholder="Select a value" />
     </Select.Trigger>
