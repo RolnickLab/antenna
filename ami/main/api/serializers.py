@@ -736,7 +736,7 @@ class ClassificationSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
-            "softmax_scores",
+            "scores",
             "logits",
             "created_at",
         ]
