@@ -159,14 +159,15 @@ To configure a project connect to the Minio service, you can use the following c
 Endpoint URL: http://minio:9000
 Access key: amistorage
 Secret access key: amistorage
-Public base URL: http://localhost:9000/ami/
+Public base URL: http://minio:9000/ami/
 Bucket: ami
 ```
 
 - Open the Minio web interface at http://localhost:9001 and login with the access key and secret access key.
 - Upload some test images to a subfolder in the `ami` bucket (one subfolder per deployment)
 - Give the bucket or folder anonymous access using the "Anonymous access" button in the Minio web interface.
-- You _can_ test private buckets and presigned URLs, but you will need to add an entry to your local /etc/hosts file to map the `minio` hostname to localhost.
+- Both public and private buckets with presigned URLs should work.
+- Add an entry to your local `/etc/hosts` file to map the `minio` hostname to localhost so the same image URLs can be viewed in your host machine's browser and processed in the backend containers.
 
 ```
 127.0.0.1 minio

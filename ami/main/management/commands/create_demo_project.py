@@ -1,12 +1,10 @@
 import time
 
-from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
+from ami.main.models import Deployment, Detection, Device, Event, Occurrence, Project, SourceImage, TaxaList, Taxon
 from ami.ml.models import Algorithm, Pipeline
 from ami.tests.fixtures.main import create_complete_test_project, create_local_admin_user
-
-from ...models import Deployment, Detection, Device, Event, Occurrence, Project, SourceImage, TaxaList, Taxon
 
 
 class Command(BaseCommand):
