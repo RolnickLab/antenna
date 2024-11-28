@@ -13,6 +13,7 @@ from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
     BlogPost,
+    Classification,
     Deployment,
     Device,
     Event,
@@ -225,6 +226,48 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
         return qs.select_related("determination", "project", "deployment", "event")
+
+
+@admin.register(Classification)
+class ClassificationAdmin(admin.ModelAdmin[Classification]):
+    list_display = (
+        "__str__",
+        "taxon",
+        "algorithm",
+        "num_scores",
+        "num_logits",
+        "detection_date",
+        "timestamp",
+        "terminal",
+        "created_at",
+    )
+
+    list_filter = (
+        "algorithm",
+        "terminal",
+        "created_at",
+        "detection__source_image__project",
+        "taxon__rank",
+    )
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        return qs.select_related(
+            "taxon", "detection", "detection__source_image", "detection__source_image__project"
+        ).annotate(
+            detection_date=models.F("detection__timestamp"),
+        )
+
+    @admin.display()
+    def detection_date(self, obj: Classification) -> str:
+        # This property comes from the annotation in get_queryset, not the model
+        return obj.detection_date  # type: ignore
+
+    def num_scores(self, obj: Classification) -> int:
+        return len(obj.scores) if obj.scores else 0
+
+    def num_logits(self, obj: Classification) -> int:
+        return len(obj.logits) if obj.logits else 0
 
 
 class TaxonParentFilter(admin.SimpleListFilter):
