@@ -671,12 +671,12 @@ def test():
     # boto3.set_stream_logger(name="botocore")
 
     config = S3Config(
-        endpoint_url="http://localhost:9000",
+        endpoint_url="http://minio:9000",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
         bucket_name="test",
         prefix="",
-        public_base_url="http://localhost:9000/test",
+        public_base_url="http://minio:9000/test",
     )
 
     projects = list_projects(config)

@@ -147,12 +147,12 @@ class TestS3(TestCase):
 class TestS3PrefixUtils(TestCase):
     def setUp(self):
         self.config = s3.S3Config(
-            endpoint_url="http://localhost:9000",
+            endpoint_url="http://minio:9000",
             access_key_id="minioadmin",
             secret_access_key="minioadmin",
             bucket_name="test_bucket",
             prefix="test_prefix",
-            public_base_url="http://localhost:9000/test",
+            public_base_url="http://minio:9000/test",
         )
 
     def test_key_with_prefix_no_subdir(self):
