@@ -743,7 +743,6 @@ class ClassificationSerializer(DefaultSerializer):
 
 
 class ClassificationNestedSerializer(ClassificationSerializer):
-
     class Meta:
         model = Classification
         fields = [
