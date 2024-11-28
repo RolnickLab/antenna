@@ -57,7 +57,7 @@ export const Species = () => {
             subTitle={translate(STRING.RESULTS, {
               total,
             })}
-            title={translate(STRING.NAV_ITEM_SPECIES)}
+            title={translate(STRING.NAV_ITEM_TAXA)}
           >
             <ToggleGroup
               items={[
@@ -127,7 +127,7 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
       onOpenChange={() =>
         navigate(
           getAppRoute({
-            to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
+            to: APP_ROUTES.TAXA({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )

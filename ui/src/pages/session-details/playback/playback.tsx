@@ -7,6 +7,7 @@ import {
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
 import { useMemo, useState } from 'react'
+import { STRING, translate } from 'utils/language'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
@@ -66,7 +67,12 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           )}
           <div className={styles.sidebarSection}>
             <span className={styles.title}>View settings</span>
-            <ThresholdSlider />
+            <div>
+              <span className={styles.label}>
+                {translate(STRING.FIELD_LABEL_SCORE_THRESHOLD)}
+              </span>
+              <ThresholdSlider />
+            </div>
             <Checkbox
               id="show-detections-below-threshold"
               label="Show detections below threshold"
@@ -97,7 +103,6 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         height={activeCapture?.height ?? session.firstCapture.height}
         detections={detections}
         showDetections={showDetections}
-        threshold={scoreThreshold}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>

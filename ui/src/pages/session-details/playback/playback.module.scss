@@ -39,6 +39,14 @@
     @include label();
     color: $color-generic-white;
   }
+
+  .label {
+    display: block;
+    @include paragraph-xx-small();
+    text-transform: uppercase;
+    font-weight: 600;
+    color: $color-neutral-300;
+  }
 }
 
 .captureNavigationWrapper {

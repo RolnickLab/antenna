@@ -74,9 +74,9 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           size={TaxonInfoSize.Large}
           getLink={(id: string) =>
             getAppRoute({
-              to: APP_ROUTES.SPECIES_DETAILS({
+              to: APP_ROUTES.TAXON_DETAILS({
                 projectId: projectId as string,
-                speciesId: id,
+                taxonId: id,
               }),
             })
           }

@@ -46,13 +46,13 @@ export const SessionInfo = ({ session }: { session: Session }) => {
         filters: { event: session.id },
       }),
     },
-    ...(session.numSpecies !== undefined
+    ...(session.numTaxa !== undefined
       ? [
           {
-            label: translate(STRING.FIELD_LABEL_SPECIES),
-            value: session.numSpecies,
+            label: translate(STRING.FIELD_LABEL_TAXA),
+            value: session.numTaxa,
             to: getAppRoute({
-              to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
+              to: APP_ROUTES.TAXA({ projectId: projectId as string }),
               filters: { event: session.id },
             }),
           },

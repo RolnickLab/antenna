@@ -18,6 +18,7 @@ export const ScoreFilter = ({ value, onAdd }: FilterProps) => {
   return (
     <div className="w-full h-12 flex items-center">
       <Slider
+        invertedColors
         min={0}
         max={1}
         step={0.01}
