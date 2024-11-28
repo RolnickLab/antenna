@@ -174,13 +174,14 @@ def process_images(
 
     resp = requests.post(endpoint_url, json=request_data.dict())
     if not resp.ok:
+        try:
+            msg = resp.json()["detail"]
+        except Exception:
+            msg = resp.content
         if job:
-            try:
-                msg = resp.json()["detail"]
-            except Exception:
-                msg = resp.content
-
             job.logger.error(msg)
+        else:
+            logger.error(msg)
 
         resp.raise_for_status()
 
