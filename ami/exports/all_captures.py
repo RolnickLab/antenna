@@ -1,11 +1,10 @@
 import logging
-import typing
 
 from django.db import models
 from django.db.models.functions import TruncDate, TruncTime
 from rest_framework import serializers
 
-from ami.main.models import Detection, SourceImage, Taxon, TaxonRank
+from ami.main.models import SourceImage
 
 logger = logging.getLogger(__name__)
 
