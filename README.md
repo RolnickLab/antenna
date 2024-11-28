@@ -119,7 +119,7 @@ pip install -r requirements/local.txt
 ##### Create a fresh demo project with synthetic data
 
 ```bash
-docker compose run --rm django python manage.py create_test_project
+docker compose run --rm django python manage.py create_demo_project
 ```
 
 ##### Run tests
