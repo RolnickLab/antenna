@@ -105,7 +105,7 @@ class TestJobView(APITestCase):
         }
         self.client.force_authenticate(user=None)
         resp = self.client.post(jobs_create_url, job_data)
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 401)
 
     def _create_job(self, name: str, start_now: bool = True):
         jobs_create_url = reverse_with_params("api:job-list")
@@ -173,7 +173,7 @@ class TestJobView(APITestCase):
         jobs_run_url = reverse_with_params("api:job-run", args=[self.job.pk])
         self.client.force_authenticate(user=None)
         resp = self.client.post(jobs_run_url)
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 401)
 
     def test_cancel_job(self):
         # This cannot be tested until we have a way to cancel jobs
