@@ -52,3 +52,8 @@ export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB
 export const LANDING_PAGE_URL = 'https://insectai.org/'
 
 export const LANDING_PAGE_WAITLIST_URL = 'https://insectai.org/waitlist'
+
+export const SCORE_THRESHOLDS = {
+  WARNING: 0.8,
+  ALERT: 0.6,
+}
