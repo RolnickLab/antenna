@@ -354,7 +354,6 @@ def create_occurrences(
 
 
 def create_complete_test_project():
-
     with transaction.atomic():
         project, deployment = setup_test_project(reuse=False)
         frame_data = create_captures_from_files(deployment)
