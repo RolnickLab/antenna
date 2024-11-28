@@ -54,6 +54,25 @@ def generate_adaptive_grid_bounding_boxes(image_width: int, image_height: int, n
     return boxes
 
 
+def make_fake_prediction(
+    category_labels: list[str] = ["Moth", "Not a moth"],
+    algorithm_name: str = "Random binary classifier",
+    terminal: bool = True,
+) -> Classification:
+    logits = [random.random() for _ in category_labels]
+    softmax = [math.exp(logit) / sum([math.exp(logit) for logit in logits]) for logit in logits]
+    top_class = category_labels[softmax.index(max(softmax))]
+    return Classification(
+        classification=top_class,
+        labels=category_labels,
+        scores=softmax,
+        logits=logits,
+        timestamp=datetime.datetime.now(),
+        algorithm=algorithm_name,
+        terminal=terminal,
+    )
+
+
 def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
     source_image.open(raise_exception=True)
     assert source_image.width is not None and source_image.height is not None
@@ -67,13 +86,20 @@ def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
             timestamp=timestamp,
             algorithm="Random Detector",
             classifications=[
-                Classification(
-                    classification="moth",
-                    labels=["moth"],
-                    scores=[random.random()],
-                    timestamp=timestamp,
-                    algorithm="Always Moth Classifier",
-                )
+                make_fake_prediction(
+                    terminal=False,
+                    algorithm_name="Random binary classifier",
+                    category_labels=["Moth", "Not a moth"],
+                ),
+                make_fake_prediction(
+                    terminal=True,
+                    algorithm_name="Random species classifier",
+                    category_labels=[
+                        "Vanessa atalanta",
+                        "Vanessa cardui",
+                        "Vanessa itea",
+                    ],
+                ),
             ],
         )
         for bbox in bboxes
