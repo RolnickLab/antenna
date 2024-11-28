@@ -3,6 +3,7 @@ from django.contrib import admin
 from ami.main.admin import AdminBase
 
 from .models.algorithm import Algorithm
+from .models.backend import Backend
 from .models.pipeline import Pipeline
 
 
@@ -57,3 +58,11 @@ class PipelineAdmin(AdminBase):
         # See https://pypi.org/project/django-json-widget/
         # models.JSONField: {"widget": JSONInput},
     }
+
+
+@admin.register(Backend)
+class BackendAdmin(AdminBase):
+    list_display = [
+        "id",
+        "endpoint_url",
+    ]

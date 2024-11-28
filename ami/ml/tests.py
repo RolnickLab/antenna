@@ -13,7 +13,7 @@ from ami.ml.schemas import (
     PipelineResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_ml_pipeline, setup_test_project
+from ami.tests.fixtures.main import create_captures_from_files, create_ml_backends, setup_test_project
 
 
 class TestPipelineWithMLBackend(TestCase):
@@ -21,11 +21,16 @@ class TestPipelineWithMLBackend(TestCase):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
         self.test_images = [image for image, frame in self.captures]
-        self.pipeline = create_ml_pipeline(self.project)
+        self.backend_instance = create_ml_backends(self.project)
+        self.backend = self.backend_instance
+        # @TODO: Create function to get most recent OK backend
+        self.pipeline = self.backend_instance.pipelines.all().filter(slug="constant").first()
+        self.backend_id = self.pipeline.backends.first().pk
+        # @TODO: Add error or info messages to the response if image already processed or no detections returned
 
     def test_run_pipeline(self):
         # Send images to ML backend to process and return detections
-        pipeline_response = self.pipeline.process_images(self.test_images)
+        pipeline_response = self.pipeline.process_images(self.test_images, backend_id=self.backend_id, job_id=None)
         assert pipeline_response.detections
 
 

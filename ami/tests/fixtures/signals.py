@@ -24,7 +24,7 @@ def setup_complete_test_project(sender, **kwargs):
 
     with transaction.atomic():
         update_site_settings(domain=settings.EXTERNAL_HOSTNAME)
-        project, deployment = setup_test_project(reuse=False)
+        project, deployment = setup_test_project(reuse=True)
         frame_data = create_captures_from_files(deployment)
         taxa_list = create_taxa(project)
         create_occurrences_from_frame_data(frame_data, taxa_list=taxa_list)

@@ -80,6 +80,36 @@ def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
     ]
 
 
+def make_constant_detections(source_image: SourceImage, num_detections: int = 10):
+    source_image.open(raise_exception=True)
+    assert source_image.width is not None and source_image.height is not None
+
+    # Define a fixed bounding box size and position relative to image size
+    box_width, box_height = source_image.width // 4, source_image.height // 4
+    start_x, start_y = source_image.width // 8, source_image.height // 8
+    bboxes = [BoundingBox(x1=start_x, y1=start_y, x2=start_x + box_width, y2=start_y + box_height)]
+    timestamp = datetime.datetime.now()
+
+    return [
+        Detection(
+            source_image_id=source_image.id,
+            bbox=bbox,
+            timestamp=timestamp,
+            algorithm="Fixed Detector",
+            classifications=[
+                Classification(
+                    classification="moth",
+                    labels=["moth"],
+                    scores=[0.9],  # Constant score for each detection
+                    timestamp=timestamp,
+                    algorithm="Always Moth Classifier",
+                )
+            ],
+        )
+        for bbox in bboxes
+    ]
+
+
 class DummyPipeline:
     source_images: list[SourceImage]
 
@@ -88,5 +118,17 @@ class DummyPipeline:
 
     def run(self) -> list[Detection]:
         results = [make_fake_detections(source_image) for source_image in self.source_images]
+        # Flatten the list of lists
+        return [item for sublist in results for item in sublist]
+
+
+class ConstantPipeline:
+    source_images: list[SourceImage]
+
+    def __init__(self, source_images: list[SourceImage]):
+        self.source_images = source_images
+
+    def run(self) -> list[Detection]:
+        results = [make_constant_detections(source_image) for source_image in self.source_images]
         # Flatten the list of lists
         return [item for sublist in results for item in sublist]
