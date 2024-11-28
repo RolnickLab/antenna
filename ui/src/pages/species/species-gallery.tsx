@@ -21,9 +21,9 @@ export const SpeciesGallery = ({
         image: s.images[0],
         title: s.name,
         to: getAppRoute({
-          to: APP_ROUTES.SPECIES_DETAILS({
+          to: APP_ROUTES.TAXON_DETAILS({
             projectId: projectId as string,
-            speciesId: s.id,
+            taxonId: s.id,
           }),
           keepSearchParams: true,
         }),

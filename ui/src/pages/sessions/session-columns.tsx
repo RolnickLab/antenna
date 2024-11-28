@@ -129,7 +129,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'species',
-    name: translate(STRING.FIELD_LABEL_SPECIES),
+    name: translate(STRING.FIELD_LABEL_TAXA),
     sortField: 'taxa_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -137,11 +137,11 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     renderCell: (item: Session) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES({ projectId }),
+          to: APP_ROUTES.TAXA({ projectId }),
           filters: { event: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
+        <BasicTableCell value={item.numTaxa} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
