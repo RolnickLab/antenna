@@ -11,7 +11,11 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Collection',
-    field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
+    field: 'collection', // This is for viewing Occurrences by collection
+  },
+  {
+    label: 'Collection',
+    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO can we update this key to "collection" to streamline?
   },
   {
     label: 'Station',
@@ -48,10 +52,6 @@ export const AVAILABLE_FILTERS = [
   {
     label: 'Source image',
     field: 'source_image_single', // TODO: Can we update this key to "source_image" to streamline?
-  },
-  {
-    label: 'Source image collection',
-    field: 'source_image_collection',
   },
   {
     label: 'Status',
