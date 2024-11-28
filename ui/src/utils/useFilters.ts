@@ -14,7 +14,7 @@ export const AVAILABLE_FILTERS = [
     field: 'collection', // This is for viewing Occurrences by collection
   },
   {
-    label: 'Source image collection',
+    label: 'Collection',
     field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO can we update this key to "collection" to streamline?
   },
   {
