@@ -77,9 +77,6 @@ class AlgorithmCategoryMapAdmin(AdminBase):
     list_filter = [
         "algorithms",
     ]
-    filter_horizontal = [
-        "algorithms",
-    ]
     formfield_overrides = {
         # See https://pypi.org/project/django-json-widget/
         # models.JSONField: {"widget": JSONInput},
