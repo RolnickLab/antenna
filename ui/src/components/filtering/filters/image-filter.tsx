@@ -6,7 +6,7 @@ export const ImageFilter = ({ value }: FilterProps) => {
 
   const label = (() => {
     if (capture) {
-      return capture?.dateTimeLabel
+      return `#${capture.id}`
     }
     if (value && isLoading) {
       return 'Loading...'
@@ -15,7 +15,7 @@ export const ImageFilter = ({ value }: FilterProps) => {
   })()
 
   return (
-    <div className="px-2">
+    <div className="px-2 pt-0.5">
       <span className="text-muted-foreground">{label}</span>
     </div>
   )

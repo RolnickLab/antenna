@@ -1,3 +1,5 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { Filtering } from 'components/filtering/filtering'
 import { useSessions } from 'data-services/hooks/sessions/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -17,7 +19,6 @@ import { useSort } from 'utils/useSort'
 import { columns } from './session-columns'
 import { SessionGallery } from './session-gallery'
 import styles from './sessions.module.scss'
-import { Filtering } from 'components/filtering/filtering'
 
 export const Sessions = () => {
   const { projectId } = useParams()
@@ -52,11 +53,9 @@ export const Sessions = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <Filtering
-          config={{
-            station: true,
-          }}
-        />
+        <Filtering>
+          <FilterControl field="deployment" />
+        </Filtering>
         <div className="w-full overflow-hidden">
           <PageHeader
             title={translate(STRING.NAV_ITEM_SESSIONS)}

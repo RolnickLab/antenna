@@ -5,10 +5,13 @@ import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { CollectionFilter } from './filters/collection-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
+import { PipelineFilter } from './filters/pipeline-filter'
 import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
+import { StatusFilter } from './filters/status-filter'
 import { TaxonFilter } from './filters/taxon-filter'
+import { TypeFilter } from './filters/type-filter'
 import { FilterProps } from './filters/types'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
 
@@ -23,9 +26,14 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
-  verified: VerificationStatusFilter,
+  pipeline: PipelineFilter,
   not_algorithm: NotAlgorithmFilter,
+  source_image_collection: CollectionFilter,
+  source_image_single: ImageFilter,
+  status: StatusFilter,
   taxon: TaxonFilter,
+  type: TypeFilter,
+  verified: VerificationStatusFilter,
 }
 
 interface FilterControlProps {

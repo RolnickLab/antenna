@@ -117,6 +117,7 @@ export enum STRING {
   FIELD_LABEL_TOTAL_FILES,
   FIELD_LABEL_TOTAL_SIZE,
   FIELD_LABEL_TRAINING_IMAGES,
+  FIELD_LABEL_TYPE,
   FIELD_LABEL_FIRST_DATE,
   FIELD_LABEL_LAST_DATE,
   FIELD_LABEL_UPDATED_AT,
@@ -318,8 +319,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SESSIONS]: 'Sessions',
   [STRING.FIELD_LABEL_SITE]: 'Site',
   [STRING.FIELD_LABEL_SIZE]: 'Size',
-  [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Capture',
-  [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Captures',
+  [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
+  [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source image collection',
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
   [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample images',
   [STRING.FIELD_LABEL_SCORE]: 'Score',
@@ -336,6 +337,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_TOTAL_FILES]: 'Total files',
   [STRING.FIELD_LABEL_TOTAL_SIZE]: 'Total size',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
+  [STRING.FIELD_LABEL_TYPE]: 'Type',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
   [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload images',
@@ -447,7 +449,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_SITE]:
     'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
   [STRING.TOOLTIP_STATUS]:
-    'A status is the processing stage of a job once submitted: Created > Pending > Running > Done. A Failed status means the job stopped before it had finished.',
+    'A status is the processing stage of a job once submitted: Created > Pending > Started > Success. A Failed status means the job stopped before it had finished.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where source images are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 

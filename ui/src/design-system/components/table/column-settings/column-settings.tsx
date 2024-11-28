@@ -32,20 +32,22 @@ export const ColumnSettings = ({
       <div className={styles.wrapper}>
         <span className={styles.description}>{translate(STRING.COLUMNS)}</span>
         <div className={styles.settings}>
-          {columns.map((column) => (
-            <Checkbox
-              key={column.id}
-              checked={columnSettings[column.id]}
-              id={column.id}
-              label={column.name}
-              onCheckedChange={(checked) => {
-                onColumnSettingsChange({
-                  ...columnSettings,
-                  [column.id]: checked,
-                })
-              }}
-            />
-          ))}
+          {columns.map((column) =>
+            column.name.length ? (
+              <Checkbox
+                key={column.id}
+                checked={columnSettings[column.id]}
+                id={column.id}
+                label={column.name}
+                onCheckedChange={(checked) => {
+                  onColumnSettingsChange({
+                    ...columnSettings,
+                    [column.id]: checked,
+                  })
+                }}
+              />
+            ) : null
+          )}
         </div>
       </div>
     </Popover.Content>

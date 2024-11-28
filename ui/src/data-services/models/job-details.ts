@@ -1,5 +1,4 @@
-import { Job, JobStatus, ServerJob } from './job'
-import { Pipeline } from './pipeline'
+import { Job, JobStatusType, ServerJob, ServerJobStatusCode } from './job'
 
 export type ServerJobDetails = ServerJob & any // TODO: Update this type
 
@@ -20,25 +19,23 @@ export class JobDetails extends Job {
     return this._job.progress.errors ?? []
   }
 
-  get pipeline(): Pipeline | undefined {
-    return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
-  }
-
   get logs(): string[] {
     return this._job.progress.logs ?? []
   }
 
   get stages(): {
+    details: string
     fields: { key: string; label: string; value?: string | number }[]
-    name: string
     key: string
-    status: JobStatus
-    statusLabel: string
-    statusDetails: string
+    name: string
+    status: {
+      code: ServerJobStatusCode
+      label: string
+      type: JobStatusType
+      color: string
+    }
   }[] {
     return this._job.progress.stages.map((stage: any) => {
-      const status = this.getStatus(stage.status)
-
       const fields: { key: string; label: string; value?: string | number }[] =
         stage.params.map((param: any) => ({
           key: param.key,
@@ -47,33 +44,12 @@ export class JobDetails extends Job {
         }))
 
       return {
+        details: stage.status_label,
         fields,
         key: stage.key,
         name: stage.name,
-        status,
-        statusLabel: this.getStatusLabel(status),
-        statusDetails: stage.status_label,
+        status: Job.getStatusInfo(stage.status),
       }
     })
-  }
-
-  get sourceImages(): { id: string; name: string } | undefined {
-    const collection = this._job.source_image_collection
-
-    return collection
-      ? { id: `${collection.id}`, name: collection.name }
-      : undefined
-  }
-
-  get sourceImage() {
-    const capture = this._job.source_image_single
-
-    return capture
-      ? {
-          id: `${capture.id}`,
-          label: `${capture.id}`,
-          sessionId: capture.event_id ? `${capture.event_id}` : undefined,
-        }
-      : undefined
   }
 }
