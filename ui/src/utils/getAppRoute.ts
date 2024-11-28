@@ -1,12 +1,12 @@
 type FilterType =
   | 'deployment'
   | 'event'
-  | 'occurrences__deployment'
-  | 'occurrences__event'
   | 'occurrence'
   | 'capture'
+  | 'detections__source_image'
   | 'taxon'
   | 'timestamp'
+  | 'collection'
 
 export const getAppRoute = ({
   to,

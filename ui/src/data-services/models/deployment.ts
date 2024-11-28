@@ -57,7 +57,7 @@ export class Deployment {
     return this._deployment.occurrences_count
   }
 
-  get numSpecies(): number {
+  get numTaxa(): number {
     return this._deployment.taxa_count
   }
 

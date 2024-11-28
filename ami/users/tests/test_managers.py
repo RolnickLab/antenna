@@ -12,7 +12,7 @@ class TestUserManager:
         user = User.objects.create_user(
             email="john@example.com",
             password="something-r@nd0m!",
-        )
+        )  # type: ignore
         assert user.email == "john@example.com"
         assert not user.is_staff
         assert not user.is_superuser
@@ -23,7 +23,7 @@ class TestUserManager:
         user = User.objects.create_superuser(
             email="admin@example.com",
             password="something-r@nd0m!",
-        )
+        )  # type: ignore
         assert user.email == "admin@example.com"
         assert user.is_staff
         assert user.is_superuser
@@ -33,7 +33,7 @@ class TestUserManager:
         user = User.objects.create_superuser(
             email="test@example.com",
             password="something-r@nd0m!",
-        )
+        )  # type: ignore
         assert user.username is None
 
 

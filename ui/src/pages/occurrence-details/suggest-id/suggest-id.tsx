@@ -57,9 +57,9 @@ export const SuggestId = ({
               ranks={taxon.ranks}
               getLink={(id: string) =>
                 getAppRoute({
-                  to: APP_ROUTES.SPECIES_DETAILS({
+                  to: APP_ROUTES.TAXON_DETAILS({
                     projectId: projectId as string,
-                    speciesId: id,
+                    taxonId: id,
                   }),
                 })
               }

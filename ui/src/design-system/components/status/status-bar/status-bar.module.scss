@@ -16,22 +16,6 @@
   top: 0;
   left: 0;
   transition: width 400ms ease, background-color 200ms ease;
-
-  &.success {
-    background-color: $color-success-500;
-  }
-
-  &.warning {
-    background-color: $color-warning-500;
-  }
-
-  &.error {
-    background-color: $color-destructive-500;
-  }
-
-  &.neutral {
-    background-color: $color-neutral-300;
-  }
 }
 
 .description {

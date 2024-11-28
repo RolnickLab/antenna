@@ -83,19 +83,17 @@ $dialog-padding-medium: 32px;
 }
 
 .dialogClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   position: absolute;
   top: 8px;
   right: 8px;
-  padding: 0 4px;
+  outline: none;
   z-index: 2;
-
-  span {
-    display: block;
-    padding: 0 4px;
-    @include paragraph-small();
-    font-weight: 600;
-    color: $color-neutral-300;
-  }
 
   &:hover {
     cursor: pointer;

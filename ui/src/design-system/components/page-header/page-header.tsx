@@ -1,5 +1,4 @@
 import classNames from 'classnames'
-import { AppliedFilters } from 'components/applied-filters/applied-filters'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
 import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
@@ -9,22 +8,20 @@ import { Tooltip } from '../tooltip/tooltip'
 import styles from './page-header.module.scss'
 
 interface PageHeaderProps {
-  title: string
-  subTitle: string
-  tooltip?: string
-  isLoading?: boolean
   isFetching?: boolean
-  showAppliedFilters?: boolean
+  isLoading?: boolean
+  subTitle: string
+  title: string
+  tooltip?: string
   children?: ReactNode
 }
 
 export const PageHeader = ({
-  title,
-  subTitle,
-  tooltip,
-  isLoading,
   isFetching,
-  showAppliedFilters,
+  isLoading,
+  subTitle,
+  title,
+  tooltip,
   children,
 }: PageHeaderProps) => (
   <div className={styles.wrapper}>
@@ -44,7 +41,6 @@ export const PageHeader = ({
           </h2>
           {!isLoading && isFetching && <LoadingSpinner size={12} />}
         </div>
-        {showAppliedFilters && <AppliedFilters />}
       </div>
     </div>
     <div className={styles.row}>{children}</div>

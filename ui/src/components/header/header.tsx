@@ -3,6 +3,7 @@ import { useLogout } from 'data-services/hooks/auth/useLogout'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import buttonStyles from 'design-system/components/button/button.module.scss'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { Helmet } from 'react-helmet-async'
 import { Link, useLocation } from 'react-router-dom'
 import { APP_ROUTES, LANDING_PAGE_URL } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -17,11 +18,13 @@ export const Header = () => {
   const location = useLocation()
   const { user } = useUser()
   const { logout, isLoading: isLogoutLoading } = useLogout()
-
-  usePageTitle()
+  const pageTitle = usePageTitle()
 
   return (
     <header className={styles.header}>
+      <Helmet>
+        <title>{pageTitle}</title>
+      </Helmet>
       <Link to="/" className={styles.logoContainer}>
         <img
           alt="Antenna"

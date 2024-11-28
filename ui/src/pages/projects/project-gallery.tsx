@@ -58,7 +58,7 @@ export const ProjectGallery = ({
                 label={translate(STRING.ENTITY_VIEW, {
                   type: translate(STRING.ENTITY_TYPE_PROJECT),
                 })}
-                onClick={() => navigate(item.to)}
+                onClick={() => item.to && navigate(item.to)}
               />
             </div>
           </Card>

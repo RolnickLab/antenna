@@ -27,6 +27,12 @@ class User(AbstractUser):
 
     objects = UserManager()
 
+    def save(self, *args, **kwargs):
+        if not self.email:
+            raise ValueError("The Email field must be set")
+        self.email = UserManager.normalize_email(self.email)
+        super().save(*args, **kwargs)
+
     def get_absolute_url(self) -> str:
         """Get URL for user's detail view.
 

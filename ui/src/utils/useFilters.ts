@@ -1,37 +1,81 @@
 import { useSearchParams } from 'react-router-dom'
 
-const AVAILABLE_FILTERS = [
+export const AVAILABLE_FILTERS = [
+  {
+    label: 'Include algorithm',
+    field: 'algorithm',
+  },
+  {
+    label: 'Score threshold',
+    field: 'classification_threshold',
+  },
+  {
+    label: 'Collection',
+    field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
+  },
   {
     label: 'Station',
     field: 'deployment',
   },
   {
-    label: 'Occurrence station',
-    field: 'occurrences__deployment',
+    label: 'End date',
+    field: 'date_end',
+  },
+  {
+    label: 'Start date',
+    field: 'date_start',
+  },
+  {
+    label: 'Image',
+    field: 'detections__source_image', // TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Session',
     field: 'event',
   },
   {
-    label: 'Occurrence session',
-    field: 'occurrences__event',
+    label: 'Pipeline',
+    field: 'pipeline',
+  },
+  {
+    label: 'Exclude algorithm',
+    field: 'not_algorithm',
   },
   {
     label: 'Taxon',
     field: 'taxon',
   },
+  {
+    label: 'Source image',
+    field: 'source_image_single', // TODO: Can we update this key to "source_image" to streamline?
+  },
+  {
+    label: 'Source image collection',
+    field: 'source_image_collection',
+  },
+  {
+    label: 'Status',
+    field: 'status',
+  },
+  {
+    label: 'Type',
+    field: 'type',
+  },
+  {
+    label: 'Verification status',
+    field: 'verified',
+  },
 ]
 
-export const useFilters = () => {
+export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const filters = AVAILABLE_FILTERS.map((filter) => {
-    const values = searchParams.getAll(filter.field)
+    const value = searchParams.getAll(filter.field)[0]
 
     return {
       ...filter,
-      value: values[0],
+      value: value ?? defaultFilters?.[filter.field],
     }
   })
 

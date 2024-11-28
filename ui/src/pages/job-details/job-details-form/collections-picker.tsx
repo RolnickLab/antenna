@@ -10,9 +10,12 @@ export const CollectionsPicker = ({
   onValueChange: (value?: string) => void
 }) => {
   const { projectId } = useParams()
-  const { collections = [], isLoading } = useCollections({
-    projectId: projectId as string,
-  })
+  const { collections = [], isLoading } = useCollections(
+    {
+      projectId: projectId as string,
+    },
+    0
+  )
 
   return (
     <Select

@@ -6,6 +6,7 @@ import * as Tabs from 'design-system/components/tabs/tabs'
 import { Error } from 'pages/error/error'
 import { useOutletContext } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { useSelectedView } from 'utils/useSelectedView'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
@@ -13,8 +14,10 @@ import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
 import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
+import { Helmet } from 'react-helmet-async'
 
 export const Overview = () => {
+  const { selectedView, setSelectedView } = useSelectedView('summary')
   const { project, isLoading, error } = useOutletContext<{
     project?: Project
     isLoading: boolean
@@ -36,6 +39,9 @@ export const Overview = () => {
 
   return (
     <>
+      <Helmet>
+        <meta property="og:image" content={project?.image} />
+      </Helmet>
       <div className={styles.about}>
         <div className={styles.aboutImage}>
           {project.image ? (
@@ -54,7 +60,7 @@ export const Overview = () => {
           <DeploymentsMap deployments={project.deployments} />
         </div>
       </div>
-      <Tabs.Root defaultValue="summary">
+      <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
         <Tabs.List>
           <Tabs.Trigger
             value="summary"

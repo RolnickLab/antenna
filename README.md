@@ -24,8 +24,7 @@ pip install pre-commit  # Install pre-commit system-wide
 pre-commit install  # Install the hook for our project
 ```
 
-If using VS Code, install the formatting extensions that are automatically suggested for the project (e.g. black). Format-on-save should be turned on by default from the project's vscode settings file.
-
+If using VS Code, install the [formatting extensions](.vscode/extensions.json) that are automatically suggested for the project (e.g. black). Format-on-save should be turned on by default from the project's [vscode settings file](.vscode/settings.json).
 
 ### Frontend
 
@@ -87,7 +86,7 @@ pip install -r requirements/local.txt
 
     docker compose logs -f
 
-#####  Create a super user account:
+##### Create a super user account:
 
     docker compose run --rm django python manage.py createsuperuser
 
@@ -101,6 +100,12 @@ docker compose run --rm django python manage.py test
 
 ```bash
 docker compose run --rm django python manage.py test -k pattern
+```
+
+##### Run tests and drop into interactive shell on failure
+
+```bash
+docker compose run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 ##### Launch the Django shell:
@@ -139,8 +144,7 @@ dot -Tsvg  models.dot > models.svg
 
 ## Project Data Storage
 
-Each project manages its own external data storage where the AMI Platform will index and process images. This is most typically a public or private S3 bucket at a cloud provider that is not AWS. For example
-the Swift object storage service at Compute Canada or a university's own storage service.
+Each project manages its own external data storage where the AMI Platform will index and process images. This is most typically a public or private S3 bucket at a cloud provider that is not AWS. For example, the Swift object storage service at Compute Canada or a university's own storage service.
 
 To test the S3 storage backend locally, Minio is configured to run as part of the docker compose stack.
 
@@ -158,6 +162,10 @@ Bucket: ami
 - Upload some test images to a subfolder in the `ami` bucket (one subfolder per deployment)
 - Give the bucket or folder anonymous access using the "Anonymous access" button in the Minio web interface.
 - You _can_ test private buckets and presigned URLs, but you will need to add an entry to your local /etc/hosts file to map the `minio` hostname to localhost.
+
+```
+127.0.0.1 minio
+```
 
 ## Email
 

@@ -1,0 +1,10 @@
+services:
+  example:
+    build:
+      context: ./example
+    volumes:
+      - ./example/:/app:z
+    ports:
+      - "2000:2000"
+    extra_hosts:
+      - minio:host-gateway

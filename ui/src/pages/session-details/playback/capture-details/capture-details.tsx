@@ -57,12 +57,6 @@ export const CaptureDetails = ({
         </div>
         <div>
           <span className={styles.label}>
-            {translate(STRING.FIELD_LABEL_DETECTIONS)}
-          </span>
-          <span className={styles.value}>{capture.numDetections}</span>
-        </div>
-        <div>
-          <span className={styles.label}>
             {translate(STRING.FIELD_LABEL_SIZE)}
           </span>
           <span className={styles.value}>{capture.sizeLabel}</span>
@@ -75,6 +69,24 @@ export const CaptureDetails = ({
             <JobControls capture={capture} />
           </div>
         )}
+        <div>
+          <span className={styles.label}>
+            {translate(STRING.FIELD_LABEL_DETECTIONS)}
+          </span>
+          <span className={styles.value}>{capture.numDetections}</span>
+        </div>
+        <div>
+          <span className={styles.label}>
+            {translate(STRING.FIELD_LABEL_OCCURRENCES)}
+          </span>
+          <span className={styles.value}>{capture.numOccurrences}</span>
+        </div>
+        <div>
+          <span className={styles.label}>
+            {translate(STRING.FIELD_LABEL_TAXA)}
+          </span>
+          <span className={styles.value}>{capture.numTaxa}</span>
+        </div>
       </div>
     </>
   )
@@ -144,7 +156,7 @@ const PipelinesPicker = ({
     <Select
       loading={isLoading}
       options={pipelines.map((p) => ({
-        value: p.id,
+        value: String(p.id),
         label: p.name,
       }))}
       placeholder="Pipeline"

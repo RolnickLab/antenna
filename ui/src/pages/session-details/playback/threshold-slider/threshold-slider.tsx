@@ -1,29 +1,43 @@
-import { ScoreSlider } from 'design-system/components/slider/score-slider'
+import { Slider } from 'nova-ui-kit'
 import { useState } from 'react'
-import { STRING, translate } from 'utils/language'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
-const DEFAULT_THRESHOLD = 0.6 // TODO: Current model should decide this value
-
 export const ThresholdSlider = () => {
+  const [active, setActive] = useState(false)
   const { userPreferences, setUserPreferences } = useUserPreferences()
   const [displayThreshold, setDisplayThreshold] = useState(
     userPreferences.scoreThreshold
   )
 
+  const onValueCommit = (value: number) => {
+    setDisplayThreshold(value)
+    setUserPreferences({
+      ...userPreferences,
+      scoreThreshold: value,
+    })
+  }
+
   return (
-    <ScoreSlider
-      defaultValue={DEFAULT_THRESHOLD}
-      label={translate(STRING.FIELD_LABEL_SCORE)}
-      value={displayThreshold}
-      onValueChange={setDisplayThreshold}
-      onValueCommit={(value) => {
-        setDisplayThreshold(value)
-        setUserPreferences({
-          ...userPreferences,
-          scoreThreshold: value,
-        })
-      }}
-    />
+    <div className="w-full h-12 flex items-center text-generic-white">
+      <Slider
+        className="[&_.track]:bg-secondary [&_.thumb]:border-secondary"
+        invertedColors
+        defaultValue={[userPreferences.scoreThreshold]}
+        min={0}
+        max={1}
+        step={0.01}
+        value={[displayThreshold]}
+        onValueChange={([value]) => setDisplayThreshold(value)}
+        onValueCommit={([value]) => onValueCommit(value)}
+        onPointerDown={() => setActive(true)}
+        onPointerUp={() => setActive(false)}
+        onPointerLeave={() => {
+          if (active) {
+            onValueCommit(displayThreshold)
+          }
+        }}
+      />
+      <span className="w-12 text-right body-overline">{displayThreshold}</span>
+    </div>
   )
 }

@@ -1,0 +1,27 @@
+services:
+  django: &django
+    build:
+      context: .
+      # This is the most important setting to test the production configuration of Django.
+      dockerfile: ./compose/production/django/Dockerfile
+    image: insectai/ami_backend
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.production/.postgres
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "5001:5000"
+    extra_hosts:
+      - "db:${DATABASE_IP}"
+      - "redis:${REDIS_IP}"
+    command: /start
+    scale: 0  # We don't need the Django service running, but we inherit the worker settings from it.
+    restart: always
+
+  celeryworker:
+    <<: *django
+    scale: 1  # 1 worker per machine, celery will scale worker pool to the number of available CPUs.
+    ports: []
+    command: /start-celeryworker
+    restart: always
