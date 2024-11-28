@@ -291,6 +291,9 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
             classification_algo, _created = Algorithm.objects.get_or_create(
                 name=classification.algorithm,
             )
+            if _created:
+                created_objects.append(classification_algo)
+                logger.warning(f"Created new classification algorithm {classification_algo}")
             if not classification_algo.category_map:
                 logger.warning(f"Classification algorithm {classification_algo} has no category map, creating one.")
                 category_map = AlgorithmCategoryMap.objects.create(
@@ -302,7 +305,8 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
                         for i, label in enumerate(classification.labels)
                     ],
                     # Use ISO 8601 timestamp format for versioning
-                    version=now().isoformat(),
+                    version=classification.timestamp.isoformat(),
+                    labels=classification.labels,
                 )
                 classification_algo.category_map = category_map  # type: ignore
                 classification_algo.save()
