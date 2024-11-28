@@ -289,6 +289,7 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
 
             assert classification.algorithm, "No classification algorithm was specified in the returned results."
             classification_algo, _created = Algorithm.objects.get_or_create(
+                # @TODO Algorithm needs to be an object with a slug/key, name and category map
                 name=classification.algorithm,
             )
             if _created:
