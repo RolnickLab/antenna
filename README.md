@@ -10,10 +10,11 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
 
 1) Install Docker for your host operating (Linux, macOS, Windows)
 
-2) Add the following to your `/etc/hosts` file in order to see and process the demo source images. This makes the hostname `minio` and alias for `localhost` so the same image URLs can be viewed in the host machine's web browser and be processed by the ML services. This can be skipped if you are using an external image storage service.
+2) Add the following to your `/etc/hosts` file in order to see and process the demo source images. This makes the hostname `minio` and `django` alias for `localhost` so the same image URLs can be viewed in the host machine's web browser and be processed by the ML services. This can be skipped if you are using an external image storage service.
 
 ```
     127.0.0.1 minio
+    127.0.0.1 django
 ```
 
 2) The following commands will build all services, run them in the background, and then stream the logs.
@@ -200,10 +201,11 @@ Bucket: ami
 - Upload some test images to a subfolder in the `ami` bucket (one subfolder per deployment)
 - Give the bucket or folder anonymous access using the "Anonymous access" button in the Minio web interface.
 - Both public and private buckets with presigned URLs should work.
-- Add an entry to your local `/etc/hosts` file to map the `minio` hostname to localhost so the same image URLs can be viewed in your host machine's browser and processed in the backend containers.
+- Add entries to your local `/etc/hosts` file to map the `minio` and `django` hostnames to localhost so the same image URLs can be viewed in your host machine's browser and processed in the backend containers.
 
 ```
 127.0.0.1 minio
+127.0.0.1 django
 ```
 
 ## Email
