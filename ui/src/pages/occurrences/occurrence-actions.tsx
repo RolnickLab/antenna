@@ -18,9 +18,7 @@ export const OccurrenceActions = ({
   const { userInfo } = useUserInfo()
 
   const allAgreed = !occurrences.some((occurrences) => {
-    const agreed = userInfo?.id
-      ? userInfo.id === occurrences.determinationVerifiedBy?.id
-      : false
+    const agreed = userInfo ? occurrences.userAgreed(userInfo.id) : false
 
     return !agreed
   })

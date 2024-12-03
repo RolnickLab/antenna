@@ -194,9 +194,7 @@ const TaxonCell = ({
     keepSearchParams: true,
   })
   const canUpdate = item.userPermissions.includes(UserPermission.Update)
-  const agreed = userInfo?.id
-    ? userInfo.id === item.determinationVerifiedBy?.id
-    : false
+  const agreed = userInfo ? item.userAgreed(userInfo.id) : false
 
   return (
     <div className={styles.taxonCell}>

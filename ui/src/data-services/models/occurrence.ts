@@ -138,4 +138,16 @@ export class Occurrence {
   get userPermissions(): UserPermission[] {
     return this._occurrence.user_permissions
   }
+
+  userAgreed(userId: string): boolean {
+    return this._occurrence.identifications.some((identification: any) => {
+      const identificationTaxonId = `${identification.taxon.id}`
+      const identificationUserId = `${identification.user.id}`
+
+      return (
+        identificationTaxonId === this.determinationTaxon.id &&
+        identificationUserId === userId
+      )
+    })
+  }
 }
