@@ -1,5 +1,6 @@
 export interface FilterProps {
-  value: string | undefined
+  isValid?: boolean
   onAdd: (value: string) => void
   onClear: () => void
+  value: string | undefined
 }

@@ -1,14 +1,26 @@
 import { format } from 'date-fns'
-import { Calendar as CalendarIcon } from 'lucide-react'
+import { AlertCircleIcon, Calendar as CalendarIcon } from 'lucide-react'
 import { Button, Calendar, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { FilterProps } from './types'
 
 const dateToLabel = (date: Date) => format(date, 'yyyy-MM-dd')
 
-export const DateFilter = ({ value, onAdd, onClear }: FilterProps) => {
+export const DateFilter = ({ isValid, onAdd, onClear, value }: FilterProps) => {
   const [open, setOpen] = useState(false)
   const selected = value ? new Date(value) : undefined
+
+  const triggerLabel = (() => {
+    if (!selected) {
+      return 'Select a date'
+    }
+
+    if (!isValid) {
+      return 'Invalid date'
+    }
+
+    return dateToLabel(selected)
+  })()
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -17,11 +29,15 @@ export const DateFilter = ({ value, onAdd, onClear }: FilterProps) => {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-72 justify-between text-muted-foreground font-normal"
+          className="w-full justify-between text-muted-foreground font-normal"
         >
           <>
-            <span>{selected ? dateToLabel(selected) : 'Select a date'}</span>
-            <CalendarIcon className="w-4 w-4" />
+            <span>{triggerLabel}</span>
+            {selected && !isValid ? (
+              <AlertCircleIcon className="w-4 w-4 text-destructive" />
+            ) : (
+              <CalendarIcon className="w-4 w-4" />
+            )}
           </>
         </Button>
       </Popover.Trigger>
