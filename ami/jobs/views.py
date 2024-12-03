@@ -47,7 +47,9 @@ class JobViewSet(DefaultViewSet):
         "project",
         "deployment",
         "source_image_collection",
+        "source_image_single",
         "pipeline",
+        "job_type_key"
     ]
     ordering_fields = [
         "name",
