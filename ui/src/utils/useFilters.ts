@@ -65,6 +65,10 @@ export const AVAILABLE_FILTERS = [
     label: 'Verification status',
     field: 'verified',
   },
+  {
+    label: 'Verified by',
+    field: 'verified_by_me',
+  },
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {

@@ -3,14 +3,11 @@ import { booleanToString, stringToBoolean } from '../utils'
 import { FilterProps } from './types'
 
 const OPTIONS = [
-  { value: true, label: 'Verified' },
-  { value: false, label: 'Not verified' },
+  { value: true, label: 'Verified by me' },
+  { value: false, label: 'Not verified by me' },
 ]
 
-export const VerificationStatusFilter = ({
-  value: string,
-  onAdd,
-}: FilterProps) => {
+export const VerifiedByFilter = ({ value: string, onAdd }: FilterProps) => {
   const value = stringToBoolean(string)
 
   return (

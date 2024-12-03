@@ -86,6 +86,7 @@ export const Occurrences = () => {
             <FilterControl field="taxon" />
             <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />
+            <FilterControl field="verified_by_me" />
           </Filtering>
           <AdvancedFiltering
             config={{

@@ -14,6 +14,7 @@ import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
 import { FilterProps } from './filters/types'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
+import { VerifiedByFilter } from './filters/verified-by-filter'
 
 const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
@@ -34,6 +35,7 @@ const ComponentMap: {
   taxon: TaxonFilter,
   type: TypeFilter,
   verified: VerificationStatusFilter,
+  verified_by_me: VerifiedByFilter,
 }
 
 interface FilterControlProps {
