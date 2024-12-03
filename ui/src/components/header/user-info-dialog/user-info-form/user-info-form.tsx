@@ -68,7 +68,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
-    <>
+    <form onSubmit={handleSubmit((values) => updateUserInfo(values))}>
       {errorMessage && (
         <FormError
           inDialog
@@ -81,10 +81,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
           <UserEmailField value={userInfo.email} />
           <UserPasswordField value="************" />
         </FormRow>
-        <form
-          onSubmit={handleSubmit((values) => updateUserInfo(values))}
-          style={{ display: 'contents' }}
-        >
+        <>
           <FormRow>
             <FormField
               name="name"
@@ -113,7 +110,7 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
               )}
             />
           </FormRow>
-        </form>
+        </>
       </FormSection>
       <FormActions>
         <Button
@@ -124,6 +121,6 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
           loading={isLoading}
         />
       </FormActions>
-    </>
+    </form>
   )
 }
