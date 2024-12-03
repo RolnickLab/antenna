@@ -65,6 +65,10 @@ export const AVAILABLE_FILTERS = [
     label: 'Verification status',
     field: 'verified',
   },
+  {
+    label: 'Capture collection',
+    field: 'collection',
+  },
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
