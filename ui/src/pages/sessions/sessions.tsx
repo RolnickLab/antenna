@@ -1,5 +1,5 @@
 import { FilterControl } from 'components/filtering/filter-control'
-import { Filtering } from 'components/filtering/filtering'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useSessions } from 'data-services/hooks/sessions/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -53,9 +53,9 @@ export const Sessions = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <Filtering>
+        <FilterSection defaultOpen>
           <FilterControl field="deployment" />
-        </Filtering>
+        </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader
             title={translate(STRING.NAV_ITEM_SESSIONS)}

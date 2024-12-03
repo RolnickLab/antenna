@@ -83,7 +83,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
     }
   })
 
-  const isActive = filters.some((filter) => filter.value?.length)
+  const activeFilters = filters.filter((filter) => filter.value?.length)
 
   const addFilter = (field: string, value: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
@@ -100,9 +100,9 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 
   return {
-    filters,
-    isActive,
+    activeFilters,
     addFilter,
     clearFilter,
+    filters,
   }
 }

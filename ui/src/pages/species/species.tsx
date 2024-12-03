@@ -1,5 +1,5 @@
 import { FilterControl } from 'components/filtering/filter-control'
-import { Filtering } from 'components/filtering/filtering'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -45,11 +45,11 @@ export const Species = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <Filtering>
+        <FilterSection defaultOpen>
           <FilterControl field="event" readonly />
           <FilterControl field="deployment" />
           <FilterControl field="taxon" />
-        </Filtering>
+        </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}
