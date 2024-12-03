@@ -7,6 +7,7 @@ type FilterType =
   | 'taxon'
   | 'timestamp'
   | 'collection'
+  | 'source_image_single'
 
 export const getAppRoute = ({
   to,
