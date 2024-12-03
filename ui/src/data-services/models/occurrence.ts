@@ -141,6 +141,10 @@ export class Occurrence {
 
   userAgreed(userId: string): boolean {
     return this._occurrence.identifications.some((identification: any) => {
+      if (identification.withdrawn) {
+        return false
+      }
+
       const identificationTaxonId = `${identification.taxon.id}`
       const identificationUserId = `${identification.user.id}`
 
