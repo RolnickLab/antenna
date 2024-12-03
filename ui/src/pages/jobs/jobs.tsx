@@ -55,12 +55,10 @@ export const Jobs = () => {
       <div className="space-y-6">
         <FilterSection defaultOpen>
           <FilterControl field="status" />
-          {/* TODO: Uncomment when supported by backend */}
-          {/* <FilterControl field="type" /> */}
+          <FilterControl field="job_type_key" />
           <FilterControl field="deployment" />
           <FilterControl field="pipeline" />
-          {/* TODO: Uncomment when supported by backend */}
-          {/* <FilterControl field="source_image_single" readonly /> */}
+          <FilterControl field="source_image_single" readonly />
           <FilterControl field="source_image_collection" />
         </FilterSection>
       </div>

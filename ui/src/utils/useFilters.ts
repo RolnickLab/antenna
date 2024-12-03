@@ -15,7 +15,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Collection',
-    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO can we update this key to "collection" to streamline?
+    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
   },
   {
     label: 'Station',
@@ -31,7 +31,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Image',
-    field: 'detections__source_image', // TODO: Can we update this key to "source_image" to streamline?
+    field: 'detections__source_image', // @TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Session',
@@ -51,7 +51,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Source image',
-    field: 'source_image_single', // TODO: Can we update this key to "source_image" to streamline?
+    field: 'source_image_single', // // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Status',
@@ -59,7 +59,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Type',
-    field: 'type',
+    field: 'job_type_key',
   },
   {
     label: 'Verification status',
