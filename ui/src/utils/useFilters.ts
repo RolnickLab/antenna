@@ -30,8 +30,8 @@ export const AVAILABLE_FILTERS = [
     field: 'date_start',
   },
   {
-    label: 'Image',
-    field: 'detections__source_image', // @TODO: Can we update this key to "source_image" to streamline?
+    label: 'Source image',
+    field: 'detections__source_image', // This is for viewing Occurrences by source image. @TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Session',
@@ -51,7 +51,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Source image',
-    field: 'source_image_single', // // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
+    field: 'source_image_single', // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Status',
