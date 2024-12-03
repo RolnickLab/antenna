@@ -1031,6 +1031,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Occurrence
@@ -1055,6 +1056,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "identifications",
             "created_at",
         ]
 
