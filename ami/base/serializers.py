@@ -168,9 +168,7 @@ class FilterParamsSerializer(serializers.Serializer):
     3) then return the cleaned data.
     """
 
-    @classmethod
-    def clean(cls) -> dict[str, typing.Any]:
-        instance = cls(data={})
-        if instance.is_valid(raise_exception=True):
-            return instance.validated_data
+    def clean(self) -> dict[str, typing.Any]:
+        if self.is_valid(raise_exception=True):
+            return self.validated_data
         raise api_exceptions.ValidationError("Invalid filter parameters")
