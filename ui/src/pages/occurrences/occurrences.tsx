@@ -1,6 +1,6 @@
-import { AdvancedFiltering } from 'components/filtering/advanced-filtering'
 import { FilterControl } from 'components/filtering/filter-control'
-import { Filtering } from 'components/filtering/filtering'
+import { FilterSection } from 'components/filtering/filter-section'
+import { someActive } from 'components/filtering/utils'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
@@ -55,7 +55,7 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters({
+  const { activeFilters, filters } = useFilters({
     classification_threshold: `${userPreferences.scoreThreshold}`,
   })
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
@@ -78,7 +78,7 @@ export const Occurrences = () => {
     <>
       <div className="flex flex-col gap-6 md:flex-row">
         <div className="space-y-6">
-          <Filtering>
+          <FilterSection defaultOpen>
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
             <FilterControl field="date_start" />
@@ -86,15 +86,20 @@ export const Occurrences = () => {
             <FilterControl field="taxon" />
             <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />
-          </Filtering>
-          <AdvancedFiltering
-            config={{
-              algorithm: true,
-              collection: true,
-              station: true,
-              not_algorithm: true,
-            }}
-          />
+            {user.loggedIn && <FilterControl field="verified_by_me" />}
+          </FilterSection>
+          <FilterSection
+            title="More filters"
+            defaultOpen={someActive(
+              ['collection', 'deployment', 'algorithm', 'not_algorithm'],
+              activeFilters
+            )}
+          >
+            <FilterControl field="collection" />
+            <FilterControl field="deployment" />
+            <FilterControl field="algorithm" />
+            <FilterControl field="not_algorithm" />
+          </FilterSection>
         </div>
         <div className="w-full overflow-hidden">
           <PageHeader

@@ -1,5 +1,5 @@
 import { FilterControl } from 'components/filtering/filter-control'
-import { Filtering } from 'components/filtering/filtering'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -53,7 +53,7 @@ export const Jobs = () => {
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       <div className="space-y-6">
-        <Filtering>
+        <FilterSection defaultOpen>
           <FilterControl field="status" />
           {/* TODO: Uncomment when supported by backend */}
           {/* <FilterControl field="type" /> */}
@@ -62,7 +62,7 @@ export const Jobs = () => {
           {/* TODO: Uncomment when supported by backend */}
           {/* <FilterControl field="source_image_single" readonly /> */}
           <FilterControl field="source_image_collection" />
-        </Filtering>
+        </FilterSection>
       </div>
       <div className="w-full overflow-hidden">
         <PageHeader

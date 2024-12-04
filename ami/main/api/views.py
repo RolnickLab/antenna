@@ -925,6 +925,8 @@ class OccurrenceViewSet(DefaultViewSet):
             "event",
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
+        qs = qs.with_identifications()  # type: ignore
+
         if self.action == "list":
             qs = (
                 qs.all()
