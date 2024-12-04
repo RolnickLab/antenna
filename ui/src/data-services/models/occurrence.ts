@@ -140,7 +140,7 @@ export class Occurrence {
   }
 
   userAgreed(userId: string): boolean {
-    return this._occurrence.identifications.some((identification: any) => {
+    return this._occurrence.identifications?.some((identification: any) => {
       if (identification.withdrawn) {
         return false
       }
