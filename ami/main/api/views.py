@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.base.serializers import SingleParamSerializer
 from ami.utils.requests import get_active_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -595,15 +596,14 @@ class SourceImageCollectionViewSet(DefaultViewSet):
 
     def _get_source_image(self):
         """
-        Allow parameter to be passed as a GET query param or in the request body.
+        Get source image from either GET query param or in the PUT/POST request body.
         """
         key = "source_image"
-        try:
-            source_image_id = IntegerField(required=True, min_value=0).clean(
-                self.request.data.get(key) or self.request.query_params.get(key)
-            )
-        except Exception as e:
-            raise api_exceptions.ValidationError from e
+        source_image_id = SingleParamSerializer[int].clean(
+            key,
+            field=serializers.IntegerField(required=True, min_value=0),
+            data=dict(self.request.data, **self.request.query_params),
+        )
 
         try:
             return SourceImage.objects.get(id=source_image_id)
