@@ -954,7 +954,7 @@ class TaxonViewSet(DefaultViewSet):
 
     queryset = Taxon.objects.all()
     serializer_class = TaxonSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter, TaxonCollectionFilter]
     filterset_fields = [
         "name",
         "rank",
