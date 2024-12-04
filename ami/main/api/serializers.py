@@ -1061,7 +1061,9 @@ class OccurrenceListSerializer(DefaultSerializer):
         ]
 
     def get_determination_details(self, obj: Occurrence):
-        # @TODO add an equivalent method to the Occurrence model
+        # @TODO convert this to query methods to avoid N+1 queries.
+        # Currently at 100+ queries per page of 10 occurrences.
+        # Add a reusable method to the OccurrenceQuerySet class and call it from the ViewSet.
 
         context = self.context
 
@@ -1091,7 +1093,6 @@ class OccurrenceListSerializer(DefaultSerializer):
 class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
-    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
     predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
@@ -1102,7 +1103,6 @@ class OccurrenceSerializer(OccurrenceListSerializer):
         fields = OccurrenceListSerializer.Meta.fields + [
             "determination_id",
             "detections",
-            "identifications",
             "predictions",
         ]
         read_only_fields = [
