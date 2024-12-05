@@ -22,9 +22,7 @@ def make_random_bbox(source_image_width: int, source_image_height: int):
     )
 
 
-def generate_adaptive_grid_bounding_boxes(
-    image_width: int, image_height: int, num_boxes: int
-) -> list[BoundingBox]:
+def generate_adaptive_grid_bounding_boxes(image_width: int, image_height: int, num_boxes: int) -> list[BoundingBox]:
     # Estimate grid size based on num_boxes
     grid_size: int = math.ceil(math.sqrt(num_boxes))
 
@@ -63,9 +61,7 @@ def make_fake_prediction(
     terminal: bool = True,
 ) -> Classification:
     logits = [random.random() for _ in category_labels]
-    softmax = [
-        math.exp(logit) / sum([math.exp(logit) for logit in logits]) for logit in logits
-    ]
+    softmax = [math.exp(logit) / sum([math.exp(logit) for logit in logits]) for logit in logits]
     top_class = category_labels[softmax.index(max(softmax))]
     return Classification(
         classification=top_class,
@@ -81,9 +77,7 @@ def make_fake_prediction(
 def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
     source_image.open(raise_exception=True)
     assert source_image.width is not None and source_image.height is not None
-    bboxes = generate_adaptive_grid_bounding_boxes(
-        source_image.width, source_image.height, num_detections
-    )
+    bboxes = generate_adaptive_grid_bounding_boxes(source_image.width, source_image.height, num_detections)
     timestamp = datetime.datetime.now()
 
     return [
@@ -120,8 +114,6 @@ class DummyPipeline:
         self.source_images = source_images
 
     def run(self) -> list[Detection]:
-        results = [
-            make_fake_detections(source_image) for source_image in self.source_images
-        ]
+        results = [make_fake_detections(source_image) for source_image in self.source_images]
         # Flatten the list of lists
         return [item for sublist in results for item in sublist]
