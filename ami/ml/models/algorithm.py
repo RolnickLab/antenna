@@ -117,10 +117,6 @@ class Algorithm(BaseModel):
     class Meta:
         ordering = ["name", "version"]
 
-        unique_together = [
-            ["name", "version"],
-        ]
-
     def save(self, *args, **kwargs):
         if not self.version_name:
             self.version_name = f"{self.version}"
