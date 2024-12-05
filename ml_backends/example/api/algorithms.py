@@ -1,8 +1,9 @@
-from .schemas import Algorithm, AlgorithmCategoryMap
+from .schemas import AlgorithmCategoryMap, AlgorithmResponse
 
-RANDOM_DETECTOR = Algorithm(
+RANDOM_DETECTOR = AlgorithmResponse(
     name="Random Detector",
     key="random-detector",
+    task_type="detection",
     description="Return bounding boxes at random locations within the image bounds.",
     version=1,
     version_name="v1",
@@ -10,9 +11,10 @@ RANDOM_DETECTOR = Algorithm(
     category_map=None,
 )
 
-RANDOM_BINARY_CLASSIFIER = Algorithm(
+RANDOM_BINARY_CLASSIFIER = AlgorithmResponse(
     name="Random binary classifier",
     key="random-binary-classifier",
+    task_type="classification",
     description="Randomly return a classification of 'Moth' or 'Not a moth'",
     version=1,
     version_name="v1",
@@ -29,9 +31,10 @@ RANDOM_BINARY_CLASSIFIER = Algorithm(
     ),
 )
 
-RANDOM_SPECIES_CLASSIFIER = Algorithm(
+RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
     name="Random species classifier",
     key="random-species-classifier",
+    task_type="classification",
     description="A random species classifier",
     version=1,
     version_name="v1",

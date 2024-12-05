@@ -105,13 +105,12 @@ class DetectionResponse(pydantic.BaseModel):
 
 
 class SourceImageRequest(pydantic.BaseModel):
-    # @TODO bring over new SourceImage & b64 validation from the lepsAI repo
+    model_config = pydantic.ConfigDict(extra="ignore")
+
     id: str
     url: str
     # b64: str | None = None
-
-    class Config:
-        extra = "ignore"
+    # @TODO bring over new SourceImage & b64 validation from the lepsAI repo
 
 
 class SourceImageResponse(pydantic.BaseModel):
@@ -150,7 +149,7 @@ class AlgorithmCategoryMap(pydantic.BaseModel):
     url: str | None = None
 
 
-class Algorithm(pydantic.BaseModel):
+class AlgorithmResponse(pydantic.BaseModel):
     name: str
     key: str = pydantic.Field(
         description=("A unique key for an algorithm to lookup the category map (class list) and other metadata."),
@@ -200,7 +199,7 @@ class PipelineRequest(pydantic.BaseModel):
 
 class PipelineResponse(pydantic.BaseModel):
     pipeline: PipelineChoice
-    algorithms: dict[str, Algorithm] = pydantic.Field(
+    algorithms: dict[str, AlgorithmResponse] = pydantic.Field(
         default_factory=dict,
         description="A dictionary of all algorithms used in the pipeline, including their class list and other "
         "metadata, keyed by the algorithm key.",
