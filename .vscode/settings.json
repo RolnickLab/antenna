@@ -15,8 +15,16 @@
     "typescript.format.enable": true,
     "prettier.requireConfig": true,
     "[python]": {
-      "editor.defaultFormatter": "ms-python.black-formatter"
+      "editor.defaultFormatter": "ms-python.black-formatter",
+      "editor.tabSize": 4,
+      "editor.rulers": [
+        119
+      ]
     },
+    "black-formatter.args": ["--line-length", "119"],
+    "flake8.args": [
+        "--max-line-length", "119"
+    ],
     "[javascript]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode"
     },
