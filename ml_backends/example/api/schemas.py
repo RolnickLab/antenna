@@ -72,7 +72,14 @@ class AlgorithmReference(pydantic.BaseModel):
 
 class Classification(pydantic.BaseModel):
     classification: str
-    labels: list[str] = []
+    labels: list[str] | None = pydantic.Field(
+        default=None,
+        description=(
+            "A list of all possible labels for the model, in the correct order. "
+            "Omitted if the model has too many labels to include for each classification in the response. "
+            "Use the category map from the algorithm to get the full list of labels and metadata."
+        ),
+    )
     scores: list[float] = []
     logits: list[float] | None = None
     inference_time: float | None = None
@@ -109,20 +116,20 @@ class SourceImageResponse(pydantic.BaseModel):
 
 
 class AlgorithmCategoryMap(pydantic.BaseModel):
-    labels: list[str] = pydantic.Field(
-        default_factory=list,
-        description="A simple list of string labels, in the correct index order used by the model.",
-        examples=[["Moth", "Not a moth"]],
-    )
-    data: dict = pydantic.Field(
+    data: list[dict] = pydantic.Field(
         default_factory=dict,
-        description="Complete metadata for each label, such as id, gbif_key, explicit index, source, etc.",
+        description="Complete data for each label, such as id, gbif_key, explicit index, source, etc.",
         examples=[
             [
                 {"label": "Moth", "index": 0, "gbif_key": 1234},
                 {"label": "Not a moth", "index": 1, "gbif_key": 5678},
             ]
         ],
+    )
+    labels: list[str] = pydantic.Field(
+        default_factory=list,
+        description="A simple list of string labels, in the correct index order used by the model.",
+        examples=[["Moth", "Not a moth"]],
     )
     version: str | None = pydantic.Field(
         default=None,
@@ -139,10 +146,23 @@ class AlgorithmCategoryMap(pydantic.BaseModel):
 
 class Algorithm(pydantic.BaseModel):
     name: str
-    key: str
+    key: str = pydantic.Field(
+        description=("A unique key for an algorithm to lookup the category map (class list) and other metadata."),
+    )
     description: str | None = None
-    version: int = 1
-    version_name: str | None = None
+    task_type: str | None = pydantic.Field(
+        default=None,
+        description="The type of task the model is trained for. e.g. 'detection', 'classification', 'embedding', etc.",
+        examples=["detection", "classification", "segmentation", "embedding"],
+    )
+    version: int = pydantic.Field(
+        default=1,
+        description="A sortable version number for the model. Increment this number when the model is updated.",
+    )
+    version_name: str | None = pydantic.Field(
+        default=None,
+        description="A complete version name e.g. '2021-01-01', 'LepNet2021'.",
+    )
     url: str | None = None
     category_map: AlgorithmCategoryMap | None = None
 
@@ -150,7 +170,7 @@ class Algorithm(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["dummy"]
+PipelineChoice = typing.Literal["dummy",]  # @TODO add "random", "dummy",
 
 
 class PipelineRequest(pydantic.BaseModel):
@@ -161,11 +181,11 @@ class PipelineRequest(pydantic.BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "pipeline": "random",
+                "pipeline": "dummy",
                 "source_images": [
                     {
                         "id": "123",
-                        "url": "https://example.com/image.jpg",
+                        "url": "https://archive.org/download/mma_various_moths_and_butterflies_54143/54143.jpg",
                     }
                 ],
             }
@@ -174,7 +194,11 @@ class PipelineRequest(pydantic.BaseModel):
 
 class PipelineResponse(pydantic.BaseModel):
     pipeline: PipelineChoice
-    algorithms: list[Algorithm]
+    algorithms: dict[str, Algorithm] = pydantic.Field(
+        default_factory=dict,
+        description="A dictionary of all algorithms used in the pipeline, including their class list and other "
+        "metadata, keyed by the algorithm key.",
+    )
     total_time: float
     source_images: list[SourceImageResponse]
     detections: list[Detection]
