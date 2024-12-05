@@ -58,9 +58,16 @@ class AlgorithmCategoryMap(BaseModel):
     A list of classification labels for a given algorithm version
     """
 
-    data = models.JSONField()  # All available data from the map {label: category, gbif_id, etc.}
-    labels = ArrayField(models.CharField(max_length=255), default=list)
+    data = models.JSONField(
+        help_text="Complete metadata for each label, such as id, gbif_key, explicit index, source, etc."
+    )
+    labels = ArrayField(
+        models.CharField(max_length=255),
+        default=list,
+        help_text="A simple list of string labels in the correct index order used by the model.",
+    )
     version = models.CharField(max_length=255, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
     url = models.URLField(blank=True, null=True)
 
     algorithms: models.QuerySet[Algorithm]
