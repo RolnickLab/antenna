@@ -2,7 +2,8 @@ import datetime
 import math
 import random
 
-from .schemas import BoundingBox, Classification, Detection, SourceImage
+from . import algorithms
+from .schemas import Algorithm, AlgorithmReference, BoundingBox, Classification, Detection, SourceImage
 
 
 def make_random_bbox(source_image_width: int, source_image_height: int):
@@ -56,20 +57,22 @@ def generate_adaptive_grid_bounding_boxes(image_width: int, image_height: int, n
 
 
 def make_fake_prediction(
-    category_labels: list[str] = ["Moth", "Not a moth"],
-    algorithm_name: str = "Random binary classifier",
+    algorithm: Algorithm,
     terminal: bool = True,
+    max_labels: int = 2,
 ) -> Classification:
+    assert algorithm.category_map is not None
+    category_labels = algorithm.category_map.labels
     logits = [random.random() for _ in category_labels]
     softmax = [math.exp(logit) / sum([math.exp(logit) for logit in logits]) for logit in logits]
     top_class = category_labels[softmax.index(max(softmax))]
     return Classification(
         classification=top_class,
-        labels=category_labels,
+        labels=category_labels if len(category_labels) <= max_labels else None,
         scores=softmax,
         logits=logits,
         timestamp=datetime.datetime.now(),
-        algorithm=algorithm_name,
+        algorithm=AlgorithmReference(name=algorithm.name, key=algorithm.key),
         terminal=terminal,
     )
 
@@ -85,21 +88,18 @@ def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
             source_image_id=source_image.id,
             bbox=bbox,
             timestamp=timestamp,
-            algorithm="Random Detector",
+            algorithm=AlgorithmReference(
+                name=algorithms.RANDOM_DETECTOR.name,
+                key=algorithms.RANDOM_DETECTOR.key,
+            ),
             classifications=[
                 make_fake_prediction(
+                    algorithm=algorithms.RANDOM_BINARY_CLASSIFIER,
                     terminal=False,
-                    algorithm_name="Random binary classifier",
-                    category_labels=["Moth", "Not a moth"],
                 ),
                 make_fake_prediction(
+                    algorithm=algorithms.RANDOM_SPECIES_CLASSIFIER,
                     terminal=True,
-                    algorithm_name="Random species classifier",
-                    category_labels=[
-                        "Vanessa atalanta",
-                        "Vanessa cardui",
-                        "Vanessa itea",
-                    ],
                 ),
             ],
         )

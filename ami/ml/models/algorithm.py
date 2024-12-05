@@ -21,6 +21,28 @@ class Algorithm(BaseModel):
 
     name = models.CharField(max_length=255)
     key = models.SlugField(max_length=255, unique=True)
+    task_type = models.CharField(
+        max_length=255,
+        blank=True,
+        choices=[
+            ("detection", "Detection"),
+            ("segmentation", "Segmentation"),
+            ("classification", "Classification"),
+            ("embedding", "Embedding"),
+            ("tracking", "Tracking"),
+            ("tagging", "Tagging"),
+            ("regression", "Regression"),
+            ("captioning", "Captioning"),
+            ("generation", "Generation"),
+            ("translation", "Translation"),
+            ("summarization", "Summarization"),
+            ("question_answering", "Question Answering"),
+            ("depth_estimation", "Depth Estimation"),
+            ("pose_estimation", "Pose Estimation"),
+            ("size_estimation", "Size Estimation"),
+            ("other", "Other"),
+        ],
+    )
     description = models.TextField(blank=True)
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
