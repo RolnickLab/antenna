@@ -1737,10 +1737,14 @@ class Classification(BaseModel):
     terminal = models.BooleanField(
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
     )
-    logits = ArrayField(models.FloatField(), null=True)  # raw logits from last layer of model, in order of class index
+    logits = ArrayField(
+        models.FloatField(), null=True, help_text="The raw output of the last fully connected layer of the model"
+    )
     scores = ArrayField(
-        models.FloatField(), null=True
-    )  # probabilities the model, calibrated by the model maker, in order of class index
+        models.FloatField(),
+        null=True,
+        help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
+    )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
     algorithm = models.ForeignKey(

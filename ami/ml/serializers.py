@@ -33,6 +33,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "url",
             "version",
             "version_name",
+            "task_type",
             "category_map",
             "created_at",
             "updated_at",
@@ -49,6 +50,7 @@ class AlgorithmNestedSerializer(DefaultSerializer):
             "key",
             "version",
             "version_name",
+            "task_type",
         ]
 
 

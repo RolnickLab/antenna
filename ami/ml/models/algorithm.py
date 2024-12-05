@@ -44,7 +44,9 @@ class Algorithm(BaseModel):
         ],
     )
     description = models.TextField(blank=True)
-    version = models.IntegerField(default=1)
+    version = models.IntegerField(
+        default=1, help_text="An internal, sortable and incrementable version number for the model."
+    )
     version_name = models.CharField(max_length=255, blank=True)
     url = models.URLField(blank=True)  # URL to the model homepage, origin or docs (huggingface, wandb, etc.)
     category_map = models.ForeignKey(

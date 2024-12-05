@@ -70,7 +70,7 @@ class AlgorithmReference(pydantic.BaseModel):
     key: str
 
 
-class Classification(pydantic.BaseModel):
+class ClassificationResponse(pydantic.BaseModel):
     classification: str
     labels: list[str] | None = pydantic.Field(
         default=None,
@@ -80,22 +80,28 @@ class Classification(pydantic.BaseModel):
             "Use the category map from the algorithm to get the full list of labels and metadata."
         ),
     )
-    scores: list[float] = []
-    logits: list[float] | None = None
+    scores: list[float] = pydantic.Field(
+        default_factory=list,
+        description="The calibrated probabilities for each class label, most commonly the softmax output.",
+    )
+    logits: list[float] = pydantic.Field(
+        default_factory=list,
+        description="The raw logits output by the model, before any calibration or normalization.",
+    )
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True
     timestamp: datetime.datetime
 
 
-class Detection(pydantic.BaseModel):
+class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
     bbox: BoundingBox
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
     crop_image_url: str | None = None
-    classifications: list[Classification] = []
+    classifications: list[ClassificationResponse] = []
 
 
 class SourceImageRequest(pydantic.BaseModel):
@@ -201,7 +207,7 @@ class PipelineResponse(pydantic.BaseModel):
     )
     total_time: float
     source_images: list[SourceImageResponse]
-    detections: list[Detection]
+    detections: list[DetectionResponse]
 
 
 class PipelineStageParam(pydantic.BaseModel):

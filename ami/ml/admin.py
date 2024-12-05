@@ -10,8 +10,10 @@ from .models.pipeline import Pipeline
 class AlgorithmAdmin(AdminBase):
     list_display = [
         "name",
+        "key",
         "version",
         "version_name",
+        "task_type",
         "created_at",
         "updated_at",
     ]
@@ -25,6 +27,7 @@ class AlgorithmAdmin(AdminBase):
     ]
     list_filter = [
         "pipelines",
+        "task_type",
     ]
 
 
