@@ -2,8 +2,23 @@ from django_pydantic_field.rest_framework import SchemaField
 
 from ami.main.api.serializers import DefaultSerializer
 
-from .models.algorithm import Algorithm
+from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
+
+
+class AlgorithmCategoryMapSerializer(DefaultSerializer):
+    class Meta:
+        model = AlgorithmCategoryMap
+        fields = [
+            "id",
+            "labels",
+            "data",
+            "algorithms",
+            "version",
+            "url",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class AlgorithmSerializer(DefaultSerializer):
@@ -18,6 +33,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "url",
             "version",
             "version_name",
+            "category_map",
             "created_at",
             "updated_at",
         ]
