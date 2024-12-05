@@ -3,7 +3,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from .api import app
-from .pipeline import DummyPipeline
+from .pipelines import DummyPipeline
 from .schemas import PipelineRequest, SourceImage, SourceImageRequest
 
 
