@@ -16,67 +16,6 @@ from ami.base.models import BaseModel
 
 
 @typing.final
-class Algorithm(BaseModel):
-    """A machine learning algorithm"""
-
-    name = models.CharField(max_length=255)
-    key = models.SlugField(max_length=255, unique=True)
-    task_type = models.CharField(
-        max_length=255,
-        blank=True,
-        choices=[
-            ("detection", "Detection"),
-            ("segmentation", "Segmentation"),
-            ("classification", "Classification"),
-            ("embedding", "Embedding"),
-            ("tracking", "Tracking"),
-            ("tagging", "Tagging"),
-            ("regression", "Regression"),
-            ("captioning", "Captioning"),
-            ("generation", "Generation"),
-            ("translation", "Translation"),
-            ("summarization", "Summarization"),
-            ("question_answering", "Question Answering"),
-            ("depth_estimation", "Depth Estimation"),
-            ("pose_estimation", "Pose Estimation"),
-            ("size_estimation", "Size Estimation"),
-            ("other", "Other"),
-        ],
-    )
-    description = models.TextField(blank=True)
-    version = models.IntegerField(
-        default=1, help_text="An internal, sortable and incrementable version number for the model."
-    )
-    version_name = models.CharField(max_length=255, blank=True)
-    url = models.URLField(blank=True)  # URL to the model homepage, origin or docs (huggingface, wandb, etc.)
-    category_map = models.ForeignKey(
-        "AlgorithmCategoryMap",
-        on_delete=models.CASCADE,
-        blank=True,
-        null=True,
-        related_name="algorithms",
-        default=None,
-    )
-
-    # api_base_url = models.URLField(blank=True)
-    # api = models.CharField(max_length=255, blank=True)
-
-    pipelines: models.QuerySet[Pipeline]
-    classifications: models.QuerySet[Classification]
-
-    class Meta:
-        ordering = ["name", "version"]
-
-        unique_together = [
-            ["name", "version"],
-        ]
-
-    def save(self, *args, **kwargs):
-        if not self.key:
-            self.key = slugify(self.name)
-        super().save(*args, **kwargs)
-
-
 class AlgorithmCategoryMap(BaseModel):
     """
     A list of classification labels for a given algorithm version
@@ -120,3 +59,71 @@ class AlgorithmCategoryMap(BaseModel):
             category["taxon"] = taxon
 
         return self.data
+
+
+@typing.final
+class Algorithm(BaseModel):
+    """A machine learning algorithm"""
+
+    name = models.CharField(max_length=255)
+    key = models.SlugField(max_length=255, unique=True)
+    task_type = models.CharField(
+        max_length=255,
+        default="unknown",
+        null=True,
+        choices=[
+            ("detection", "Detection"),
+            ("segmentation", "Segmentation"),
+            ("classification", "Classification"),
+            ("embedding", "Embedding"),
+            ("tracking", "Tracking"),
+            ("tagging", "Tagging"),
+            ("regression", "Regression"),
+            ("captioning", "Captioning"),
+            ("generation", "Generation"),
+            ("translation", "Translation"),
+            ("summarization", "Summarization"),
+            ("question_answering", "Question Answering"),
+            ("depth_estimation", "Depth Estimation"),
+            ("pose_estimation", "Pose Estimation"),
+            ("size_estimation", "Size Estimation"),
+            ("other", "Other"),
+            ("unknown", "Unknown"),
+        ],
+    )
+    description = models.TextField(blank=True)
+    version = models.IntegerField(
+        default=1, help_text="An internal, sortable and incrementable version number for the model."
+    )
+    version_name = models.CharField(max_length=255, blank=True, null=True)
+    url = models.URLField(
+        blank=True, null=True
+    )  # URL to the model homepage, origin or docs (huggingface, wandb, etc.)
+    category_map = models.ForeignKey(
+        AlgorithmCategoryMap,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="algorithms",
+        default=None,
+    )
+
+    # api_base_url = models.URLField(blank=True)
+    # api = models.CharField(max_length=255, blank=True)
+
+    pipelines: models.QuerySet[Pipeline]
+    classifications: models.QuerySet[Classification]
+
+    class Meta:
+        ordering = ["name", "version"]
+
+        unique_together = [
+            ["name", "version"],
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.version_name:
+            self.version_name = f"{self.version}"
+        if not self.key:
+            self.key = f"{slugify(self.name)}-{self.version}"
+        super().save(*args, **kwargs)

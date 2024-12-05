@@ -3,7 +3,14 @@ import math
 import random
 
 from . import algorithms
-from .schemas import Algorithm, AlgorithmReference, BoundingBox, ClassificationResponse, DetectionResponse, SourceImage
+from .schemas import (
+    AlgorithmReference,
+    AlgorithmResponse,
+    BoundingBox,
+    ClassificationResponse,
+    DetectionResponse,
+    SourceImage,
+)
 
 
 def make_random_bbox(source_image_width: int, source_image_height: int):
@@ -57,7 +64,7 @@ def generate_adaptive_grid_bounding_boxes(image_width: int, image_height: int, n
 
 
 def make_fake_prediction(
-    algorithm: Algorithm,
+    algorithm: AlgorithmResponse,
     terminal: bool = True,
     max_labels: int = 2,
 ) -> ClassificationResponse:
