@@ -126,6 +126,8 @@ services:
       - "9000:9000"
     volumes:
       - ./compose/local/minio/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - minio
 
   minio-init:
     image: minio/mc
@@ -133,6 +135,7 @@ services:
       - ./.envs/.local/.django
     depends_on:
       - minio
+      - minio-proxy
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
