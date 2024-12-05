@@ -21,21 +21,21 @@ const ComponentMap: {
 } = {
   algorithm: AlgorithmFilter,
   classification_threshold: ScoreFilter,
-  date_start: DateFilter,
-  date_end: DateFilter,
   collection: CollectionFilter,
+  date_end: DateFilter,
+  date_start: DateFilter,
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
-  pipeline: PipelineFilter,
+  job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,
+  pipeline: PipelineFilter,
   source_image_collection: CollectionFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,
   taxon: TaxonFilter,
-  type: TypeFilter,
-  verified: VerificationStatusFilter,
   verified_by_me: VerifiedByFilter,
+  verified: VerificationStatusFilter,
 }
 
 interface FilterControlProps {

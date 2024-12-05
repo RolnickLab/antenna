@@ -14,13 +14,13 @@ export const EmptyState = () => {
             : STRING.MESSAGE_NO_RESULTS
         )}
       </span>
-      {activeFilters.length && (
+      {activeFilters.length ? (
         <Button
           onClick={() => filters.map((filter) => clearFilter(filter.field))}
         >
           {translate(STRING.CLEAR_FILTERS)}
         </Button>
-      )}
+      ) : null}
     </div>
   )
 }
