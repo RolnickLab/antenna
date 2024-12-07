@@ -33,7 +33,7 @@ class AlgorithmReference(pydantic.BaseModel):
     key: str
 
 
-class AlgorithmCategoryMap(pydantic.BaseModel):
+class AlgorithmCategoryMapResponse(pydantic.BaseModel):
     data: list[dict] = pydantic.Field(
         default_factory=dict,
         description="Complete data for each label, such as id, gbif_key, explicit index, source, etc.",
@@ -59,7 +59,10 @@ class AlgorithmCategoryMap(pydantic.BaseModel):
         description="A description of the category map used to train. e.g. source, purpose and modifications.",
         examples=["LepNet2021 with Schmidt 2023 corrections. Limited to species with > 1000 observations."],
     )
-    url: str | None = None
+    uri: str | None = pydantic.Field(
+        default=None,
+        description="A URI to the category map file, could be a public web URL or object store path.",
+    )
 
 
 class AlgorithmResponse(pydantic.BaseModel):
@@ -81,8 +84,11 @@ class AlgorithmResponse(pydantic.BaseModel):
         default=None,
         description="A complete version name e.g. '2021-01-01', 'LepNet2021'.",
     )
-    url: str | None = None
-    category_map: AlgorithmCategoryMap | None = None
+    uri: str | None = pydantic.Field(
+        default=None,
+        description="A URI to the weight or model details, could be a public web URL or object store path.",
+    )
+    category_map: AlgorithmCategoryMapResponse | None = None
 
     class Config:
         extra = "ignore"

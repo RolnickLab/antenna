@@ -30,7 +30,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "name",
             "key",
             "description",
-            "url",
+            "uri",
             "version",
             "version_name",
             "task_type",
