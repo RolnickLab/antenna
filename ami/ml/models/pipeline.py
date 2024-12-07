@@ -211,28 +211,31 @@ def create_algorithms_and_category_map(
 
     :return: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
 
-    @TODO this should be called when registering a pipeline, not when saving results. But currently we don't
-    have a way to register pipelines.
+    @TODO this should be called when registering a pipeline, not when saving results.
+    But currently we don't have a way to register pipelines.
     """
     algorithms_used: dict[str, Algorithm] = {}
     for algorithm_data in algorithms_data.values():
         category_map = None
         category_map_data = algorithm_data.category_map
         if category_map_data:
+            labels_hash = AlgorithmCategoryMap.make_labels_hash(category_map_data.labels)
             category_map, _created = AlgorithmCategoryMap.objects.get_or_create(
-                data=category_map_data.data,
-                labels=category_map_data.labels,
+                # Will create a new category map if the labels are different
+                labels_hash=labels_hash,
+                version=category_map_data.version,
                 defaults={
-                    "version": category_map_data.version or now().isoformat(),
+                    "data": category_map_data.data,
+                    "labels": category_map_data.labels,
                     "description": category_map_data.description,
-                    "url": category_map_data.url,
+                    "uri": category_map_data.uri,
                 },
             )
             if _created:
-                logger.info(f"Registered new category map {category_map.version}")
+                logger.info(f"Registered new category map {category_map}")
                 created_objects.append(category_map)
             else:
-                logger.info(f"Using category map {category_map}")
+                logger.info(f"Assigned existing category map {category_map}")
         else:
             logger.warning(
                 f"No category map found for algorithm {algorithm_data.key} in response."
@@ -246,7 +249,7 @@ def create_algorithms_and_category_map(
                 "task_type": algorithm_data.task_type,
                 "version": algorithm_data.version,
                 "version_name": algorithm_data.version_name,
-                "url": algorithm_data.url,
+                "uri": algorithm_data.uri,
                 "category_map": category_map or None,
             },
         )
@@ -259,10 +262,10 @@ def create_algorithms_and_category_map(
         algorithms_used[algo.key] = algo
 
         if _created:
-            logger.info(f"Registered new algorithm #{algo.pk} {algo.name} ({algo.key})")
+            logger.info(f"Registered new algorithm {algo}")
             created_objects.append(algo)
         else:
-            logger.info(f"Using algorithm #{algo.pk} {algo.name} ({algo.key})")
+            logger.info(f"Assigned algorithm {algo}")
 
     return algorithms_used, created_objects
 
@@ -385,6 +388,7 @@ def save_results(
                 category_map = AlgorithmCategoryMap.objects.create(
                     data=category_map_data,
                     version=classification.timestamp.isoformat(),
+                    description="Placeholder category map automatically created from classification data",
                     labels=labels,
                 )
                 created_objects.append(category_map)
@@ -400,11 +404,17 @@ def save_results(
             else:
                 job_logger.debug(f"Using existing taxa list {taxa_list}")
 
+            classification_algo.category_map.with_taxa()
+            classification.scores
+            # Get top label from classification scores
+            label_data: dict = classification_algo.category_map.data[
+                classification.scores.index(max(classification.scores))
+            ]
             taxon, _created = Taxon.objects.get_or_create(
                 name=classification.classification,
                 defaults={
                     "name": classification.classification,
-                    "rank": TaxonRank.UNKNOWN,
+                    "rank": label_data.get("taxon_rank", TaxonRank.UNKNOWN),
                 },
             )
             if _created:

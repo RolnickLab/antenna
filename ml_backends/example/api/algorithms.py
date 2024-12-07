@@ -1,4 +1,4 @@
-from .schemas import AlgorithmCategoryMap, AlgorithmResponse
+from .schemas import AlgorithmCategoryMapResponse, AlgorithmResponse
 
 RANDOM_DETECTOR = AlgorithmResponse(
     name="Random Detector",
@@ -19,15 +19,27 @@ RANDOM_BINARY_CLASSIFIER = AlgorithmResponse(
     version=1,
     version_name="v1",
     url="https://huggingface.co/RolnickLab/random-binary-classifier",
-    category_map=AlgorithmCategoryMap(
+    category_map=AlgorithmCategoryMapResponse(
         data=[
-            {"index": 0, "gbif_key": "1234", "label": "Moth", "source": "manual"},
-            {"index": 1, "gbif_key": "4543", "label": "Not a moth", "source": "manual"},
+            {
+                "index": 0,
+                "gbif_key": "1234",
+                "label": "Moth",
+                "source": "manual",
+                "taxon_rank": "SUPERFAMILY",
+            },
+            {
+                "index": 1,
+                "gbif_key": "4543",
+                "label": "Not a moth",
+                "source": "manual",
+                "taxon_rank": "ORDER",
+            },
         ],
         labels=["Moth", "Not a moth"],
         version="v1",
         description="A simple binary classifier",
-        url="https://huggingface.co/RolnickLab/random-binary-classifier",
+        uri="https://huggingface.co/RolnickLab/random-binary-classifier",
     ),
 )
 
@@ -39,11 +51,29 @@ RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
     version=1,
     version_name="v1",
     url="https://huggingface.co/RolnickLab/random-species-classifier",
-    category_map=AlgorithmCategoryMap(
+    category_map=AlgorithmCategoryMapResponse(
         data=[
-            {"index": 0, "gbif_key": "1234", "label": "Vanessa atalanta", "source": "manual"},
-            {"index": 1, "gbif_key": "4543", "label": "Vanessa cardui", "source": "manual"},
-            {"index": 2, "gbif_key": "7890", "label": "Vanessa itea", "source": "manual"},
+            {
+                "index": 0,
+                "gbif_key": "1234",
+                "label": "Vanessa atalanta",
+                "source": "manual",
+                "taxon_rank": "SPECIES",
+            },
+            {
+                "index": 1,
+                "gbif_key": "4543",
+                "label": "Vanessa cardui",
+                "source": "manual",
+                "taxon_rank": "SPECIES",
+            },
+            {
+                "index": 2,
+                "gbif_key": "7890",
+                "label": "Vanessa itea",
+                "source": "manual",
+                "taxon_rank": "SPECIES",
+            },
         ],
         labels=["Vanessa atalanta", "Vanessa cardui", "Vanessa itea"],
         version="v1",

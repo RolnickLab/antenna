@@ -22,21 +22,37 @@ class AlgorithmCategoryMap(BaseModel):
     """
 
     data = models.JSONField(
-        help_text="Complete metadata for each label, such as id, gbif_key, explicit index, source, etc."
+        help_text="Complete metadata for each label, such as id, gbif_key, lookup value, source, etc."
     )
     labels = ArrayField(
         models.CharField(max_length=255),
         default=list,
         help_text="A simple list of string labels in the correct index order used by the model.",
     )
+    labels_hash = models.BigIntegerField(
+        help_text="A hash of the labels for faster comparison of label sets. Created on save.",
+        null=True,
+    )
     version = models.CharField(max_length=255, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
-    url = models.URLField(blank=True, null=True)
+    uri = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=("A URI to the category map file. " "Could be a public web URL or object store path."),
+    )
 
     algorithms: models.QuerySet[Algorithm]
 
     def __str__(self):
-        return f"#{self.pk} {self.version} ({len(self.labels)} classes)"
+        return f"#{self.pk} with {len(self.labels)} classes ({self.version or 'unknown version'})"
+
+    @classmethod
+    def make_labels_hash(cls, labels):
+        """
+        Create a hash from the labels for faster comparison of unique label sets
+        """
+        return hash("".join(labels))
 
     def get_category(self, label, label_field="label"):
         # Can use JSON containment operators
@@ -62,6 +78,11 @@ class AlgorithmCategoryMap(BaseModel):
             category["taxon"] = taxon
 
         return self.data
+
+    def save(self, *args, **kwargs):
+        if not self.labels_hash:
+            self.labels_hash = self.make_labels_hash(self.labels)
+        super().save(*args, **kwargs)
 
 
 @typing.final
@@ -100,9 +121,13 @@ class Algorithm(BaseModel):
         help_text="An internal, sortable and incrementable version number for the model.",
     )
     version_name = models.CharField(max_length=255, blank=True, null=True)
-    url = models.URLField(
-        blank=True, null=True
-    )  # URL to the model homepage, origin or docs (huggingface, wandb, etc.)
+    uri = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=("A URI to the weights or model details. Could be a public web URL or object store path."),
+    )
+
     category_map = models.ForeignKey(
         AlgorithmCategoryMap,
         on_delete=models.CASCADE,

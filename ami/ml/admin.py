@@ -66,7 +66,7 @@ class PipelineAdmin(AdminBase):
 class AlgorithmCategoryMapAdmin(AdminBase):
     list_display = [
         "version",
-        "url",
+        "uri",
         "created_at",
         "num_data_items",
         "num_labels",
