@@ -1,3 +1,4 @@
+import { isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
 
 export const AVAILABLE_FILTERS = [
@@ -24,10 +25,14 @@ export const AVAILABLE_FILTERS = [
   {
     label: 'End date',
     field: 'date_end',
+    validate: (value?: string) =>
+      value ? isValid(new Date(value)) : undefined,
   },
   {
     label: 'Start date',
     field: 'date_start',
+    validate: (value?: string) =>
+      value ? isValid(new Date(value)) : undefined,
   },
   {
     label: 'Source image',
@@ -74,12 +79,15 @@ export const AVAILABLE_FILTERS = [
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const filters = AVAILABLE_FILTERS.map((filter) => {
-    const value = searchParams.getAll(filter.field)[0]
+  const filters = AVAILABLE_FILTERS.map(({ field, label, validate }) => {
+    const value = searchParams.get(field) ?? defaultFilters?.[field]
+    const isValid = validate ? validate(value) : true
 
     return {
-      ...filter,
-      value: value ?? defaultFilters?.[filter.field],
+      field,
+      isValid,
+      label,
+      value,
     }
   })
 
