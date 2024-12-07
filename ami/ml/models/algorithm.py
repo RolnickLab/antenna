@@ -35,6 +35,9 @@ class AlgorithmCategoryMap(BaseModel):
 
     algorithms: models.QuerySet[Algorithm]
 
+    def __str__(self):
+        return f"#{self.pk} {self.version} ({len(self.labels)} classes)"
+
     def get_category(self, label, label_field="label"):
         # Can use JSON containment operators
         return self.data.index(next(category for category in self.data if category[label_field] == label))
@@ -93,7 +96,8 @@ class Algorithm(BaseModel):
     )
     description = models.TextField(blank=True)
     version = models.IntegerField(
-        default=1, help_text="An internal, sortable and incrementable version number for the model."
+        default=1,
+        help_text="An internal, sortable and incrementable version number for the model.",
     )
     version_name = models.CharField(max_length=255, blank=True, null=True)
     url = models.URLField(
@@ -113,6 +117,9 @@ class Algorithm(BaseModel):
 
     pipelines: models.QuerySet[Pipeline]
     classifications: models.QuerySet[Classification]
+
+    def __str__(self):
+        return f"#{self.pk} {self.name} v{self.version} ({self.key})"
 
     class Meta:
         ordering = ["name", "version"]
