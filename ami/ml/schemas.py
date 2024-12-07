@@ -24,6 +24,9 @@ class BoundingBox(pydantic.BaseModel):
     def to_path(self) -> str:
         return "-".join([str(int(x)) for x in [self.x1, self.y1, self.x2, self.y2]])
 
+    def to_tuple(self):
+        return (self.x1, self.y1, self.x2, self.y2)
+
 
 class AlgorithmReference(pydantic.BaseModel):
     name: str
