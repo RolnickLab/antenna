@@ -29,6 +29,9 @@ class BoundingBox(pydantic.BaseModel):
     def to_path(self):
         return "-".join([str(int(x)) for x in [self.x1, self.y1, self.x2, self.y2]])
 
+    def to_tuple(self):
+        return (self.x1, self.y1, self.x2, self.y2)
+
 
 class SourceImage(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="ignore", arbitrary_types_allowed=True)
