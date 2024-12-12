@@ -57,7 +57,7 @@ class TestPipeline(TestCase):
 
     def test_create_pipeline(self):
         self.assertEqual(self.pipeline.slug, "test-pipeline")
-        self.assertEqual(self.pipeline.algorithms.count(), 3)
+        self.assertEqual(self.pipeline.algorithms.count(), len(ALGORITHM_CHOICES))
 
         for algorithm in self.pipeline.algorithms.all():
             assert isinstance(algorithm, Algorithm)
@@ -67,10 +67,22 @@ class TestPipeline(TestCase):
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         assert len(images) == 2
 
-    def fake_pipeline_results(self, source_images: list[SourceImage], pipeline: Pipeline):
+    def fake_pipeline_results(
+        self,
+        source_images: list[SourceImage],
+        pipeline: Pipeline,
+        alt_species_classifier: AlgorithmResponse | None = None,
+    ):
+        # @TODO use the pipeline passed in to get the algorithms
         source_image_results = [SourceImageResponse(id=image.pk, url=image.path) for image in source_images]
         detector = ALGORITHM_CHOICES["random-detector"]
-        species_classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        binary_classifier = ALGORITHM_CHOICES["random-binary-classifier"]
+        assert binary_classifier.category_map
+
+        if alt_species_classifier is None:
+            species_classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        else:
+            species_classifier = alt_species_classifier
         assert species_classifier.category_map
 
         detection_results = [
@@ -84,6 +96,17 @@ class TestPipeline(TestCase):
                 ),
                 timestamp=datetime.datetime.now(),
                 classifications=[
+                    ClassificationResponse(
+                        classification=binary_classifier.category_map.labels[0],
+                        labels=None,
+                        scores=[0.9213],
+                        algorithm=AlgorithmReference(
+                            name=binary_classifier.name,
+                            key=binary_classifier.key,
+                        ),
+                        timestamp=datetime.datetime.now(),
+                        terminal=False,
+                    ),
                     ClassificationResponse(
                         classification=species_classifier.category_map.labels[0],
                         labels=None,
@@ -101,8 +124,12 @@ class TestPipeline(TestCase):
         ]
         fake_results = PipelineResponse(
             pipeline=pipeline.slug,
-            algorithms={detector.key: detector, species_classifier.key: species_classifier},
-            total_time=0.0,
+            algorithms={
+                detector.key: detector,
+                binary_classifier.key: binary_classifier,
+                species_classifier.key: species_classifier,
+            },
+            total_time=0.01,
             source_images=source_image_results,
             detections=detection_results,
         )
@@ -231,7 +258,8 @@ class TestPipeline(TestCase):
         self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name, key=new_detector.key).exists())
         self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name, key=new_classifier.key).exists())
 
-    def no_test_reprocessing_after_unknown_algorithm_added(self):
+    @unittest.skip("Not implemented yet")
+    def test_reprocessing_after_unknown_algorithm_added(self):
         # @TODO fix issue with "None" algorithm on some detections
 
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
@@ -305,3 +333,57 @@ class TestPipeline(TestCase):
         images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, 0)
+
+    def test_yes_reprocess_if_new_terminal_algorithm_same_intermediate(self):
+        """
+        Test two pipelines with the same detector and same moth/non-moth classifier, but a new species classifier.
+
+        The first pipeline should process the images and save the results.
+        The second pipeline should reprocess the images.
+        """
+
+        images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
+        assert len(images), "No images to process"
+
+        detector = Algorithm.objects.get(key="random-detector")
+        binary_classifier = Algorithm.objects.get(key="random-binary-classifier")
+        old_species_classifier = Algorithm.objects.get(key="random-species-classifier")
+
+        save_results(self.fake_pipeline_results(images, self.pipeline))
+
+        # Ensure all results have the binary classifier and the old species classifier
+        for detection in Detection.objects.all():
+            self.assertEqual(detection.detection_algorithm, detector)
+            # Assert that the binary classifier was used
+            self.assertTrue(
+                detection.classifications.filter(algorithm=binary_classifier).exists(),
+                "Binary classifier not used in first run",
+            )
+            # Assert that the old species classifier was used
+            self.assertTrue(
+                detection.classifications.filter(algorithm=old_species_classifier).exists(),
+                "Old species classifier not used in first run",
+            )
+
+        # Get another species classifier
+        new_species_classifier_key = "constant-species-classifier"
+        new_species_classifier = Algorithm.objects.get(key=new_species_classifier_key)
+        # new_species_classifier_response = ALGORITHM_CHOICES[new_species_classifier_key]
+
+        # Create a new pipeline with the same detector and the new species classifier
+        new_pipeline = Pipeline.objects.create(
+            name="New Pipeline",
+        )
+
+        new_pipeline.algorithms.set(
+            [
+                detector,
+                binary_classifier,
+                new_species_classifier,
+            ]
+        )
+
+        # Process the images with the new pipeline
+        images_again = list(collect_images(collection=self.image_collection, pipeline=new_pipeline))
+        remaining_images_to_process = len(images_again)
+        self.assertEqual(remaining_images_to_process, len(images), "Images not re-processed with new pipeline")
