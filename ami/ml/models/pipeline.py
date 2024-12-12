@@ -6,7 +6,6 @@ from django.db import models, transaction
 from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
-from rich import print
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, default_stages
@@ -22,10 +21,9 @@ from ami.main.models import (
     TaxonRank,
     update_calculated_fields_for_events,
 )
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.schemas import AlgorithmResponse, PipelineRequest, PipelineResponse, SourceImageRequest
 from ami.ml.tasks import celery_app, create_detection_images
-
-from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
-from .algorithm import Algorithm
 
 logger = logging.getLogger(__name__)
 
@@ -43,20 +41,23 @@ def filter_processed_images(
     for image in images:
         existing_detections = image.detections.filter(detection_algorithm__in=pipeline_algorithms)
         if not existing_detections.exists():
-            logger.debug(f"Image {image} has no existing detections from pipeline {pipeline}")
+            logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
         elif existing_detections.filter(classifications__isnull=True).exists():
             # Check if there are detections with no classifications
-            logger.debug(f"Image {image} has existing detections with no classifications from pipeline {pipeline}")
+            logger.debug(
+                f"Image {image} needs processing: has existing detections with no classifications "
+                "from pipeline {pipeline}"
+            )
             yield image
         else:
             # If there are existing detections with classifications,
             # Compare their classification algorithms to the current pipeline's algorithms
-            detections_needing_classification = existing_detections.exclude(
-                classifications__algorithm__in=pipeline_algorithms
-            )
-            if detections_needing_classification.exists():
+            pipeline_algorithm_ids = pipeline_algorithms.values_list("id", flat=True)
+            detection_algorithm_ids = existing_detections.values_list("classifications__algorithm_id", flat=True)
+
+            if not set(pipeline_algorithm_ids).issubset(set(detection_algorithm_ids)):
                 logger.debug(
                     f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}"
                 )
@@ -200,8 +201,85 @@ def process_images(
     return results
 
 
+def create_algorithms_and_category_map(
+    algorithms_data: typing.Mapping[str, AlgorithmResponse],
+    created_objects: list[BaseModel],
+    logger: logging.Logger = logger,
+) -> tuple[dict[str, Algorithm], list[BaseModel]]:
+    """
+    Create algorithms and category maps from a PipelineResponse.
+
+    :param algorithms: A dictionary of algorithms from the pipeline response
+    :param created_objects: A list to store created objects
+
+    :return: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+
+    @TODO this should be called when registering a pipeline, not when saving results.
+    But currently we don't have a way to register pipelines.
+    """
+    algorithms_used: dict[str, Algorithm] = {}
+    for algorithm_data in algorithms_data.values():
+        category_map = None
+        category_map_data = algorithm_data.category_map
+        if category_map_data:
+            labels_hash = AlgorithmCategoryMap.make_labels_hash(category_map_data.labels)
+            category_map, _created = AlgorithmCategoryMap.objects.get_or_create(
+                # Will create a new category map if the labels are different
+                labels_hash=labels_hash,
+                version=category_map_data.version,
+                defaults={
+                    "data": category_map_data.data,
+                    "labels": category_map_data.labels,
+                    "description": category_map_data.description,
+                    "uri": category_map_data.uri,
+                },
+            )
+            if _created:
+                logger.info(f"Registered new category map {category_map}")
+                created_objects.append(category_map)
+            else:
+                logger.info(f"Assigned existing category map {category_map}")
+        else:
+            logger.warning(
+                f"No category map found for algorithm {algorithm_data.key} in response."
+                " Will attempt to create one from the classification results."
+            )
+
+        algo, _created = Algorithm.objects.get_or_create(
+            key=algorithm_data.key,
+            defaults={
+                "name": algorithm_data.name,
+                "task_type": algorithm_data.task_type,
+                "version": algorithm_data.version,
+                "version_name": algorithm_data.version_name,
+                "uri": algorithm_data.uri,
+                "category_map": category_map or None,
+            },
+        )
+
+        if not algo.category_map or len(algo.category_map.data) == 0:
+            # Update existing algorithm that is missing a category map
+            algo.category_map = category_map
+            algo.save()
+
+        algorithms_used[algo.key] = algo
+
+        if _created:
+            logger.info(f"Registered new algorithm {algo}")
+            created_objects.append(algo)
+        else:
+            logger.info(f"Assigned algorithm {algo}")
+
+    return algorithms_used, created_objects
+
+
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
-def save_results(results: PipelineResponse | None = None, results_json: str | None = None, job_id: int | None = None):
+def save_results(
+    results: PipelineResponse | None = None,
+    results_json: str | None = None,
+    job_id: int | None = None,
+    return_created=False,
+):
     """
     Save results from ML pipeline API.
 
@@ -210,22 +288,32 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
     """
     created_objects = []
     job = None
-
-    if results_json:
-        results = PipelineResponse.parse_raw(results_json)
-    assert results, "No results data passed to save_results task"
-
-    pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
-    if _created:
-        logger.warning(f"Pipeline choice returned by the ML backend was not recognized! {pipeline}")
-        created_objects.append(pipeline)
-    algorithms_used = set()
+    job_logger = logger
 
     if job_id:
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info("Saving results...")
+        job_logger = job.logger
+
+    if results_json:
+        results = PipelineResponse.parse_raw(results_json)
+    assert results, "No results data passed to save_results task"
+    job_logger.info(f"Saving results from pipeline {results.pipeline}")
+
+    results = PipelineResponse.parse_obj(results.dict())
+
+    pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
+    if _created:
+        job_logger.warning(f"Pipeline choice returned by the ML backend was not recognized! {pipeline}")
+        created_objects.append(pipeline)
+
+    # Create algorithms and category maps
+    algorithms_used, created_objects = create_algorithms_and_category_map(
+        algorithms_data=results.algorithms,
+        created_objects=created_objects,
+        logger=job_logger,
+    )
 
     # collection_name = f"Images processed by {results.pipeline} pipeline"
     # if job_id:
@@ -242,14 +330,9 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
 
     for detection_resp in results.detections:
         # @TODO use bulk create, or optimize this in some way
-        print(detection_resp)
+
         assert detection_resp.algorithm, "No detection algorithm was specified in the returned results."
-        detection_algo, _created = Algorithm.objects.get_or_create(
-            name=detection_resp.algorithm,
-        )
-        algorithms_used.add(detection_algo)
-        if _created:
-            created_objects.append(detection_algo)
+        detection_algo = algorithms_used[detection_resp.algorithm.key]
 
         # @TODO hmmmm what to do
         source_image = SourceImage.objects.get(pk=detection_resp.source_image_id)
@@ -268,7 +351,7 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
             if not existing_detection.path:
                 existing_detection.path = crop_url
                 existing_detection.save()
-                print("Updated existing detection", existing_detection)
+                logger.debug(f"Updated existing detection {existing_detection}")
             detection = existing_detection
         else:
             new_detection = Detection.objects.create(
@@ -280,33 +363,66 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
                 detection_algorithm=detection_algo,
             )
             new_detection.save()
-            print("Created new detection", new_detection)
+            logger.debug(f"Created new detection {new_detection}")
             created_objects.append(new_detection)
             detection = new_detection
 
         for classification in detection_resp.classifications:
-            print(classification)
+            logger.debug(f"Processing classification {classification}")
 
             assert classification.algorithm, "No classification algorithm was specified in the returned results."
-            classification_algo, _created = Algorithm.objects.get_or_create(
-                name=classification.algorithm,
-            )
-            algorithms_used.add(classification_algo)
-            if _created:
-                created_objects.append(classification_algo)
+            classification_algo = algorithms_used[classification.algorithm.key]
+
+            if not classification_algo.category_map:
+                job_logger.warning(
+                    f"Classification algorithm {classification_algo} "
+                    "has no category map! "
+                    "Creating one from data in the first classification if possible."
+                )
+                labels = classification.labels or list(map(str, range(len(classification.scores))))
+                category_map_data = [
+                    {
+                        "label": label,
+                        "index": i,
+                    }
+                    for i, label in enumerate(labels)
+                ]
+                job_logger.info(f"Creating placeholder category map with data: {category_map_data}")
+                category_map = AlgorithmCategoryMap.objects.create(
+                    data=category_map_data,
+                    version=classification.timestamp.isoformat(),
+                    description="Placeholder category map automatically created from classification data",
+                    labels=labels,
+                )
+                created_objects.append(category_map)
+                classification_algo.category_map = category_map
+                classification_algo.save()
 
             taxa_list, _created = TaxaList.objects.get_or_create(
                 name=f"Taxa returned by {classification_algo.name}",
             )
             if _created:
                 created_objects.append(taxa_list)
+                job_logger.info(f"Created new taxa list {taxa_list}")
+            else:
+                job_logger.debug(f"Using existing taxa list {taxa_list}")
 
+            classification_algo.category_map.with_taxa()
+            classification.scores
+            # Get top label from classification scores
+            label_data: dict = classification_algo.category_map.data[
+                classification.scores.index(max(classification.scores))
+            ]
             taxon, _created = Taxon.objects.get_or_create(
                 name=classification.classification,
-                defaults={"name": classification.classification, "rank": TaxonRank.UNKNOWN},
+                defaults={
+                    "name": classification.classification,
+                    "rank": label_data.get("taxon_rank", TaxonRank.UNKNOWN),
+                },
             )
             if _created:
                 created_objects.append(taxon)
+                job_logger.info(f"Registered new taxon {taxon}")
 
             taxa_list.taxa.add(taxon)
 
@@ -321,7 +437,13 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
                 taxon=taxon,
                 algorithm=classification_algo,
                 score=max(classification.scores),
-                defaults={"timestamp": classification.timestamp or now()},
+                defaults={
+                    "timestamp": classification.timestamp or now(),
+                    "logits": classification.logits,
+                    "scores": classification.scores,
+                    "category_map": classification_algo.category_map,
+                    "terminal": classification.terminal,
+                },
             )
 
             if created:
@@ -329,7 +451,7 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
                 created_objects.append(new_classification)
             else:
                 # Optionally handle the case where a duplicate is found
-                logger.warn("Duplicate classification found, not creating a new one.")
+                job_logger.warning(f"Duplicate classification found {new_classification}, not creating a new one.")
 
             # Create a new occurrence for each detection (no tracking yet)
             # @TODO remove when we implement tracking
@@ -353,23 +475,22 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
     image_cropping_task = create_detection_images.delay(
         source_image_ids=[source_image.pk for source_image in source_images],
     )
-    if job:
-        job.logger.info(f"Creating detection images in sub-task {image_cropping_task.id}")
+    job_logger.info(f"Creating detection images in sub-task {image_cropping_task.id}")
 
     event_ids = [img.event_id for img in source_images]
     update_calculated_fields_for_events(pks=event_ids)
 
     registered_algos = pipeline.algorithms.all()
-    for algo in algorithms_used:
+    for algo in algorithms_used.values():
         # This is important for tracking what objects were processed by which algorithms
         # to avoid reprocessing, and for tracking provenance.
         if algo not in registered_algos:
             pipeline.algorithms.add(algo)
-            logger.warning(f"Added unregistered algorithm {algo} to pipeline {pipeline}")
+            job_logger.info(f"Added unregistered algorithm {algo} to pipeline {pipeline}")
 
+    job_logger.info(f"Created {len(created_objects)} objects")
     if job:
         if len(created_objects):
-            job.logger.info(f"Created {len(created_objects)} objects")
             try:
                 previously_created = int(job.progress.get_stage_param("results", "objects_created").value)
                 job.progress.update_stage(
@@ -380,6 +501,9 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
                 pass
             else:
                 job.update_progress()
+
+    if return_created:
+        return created_objects
 
 
 class PipelineStage(ConfigurableStage):
@@ -396,7 +520,7 @@ class Pipeline(BaseModel):
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
     # @TODO the algorithms list be retrieved by querying the pipeline endpoint
-    algorithms = models.ManyToManyField(Algorithm, related_name="pipelines")
+    algorithms = models.ManyToManyField("ml.Algorithm", related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(
         default=default_stages,
         help_text=(
