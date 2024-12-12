@@ -41,20 +41,23 @@ def filter_processed_images(
     for image in images:
         existing_detections = image.detections.filter(detection_algorithm__in=pipeline_algorithms)
         if not existing_detections.exists():
-            logger.debug(f"Image {image} has no existing detections from pipeline {pipeline}")
+            logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
         elif existing_detections.filter(classifications__isnull=True).exists():
             # Check if there are detections with no classifications
-            logger.debug(f"Image {image} has existing detections with no classifications from pipeline {pipeline}")
+            logger.debug(
+                f"Image {image} needs processing: has existing detections with no classifications "
+                "from pipeline {pipeline}"
+            )
             yield image
         else:
             # If there are existing detections with classifications,
             # Compare their classification algorithms to the current pipeline's algorithms
-            detections_needing_classification = existing_detections.exclude(
-                classifications__algorithm__in=pipeline_algorithms
-            )
-            if detections_needing_classification.exists():
+            pipeline_algorithm_ids = pipeline_algorithms.values_list("id", flat=True)
+            detection_algorithm_ids = existing_detections.values_list("classifications__algorithm_id", flat=True)
+
+            if not set(pipeline_algorithm_ids).issubset(set(detection_algorithm_ids)):
                 logger.debug(
                     f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}"
                 )
@@ -448,7 +451,7 @@ def save_results(
                 created_objects.append(new_classification)
             else:
                 # Optionally handle the case where a duplicate is found
-                job_logger.warning("Duplicate classification found, not creating a new one.")
+                job_logger.warning(f"Duplicate classification found {new_classification}, not creating a new one.")
 
             # Create a new occurrence for each detection (no tracking yet)
             # @TODO remove when we implement tracking
