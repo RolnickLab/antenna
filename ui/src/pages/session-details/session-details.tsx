@@ -1,10 +1,10 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
 import { Box } from 'design-system/components/box/box'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
-import { Error } from 'pages/error/error'
 import { useContext, useEffect } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
@@ -42,7 +42,7 @@ export const SessionDetails = () => {
   }
 
   if (!session || error) {
-    return <Error error={error} />
+    return <ErrorState error={error} />
   }
 
   return (

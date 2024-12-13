@@ -29,7 +29,6 @@ import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
-import styles from './occurrences.module.scss'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -146,13 +145,11 @@ export const Occurrences = () => {
             />
           )}
           {selectedView === 'gallery' && (
-            <div className={styles.galleryContent}>
-              <OccurrenceGallery
-                error={error}
-                isLoading={!id && isLoading}
-                occurrences={occurrences}
-              />
-            </div>
+            <OccurrenceGallery
+              error={error}
+              isLoading={!id && isLoading}
+              occurrences={occurrences}
+            />
           )}
         </div>
       </div>
