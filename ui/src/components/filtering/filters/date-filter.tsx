@@ -4,7 +4,13 @@ import { Button, Calendar, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { FilterProps } from './types'
 
-const dateToLabel = (date: Date) => format(date, 'yyyy-MM-dd')
+const dateToLabel = (date: Date) => {
+  try {
+    return format(date, 'yyyy-MM-dd')
+  } catch {
+    return 'Invalid date'
+  }
+}
 
 export const DateFilter = ({ isValid, onAdd, onClear, value }: FilterProps) => {
   const [open, setOpen] = useState(false)
@@ -13,10 +19,6 @@ export const DateFilter = ({ isValid, onAdd, onClear, value }: FilterProps) => {
   const triggerLabel = (() => {
     if (!selected) {
       return 'Select a date'
-    }
-
-    if (!isValid) {
-      return 'Invalid date'
     }
 
     return dateToLabel(selected)

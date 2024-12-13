@@ -1,7 +1,14 @@
-import { isValid } from 'date-fns'
+import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
 
-export const AVAILABLE_FILTERS = [
+export const AVAILABLE_FILTERS: {
+  label: string
+  field: string
+  validate?: (
+    value?: string,
+    filters?: { field: string; value?: string }[]
+  ) => string | undefined
+}[] = [
   {
     label: 'Include algorithm',
     field: 'algorithm',
@@ -25,14 +32,40 @@ export const AVAILABLE_FILTERS = [
   {
     label: 'End date',
     field: 'date_end',
-    validate: (value?: string) =>
-      value ? isValid(new Date(value)) : undefined,
+    validate: (value) => {
+      if (!value) {
+        return undefined
+      }
+
+      if (!isValid(new Date(value))) {
+        return 'Date is not valid'
+      }
+
+      return undefined
+    },
   },
   {
     label: 'Start date',
     field: 'date_start',
-    validate: (value?: string) =>
-      value ? isValid(new Date(value)) : undefined,
+    validate: (value, filters) => {
+      if (!value) {
+        return undefined
+      }
+
+      if (!isValid(new Date(value))) {
+        return 'Date has not a valid format.'
+      }
+
+      const dateEnd = filters?.find(
+        (filter) => filter.field === 'date_end'
+      )?.value
+
+      if (dateEnd && !isBefore(new Date(value), new Date(dateEnd))) {
+        return 'Start date must be before end date'
+      }
+
+      return undefined
+    },
   },
   {
     label: 'Source image',
@@ -79,15 +112,23 @@ export const AVAILABLE_FILTERS = [
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const filters = AVAILABLE_FILTERS.map(({ field, label, validate }) => {
+  const filters = AVAILABLE_FILTERS.map(({ field, ...rest }) => {
     const value = searchParams.get(field) ?? defaultFilters?.[field]
-    const isValid = validate ? validate(value) : true
 
     return {
+      ...rest,
       field,
-      isValid,
-      label,
       value,
+    }
+  })
+
+  const validatedFilters = filters.map(({ validate, value, ...rest }) => {
+    const error = validate ? validate(value, filters) : undefined
+
+    return {
+      ...rest,
+      value,
+      error,
     }
   })
 
@@ -111,6 +152,6 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
     activeFilters,
     addFilter,
     clearFilter,
-    filters,
+    filters: validatedFilters,
   }
 }
