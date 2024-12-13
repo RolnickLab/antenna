@@ -12,7 +12,6 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -69,10 +68,6 @@ export const Occurrences = () => {
     occurrences?.some((occurrence) => occurrence.id === id)
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
-
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
 
   return (
     <>
@@ -135,25 +130,27 @@ export const Occurrences = () => {
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              items={occurrences}
-              isLoading={!id && isLoading}
               columns={columns(
                 projectId as string,
                 selectedItems.length === 0
               ).filter((column) => !!columnSettings[column.id])}
-              sortable
-              sortSettings={sort}
-              selectable={user.loggedIn}
-              selectedItems={selectedItems}
+              error={error}
+              isLoading={!id && isLoading}
+              items={occurrences}
               onSelectedItemsChange={setSelectedItems}
               onSortSettingsChange={setSort}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
+              sortable
+              sortSettings={sort}
             />
           )}
           {selectedView === 'gallery' && (
             <div className={styles.galleryContent}>
               <OccurrenceGallery
-                occurrences={occurrences}
+                error={error}
                 isLoading={!id && isLoading}
+                occurrences={occurrences}
               />
             </div>
           )}
