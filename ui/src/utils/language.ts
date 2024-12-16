@@ -71,12 +71,14 @@ export enum STRING {
   FIELD_LABEL_DURATION,
   FIELD_LABEL_EMAIL,
   FIELD_LABEL_EMAIL_NEW,
+  FIELD_LABEL_ENDPOINT,
   FIELD_LABEL_ERRORS,
   FIELD_LABEL_FINISHED_AT,
   FIELD_LABEL_GENERAL,
   FIELD_LABEL_ID,
   FIELD_LABEL_IMAGE,
   FIELD_LABEL_ICON,
+  FIELD_LABEL_LAST_CHECKED,
   FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
   FIELD_LABEL_LOCATION,
@@ -161,6 +163,7 @@ export enum STRING {
   NAV_ITEM_SPECIES,
 
   /* TAB_ITEM */
+  TAB_ITEM_BACKENDS,
   TAB_ITEM_COLLECTIONS,
   TAB_ITEM_DEVICES,
   TAB_ITEM_FIELDS,
@@ -182,6 +185,7 @@ export enum STRING {
   DONE,
 
   /* TOOLTIPS */
+  TOOLTIP_BACKEND,
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE_TYPE,
@@ -289,12 +293,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_EMAIL_NEW]: 'Email new',
+  [STRING.FIELD_LABEL_ENDPOINT]: 'Endpoint URL',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_GENERAL]: 'General configuration',
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
+  [STRING.FIELD_LABEL_LAST_CHECKED]: 'Last seen online',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
@@ -407,6 +413,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_SPECIES]: 'Species',
 
   /* TAB_ITEM */
+  [STRING.TAB_ITEM_BACKENDS]: 'Backends',
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
@@ -428,6 +435,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DONE]: 'Done',
 
   /* TOOLTIPS */
+  [STRING.TOOLTIP_BACKEND]:
+    'A backend is a group of pipelines used for processing images/collections.',
   [STRING.TOOLTIP_COLLECTION]:
     'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:

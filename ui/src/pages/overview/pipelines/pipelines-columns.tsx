@@ -33,4 +33,16 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     sortField: 'updated_at',
     renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
   },
+  {
+    id: 'backends-online',
+    name: "Backends Online",
+    sortField: 'backends_online',
+    renderCell: (item: Pipeline) => <BasicTableCell value={item.backendsOnline} />,
+  },
+  {
+    id: 'backends-online-last-checked',
+    name: "Backends Online Last Checked",
+    sortField: 'backends_online_last_checked',
+    renderCell: (item: Pipeline) => <BasicTableCell value={item.backendsOnlineLastChecked} />,
+  },
 ]

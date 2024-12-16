@@ -22,6 +22,8 @@ class Backend(BaseModel):
     projects = models.ManyToManyField("main.Project", related_name="backends", blank=True)
     endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
     pipelines = models.ManyToManyField("ml.Pipeline", related_name="backends", blank=True)
+    last_checked = models.DateTimeField(null=True)
+    last_checked_live = models.BooleanField(null=True)
 
     def __str__(self):
         return self.endpoint_url
@@ -101,16 +103,20 @@ class Backend(BaseModel):
             logger.error(msg)
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.last_checked = timestamp
+
         pipeline_configs = resp.json() if resp.ok else []
         error = f"{resp.status_code} - {msg}" if not resp.ok else None
 
         server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
         pipelines_online = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status")
+        self.last_checked_live = server_live
+        self.save()
 
         response = BackendStatusResponse(
             timestamp=timestamp,
-            success=resp.ok,
-            server_online=server_live,
+            request_successful=resp.ok,
+            server_live=server_live,
             pipelines_online=pipelines_online,
             pipeline_configs=pipeline_configs,
             endpoint_url=self.endpoint_url,

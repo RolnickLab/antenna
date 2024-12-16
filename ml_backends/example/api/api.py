@@ -59,7 +59,7 @@ async def info() -> list[PipelineConfig]:
 # Check if the server is online
 @app.get("/livez", tags=["health checks"])
 async def livez():
-    return fastapi.responses.JSONResponse(status_code=200, content={"status": "ok"})
+    return fastapi.responses.JSONResponse(status_code=200, content={"status": True})
 
 
 # Check if the pipelines are ready to process data

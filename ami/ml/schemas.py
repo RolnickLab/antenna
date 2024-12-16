@@ -108,10 +108,10 @@ class PipelineConfig(pydantic.BaseModel):
 
 class BackendStatusResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
-    success: bool
+    request_successful: bool
     pipeline_configs: list[PipelineConfig] = []
     error: str | None = None
-    server_online: str
+    server_live: bool
     pipelines_online: list[str] | str
     endpoint_url: str
 

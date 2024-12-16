@@ -44,6 +44,8 @@ class BackendNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "endpoint_url",
+            "last_checked",
+            "last_checked_live",
         ]
 
 
@@ -97,4 +99,6 @@ class BackendSerializer(DefaultSerializer):
             "pipelines",
             "created_at",
             "updated_at",
+            "last_checked",
+            "last_checked_live",
         ]
