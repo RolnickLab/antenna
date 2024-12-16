@@ -17,11 +17,11 @@ export const DateFilter = ({ isValid, onAdd, onClear, value }: FilterProps) => {
   const selected = value ? new Date(value) : undefined
 
   const triggerLabel = (() => {
-    if (!selected) {
+    if (!value) {
       return 'Select a date'
     }
 
-    return dateToLabel(selected)
+    return value
   })()
 
   return (

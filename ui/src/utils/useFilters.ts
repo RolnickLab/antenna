@@ -53,7 +53,7 @@ export const AVAILABLE_FILTERS: {
       }
 
       if (!isValid(new Date(value))) {
-        return 'Date has not a valid format.'
+        return 'Date is not valid'
       }
 
       const dateEnd = filters?.find(
@@ -112,7 +112,7 @@ export const AVAILABLE_FILTERS: {
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const filters = AVAILABLE_FILTERS.map(({ field, ...rest }) => {
+  const _filters = AVAILABLE_FILTERS.map(({ field, ...rest }) => {
     const value = searchParams.get(field) ?? defaultFilters?.[field]
 
     return {
@@ -122,17 +122,19 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
     }
   })
 
-  const validatedFilters = filters.map(({ validate, value, ...rest }) => {
-    const error = validate ? validate(value, filters) : undefined
+  const filters = _filters.map(({ validate, value, ...rest }) => {
+    const error = validate ? validate(value, _filters) : undefined
+    const isValid = !error
 
     return {
       ...rest,
       value,
+      isValid,
       error,
     }
   })
 
-  const activeFilters = filters.filter((filter) => filter.value?.length)
+  const activeFilters = filters.filter((filter) => !!filter.value?.length)
 
   const addFilter = (field: string, value: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
@@ -152,6 +154,6 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
     activeFilters,
     addFilter,
     clearFilter,
-    filters: validatedFilters,
+    filters,
   }
 }
