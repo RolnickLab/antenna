@@ -95,4 +95,6 @@ class BackendSerializer(DefaultSerializer):
             "projects",
             "endpoint_url",
             "pipelines",
+            "created_at",
+            "updated_at",
         ]
