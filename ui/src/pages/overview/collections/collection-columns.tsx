@@ -54,6 +54,23 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     ),
   },
   {
+    id: 'jobs',
+    name: translate(STRING.FIELD_LABEL_JOBS),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.JOBS({ projectId }),
+          filters: { source_image_collection: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
