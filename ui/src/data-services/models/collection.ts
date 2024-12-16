@@ -19,6 +19,19 @@ export class Collection extends Entity {
     return this.canUpdate && this._data.method !== 'starred'
   }
 
+  get currentJob(): Job | undefined {
+    if (!this._jobs.length) {
+      return
+    }
+
+    return this._jobs.sort((j1: Job, j2: Job) => {
+      const date1 = new Date(j1.updatedAt as string)
+      const date2 = new Date(j2.updatedAt as string)
+
+      return date2.getTime() - date1.getTime()
+    })[0]
+  }
+
   get method(): string {
     return this._data.method
   }
