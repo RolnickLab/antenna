@@ -187,7 +187,6 @@ def process_images(
             msg = resp.json()["detail"]
         except Exception:
             msg = resp.content
-
         if job:
             job.logger.error(msg)
         else:

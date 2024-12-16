@@ -1,6 +1,6 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FormRow, FormSection } from 'components/form/layout/layout'
-import { JobStatus } from 'data-services/models/job'
+import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
 import {
   CodeBlock,
@@ -10,7 +10,6 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { StatusBar } from 'design-system/components/status/status-bar/status-bar'
-import { Status } from 'design-system/components/status/types'
 import {
   StatusBullet,
   StatusBulletTheme,
@@ -24,6 +23,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { CancelJob } from './job-actions/cancel-job'
 import { QueueJob } from './job-actions/queue-job'
+import { RetryJob } from './job-actions/retry-job'
 import styles from './job-details.module.scss'
 import { JobStageLabel } from './job-stage-label/job-stage-label'
 
@@ -46,6 +46,7 @@ export const JobDetails = ({
         </div>
         {job.canQueue && <QueueJob jobId={job.id} />}
         {job.canCancel && <CancelJob jobId={job.id} />}
+        {job.canRetry && <RetryJob jobId={job.id} />}
         {job.canDelete && <DeleteJobsDialog id={job.id} onDelete={onDelete} />}
       </div>
     </Dialog.Header>
@@ -65,36 +66,15 @@ export const JobDetails = ({
 const JobSummary = ({ job }: { job: Job }) => {
   const { projectId } = useParams()
 
-  const status = (() => {
-    switch (job.status) {
-      case JobStatus.Created:
-        return Status.Neutral
-      case JobStatus.Pending:
-        return Status.Warning
-      case JobStatus.Started:
-        return Status.Warning
-      case JobStatus.Success:
-        return Status.Success
-      case JobStatus.Canceling:
-        return Status.Warning
-      case JobStatus.Revoked:
-        return Status.Error
-      case JobStatus.Failed:
-        return Status.Error
-      default:
-        return Status.Error
-    }
-  })()
-
   return (
     <>
       <FormRow>
         <div className={styles.status}>
           <InputContent label={translate(STRING.FIELD_LABEL_STATUS)}>
             <StatusBar
-              status={status}
-              progress={job.statusValue}
-              description={job.statusDetails}
+              color={job.status.color}
+              description={job.progress.label}
+              progress={job.progress.value}
             />
           </InputContent>
         </div>
@@ -103,9 +83,31 @@ const JobSummary = ({ job }: { job: Job }) => {
           value={job.name}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_DELAY)}
-          value={job.delay}
+          label={translate(STRING.FIELD_LABEL_TYPE)}
+          value={job.type.label}
         />
+        {job.delay ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_DELAY)}
+            value={job.delay}
+          />
+        ) : null}
+        {job.deployment ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_DEPLOYMENT)}
+            value={job.deployment.name}
+            to={APP_ROUTES.DEPLOYMENT_DETAILS({
+              projectId: projectId as string,
+              deploymentId: job.deployment.id,
+            })}
+          />
+        ) : null}
+        {job.pipeline ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_PIPELINE)}
+            value={job.pipeline.name}
+          />
+        ) : null}
         {job.sourceImage ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
@@ -127,21 +129,11 @@ const JobSummary = ({ job }: { job: Job }) => {
         ) : job.sourceImages ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
-            to={
-              job.sourceImages
-                ? APP_ROUTES.COLLECTION_DETAILS({
-                    projectId: projectId as string,
-                    collectionId: job.sourceImages.id,
-                  })
-                : undefined
-            }
+            to={APP_ROUTES.COLLECTION_DETAILS({
+              projectId: projectId as string,
+              collectionId: job.sourceImages.id,
+            })}
             value={job.sourceImages?.name}
-          />
-        ) : null}
-        {job.pipeline ? (
-          <InputValue
-            label={translate(STRING.FIELD_LABEL_PIPELINE)}
-            value={job.pipeline.name}
           />
         ) : null}
       </FormRow>
@@ -187,32 +179,17 @@ const JobStages = ({ job }: { job: Job }) => {
       {job.stages.map((stage, index) => {
         const isOpen = activeStage === stage.key
 
-        const status = (() => {
-          switch (stage.status) {
-            case JobStatus.Created:
-              return Status.Neutral
-            case JobStatus.Pending:
-              return Status.Neutral
-            case JobStatus.Started:
-              return Status.Warning
-            case JobStatus.Success:
-              return Status.Success
-            default:
-              return Status.Error
-          }
-        })()
-
         return (
           <Wizard.Item key={stage.key} value={stage.key}>
             <div className={styles.jobStageLabel}>
               <JobStageLabel
-                label={stage.statusLabel}
-                status={status}
-                statusDetails={stage.statusDetails}
+                details={stage.details}
+                label={stage.status.label}
+                color={stage.status.color}
               />
             </div>
             <Wizard.Trigger title={stage.name}>
-              {status === Status.Success ? (
+              {stage.status.type === JobStatusType.Success ? (
                 <StatusBullet
                   icon={IconType.RadixCheck}
                   theme={StatusBulletTheme.Success}

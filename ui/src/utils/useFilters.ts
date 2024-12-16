@@ -1,58 +1,89 @@
 import { useSearchParams } from 'react-router-dom'
 
-const AVAILABLE_FILTERS = [
+export const AVAILABLE_FILTERS = [
   {
-    label: 'Station',
-    field: 'deployment',
-  },
-  {
-    label: 'Occurrence station',
-    field: 'occurrences__deployment',
-  },
-  {
-    label: 'Session',
-    field: 'event',
-  },
-  {
-    label: 'Occurrence session',
-    field: 'occurrences__event',
-  },
-  {
-    label: 'Taxon',
-    field: 'taxon',
+    label: 'Include algorithm',
+    field: 'algorithm',
   },
   {
     label: 'Score threshold',
     field: 'classification_threshold',
   },
   {
-    label: 'Capture collection',
-    field: 'collection',
+    label: 'Collection',
+    field: 'collection', // This is for viewing Occurrences by collection
   },
   {
-    label: 'Capture',
-    field: 'detections__source_image',
+    label: 'Collection',
+    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
+  },
+  {
+    label: 'Station',
+    field: 'deployment',
+  },
+  {
+    label: 'End date',
+    field: 'date_end',
+  },
+  {
+    label: 'Start date',
+    field: 'date_start',
+  },
+  {
+    label: 'Source image',
+    field: 'detections__source_image', // This is for viewing Occurrences by source image. @TODO: Can we update this key to "source_image" to streamline?
+  },
+  {
+    label: 'Session',
+    field: 'event',
+  },
+  {
+    label: 'Pipeline',
+    field: 'pipeline',
+  },
+  {
+    label: 'Exclude algorithm',
+    field: 'not_algorithm',
+  },
+  {
+    label: 'Taxon',
+    field: 'taxon',
+  },
+  {
+    label: 'Source image',
+    field: 'source_image_single', // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
+  },
+  {
+    label: 'Status',
+    field: 'status',
+  },
+  {
+    label: 'Type',
+    field: 'job_type_key',
+  },
+  {
+    label: 'Verification status',
+    field: 'verified',
+  },
+  {
+    label: 'Verified by',
+    field: 'verified_by_me',
   },
 ]
 
-export const useFilters = (
-  defaultFilters?: { field: string; value: string }[]
-) => {
+export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const filters = AVAILABLE_FILTERS.map((filter) => {
     const value = searchParams.getAll(filter.field)[0]
-    const defaultValue = defaultFilters?.find(
-      (defaultFilter) => defaultFilter.field === filter.field
-    )?.value
 
     return {
       ...filter,
-      value: value ?? defaultValue,
+      value: value ?? defaultFilters?.[filter.field],
     }
   })
 
-  const isActive = filters.some((filter) => filter.value?.length)
+  const activeFilters = filters.filter((filter) => filter.value?.length)
 
   const addFilter = (field: string, value: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
@@ -69,9 +100,9 @@ export const useFilters = (
   }
 
   return {
-    filters,
-    isActive,
+    activeFilters,
     addFilter,
     clearFilter,
+    filters,
   }
 }

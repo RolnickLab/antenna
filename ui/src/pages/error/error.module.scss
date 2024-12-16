@@ -3,6 +3,7 @@
 
 .message {
   @include heading-6();
+  margin: 12px 0;
   color: $color-neutral-300;
 }
 

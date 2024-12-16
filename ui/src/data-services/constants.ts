@@ -2,6 +2,7 @@ export const API_URL = '/api/v2'
 
 export const API_ROUTES = {
   BACKENDS: 'ml/backends',
+  ALGORITHM: 'ml/algorithms',
   CAPTURES: 'captures',
   COLLECTIONS: 'captures/collections',
   DEPLOYMENTS: 'deployments',

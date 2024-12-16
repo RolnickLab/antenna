@@ -1,3 +1,6 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { FilterSection } from 'components/filtering/filter-section'
+import { someActive } from 'components/filtering/utils'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
@@ -21,20 +24,17 @@ import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import styles from './occurrences.module.scss'
-import { TaxonFilter } from './taxon-filter/taxon-filter'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const Occurrences = () => {
   const { user } = useUser()
-  const {
-    userPreferences: { scoreThreshold },
-  } = useUserPreferences()
+  const { userPreferences } = useUserPreferences()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -55,10 +55,9 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const defaultFilters = [
-    { field: 'classification_threshold', value: `${scoreThreshold}` },
-  ]
-  const { filters } = useFilters(defaultFilters)
+  const { activeFilters, filters } = useFilters({
+    classification_threshold: `${userPreferences.scoreThreshold}`,
+  })
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -77,64 +76,89 @@ export const Occurrences = () => {
 
   return (
     <>
-      <PageHeader
-        defaultFilters={defaultFilters}
-        isFetching={isFetching}
-        isLoading={isLoading}
-        showAppliedFilters
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        title={translate(STRING.NAV_ITEM_OCCURRENCES)}
-        tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
-      >
-        <TaxonFilter />
-        <ToggleGroup
-          items={[
-            {
-              value: 'table',
-              label: translate(STRING.TAB_ITEM_TABLE),
-              icon: IconType.TableView,
-            },
-            {
-              value: 'gallery',
-              label: translate(STRING.TAB_ITEM_GALLERY),
-              icon: IconType.GalleryView,
-            },
-          ]}
-          value={selectedView}
-          onValueChange={setSelectedView}
-        />
-        <ColumnSettings
-          columns={columns(projectId as string)}
-          columnSettings={columnSettings}
-          onColumnSettingsChange={setColumnSettings}
-        />
-      </PageHeader>
-      {selectedView === 'table' && (
-        <Table
-          items={occurrences}
-          isLoading={!id && isLoading}
-          columns={columns(
-            projectId as string,
-            selectedItems.length === 0
-          ).filter((column) => !!columnSettings[column.id])}
-          sortable
-          sortSettings={sort}
-          selectable={user.loggedIn}
-          selectedItems={selectedItems}
-          onSelectedItemsChange={setSelectedItems}
-          onSortSettingsChange={setSort}
-        />
-      )}
-      {selectedView === 'gallery' && (
-        <div className={styles.galleryContent}>
-          <OccurrenceGallery
-            occurrences={occurrences}
-            isLoading={!id && isLoading}
-          />
+      <div className="flex flex-col gap-6 md:flex-row">
+        <div className="space-y-6">
+          <FilterSection defaultOpen>
+            <FilterControl field="detections__source_image" readonly />
+            <FilterControl field="event" readonly />
+            <FilterControl field="date_start" />
+            <FilterControl field="date_end" />
+            <FilterControl field="taxon" />
+            <FilterControl clearable={false} field="classification_threshold" />
+            <FilterControl field="verified" />
+            {user.loggedIn && <FilterControl field="verified_by_me" />}
+          </FilterSection>
+          <FilterSection
+            title="More filters"
+            defaultOpen={someActive(
+              ['collection', 'deployment', 'algorithm', 'not_algorithm'],
+              activeFilters
+            )}
+          >
+            <FilterControl field="collection" />
+            <FilterControl field="deployment" />
+            <FilterControl field="algorithm" />
+            <FilterControl field="not_algorithm" />
+          </FilterSection>
         </div>
-      )}
+        <div className="w-full overflow-hidden">
+          <PageHeader
+            isFetching={isFetching}
+            isLoading={isLoading}
+            subTitle={translate(STRING.RESULTS, {
+              total,
+            })}
+            title={translate(STRING.NAV_ITEM_OCCURRENCES)}
+            tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
+          >
+            <ToggleGroup
+              items={[
+                {
+                  value: 'table',
+                  label: translate(STRING.TAB_ITEM_TABLE),
+                  icon: IconType.TableView,
+                },
+                {
+                  value: 'gallery',
+                  label: translate(STRING.TAB_ITEM_GALLERY),
+                  icon: IconType.GalleryView,
+                },
+              ]}
+              value={selectedView}
+              onValueChange={setSelectedView}
+            />
+            <ColumnSettings
+              columns={columns(projectId as string)}
+              columnSettings={columnSettings}
+              onColumnSettingsChange={setColumnSettings}
+            />
+          </PageHeader>
+          {selectedView === 'table' && (
+            <Table
+              items={occurrences}
+              isLoading={!id && isLoading}
+              columns={columns(
+                projectId as string,
+                selectedItems.length === 0
+              ).filter((column) => !!columnSettings[column.id])}
+              sortable
+              sortSettings={sort}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
+              onSelectedItemsChange={setSelectedItems}
+              onSortSettingsChange={setSort}
+            />
+          )}
+          {selectedView === 'gallery' && (
+            <div className={styles.galleryContent}>
+              <OccurrenceGallery
+                occurrences={occurrences}
+                isLoading={!id && isLoading}
+              />
+            </div>
+          )}
+        </div>
+      </div>
       <PageFooter
         hide={
           selectedItems.length === 0 &&

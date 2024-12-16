@@ -15,7 +15,6 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
-import { userAgreed } from '../agree/userAgreed'
 import { StatusLabel } from '../status-label/status-label'
 import styles from './identification-card.module.scss'
 
@@ -67,9 +66,9 @@ export const IdentificationCard = ({
           taxon={identification.taxon}
           getLink={(id: string) =>
             getAppRoute({
-              to: APP_ROUTES.SPECIES_DETAILS({
+              to: APP_ROUTES.TAXON_DETAILS({
                 projectId: projectId as string,
-                speciesId: id,
+                taxonId: id,
               }),
             })
           }
@@ -80,11 +79,9 @@ export const IdentificationCard = ({
         <div className={styles.actions}>
           {showAgree && (
             <Agree
-              agreed={userAgreed({
-                identifications: occurrence.humanIdentifications,
-                taxonId: identification.taxon.id,
-                userId: currentUser?.id,
-              })}
+              agreed={
+                currentUser ? occurrence.userAgreed(currentUser?.id) : false
+              }
               agreeWith={
                 user
                   ? { identificationId: identification.id }

@@ -1031,6 +1031,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Occurrence
@@ -1055,11 +1056,14 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "identifications",
             "created_at",
         ]
 
     def get_determination_details(self, obj: Occurrence):
-        # @TODO add an equivalent method to the Occurrence model
+        # @TODO convert this to query methods to avoid N+1 queries.
+        # Currently at 100+ queries per page of 10 occurrences.
+        # Add a reusable method to the OccurrenceQuerySet class and call it from the ViewSet.
 
         context = self.context
 
@@ -1089,7 +1093,6 @@ class OccurrenceListSerializer(DefaultSerializer):
 class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
-    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
     predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
@@ -1100,7 +1103,6 @@ class OccurrenceSerializer(OccurrenceListSerializer):
         fields = OccurrenceListSerializer.Meta.fields + [
             "determination_id",
             "detections",
-            "identifications",
             "predictions",
         ]
         read_only_fields = [
@@ -1339,7 +1341,7 @@ class StorageSourceSerializer(DefaultSerializer):
     # endpoint_url = serializers.URLField(required=False, allow_blank=True)
     # @TODO the endpoint needs to support host names without a TLD extension like "minio:9000"
     endpoint_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    public_base_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
+    public_base_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = S3StorageSource

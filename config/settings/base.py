@@ -315,7 +315,7 @@ CELERY_TASK_SEND_SENT_EVENT = True
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("ami.base.permissions.IsActiveStaffOrReadOnly",),
@@ -368,8 +368,6 @@ SPECTACULAR_SETTINGS = {
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
-
-DEFAULT_CONFIDENCE_THRESHOLD = env.float("DEFAULT_CONFIDENCE_THRESHOLD", default=0.6)  # type: ignore[no-untyped-call]
 
 S3_TEST_ENDPOINT = env("MINIO_ENDPOINT", default="http://minio:9000")  # type: ignore[no-untyped-call]
 S3_TEST_KEY = env("MINIO_ROOT_USER", default=None)  # type: ignore[no-untyped-call]

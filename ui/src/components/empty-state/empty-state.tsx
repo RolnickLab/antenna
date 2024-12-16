@@ -1,26 +1,26 @@
-import { Button } from 'design-system/components/button/button'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
-import styles from './empty-state.module.scss'
 
 export const EmptyState = () => {
-  const { filters, isActive: filtersActive, clearFilter } = useFilters()
+  const { filters, activeFilters, clearFilter } = useFilters()
 
   return (
-    <div className={styles.wrapper}>
-      <span>
+    <div className="flex flex-col gap-6 items-center py-24">
+      <span className="body-base text-muted-foreground">
         {translate(
-          filtersActive
+          activeFilters.length
             ? STRING.MESSAGE_NO_RESULTS_FOR_FILTERING
             : STRING.MESSAGE_NO_RESULTS
         )}
       </span>
-      {filtersActive && (
+      {activeFilters.length ? (
         <Button
-          label={translate(STRING.CLEAR_FILTERS)}
           onClick={() => filters.map((filter) => clearFilter(filter.field))}
-        />
-      )}
+        >
+          {translate(STRING.CLEAR_FILTERS)}
+        </Button>
+      ) : null}
     </div>
   )
 }

@@ -35,11 +35,17 @@
 .detection {
   position: absolute;
   box-sizing: border-box;
-  outline: 2px solid $color-destructive-500;
+  outline: 2px solid $color-success-500;
   border-radius: 2px;
 
-  &.meetsThreshold {
-    outline: 2px solid $color-success-500;
+
+
+  &.warning {
+    outline-color: $color-warning-500;
+  }
+
+  &.alert {
+    outline-color: $color-destructive-500;
   }
 
   &.active {

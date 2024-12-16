@@ -23,3 +23,10 @@
   color: $color-neutral-700;
   white-space: nowrap;
 }
+
+.deprecated {
+  .badge {
+    background-color: $color-destructive-100;
+    color: $color-destructive-600;
+  }
+}

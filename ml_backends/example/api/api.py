@@ -2,6 +2,7 @@
 Fast API interface for processing images through the localization and classification pipelines.
 """
 
+import logging
 import time
 
 import fastapi
@@ -16,6 +17,8 @@ from .schemas import (
     SourceImage,
     SourceImageResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 app = fastapi.FastAPI()
 
@@ -90,6 +93,7 @@ async def process(data: PipelineRequest) -> PipelineResponse:
     try:
         results = pipeline.run()
     except Exception as e:
+        logger.error(f"Error running pipeline: {e}")
         raise fastapi.HTTPException(status_code=422, detail=f"{e}")
 
     end_time = time.time()

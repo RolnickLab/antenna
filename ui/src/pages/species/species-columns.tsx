@@ -24,7 +24,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     },
     renderCell: (item: Species) => {
       const detailsRoute = getAppRoute({
-        to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+        to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
         keepSearchParams: true,
       })
 
@@ -45,7 +45,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     renderCell: (item: Species) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+          to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
           keepSearchParams: true,
         })}
       >

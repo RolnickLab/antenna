@@ -1,3 +1,5 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -8,7 +10,6 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
 import { Error } from 'pages/error/error'
-import { TaxonFilter } from 'pages/occurrences/taxon-filter/taxon-filter'
 import { SpeciesDetails } from 'pages/species-details/species-details'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -23,19 +24,12 @@ import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
 import styles from './species.module.scss'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 
 export const Species = () => {
-  const {
-    userPreferences: { scoreThreshold },
-  } = useUserPreferences()
   const { projectId, id } = useParams()
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const defaultFilters = [
-    { field: 'classification_threshold', value: `${scoreThreshold}` },
-  ]
-  const { filters } = useFilters(defaultFilters)
+  const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -50,49 +44,55 @@ export const Species = () => {
 
   return (
     <>
-      <PageHeader
-        defaultFilters={defaultFilters}
-        isFetching={isFetching}
-        isLoading={isLoading}
-        showAppliedFilters
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        title={translate(STRING.NAV_ITEM_SPECIES)}
-      >
-        <TaxonFilter />
-        <ToggleGroup
-          items={[
-            {
-              value: 'table',
-              label: translate(STRING.TAB_ITEM_TABLE),
-              icon: IconType.TableView,
-            },
-            {
-              value: 'gallery',
-              label: translate(STRING.TAB_ITEM_GALLERY),
-              icon: IconType.GalleryView,
-            },
-          ]}
-          value={selectedView}
-          onValueChange={setSelectedView}
-        />
-      </PageHeader>
-      {selectedView === 'table' && (
-        <Table
-          items={species}
-          isLoading={!id && isLoading}
-          columns={columns(projectId as string)}
-          sortable
-          sortSettings={sort}
-          onSortSettingsChange={setSort}
-        />
-      )}
-      {selectedView === 'gallery' && (
-        <div className={styles.galleryContent}>
-          <SpeciesGallery species={species} isLoading={!id && isLoading} />
+      <div className="flex flex-col gap-6 md:flex-row">
+        <FilterSection defaultOpen>
+          <FilterControl field="event" readonly />
+          <FilterControl field="deployment" />
+          <FilterControl field="taxon" />
+        </FilterSection>
+        <div className="w-full overflow-hidden">
+          <PageHeader
+            isFetching={isFetching}
+            isLoading={isLoading}
+            subTitle={translate(STRING.RESULTS, {
+              total,
+            })}
+            title={translate(STRING.NAV_ITEM_TAXA)}
+          >
+            <ToggleGroup
+              items={[
+                {
+                  value: 'table',
+                  label: translate(STRING.TAB_ITEM_TABLE),
+                  icon: IconType.TableView,
+                },
+                {
+                  value: 'gallery',
+                  label: translate(STRING.TAB_ITEM_GALLERY),
+                  icon: IconType.GalleryView,
+                },
+              ]}
+              value={selectedView}
+              onValueChange={setSelectedView}
+            />
+          </PageHeader>
+          {selectedView === 'table' && (
+            <Table
+              items={species}
+              isLoading={!id && isLoading}
+              columns={columns(projectId as string)}
+              sortable
+              sortSettings={sort}
+              onSortSettingsChange={setSort}
+            />
+          )}
+          {selectedView === 'gallery' && (
+            <div className={styles.galleryContent}>
+              <SpeciesGallery species={species} isLoading={!id && isLoading} />
+            </div>
+          )}
         </div>
-      )}
+      </div>
       <PageFooter>
         {species?.length ? (
           <PaginationBar
@@ -127,7 +127,7 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
       onOpenChange={() =>
         navigate(
           getAppRoute({
-            to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
+            to: APP_ROUTES.TAXA({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )

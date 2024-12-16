@@ -1,3 +1,5 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useSessions } from 'data-services/hooks/sessions/useSessions'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -50,55 +52,61 @@ export const Sessions = () => {
 
   return (
     <>
-      <PageHeader
-        title={translate(STRING.NAV_ITEM_SESSIONS)}
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        showAppliedFilters
-        tooltip={translate(STRING.TOOLTIP_SESSION)}
-      >
-        <ToggleGroup
-          items={[
-            {
-              value: 'table',
-              label: translate(STRING.TAB_ITEM_TABLE),
-              icon: IconType.TableView,
-            },
-            {
-              value: 'gallery',
-              label: translate(STRING.TAB_ITEM_GALLERY),
-              icon: IconType.GalleryView,
-            },
-          ]}
-          value={selectedView}
-          onValueChange={setSelectedView}
-        />
-        <ColumnSettings
-          columns={columns(projectId as string)}
-          columnSettings={columnSettings}
-          onColumnSettingsChange={setColumnSettings}
-        />
-      </PageHeader>
-      {selectedView === 'table' && (
-        <Table
-          items={sessions}
-          isLoading={isLoading}
-          columns={columns(projectId as string).filter(
-            (column) => !!columnSettings[column.id]
+      <div className="flex flex-col gap-6 md:flex-row">
+        <FilterSection defaultOpen>
+          <FilterControl field="deployment" />
+        </FilterSection>
+        <div className="w-full overflow-hidden">
+          <PageHeader
+            title={translate(STRING.NAV_ITEM_SESSIONS)}
+            subTitle={translate(STRING.RESULTS, {
+              total,
+            })}
+            isLoading={isLoading}
+            isFetching={isFetching}
+            tooltip={translate(STRING.TOOLTIP_SESSION)}
+          >
+            <ToggleGroup
+              items={[
+                {
+                  value: 'table',
+                  label: translate(STRING.TAB_ITEM_TABLE),
+                  icon: IconType.TableView,
+                },
+                {
+                  value: 'gallery',
+                  label: translate(STRING.TAB_ITEM_GALLERY),
+                  icon: IconType.GalleryView,
+                },
+              ]}
+              value={selectedView}
+              onValueChange={setSelectedView}
+            />
+            <ColumnSettings
+              columns={columns(projectId as string)}
+              columnSettings={columnSettings}
+              onColumnSettingsChange={setColumnSettings}
+            />
+          </PageHeader>
+          {selectedView === 'table' && (
+            <Table
+              items={sessions}
+              isLoading={isLoading}
+              columns={columns(projectId as string).filter(
+                (column) => !!columnSettings[column.id]
+              )}
+              sortable
+              sortSettings={sort}
+              onSortSettingsChange={setSort}
+            />
           )}
-          sortable
-          sortSettings={sort}
-          onSortSettingsChange={setSort}
-        />
-      )}
-      {selectedView === 'gallery' && (
-        <div className={styles.galleryContent}>
-          <SessionGallery sessions={sessions} isLoading={isLoading} />
+          {selectedView === 'gallery' && (
+            <div className={styles.galleryContent}>
+              <SessionGallery sessions={sessions} isLoading={isLoading} />
+            </div>
+          )}
         </div>
-      )}
+      </div>
       <PageFooter>
         {sessions?.length ? (
           <PaginationBar
