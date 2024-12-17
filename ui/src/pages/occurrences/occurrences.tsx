@@ -71,6 +71,10 @@ export const Occurrences = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
 
   useEffect(() => {
+    document.getElementById('app')?.scrollTo({ top: 0 })
+  }, [pagination.page])
+
+  useEffect(() => {
     if (id) {
       document
         .getElementById(id)
