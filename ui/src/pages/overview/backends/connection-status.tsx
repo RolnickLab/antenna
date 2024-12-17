@@ -1,7 +1,6 @@
 import { FormRow } from 'components/form/layout/layout'
 import { useTestBackendConnection } from 'data-services/hooks/backends/useTestBackendConnection'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { InputValue } from 'design-system/components/input/input'
 import * as Wizard from 'design-system/components/wizard/wizard'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
@@ -12,14 +11,12 @@ import styles from './backends.module.scss'
 
 export const ConnectionStatus = ({
   regex,
-  showDetails,
   backendId,
   subdir,
   updatedAt,
   onConnectionChange,
 }: {
   regex?: string
-  showDetails?: boolean
   backendId: string
   subdir?: string
   updatedAt?: string
