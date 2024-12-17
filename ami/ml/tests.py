@@ -2,7 +2,6 @@ import datetime
 import unittest
 
 from django.test import TestCase
-from rich import print
 
 from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Algorithm, Pipeline
@@ -52,7 +51,7 @@ class TestPipeline(TestCase):
             name="Test Pipeline",
         )
 
-        self.algorithms, _created_objects = create_algorithms_and_category_map(ALGORITHM_CHOICES, [])
+        self.algorithms = create_algorithms_and_category_map(ALGORITHM_CHOICES)
         self.pipeline.algorithms.set(self.algorithms.values())
 
     def test_create_pipeline(self):
@@ -136,16 +135,13 @@ class TestPipeline(TestCase):
         return fake_results
 
     def test_save_results(self):
-        saved_objects = save_results(
-            self.fake_pipeline_results(self.test_images, self.pipeline),
-            return_created=True,
-        )
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+        save_results(results)
 
         for image in self.test_images:
             image.save()
             self.assertEqual(image.detections_count, 1)
 
-        print(saved_objects)
         # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
 
     def no_test_skip_existing_results(self):
