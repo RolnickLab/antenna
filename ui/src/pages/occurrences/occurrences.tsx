@@ -70,6 +70,14 @@ export const Occurrences = () => {
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
 
+  useEffect(() => {
+    if (id) {
+      document
+        .getElementById(id)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [id])
+
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
