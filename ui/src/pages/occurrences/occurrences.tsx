@@ -3,6 +3,7 @@ import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
+import { Occurrence } from 'data-services/models/occurrence'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -29,6 +30,7 @@ import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
+import { OccurrenceNavigation } from './occurrence-navigation'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -181,12 +183,20 @@ export const Occurrences = () => {
           />
         ) : null}
       </PageFooter>
-      {id ? <OccurrenceDetailsDialog id={id} /> : null}
+      {id ? (
+        <OccurrenceDetailsDialog id={id} occurrences={occurrences} />
+      ) : null}
     </>
   )
 }
 
-const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
+const OccurrenceDetailsDialog = ({
+  id,
+  occurrences,
+}: {
+  id: string
+  occurrences?: Occurrence[]
+}) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
@@ -220,6 +230,7 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
         error={error}
       >
         {occurrence ? <OccurrenceDetails occurrence={occurrence} /> : null}
+        <OccurrenceNavigation occurrences={occurrences} />
       </Dialog.Content>
     </Dialog.Root>
   )
