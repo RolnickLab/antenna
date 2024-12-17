@@ -1,4 +1,5 @@
 import logging
+import time
 import typing
 
 import requests
@@ -200,10 +201,10 @@ def process_images(
         job.logger.debug(f"Results: {results}")
         detections = results.detections
         classifications = [classification for detection in detections for classification in detection.classifications]
-        if len(detections):
-            job.logger.info(f"Found {len(detections)} detections")
-        if len(classifications):
-            job.logger.info(f"Found {len(classifications)} classifications")
+        job.logger.info(
+            f"Pipeline results returned {len(results.source_images)} images, {len(detections)} detections, "
+            f"{len(classifications)} classifications"
+        )
 
     return results
 
@@ -649,6 +650,7 @@ def save_results(
     """
     job = None
     job_logger = logger
+    start_time = time.time()
 
     if job_id:
         from ami.jobs.models import Job
@@ -722,6 +724,9 @@ def save_results(
 
     if return_created:
         return []
+
+    total_time = time.time() - start_time
+    job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
 
 
 class PipelineStage(ConfigurableStage):
