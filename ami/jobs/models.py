@@ -115,12 +115,12 @@ class JobProgress(pydantic.BaseModel):
     errors: list[str] = []
     logs: list[str] = []
 
-    def get_stage_key(self, name: str) -> str:
+    def make_key(self, name: str) -> str:
         """Generate a key for a stage or param based on its name"""
         return python_slugify(name)
 
     def add_stage(self, name: str, key: str | None = None) -> JobProgressStageDetail:
-        key = key or self.get_stage_key(name)
+        key = key or self.make_key(name)
         try:
             return self.get_stage(key)
         except ValueError:
@@ -146,26 +146,28 @@ class JobProgress(pydantic.BaseModel):
                 return param
         raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
 
-    def add_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+    def add_stage_param(self, stage_key: str, param_name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         try:
-            return self.get_stage_param(stage_key, self.get_stage_key(name))
+            return self.get_stage_param(stage_key, self.make_key(param_name))
         except ValueError:
             param = ConfigurableStageParam(
-                name=name,
-                key=self.get_stage_key(name),
+                name=param_name,
+                key=self.make_key(param_name),
                 value=value,
             )
             stage.params.append(param)
             return param
 
-    def add_or_update_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+    def add_or_update_stage_param(
+        self, stage_key: str, param_name: str, value: typing.Any = None
+    ) -> ConfigurableStageParam:
         try:
-            param = self.get_stage_param(stage_key, self.get_stage_key(name))
+            param = self.get_stage_param(stage_key, self.make_key(param_name))
             param.value = value
             return param
         except ValueError:
-            return self.add_stage_param(stage_key, name, value)
+            return self.add_stage_param(stage_key, param_name, value)
 
     def update_stage(self, stage_key_or_name: str, **stage_parameters) -> JobProgressStageDetail | None:
         """ "
@@ -176,7 +178,7 @@ class JobProgress(pydantic.BaseModel):
 
         This is the preferred method to update a stage's parameters.
         """
-        stage_key = self.get_stage_key(stage_key_or_name)  # Allow both title or key to be used for lookup
+        stage_key = self.make_key(stage_key_or_name)  # Allow both title or key to be used for lookup
         stage = self.get_stage(stage_key)
 
         if stage.key == stage_key:
@@ -251,6 +253,7 @@ class JobLogHandler(logging.Handler):
     max_log_length = 1000
 
     def __init__(self, job: "Job", *args, **kwargs):
+        job.refresh_from_db()
         self.job = job
         super().__init__(*args, **kwargs)
 
@@ -271,7 +274,7 @@ class JobLogHandler(logging.Handler):
 
         if len(self.job.progress.logs) > self.max_log_length:
             self.job.progress.logs = self.job.progress.logs[: self.max_log_length]
-        self.job.save()
+        self.job.save(update_fields=["progress"], update_progress=False)
 
 
 @dataclass
@@ -332,91 +335,118 @@ class MLJob(JobType):
             )
             job.save()
 
-        if job.pipeline:
-            job.progress.update_stage(
-                "collect",
-                status=JobState.STARTED,
-                progress=0,
-            )
+        if not job.pipeline:
+            raise ValueError("No pipeline specified to process images in ML job")
 
-            images = list(
-                # @TODO return generator plus image count
-                # @TODO pass to celery group chain?
-                job.pipeline.collect_images(
-                    collection=job.source_image_collection,
-                    deployment=job.deployment,
-                    source_images=[job.source_image_single] if job.source_image_single else None,
+        job.progress.update_stage(
+            "collect",
+            status=JobState.STARTED,
+            progress=0,
+        )
+
+        images = list(
+            # @TODO return generator plus image count
+            # @TODO pass to celery group chain?
+            job.pipeline.collect_images(
+                collection=job.source_image_collection,
+                deployment=job.deployment,
+                source_images=[job.source_image_single] if job.source_image_single else None,
+                job_id=job.pk,
+                skip_processed=True,
+                # shuffle=job.shuffle,
+            )
+        )
+        source_image_count = len(images)
+        job.progress.update_stage("collect", total_images=source_image_count)
+
+        if job.shuffle and source_image_count > 1:
+            job.logger.info("Shuffling images")
+            random.shuffle(images)
+
+        if job.limit and source_image_count > job.limit:
+            job.logger.warn(f"Limiting number of images to {job.limit} (out of {source_image_count})")
+            images = images[: job.limit]
+            image_count = len(images)
+            job.progress.add_stage_param("collect", "Limit", image_count)
+        else:
+            image_count = source_image_count
+
+        job.progress.update_stage(
+            "collect",
+            status=JobState.SUCCESS,
+            progress=1,
+        )
+        job.save()
+
+        total_captures = 0
+        total_detections = 0
+        total_classifications = 0
+
+        CHUNK_SIZE = 2  # Keep it low to see more progress updates
+        chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
+        request_failed_images = []
+
+        for i, chunk in enumerate(chunks):
+            request_sent = time.time()
+            job.logger.info(f"Processing image batch {i+1} of {len(chunks)}")
+            try:
+                results = job.pipeline.process_images(
+                    images=chunk,
                     job_id=job.pk,
-                    skip_processed=True,
-                    # shuffle=job.shuffle,
                 )
-            )
-            source_image_count = len(images)
-            job.progress.update_stage("collect", total_images=source_image_count)
-
-            if job.shuffle and source_image_count > 1:
-                job.logger.info("Shuffling images")
-                random.shuffle(images)
-
-            if job.limit and source_image_count > job.limit:
-                job.logger.warn(f"Limiting number of images to {job.limit} (out of {source_image_count})")
-                images = images[: job.limit]
-                image_count = len(images)
-                job.progress.add_stage_param("collect", "Limit", image_count)
+                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
+            except Exception as e:
+                # Log error about image batch and continue
+                job.logger.error(f"Failed to process image batch {i+1}: {e}")
+                request_failed_images.extend([img.pk for img in chunk])
             else:
-                image_count = source_image_count
-
-            job.progress.update_stage(
-                "collect",
-                status=JobState.SUCCESS,
-                progress=1,
-            )
-
-            total_detections = 0
-            total_classifications = 0
-
-            CHUNK_SIZE = 2  # Keep it low to see more progress updates
-            chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
-
-            for i, chunk in enumerate(chunks):
-                try:
-                    results = job.pipeline.process_images(
-                        images=chunk,
-                        job_id=job.pk,
-                    )
-                except Exception as e:
-                    # Log error about image batch and continue
-                    job.logger.error(f"Failed to process image batch {i} of {len(chunks)}: {e}")
-                    continue
-
+                total_captures += len(results.source_images)
                 total_detections += len(results.detections)
                 total_classifications += len([c for d in results.detections for c in d.classifications])
-                job.progress.update_stage(
-                    "process",
-                    status=JobState.STARTED,
-                    progress=(i + 1) / len(chunks),
-                    processed=(i + 1) * CHUNK_SIZE,
-                    remaining=image_count - (i + 1) * CHUNK_SIZE,
-                    detections=total_detections,
-                    classifications=total_classifications,
-                )
-                job.save()
 
                 if results.source_images or results.detections:
                     save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
-                    job.logger.info(f"Saving results in sub-task {save_results_task.id}")
+                    job.logger.info(f"Saving results for batch {i+1} in sub-task {save_results_task.id}")
 
             job.progress.update_stage(
                 "process",
-                status=JobState.SUCCESS,
+                status=JobState.STARTED,
+                progress=(i + 1) / len(chunks),
+                processed=min((i + 1) * CHUNK_SIZE, image_count),
+                failed=len(request_failed_images),
+                remaining=max(image_count - ((i + 1) * CHUNK_SIZE), 0),
             )
             job.progress.update_stage(
                 "results",
-                status=JobState.SUCCESS,
+                status=JobState.STARTED,
+                progress=(i + 1) / len(chunks),
+                captures=total_captures,
+                detections=total_detections,
+                classifications=total_classifications,
             )
+            job.save()
 
-        job.update_status(JobState.SUCCESS)
-        job.update_progress()
+        percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
+        job.logger.info(f"Job completed. Processed {percent_successful:.0%} of images successfully.")
+
+        FAILURE_THRESHOLD = 0.5
+        if percent_successful < FAILURE_THRESHOLD:
+            job.progress.update_stage("process", status=JobState.FAILURE)
+            job.save()
+            raise Exception(f"Failed to process more than {int(FAILURE_THRESHOLD * 100)}% of images")
+
+        job.refresh_from_db()
+        job.progress.update_stage(
+            "process",
+            status=JobState.SUCCESS,
+            progress=1,
+        )
+        job.progress.update_stage(
+            "results",
+            status=JobState.SUCCESS,
+            progress=1,
+        )
+        job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
         job.save()
 
@@ -440,7 +470,9 @@ class DataStorageSyncJob(JobType):
         job.finished_at = None
         job.save()
 
-        if job.deployment:
+        if not job.deployment:
+            raise ValueError("No deployment provided for data storage sync job")
+        else:
             job.logger.info(f"Syncing captures for deployment {job.deployment}")
             job.progress.update_stage(
                 cls.key,
@@ -460,10 +492,7 @@ class DataStorageSyncJob(JobType):
             )
             job.update_status(JobState.SUCCESS)
             job.save()
-        else:
-            job.update_status(JobState.FAILURE)
 
-        job.update_progress()
         job.finished_at = datetime.datetime.now()
         job.save()
 
@@ -487,11 +516,7 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
         if not job.source_image_collection:
-            job.logger.error("No source image collection provided")
-            job.update_status(JobState.FAILURE)
-            job.finished_at = datetime.datetime.now()
-            job.save()
-            return
+            raise ValueError("No source image collection provided")
 
         job.logger.info(f"Populating source image collection {job.source_image_collection}")
         job.update_status(JobState.STARTED)
@@ -671,11 +696,12 @@ class Job(BaseModel):
             pipeline_stage = self.progress.add_stage("Process")
             self.progress.add_stage_param(pipeline_stage.key, "Processed", "")
             self.progress.add_stage_param(pipeline_stage.key, "Remaining", "")
-            self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
-            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Failed", "")
 
             saving_stage = self.progress.add_stage("Results")
-            self.progress.add_stage_param(saving_stage.key, "Objects created", "")
+            self.progress.add_stage_param(saving_stage.key, "Captures", "")
+            self.progress.add_stage_param(saving_stage.key, "Detections", "")
+            self.progress.add_stage_param(saving_stage.key, "Classifications", "")
 
         if save:
             self.save()
@@ -695,6 +721,7 @@ class Job(BaseModel):
         Retry the job.
         """
         self.logger.info(f"Re-running job {self}")
+        self.finished_at = None
         self.progress.reset()
         self.status = JobState.RETRY
         self.save()
@@ -763,18 +790,18 @@ class Job(BaseModel):
         self.progress.summary.progress = total_progress
 
         if save:
-            self.save()
+            self.save(update_progress=False)
 
     def duration(self) -> datetime.timedelta | None:
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at
         return None
 
-    def save(self, *args, **kwargs):
+    def save(self, update_progress=True, *args, **kwargs):
         """
         Create the job stages if they don't exist.
         """
-        if self.pk and self.progress.stages:
+        if self.pk and self.progress.stages and update_progress:
             self.update_progress(save=False)
         else:
             self.setup(save=False)
