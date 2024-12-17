@@ -389,7 +389,7 @@ def create_detections(
     # logger.info(f"Created {len(new_detections)} new detections for {len(source_image_ids)} source image(s)")
     logger.info(
         f"Created {len(new_detections)} new detections, updated {len(existing_detections)} existing detections, "
-        "for {len(source_image_ids)} source image(s)"
+        f"for {len(source_image_ids)} source image(s)"
     )
 
     return existing_detections + new_detections
@@ -567,6 +567,8 @@ def create_classifications(
     :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
 
     :return: A list of Classification objects
+
+    @TODO bulk create all classifications for all detections in request
     """
     existing_classifications: list[Classification] = []
     new_classifications: list[Classification] = []
@@ -642,6 +644,8 @@ def save_results(
 ):
     """
     Save results from ML pipeline API.
+
+    @TODO Continue improving bulk create. Group everything / all loops by source image.
     """
     job = None
     job_logger = logger
