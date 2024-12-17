@@ -508,11 +508,26 @@ def create_classification(
         taxon=taxon,
         algorithm=classification_algo,
         score=max(classification_resp.scores),
-        logits=classification_resp.logits,
     ).first()
 
     if existing_classification:
-        logger.warning(f"Duplicate classification found {existing_classification}, not creating a new one.")
+        logger.warning(
+            "Duplicate classification found: "
+            f"{existing_classification.taxon} from {existing_classification.algorithm}, "
+            "not creating a new one."
+        )
+        fields_to_update = []
+        for field in ["logits", "scores", "terminal"]:
+            # update new fields if they are None
+            if getattr(existing_classification, field) is None:
+                fields_to_update.append(field)
+        if fields_to_update:
+            logger.info(f"Updating fields {fields_to_update} for existing classification {existing_classification}")
+            for field in fields_to_update:
+                setattr(existing_classification, field, getattr(classification_resp, field))
+            existing_classification.save(update_fields=fields_to_update)
+            logger.info(f"Updated existing classification {existing_classification}")
+
         classification = existing_classification
 
     else:
