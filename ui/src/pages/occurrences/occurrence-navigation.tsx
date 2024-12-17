@@ -66,6 +66,13 @@ export const OccurrenceNavigation = ({
   // Listen to key down events
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        document.activeElement?.matches('input') ||
+        document.activeElement?.role === 'tab'
+      ) {
+        return
+      }
+
       if (e.key === 'ArrowLeft') {
         e.preventDefault()
         goToPrev()
