@@ -8,7 +8,6 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { Error } from 'pages/error/error'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
@@ -18,7 +17,6 @@ import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './session-columns'
 import { SessionGallery } from './session-gallery'
-import styles from './sessions.module.scss'
 
 export const Sessions = () => {
   const { projectId } = useParams()
@@ -45,10 +43,6 @@ export const Sessions = () => {
     filters,
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
-
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
 
   return (
     <>
@@ -90,6 +84,7 @@ export const Sessions = () => {
           </PageHeader>
           {selectedView === 'table' && (
             <Table
+              error={error}
               items={sessions}
               isLoading={isLoading}
               columns={columns(projectId as string).filter(
@@ -101,9 +96,11 @@ export const Sessions = () => {
             />
           )}
           {selectedView === 'gallery' && (
-            <div className={styles.galleryContent}>
-              <SessionGallery sessions={sessions} isLoading={isLoading} />
-            </div>
+            <SessionGallery
+              error={error}
+              isLoading={isLoading}
+              sessions={sessions}
+            />
           )}
         </div>
       </div>

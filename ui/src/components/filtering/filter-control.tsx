@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
-import { AVAILABLE_FILTERS, useFilters } from 'utils/useFilters'
+import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { CollectionFilter } from './filters/collection-filter'
 import { DateFilter } from './filters/date-filter'
@@ -50,32 +50,30 @@ export const FilterControl = ({
   readonly,
 }: FilterControlProps) => {
   const { filters, addFilter, clearFilter } = useFilters()
-  const label = AVAILABLE_FILTERS.find(
-    (filter) => filter.field === field
-  )?.label
-  const value = filters.find((filter) => filter.field === field)?.value
+  const filter = filters.find((filter) => filter.field === field)
   const FilterComponent = ComponentMap[field]
 
-  if (!label || !FilterComponent) {
+  if (!filter || !FilterComponent) {
     return null
   }
 
-  if (readonly && !value) {
+  if (readonly && !filter?.value) {
     return null
   }
 
   return (
     <div>
       <label className="flex pl-2 pb-3 text-muted-foreground body-overline-small font-bold">
-        {label}
+        {filter.label}
       </label>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
-          value={value}
+          isValid={!filter.error}
           onAdd={(value) => addFilter(field, value)}
           onClear={() => clearFilter(field)}
+          value={filter.value}
         />
-        {clearable && value && (
+        {clearable && filter.value && (
           <Button
             size="icon"
             className="shrink-0 text-muted-foreground"
@@ -86,6 +84,11 @@ export const FilterControl = ({
           </Button>
         )}
       </div>
+      {filter.error ? (
+        <span className="flex pl-2 pt-3 body-small text-destructive italic">
+          {filter.error}
+        </span>
+      ) : null}
     </div>
   )
 }
