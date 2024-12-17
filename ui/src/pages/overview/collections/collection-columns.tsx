@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { Collection } from 'data-services/models/collection'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
   CellTheme,
   TableColumn,
@@ -51,6 +52,39 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     },
     renderCell: (item: Collection) => (
       <BasicTableCell value={item.numImagesWithDetectionsLabel} />
+    ),
+  },
+  {
+    id: 'status',
+    name: 'Status',
+    renderCell: (item: Collection) => {
+      if (!item.currentJob) {
+        return <></>
+      }
+
+      return (
+        <StatusTableCell
+          color={item.currentJob.status.color}
+          label={item.currentJob.status.label}
+        />
+      )
+    },
+  },
+  {
+    id: 'jobs',
+    name: translate(STRING.FIELD_LABEL_JOBS),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.JOBS({ projectId }),
+          filters: { source_image_collection: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
+      </Link>
     ),
   },
   {
