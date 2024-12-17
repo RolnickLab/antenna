@@ -6,6 +6,7 @@ import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
 import styles from 'pages/overview/entities/styles.module.scss'
 import { STRING, translate } from 'utils/language'
+import { PopulateBackend } from './backends-actions'
 
 export const columns: (projectId: string) => TableColumn<Backend>[] = () => [
   {
@@ -37,6 +38,19 @@ export const columns: (projectId: string) => TableColumn<Backend>[] = () => [
     name: translate(STRING.FIELD_LABEL_LAST_CHECKED),
     sortField: 'last_checked',
     renderCell: (item: Backend) => <BasicTableCell value={item.lastChecked} />,
+  },
+  {
+    id: 'backend-actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: Backend) => (
+      <div className={styles.entityActions}>
+        <PopulateBackend backend={item} />
+      </div>
+    ),
   },
   {
     id: 'actions',
