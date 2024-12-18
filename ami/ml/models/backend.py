@@ -31,7 +31,7 @@ class Backend(BaseModel):
     last_checked_live = models.BooleanField(null=True)
 
     def __str__(self):
-        return self.endpoint_url
+        return self.name
 
     class Meta:
         verbose_name = "Backend"

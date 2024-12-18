@@ -64,5 +64,9 @@ class PipelineAdmin(AdminBase):
 class BackendAdmin(AdminBase):
     list_display = [
         "id",
+        "name",
         "endpoint_url",
+        "version",
+        "version_name",
+        "created_at",
     ]

@@ -43,6 +43,10 @@ class BackendNestedSerializer(DefaultSerializer):
     class Meta:
         model = Backend
         fields = [
+            "name",
+            "slug",
+            "version",
+            "version_name",
             "id",
             "details",
             "endpoint_url",
@@ -99,7 +103,11 @@ class BackendSerializer(DefaultSerializer):
         model = Backend
         fields = [
             "id",
-            "details",
+            "name",
+            "slug",
+            "description",
+            "version",
+            "version_name",
             "projects",
             "endpoint_url",
             "pipelines",

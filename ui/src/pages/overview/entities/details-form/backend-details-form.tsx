@@ -16,13 +16,42 @@ import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
 type BackendFormValues = FormValues & {
-  endpoint_url: string | undefined
+  slug: string
+  endpoint_url: string
+  version_name: string | undefined
+  version: number
 }
 
 const config: FormConfig = {
+  name: {
+    label: translate(STRING.FIELD_LABEL_NAME),
+    description: 'A descriptive name for internal reference.',
+    rules: {
+      required: true,
+    },
+  },
+  slug: {
+    label: translate(STRING.FIELD_LABEL_SLUG),
+    description: 'A unique identifier for internal reference.',
+    rules: {
+      required: true,
+    },
+  },
   endpoint_url: {
     label: 'Endpoint URL',
     description: 'ML Backend Endpoint',
+  },
+  description: {
+    label: translate(STRING.FIELD_LABEL_DESCRIPTION),
+  },
+  version_name: {
+    label: translate(STRING.FIELD_LABEL_VERSION_NAME),
+  },
+  version: {
+    label: translate(STRING.FIELD_LABEL_VERSION),
+    rules: {
+      required: true,
+    },
   },
 }
 
@@ -52,7 +81,11 @@ export const BackendDetailsForm = ({
       onSubmit={handleSubmit((values) =>
         onSubmit({
           name: values.name,
+          description: values.description,
           customFields: {
+            slug: values.slug,
+            version: values.version,
+            version_name: values.version_name,
             endpoint_url: values.endpoint_url,
           },
         })
@@ -68,7 +101,41 @@ export const BackendDetailsForm = ({
       <FormSection>
         <FormRow>
           <FormField
+            name="name"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="slug"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
+            name="version"
+            type="number"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="version_name"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
             name="endpoint_url"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="description"
             type="text"
             config={config}
             control={control}

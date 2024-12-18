@@ -17,6 +17,12 @@ export const columns: (projectId: string) => TableColumn<Backend>[] = () => [
     renderCell: (item: Backend) => <BasicTableCell value={item.id} />,
   },
   {
+    id: 'name',
+    sortField: 'name',
+    name: translate(STRING.FIELD_LABEL_NAME),
+    renderCell: (item: Backend) => <BasicTableCell value={item.name} />,
+  },
+  {
     id: 'endpoint',
     name: translate(STRING.FIELD_LABEL_ENDPOINT),
     sortField: 'endpoint',
