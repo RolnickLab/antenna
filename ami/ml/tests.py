@@ -25,12 +25,11 @@ class TestPipelineWithMLBackend(TestCase):
         self.backend = self.backend_instance
         # @TODO: Create function to get most recent OK backend
         self.pipeline = self.backend_instance.pipelines.all().filter(slug="constant").first()
-        self.backend_id = self.pipeline.backends.first().pk
         # @TODO: Add error or info messages to the response if image already processed or no detections returned
 
     def test_run_pipeline(self):
         # Send images to ML backend to process and return detections
-        pipeline_response = self.pipeline.process_images(self.test_images, backend_id=self.backend_id, job_id=None)
+        pipeline_response = self.pipeline.process_images(self.test_images, job_id=None)
         assert pipeline_response.detections
 
 
