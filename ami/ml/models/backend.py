@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 class Backend(BaseModel):
     """An ML processing backend"""
 
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    version = models.IntegerField(default=1)
+    version_name = models.CharField(max_length=255, blank=True)
     projects = models.ManyToManyField("main.Project", related_name="backends", blank=True)
     endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
     pipelines = models.ManyToManyField("ml.Pipeline", related_name="backends", blank=True)

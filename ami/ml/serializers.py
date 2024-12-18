@@ -34,6 +34,8 @@ class AlgorithmNestedSerializer(DefaultSerializer):
             "key",
             "version",
             "version_name",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -46,6 +48,8 @@ class BackendNestedSerializer(DefaultSerializer):
             "endpoint_url",
             "last_checked",
             "last_checked_live",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -83,6 +87,8 @@ class PipelineNestedSerializer(DefaultSerializer):
             "description",
             "version",
             "version_name",
+            "created_at",
+            "updated_at",
         ]
 
 
