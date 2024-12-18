@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobState, MLJob
+from .models import Job, JobState
 from .serializers import JobListSerializer, JobSerializer
 
 logger = logging.getLogger(__name__)
@@ -115,11 +115,6 @@ class JobViewSet(DefaultViewSet):
         """
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
-
-        # All jobs created from the Jobs UI are ML jobs.
-        # @TODO Remove this when the UI is updated pass a job type
-        if not serializer.validated_data.get("job_type_key"):
-            serializer.validated_data["job_type_key"] = MLJob.key
 
         job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):

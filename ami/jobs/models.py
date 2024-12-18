@@ -85,14 +85,10 @@ class JobProgressSummary(pydantic.BaseModel):
 
     status: JobState = JobState.CREATED
     progress: float = 0
-    status_label: str = ""
 
-    @pydantic.validator("status_label", always=True)
-    def serialize_status_label(cls, value, values) -> str:
-        if "status" not in values or "progress" not in values:
-            # Does this happen if status label gets initialized before status and progress?
-            return ""
-        return get_status_label(values["status"], values["progress"])
+    @property
+    def status_label(self) -> str:
+        return get_status_label(self.status, self.progress)
 
     class Config:
         use_enum_values = True
@@ -253,11 +249,10 @@ class JobLogHandler(logging.Handler):
     max_log_length = 1000
 
     def __init__(self, job: "Job", *args, **kwargs):
-        job.refresh_from_db()
         self.job = job
         super().__init__(*args, **kwargs)
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord):
         # Log to the current app logger
         logger.log(record.levelno, self.format(record))
 
@@ -274,6 +269,9 @@ class JobLogHandler(logging.Handler):
 
         if len(self.job.progress.logs) > self.max_log_length:
             self.job.progress.logs = self.job.progress.logs[: self.max_log_length]
+
+        # @TODO move logs field to its own model with a foreign key to the job
+        # or at the very least, a separate field from progress
         self.job.save(update_fields=["progress"], update_progress=False)
 
 
@@ -376,6 +374,8 @@ class MLJob(JobType):
             status=JobState.SUCCESS,
             progress=1,
         )
+
+        # End image collection stage
         job.save()
 
         total_captures = 0
@@ -430,12 +430,11 @@ class MLJob(JobType):
         job.logger.info(f"Job completed. Processed {percent_successful:.0%} of images successfully.")
 
         FAILURE_THRESHOLD = 0.5
-        if percent_successful < FAILURE_THRESHOLD:
+        if image_count and (percent_successful < FAILURE_THRESHOLD):
             job.progress.update_stage("process", status=JobState.FAILURE)
             job.save()
             raise Exception(f"Failed to process more than {int(FAILURE_THRESHOLD * 100)}% of images")
 
-        job.refresh_from_db()
         job.progress.update_stage(
             "process",
             status=JobState.SUCCESS,
@@ -528,7 +527,7 @@ class SourceImageCollectionPopulateJob(JobType):
             progress=0.10,
             captures_added=0,
         )
-        job.update_progress(save=True)
+        job.save()
 
         job.source_image_collection.populate_sample(job=job)
         job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
@@ -545,7 +544,6 @@ class SourceImageCollectionPopulateJob(JobType):
         )
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS, save=False)
-        job.update_progress(save=False)
         job.save()
 
 
@@ -555,9 +553,7 @@ class UnknownJobType(JobType):
 
     @classmethod
     def run(cls, job: "Job"):
-        job.logger.error(f"Unknown job type '{job.job_type()}'")
-        job.update_status(JobState.UNKNOWN)
-        job.save()
+        raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
 VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType]
@@ -755,11 +751,11 @@ class Job(BaseModel):
             status = task.status
 
         if not status:
-            self.logger.warn(f"Could not determine status of job {self.pk}")
+            self.logger.warning(f"Could not determine status of job {self.pk}")
             return
 
         if status != self.status:
-            self.logger.info(f"Changing status of job {self.pk} to {status}")
+            self.logger.info(f"Changing status of job {self.pk} from {self.status} to {status}")
             self.status = status
 
         self.progress.summary.status = status
@@ -779,10 +775,10 @@ class Job(BaseModel):
                 if stage.progress > 0 and stage.status == JobState.CREATED:
                     # Update any stages that have started but are still in the CREATED state
                     stage.status = JobState.STARTED
-                elif stage.status == JobState.SUCCESS and stage.progress < 1:
+                elif stage.status in JobState.final_states() and stage.progress < 1:
                     # Update any stages that are complete but have a progress less than 1
                     stage.progress = 1
-                elif stage.progress == 1 and stage.status == JobState.STARTED:
+                elif stage.progress == 1 and stage.status not in JobState.final_states():
                     # Update any stages that are complete but are still in the STARTED state
                     stage.status = JobState.SUCCESS
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
