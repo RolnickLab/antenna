@@ -68,7 +68,7 @@ const BackendDetailsContent = ({
               />
               <InputValue
                 label={translate(STRING.FIELD_LABEL_VERSION)}
-                value={backend.versionLabel}
+                value={backend.version}
               />
             </FormRow>
             <FormRow>

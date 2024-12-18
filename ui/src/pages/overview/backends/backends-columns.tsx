@@ -20,17 +20,17 @@ export const columns: (projectId: string) => TableColumn<Backend>[] = () => [
     id: 'name',
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
-    renderCell: (item: Backend) => <BasicTableCell value={item.name} />,
+    renderCell: (item: Backend) => (
+      <BasicTableCell>
+        <BackendDetailsDialog id={item.id} name={item.name} />
+      </BasicTableCell>
+    ),
   },
   {
     id: 'endpoint',
     name: translate(STRING.FIELD_LABEL_ENDPOINT),
     sortField: 'endpoint',
-    renderCell: (item: Backend) => (
-      <BasicTableCell>
-        <BackendDetailsDialog id={item.id} name={item.endpointUrl} />
-      </BasicTableCell>
-    ),
+    renderCell: (item: Backend) => <BasicTableCell value={item.endpointUrl} />,
   },
   {
     id: 'created-at',
