@@ -113,8 +113,14 @@ export const ConnectionStatus = ({
           </Wizard.Trigger>
           <Wizard.Content className={styles.wizardContent}>
             <FormRow>
-              <InputValue label="Server Status" value={data?.server_live ? 'Online' : 'Offline'} />
-              <InputValue label="Pipelines Online" value={data?.pipelines_online.length} />
+              <InputValue
+                label="Server Status"
+                value={data?.server_live ? 'Online' : 'Offline'}
+              />
+              <InputValue
+                label="Pipelines Online"
+                value={data?.pipelines_online.length}
+              />
             </FormRow>
           </Wizard.Content>
         </Wizard.Item>

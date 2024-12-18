@@ -53,11 +53,11 @@ export class Backend extends Entity {
 
   get lastChecked(): string | undefined {
     if (!this._backend.last_checked) {
-        return undefined
-      }
-  
-      return getFormatedDateTimeString({
-        date: new Date(this._backend.last_checked),
-      })
+      return undefined
+    }
+
+    return getFormatedDateTimeString({
+      date: new Date(this._backend.last_checked),
+    })
   }
 }

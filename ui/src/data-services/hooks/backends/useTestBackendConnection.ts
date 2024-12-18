@@ -18,7 +18,7 @@ export const useTestBackendConnection = () => {
   const { data, mutateAsync, isLoading, isSuccess, error } = useMutation({
     mutationFn: (params: { id: string; subdir?: string; regex?: string }) =>
       axios.get<ResponseData>(
-        `${API_URL}/${API_ROUTES.BACKENDS}/${params.id}/status/`,
+        `${API_URL}/${API_ROUTES.BACKENDS}/${params.id}/status/`
       ),
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.BACKENDS])

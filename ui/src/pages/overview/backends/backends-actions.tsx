@@ -4,11 +4,7 @@ import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 
-export const PopulateBackend = ({
-  backend,
-}: {
-  backend: Backend
-}) => {
+export const PopulateBackend = ({ backend }: { backend: Backend }) => {
   const [timestamp, setTimestamp] = useState<string>()
   const { populateBackend, isLoading } = usePopulateBackend()
 
