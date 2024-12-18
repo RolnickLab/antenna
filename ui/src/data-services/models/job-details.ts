@@ -16,11 +16,11 @@ export class JobDetails extends Job {
   }
 
   get errors(): string[] {
-    return this._job.progress.errors ?? []
+    return this._job.logs.stderr ?? []
   }
 
   get logs(): string[] {
-    return this._job.progress.logs ?? []
+    return this._job.logs.stdout ?? []
   }
 
   get stages(): {

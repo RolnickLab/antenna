@@ -108,8 +108,8 @@ class JobProgress(pydantic.BaseModel):
 
     summary: JobProgressSummary
     stages: list[JobProgressStageDetail]
-    errors: list[str] = []
-    logs: list[str] = []
+    errors: list[str] = []  # Deprecated, @TODO remove in favor of logs.stderr
+    logs: list[str] = []  # Deprecated, @TODO remove in favor of logs.stdout
 
     def make_key(self, name: str) -> str:
         """Generate a key for a stage or param based on its name"""
@@ -241,6 +241,11 @@ def default_ml_job_progress() -> JobProgress:
     )
 
 
+class JobLogs(pydantic.BaseModel):
+    stdout: list[str] = pydantic.Field(default_factory=list, alias="stdout", title="All messages")
+    stderr: list[str] = pydantic.Field(default_factory=list, alias="stderr", title="Error messages")
+
+
 class JobLogHandler(logging.Handler):
     """
     Class for handling logs from a job and writing them to the job instance.
@@ -259,20 +264,20 @@ class JobLogHandler(logging.Handler):
         # Write to the logs field on the job instance
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.progress.logs:
-            self.job.progress.logs.insert(0, msg)
+        if msg not in self.job.logs.stdout:
+            self.job.logs.stdout.insert(0, msg)
 
         # Write a simpler copy of any errors to the errors field
         if record.levelno >= logging.ERROR:
-            if record.message not in self.job.progress.errors:
-                self.job.progress.errors.insert(0, record.message)
+            if record.message not in self.job.logs.stderr:
+                self.job.logs.stderr.insert(0, record.message)
 
-        if len(self.job.progress.logs) > self.max_log_length:
-            self.job.progress.logs = self.job.progress.logs[: self.max_log_length]
+        if len(self.job.logs.stdout) > self.max_log_length:
+            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
 
         # @TODO move logs field to its own model with a foreign key to the job
         # or at the very least, a separate field from progress
-        self.job.save(update_fields=["progress"], update_progress=False)
+        self.job.save(update_fields=["logs"], update_progress=False)
 
 
 @dataclass
@@ -596,6 +601,7 @@ class Job(BaseModel):
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
+    logs: JobLogs = SchemaField(JobLogs, default=JobLogs())
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
