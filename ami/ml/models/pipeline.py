@@ -447,7 +447,15 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def process_images(self, images: typing.Iterable[SourceImage], backend_id: int, job_id: int | None = None):
+    def choose_backend_for_pipeline(self):
+        # @TODO: Create function to backend from the current project and most recently responded OK to a status check
+        backend_id = self.backends.first().pk
+
+        return backend_id
+
+    def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
+        backend_id = self.choose_backend_for_pipeline()
+
         if not self.backends.filter(pk=backend_id).first().endpoint_url:  # @TODO: use a get backend function
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(

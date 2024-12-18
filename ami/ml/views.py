@@ -55,12 +55,10 @@ class PipelineViewSet(DefaultViewSet):
         Process images using the pipeline.
         """
         pipeline = Pipeline.objects.get(pk=pk)
-        # @TODO: Create function to backend from the current project and most recently responded OK to a status check
-        backend_id = pipeline.backends.first().pk
         random_image = (
             SourceImage.objects.all().order_by("?").first()
         )  # TODO: Filter images by projects user has access to
-        results = pipeline.process_images(images=[random_image], backend_id=backend_id, job_id=None)
+        results = pipeline.process_images(images=[random_image], job_id=None)
         # @TODO: Add error or info messages to the response if image already processed or no detections returned
         return Response(results.dict())
 
