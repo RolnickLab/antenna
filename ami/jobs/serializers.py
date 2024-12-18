@@ -11,7 +11,7 @@ from ami.main.models import Deployment, Project, SourceImage, SourceImageCollect
 from ami.ml.models import Pipeline
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobProgress, MLJob
+from .models import Job, JobLogs, JobProgress, MLJob
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -37,6 +37,7 @@ class JobListSerializer(DefaultSerializer):
     source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
+    logs = SchemaField(schema=JobLogs, read_only=True)
     job_type = JobTypeSerializer(read_only=True)
     # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
     # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
@@ -112,6 +113,7 @@ class JobListSerializer(DefaultSerializer):
             "finished_at",
             "duration",
             "progress",
+            "logs",
             "job_type",
             "job_type_key",
             # "duration",
