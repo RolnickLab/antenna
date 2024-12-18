@@ -7,6 +7,7 @@ import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialo
 import styles from 'pages/overview/entities/styles.module.scss'
 import { STRING, translate } from 'utils/language'
 import { PopulateBackend } from './backends-actions'
+import { BackendDetailsDialog } from 'pages/backend-details/backend-details-dialog'
 
 export const columns: (projectId: string) => TableColumn<Backend>[] = () => [
   {
@@ -19,7 +20,11 @@ export const columns: (projectId: string) => TableColumn<Backend>[] = () => [
     id: 'endpoint',
     name: translate(STRING.FIELD_LABEL_ENDPOINT),
     sortField: 'endpoint',
-    renderCell: (item: Backend) => <BasicTableCell value={item.endpointUrl} />,
+    renderCell: (item: Backend) => (
+      <BasicTableCell>
+        <BackendDetailsDialog id={item.id} name={item.endpointUrl} />
+      </BasicTableCell>
+    ),
   },
   {
     id: 'created-at',
