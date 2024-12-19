@@ -733,6 +733,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "details",
             "taxon",
             "score",
+            "terminal",
             "algorithm",
             "created_at",
         ]

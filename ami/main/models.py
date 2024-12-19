@@ -1198,6 +1198,7 @@ class SourceImage(BaseModel):
         blank=True,
     )
 
+    event_id: int | None
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]
 
@@ -1764,7 +1765,13 @@ class Classification(BaseModel):
         ordering = ["-created_at", "-score"]
 
     def __str__(self) -> str:
-        return f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id}"
+        terminal = "Terminal" if self.terminal else "Intermediate"
+        if logger.getEffectiveLevel() == logging.DEBUG:
+            # Query the related objects to get the names
+            return f"#{self.pk} to Taxon {self.taxon} ({self.score:.2f}) by Algorithm {self.algorithm} ({terminal})"
+        return (
+            f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id} ({terminal})"
+        )
 
 
 @final
@@ -2055,10 +2062,20 @@ class Occurrence(BaseModel):
 
     @functools.cached_property
     def best_prediction(self):
-        return self.predictions().first()
+        """
+        Use the best prediction as the best identification if there are no human identifications.
+
+        Only consider terminal classifications (the final output of a pipeline, not intermediate models).
+        """
+        return self.predictions().filter(terminal=True).order_by("-score").first()
 
     @functools.cached_property
     def best_identification(self):
+        """
+        The most recent human identification is used as the best identification.
+
+        @TODO this could use a confidence level chosen manually by the users/experts.
+        """
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
     def get_determination_score(self) -> float | None:
@@ -2111,6 +2128,7 @@ class Occurrence(BaseModel):
         if self.determination and not self.determination_score:
             # This may happen for legacy occurrences that were created
             # before the determination_score field was added
+            # @TODO remove
             self.determination_score = self.get_determination_score()
             if not self.determination_score:
                 logger.warning(f"Could not determine score for {self}")
@@ -2123,16 +2141,16 @@ class Occurrence(BaseModel):
 
 def update_occurrence_determination(
     occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
-):
+) -> bool:
     """
     Update the determination of the occurrence based on the identifications & predictions.
 
     If there are identifications, set the determination to the latest identification.
     If there are no identifications, set the determination to the top prediction.
 
-    The `current_determination` is the determination curently saved in the database.
+    The `current_determination` is the determination currently saved in the database.
     The `occurrence` object may already have a different un-saved determination set
-    so it is neccessary to retrieve the current determination from the database, but
+    so it is necessary to retrieve the current determination from the database, but
     this can also be passed in as an argument to avoid an extra database query.
 
     @TODO Add tests for this important method!
@@ -2144,6 +2162,8 @@ def update_occurrence_determination(
         del occurrence.best_identification
     if hasattr(occurrence, "best_prediction"):
         del occurrence.best_prediction
+    if hasattr(occurrence, "best_identification"):
+        del occurrence.best_identification
 
     current_determination = (
         current_determination
@@ -2174,8 +2194,19 @@ def update_occurrence_determination(
         occurrence.determination_score = new_score
         needs_update = True
 
+    if not needs_update:
+        if logger.getEffectiveLevel() <= logging.DEBUG:
+            all_predictions = occurrence.predictions()
+            all_preds_print = ", ".join([str(p) for p in all_predictions])
+            logger.debug(
+                f"No update needed for determination of {occurrence}. Best prediction: {occurrence.best_prediction}. "
+                f"All preds: {all_preds_print}"
+            )
+
     if save and needs_update:
         occurrence.save(update_determination=False)
+
+    return needs_update
 
 
 @final
