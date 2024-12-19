@@ -275,8 +275,7 @@ class JobLogHandler(logging.Handler):
         if len(self.job.logs.stdout) > self.max_log_length:
             self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
 
-        # @TODO move logs field to its own model with a foreign key to the job
-        # or at the very least, a separate field from progress
+        # @TODO consider saving logs to the database periodically rather than on every log
         self.job.save(update_fields=["logs"], update_progress=False)
 
 
