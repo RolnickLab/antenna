@@ -33,12 +33,20 @@ export class Backend extends Entity {
     return `${this._backend.id}`
   }
 
-  get version(): number {
-    return this._backend.version
+  get name(): string {
+    return `${this._backend.name}`
+  }
+
+  get slug(): string {
+    return `${this._backend.slug}`
   }
 
   get endpointUrl(): string {
     return `${this._backend.endpoint_url}`
+  }
+
+  get description(): string {
+    return `${this._backend.description}`
   }
 
   get updatedAt(): string | undefined {

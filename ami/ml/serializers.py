@@ -1,6 +1,8 @@
 from django_pydantic_field.rest_framework import SchemaField
+from rest_framework import serializers
 
 from ami.main.api.serializers import DefaultSerializer
+from ami.main.models import Project
 
 from .models.algorithm import Algorithm
 from .models.backend import Backend
@@ -45,8 +47,6 @@ class BackendNestedSerializer(DefaultSerializer):
         fields = [
             "name",
             "slug",
-            "version",
-            "version_name",
             "id",
             "details",
             "endpoint_url",
@@ -70,8 +70,6 @@ class PipelineSerializer(DefaultSerializer):
             "name",
             "slug",
             "description",
-            "version",
-            "version_name",
             "algorithms",
             "stages",
             "backends",
@@ -98,6 +96,11 @@ class PipelineNestedSerializer(DefaultSerializer):
 
 class BackendSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
+    project = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Project.objects.all(),
+        required=False,
+    )
 
     class Meta:
         model = Backend
@@ -106,9 +109,8 @@ class BackendSerializer(DefaultSerializer):
             "name",
             "slug",
             "description",
-            "version",
-            "version_name",
             "projects",
+            "project",
             "endpoint_url",
             "pipelines",
             "created_at",
@@ -116,3 +118,12 @@ class BackendSerializer(DefaultSerializer):
             "last_checked",
             "last_checked_live",
         ]
+
+    def create(self, validated_data):
+        project = validated_data.pop("project", None)
+        instance = super().create(validated_data)
+
+        if project:
+            instance.projects.add(project)
+
+        return instance

@@ -66,7 +66,5 @@ class BackendAdmin(AdminBase):
         "id",
         "name",
         "endpoint_url",
-        "version",
-        "version_name",
         "created_at",
     ]

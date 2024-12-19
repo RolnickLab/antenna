@@ -18,8 +18,6 @@ import { DetailsFormProps, FormValues } from './types'
 type BackendFormValues = FormValues & {
   slug: string
   endpoint_url: string
-  version_name: string | undefined
-  version: number
 }
 
 const config: FormConfig = {
@@ -40,18 +38,12 @@ const config: FormConfig = {
   endpoint_url: {
     label: 'Endpoint URL',
     description: 'ML Backend Endpoint',
-  },
-  description: {
-    label: translate(STRING.FIELD_LABEL_DESCRIPTION),
-  },
-  version_name: {
-    label: translate(STRING.FIELD_LABEL_VERSION_NAME),
-  },
-  version: {
-    label: translate(STRING.FIELD_LABEL_VERSION),
     rules: {
       required: true,
     },
+  },
+  description: {
+    label: translate(STRING.FIELD_LABEL_DESCRIPTION),
   },
 }
 
@@ -84,8 +76,6 @@ export const BackendDetailsForm = ({
           description: values.description,
           customFields: {
             slug: values.slug,
-            version: values.version,
-            version_name: values.version_name,
             endpoint_url: values.endpoint_url,
           },
         })
@@ -108,20 +98,6 @@ export const BackendDetailsForm = ({
           />
           <FormField
             name="slug"
-            type="text"
-            config={config}
-            control={control}
-          />
-        </FormRow>
-        <FormRow>
-          <FormField
-            name="version"
-            type="number"
-            config={config}
-            control={control}
-          />
-          <FormField
-            name="version_name"
             type="text"
             config={config}
             control={control}

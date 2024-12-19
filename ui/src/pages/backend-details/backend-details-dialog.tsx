@@ -67,18 +67,18 @@ const BackendDetailsContent = ({
                 value={backend.id}
               />
               <InputValue
-                label={translate(STRING.FIELD_LABEL_VERSION)}
-                value={backend.version}
+                label={translate(STRING.FIELD_LABEL_NAME)}
+                value={backend.name}
               />
             </FormRow>
             <FormRow>
               <InputValue
-                label={translate(STRING.FIELD_LABEL_NAME)}
-                value={backend.name}
-              />
-              <InputValue
                 label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
                 value={backend.description}
+              />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_LAST_CHECKED)}
+                value={backend.lastChecked}
               />
             </FormRow>
 

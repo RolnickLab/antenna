@@ -1,10 +1,12 @@
 import datetime
 
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
+from ami.base.serializers import reverse_with_params
 from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
-from ami.ml.models import Algorithm, Pipeline
+from ami.ml.models import Algorithm, Backend, Pipeline
 from ami.ml.models.pipeline import collect_images, save_results
 from ami.ml.schemas import (
     BoundingBox,
@@ -14,6 +16,47 @@ from ami.ml.schemas import (
     SourceImageResponse,
 )
 from ami.tests.fixtures.main import create_captures_from_files, create_ml_backends, setup_test_project
+from ami.users.models import User
+
+
+class TestMLBackendAPI(APITestCase):
+    """
+    Test the ML Backends API endpoints.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="ML Backend Test Project")
+
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+
+    def _create_backend(self, name: str, slug: str, endpoint_url: str):
+        backends_create_url = reverse_with_params("api:backend-list")
+        self.client.force_authenticate(user=self.user)
+        backend_data = {
+            "project": self.project.pk,
+            "name": name,
+            "endpoint_url": endpoint_url,
+            "slug": slug,
+        }
+        resp = self.client.post(backends_create_url, backend_data)
+        self.client.force_authenticate(user=None)
+        self.assertEqual(resp.status_code, 201)
+        return resp.json()
+
+    def test_create_backend(self):
+        self._create_backend(name="ML Backend Test", slug="ml_backend_test", endpoint_url="http://ml_backend:2000")
+
+    def test_project_was_added(self):
+        response = self._create_backend(
+            name="ML Backend Test", slug="ml_backend_test", endpoint_url="http://ml_backend:2000"
+        )
+        backend_id = response["id"]
+        backend = Backend.objects.get(pk=backend_id)
+        self.assertIn(self.project, backend.projects.all())
 
 
 class TestPipelineWithMLBackend(TestCase):
