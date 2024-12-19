@@ -60,21 +60,22 @@ export const Gallery = ({
         (item) =>
           renderItem?.(item) ??
           (item.to ? (
-            <Link key={item.id} to={item.to}>
+            <Link id={item.id} key={item.id} to={item.to}>
               <Card
-                title={item.title}
-                subTitle={item.subTitle}
                 image={item.image}
                 size={cardSize}
+                subTitle={item.subTitle}
+                title={item.title}
               />
             </Link>
           ) : (
             <Card
-              key={item.id}
-              title={item.title}
-              subTitle={item.subTitle}
+              id={item.id}
               image={item.image}
+              key={item.id}
               size={cardSize}
+              subTitle={item.subTitle}
+              title={item.title}
             />
           ))
       )}
