@@ -3,7 +3,7 @@ import { useBackendDetails } from 'data-services/hooks/backends/useBackendDetail
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
-import { Error } from 'pages/error/error'
+import { ErrorState } from 'components/error-state/error-state'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { BackendPipelines } from './backend-pipelines'
@@ -103,7 +103,7 @@ const BackendDetailsContent = ({
         </>
       ) : error ? (
         <div className={styles.errorContent}>
-          <Error error={error} />
+          <ErrorState error={error} />
         </div>
       ) : null}
     </>
