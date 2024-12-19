@@ -1947,6 +1947,13 @@ class OccurrenceQuerySet(models.QuerySet):
             ),
         )
 
+    def with_identifications(self) -> models.QuerySet:
+        return self.prefetch_related(
+            "identifications",
+            "identifications__taxon",
+            "identifications__user",
+        )
+
 
 class OccurrenceManager(models.Manager):
     def get_queryset(self) -> OccurrenceQuerySet:

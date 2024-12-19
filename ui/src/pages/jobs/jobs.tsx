@@ -1,5 +1,5 @@
 import { FilterControl } from 'components/filtering/filter-control'
-import { Filtering } from 'components/filtering/filtering'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -9,7 +9,6 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import _ from 'lodash'
-import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
 import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect } from 'react'
@@ -46,23 +45,17 @@ export const Jobs = () => {
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
-
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       <div className="space-y-6">
-        <Filtering>
+        <FilterSection defaultOpen>
+          <FilterControl field="source_image_single" readonly />
           <FilterControl field="status" />
-          {/* TODO: Uncomment when supported by backend */}
-          {/* <FilterControl field="type" /> */}
+          <FilterControl field="job_type_key" />
           <FilterControl field="deployment" />
           <FilterControl field="pipeline" />
-          {/* TODO: Uncomment when supported by backend */}
-          {/* <FilterControl field="source_image_single" readonly /> */}
           <FilterControl field="source_image_collection" />
-        </Filtering>
+        </FilterSection>
       </div>
       <div className="w-full overflow-hidden">
         <PageHeader
@@ -82,11 +75,12 @@ export const Jobs = () => {
           {canCreate ? <NewJobDialog /> : null}
         </PageHeader>
         <Table
-          items={jobs}
-          isLoading={!id && isLoading}
           columns={columns(projectId as string).filter(
             (column) => !!columnSettings[column.id]
           )}
+          error={error}
+          items={jobs}
+          isLoading={!id && isLoading}
           sortable
           sortSettings={sort}
           onSortSettingsChange={setSort}

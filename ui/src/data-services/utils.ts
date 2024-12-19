@@ -27,7 +27,7 @@ export const getFetchUrl = ({
   }
   if (params?.filters?.length) {
     params.filters.forEach((filter) => {
-      if (filter.value?.length) {
+      if (filter.value?.length && filter.isValid) {
         queryParams[filter.field] = filter.value
       }
     })

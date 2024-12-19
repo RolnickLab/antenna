@@ -7,7 +7,7 @@ from django.core import exceptions
 from django.db import models
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
-from django.forms import BooleanField, CharField, DateField, IntegerField
+from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import exceptions as api_exceptions
@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.utils.requests import get_active_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -595,15 +596,14 @@ class SourceImageCollectionViewSet(DefaultViewSet):
 
     def _get_source_image(self):
         """
-        Allow parameter to be passed as a GET query param or in the request body.
+        Get source image from either GET query param or in the PUT/POST request body.
         """
         key = "source_image"
-        try:
-            source_image_id = IntegerField(required=True, min_value=0).clean(
-                self.request.data.get(key) or self.request.query_params.get(key)
-            )
-        except Exception as e:
-            raise api_exceptions.ValidationError from e
+        source_image_id = SingleParamSerializer[int].clean(
+            key,
+            field=serializers.IntegerField(required=True, min_value=0),
+            data=dict(self.request.data, **self.request.query_params),
+        )
 
         try:
             return SourceImage.objects.get(id=source_image_id)
@@ -831,18 +831,33 @@ class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class DateRangeFilterSerializer(FilterParamsSerializer):
+    date_start = serializers.DateField(required=False)
+    date_end = serializers.DateField(required=False)
+
+    def validate(self, data):
+        """
+        Additionally validate that the start date is before the end date.
+        """
+        start_date = data.get("date_start")
+        end_date = data.get("date_end")
+        if start_date and end_date and start_date > end_date:
+            raise api_exceptions.ValidationError({"date_start": "Start date must be before end date"})
+        return data
+
+
 class OccurrenceDateFilter(filters.BaseFilterBackend):
     """
     Filter occurrences within a date range that their detections were observed.
     """
 
-    query_param_start = "date_start"
-    query_param_end = "date_end"
-
     def filter_queryset(self, request, queryset, view):
         # Validate and clean the query params. They should be in ISO format.
-        start_date = DateField(required=False).clean(request.query_params.get(self.query_param_start))
-        end_date = DateField(required=False).clean(request.query_params.get(self.query_param_end))
+        cleaned_data = DateRangeFilterSerializer(data=request.query_params).clean()
+
+        # Access the validated dates
+        start_date = cleaned_data.get("date_start")
+        end_date = cleaned_data.get("date_end")
 
         if start_date:
             queryset = queryset.filter(detections__timestamp__date__gte=start_date)
@@ -925,6 +940,8 @@ class OccurrenceViewSet(DefaultViewSet):
             "event",
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
+        qs = qs.with_identifications()  # type: ignore
+
         if self.action == "list":
             qs = (
                 qs.all()
@@ -952,7 +969,7 @@ class TaxonViewSet(DefaultViewSet):
 
     queryset = Taxon.objects.all()
     serializer_class = TaxonSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter, TaxonCollectionFilter]
     filterset_fields = [
         "name",
         "rank",

@@ -1,9 +1,10 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { API_ROUTES } from 'data-services/constants'
 import { Project } from 'data-services/models/project'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { Error } from 'pages/error/error'
+import { Helmet } from 'react-helmet-async'
 import { useOutletContext } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useSelectedView } from 'utils/useSelectedView'
@@ -14,7 +15,6 @@ import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
 import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
-import { Helmet } from 'react-helmet-async'
 
 export const Overview = () => {
   const { selectedView, setSelectedView } = useSelectedView('summary')
@@ -26,7 +26,7 @@ export const Overview = () => {
   }>()
 
   if (!isLoading && error) {
-    return <Error error={error} />
+    return <ErrorState error={error} />
   }
 
   if (isLoading || !project) {
