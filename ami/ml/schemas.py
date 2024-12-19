@@ -85,10 +85,6 @@ class PipelineStage(pydantic.BaseModel):
     description: str | None = None
 
 
-class ProjectConfig(pydantic.BaseModel):
-    name: str
-
-
 class AlgorithmConfig(pydantic.BaseModel):
     name: str
     key: str
@@ -103,7 +99,6 @@ class PipelineConfig(pydantic.BaseModel):
     description: str | None = None
     algorithms: list[AlgorithmConfig] = []
     stages: list[PipelineStage] = []
-    projects: list[ProjectConfig] = []
 
 
 class BackendStatusResponse(pydantic.BaseModel):
@@ -124,4 +119,3 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfig] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
-    projects_created: list[str] = []

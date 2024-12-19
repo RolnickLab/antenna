@@ -8,7 +8,6 @@ import requests
 from django.db import models
 
 from ami.base.models import BaseModel
-from ami.main.models import Project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.schemas import BackendStatusResponse, PipelineRegistrationResponse
@@ -43,7 +42,6 @@ class Backend(BaseModel):
         pipelines = []
         pipelines_created = []
         algorithms_created = []
-        projects_created = []
 
         for pipeline_data in pipelines_to_add:
             pipeline, created = Pipeline.objects.get_or_create(
@@ -70,18 +68,6 @@ class Backend(BaseModel):
                 else:
                     logger.info(f"Using existing algorithm {algorithm.name}.")
 
-            for project_data in pipeline_data.projects:
-                project, created = Project.objects.get_or_create(name=project_data.name)
-                pipeline.projects.add(project)
-
-                if created:
-                    logger.info(f"Successfully created project {project.name}.")
-                    projects_created.append(project.name)
-                else:
-                    logger.info(f"Using existing project {project.name}.")
-
-            # @TODO: Add the stages
-
             pipeline.save()
             pipelines.append(pipeline)
 
@@ -91,7 +77,6 @@ class Backend(BaseModel):
             pipelines=pipelines_to_add,
             pipelines_created=pipelines_created,
             algorithms_created=algorithms_created,
-            projects_created=projects_created,
         )
 
     def get_status(self):

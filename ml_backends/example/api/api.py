@@ -13,7 +13,6 @@ from .schemas import (
     PipelineConfig,
     PipelineRequest,
     PipelineResponse,
-    ProjectConfig,
     SourceImage,
     SourceImageResponse,
 )
@@ -31,7 +30,6 @@ pipeline1 = PipelineConfig(
         AlgorithmConfig(name="Random Detector", key="2"),
         AlgorithmConfig(name="Always Moth Classifier", key="3"),
     ],
-    projects=[ProjectConfig(name="Test Project 1ed10463")],
 )
 
 pipeline2 = PipelineConfig(
@@ -43,7 +41,6 @@ pipeline2 = PipelineConfig(
         AlgorithmConfig(name="Random Detector", key="2"),
         AlgorithmConfig(name="Always Moth Classifier", key="3"),
     ],
-    projects=[ProjectConfig(name="Test Project 1ed10463")],
 )
 
 pipelines = [pipeline1, pipeline2]
