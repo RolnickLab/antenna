@@ -45,6 +45,7 @@ export enum STRING {
   ENTITY_DELETE,
   ENTITY_DETAILS,
   ENTITY_EDIT,
+  ENTITY_TYPE_BACKEND,
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_IDENTIFICATION,
@@ -71,12 +72,14 @@ export enum STRING {
   FIELD_LABEL_DURATION,
   FIELD_LABEL_EMAIL,
   FIELD_LABEL_EMAIL_NEW,
+  FIELD_LABEL_ENDPOINT,
   FIELD_LABEL_ERRORS,
   FIELD_LABEL_FINISHED_AT,
   FIELD_LABEL_GENERAL,
   FIELD_LABEL_ID,
   FIELD_LABEL_IMAGE,
   FIELD_LABEL_ICON,
+  FIELD_LABEL_LAST_CHECKED,
   FIELD_LABEL_JOBS,
   FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
@@ -99,6 +102,7 @@ export enum STRING {
   FIELD_LABEL_SESSIONS,
   FIELD_LABEL_SITE,
   FIELD_LABEL_SIZE,
+  FIELD_LABEL_SLUG,
   FIELD_LABEL_SOURCE_IMAGE,
   FIELD_LABEL_SOURCE_IMAGES,
   FIELD_LABEL_DATA_SOURCE,
@@ -163,6 +167,7 @@ export enum STRING {
   NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
+  TAB_ITEM_BACKENDS,
   TAB_ITEM_COLLECTIONS,
   TAB_ITEM_DEVICES,
   TAB_ITEM_FIELDS,
@@ -184,6 +189,7 @@ export enum STRING {
   DONE,
 
   /* TOOLTIPS */
+  TOOLTIP_BACKEND,
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE_TYPE,
@@ -214,6 +220,7 @@ export enum STRING {
   NEW_ID,
   NOT_CONNECTED,
   OR,
+  PIPELINES,
   RECENT,
   REJECT_ID,
   REJECT_ID_SHORT,
@@ -291,12 +298,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_EMAIL_NEW]: 'Email new',
+  [STRING.FIELD_LABEL_ENDPOINT]: 'Endpoint URL',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_GENERAL]: 'General configuration',
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
+  [STRING.FIELD_LABEL_LAST_CHECKED]: 'Last seen online',
   [STRING.FIELD_LABEL_JOBS]: 'Jobs',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
@@ -319,6 +328,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SESSIONS]: 'Sessions',
   [STRING.FIELD_LABEL_SITE]: 'Site',
   [STRING.FIELD_LABEL_SIZE]: 'Size',
+  [STRING.FIELD_LABEL_SLUG]: 'Slug',
   [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source image collection',
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
@@ -343,13 +353,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload images',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
   [STRING.FIELD_LABEL_VERSION]: 'Version',
-  [STRING.FIELD_LABEL_VERSION_NAME]: 'Version',
+  [STRING.FIELD_LABEL_VERSION_NAME]: 'Version Name',
 
   /* ENTITY */
   [STRING.ENTITY_CREATE]: 'Register new {{type}}',
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
+  [STRING.ENTITY_TYPE_BACKEND]: 'backend',
   [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
@@ -411,6 +422,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
+  [STRING.TAB_ITEM_BACKENDS]: 'Backends',
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
@@ -432,6 +444,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DONE]: 'Done',
 
   /* TOOLTIPS */
+  [STRING.TOOLTIP_BACKEND]:
+    'A backend is a group of pipelines used for processing images/collections.',
   [STRING.TOOLTIP_COLLECTION]:
     'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
@@ -472,6 +486,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.OR]: 'Or',
+  [STRING.PIPELINES]: 'Pipelines',
   [STRING.RECENT]: 'Recent',
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REJECT_ID_SHORT]: 'Reject',

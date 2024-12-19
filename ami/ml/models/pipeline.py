@@ -1,5 +1,13 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ami.ml.models import Backend
+
 import logging
 import typing
+from urllib.parse import urljoin
 
 import requests
 from django.db import models, transaction
@@ -22,17 +30,16 @@ from ami.main.models import (
     TaxonRank,
     update_calculated_fields_for_events,
 )
+from ami.ml.models.algorithm import Algorithm
+from ami.ml.schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from ami.ml.tasks import celery_app, create_detection_images
-
-from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
-from .algorithm import Algorithm
 
 logger = logging.getLogger(__name__)
 
 
 def filter_processed_images(
     images: typing.Iterable[SourceImage],
-    pipeline: "Pipeline",
+    pipeline: Pipeline,
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline for the first time (have no detections)
@@ -78,7 +85,7 @@ def collect_images(
     source_images: list[SourceImage] | None = None,
     deployment: Deployment | None = None,
     job_id: int | None = None,
-    pipeline: "Pipeline | None" = None,
+    pipeline: Pipeline | None = None,
     skip_processed: bool = True,
 ) -> typing.Iterable[SourceImage]:
     """
@@ -123,7 +130,7 @@ def collect_images(
 
 
 def process_images(
-    pipeline: "Pipeline",
+    pipeline: Pipeline,
     endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
@@ -160,16 +167,18 @@ def process_images(
     task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
+    source_images = [
+        SourceImageRequest(
+            id=str(source_image.pk),
+            url=url,
+        )
+        for source_image, url in zip(images, urls)
+        if url
+    ]
+
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
-        source_images=[
-            SourceImageRequest(
-                id=str(source_image.pk),
-                url=url,
-            )
-            for source_image, url in zip(images, urls)
-            if url
-        ],
+        source_images=source_images,
     )
 
     resp = requests.post(endpoint_url, json=request_data.dict())
@@ -183,11 +192,17 @@ def process_images(
         else:
             logger.error(msg)
 
-        resp.raise_for_status()
+        results = PipelineResponse(
+            pipeline=pipeline.slug,
+            total_time=0,
+            source_images=source_images,
+            detections=[],
+            errors=msg,
+        )
+        return results
 
     results = resp.json()
     results = PipelineResponse(**results)
-
     if job:
         job.logger.debug(f"Results: {results}")
         detections = results.detections
@@ -396,7 +411,7 @@ class Pipeline(BaseModel):
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
     # @TODO the algorithms list be retrieved by querying the pipeline endpoint
-    algorithms = models.ManyToManyField(Algorithm, related_name="pipelines")
+    algorithms = models.ManyToManyField("ml.Algorithm", related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(
         default=default_stages,
         help_text=(
@@ -405,7 +420,7 @@ class Pipeline(BaseModel):
         ),
     )
     projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
-    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
+    backends: models.QuerySet[Backend]
 
     class Meta:
         ordering = ["name", "version"]
@@ -431,11 +446,61 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
+    def choose_backend_for_pipeline(self, job_id):
+        job = None
+        if job_id:
+            from ami.jobs.models import Job
+
+            job = Job.objects.get(pk=job_id)
+
+        backends = self.backends.all()
+
+        # check the status of all backends
+        backend_id_lowest_latency = backends.first().id if backends.exists() else None
+        lowest_latency = 10000
+        backends_online = False
+
+        for backend in backends:
+            status_response = backend.get_status()
+            if status_response.server_live:
+                backends_online = True
+                if status_response.latency < lowest_latency:
+                    lowest_latency = status_response.latency
+                    # pick the backend that lowest latency
+                    backend_id_lowest_latency = backend.id
+
+        # if all offline then throw error
+        if not backends_online:
+            msg = "No backends are online."
+
+            if job:
+                job.logger.error(msg)
+            logger.error(msg)
+
+            results = PipelineResponse(
+                pipeline=self.slug,
+                total_time=0,
+                source_images=[],
+                detections=[],
+                errors=msg,
+            )
+            return results
+        else:
+            if job:
+                job.logger.info(f"Using Backend with ID={backend_id_lowest_latency}")
+            logger.info(f"Using Backend with ID={backend_id_lowest_latency}")
+
+            return backend_id_lowest_latency
+
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        if not self.endpoint_url:
+        backend_id = self.choose_backend_for_pipeline(job_id)
+        if not isinstance(backend_id, int):
+            return backend_id
+
+        if not self.backends.filter(pk=backend_id).first().endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
-            endpoint_url=self.endpoint_url,
+            endpoint_url=urljoin(self.backends.filter(pk=backend_id).first().endpoint_url, "/process_images"),
             pipeline=self,
             images=images,
             job_id=job_id,
