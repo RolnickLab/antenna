@@ -194,7 +194,7 @@ def process_images(
 
         results = PipelineResponse(
             pipeline=pipeline.slug,
-            total_time=None,
+            total_time=0,
             source_images=source_images,
             detections=[],
             errors=msg,
@@ -203,7 +203,6 @@ def process_images(
 
     results = resp.json()
     results = PipelineResponse(**results)
-
     if job:
         job.logger.debug(f"Results: {results}")
         detections = results.detections
@@ -447,14 +446,56 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def choose_backend_for_pipeline(self):
-        # @TODO: Create function to backend from the current project and most recently responded OK to a status check
-        backend_id = self.backends.first().pk
+    def choose_backend_for_pipeline(self, job_id):
+        job = None
+        if job_id:
+            from ami.jobs.models import Job
 
-        return backend_id
+            job = Job.objects.get(pk=job_id)
+
+        backends = self.backends.all()
+
+        # check the status of all backends
+        backend_id_lowest_latency = backends.first().id if backends.exists() else None
+        lowest_latency = 10000
+        backends_online = False
+
+        for backend in backends:
+            status_response = backend.get_status()
+            if status_response.server_live:
+                backends_online = True
+                if status_response.latency < lowest_latency:
+                    lowest_latency = status_response.latency
+                    # pick the backend that lowest latency
+                    backend_id_lowest_latency = backend.id
+
+        # if all offline then throw error
+        if not backends_online:
+            msg = "No backends are online."
+
+            if job:
+                job.logger.error(msg)
+            logger.error(msg)
+
+            results = PipelineResponse(
+                pipeline=self.slug,
+                total_time=0,
+                source_images=[],
+                detections=[],
+                errors=msg,
+            )
+            return results
+        else:
+            if job:
+                job.logger.info(f"Using Backend with ID={backend_id_lowest_latency}")
+            logger.info(f"Using Backend with ID={backend_id_lowest_latency}")
+
+            return backend_id_lowest_latency
 
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        backend_id = self.choose_backend_for_pipeline()
+        backend_id = self.choose_backend_for_pipeline(job_id)
+        if not isinstance(backend_id, int):
+            return backend_id
 
         if not self.backends.filter(pk=backend_id).first().endpoint_url:  # @TODO: use a get backend function
             raise ValueError("No endpoint URL configured for this pipeline")

@@ -1,5 +1,6 @@
 import datetime
 import logging
+import time
 import typing
 from urllib.parse import urljoin
 
@@ -95,6 +96,7 @@ class Backend(BaseModel):
 
     def get_status(self):
         info_url = urljoin(self.endpoint_url, "info")
+        start_time = time.time()
 
         resp = requests.get(info_url)
         if not resp.ok:
@@ -116,6 +118,9 @@ class Backend(BaseModel):
         self.last_checked_live = server_live
         self.save()
 
+        first_response_time = time.time()
+        latency = first_response_time - start_time
+
         response = BackendStatusResponse(
             timestamp=timestamp,
             request_successful=resp.ok,
@@ -124,6 +129,7 @@ class Backend(BaseModel):
             pipeline_configs=pipeline_configs,
             endpoint_url=self.endpoint_url,
             error=error,
+            latency=latency,
         )
 
         return response

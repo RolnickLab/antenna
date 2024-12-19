@@ -114,6 +114,7 @@ class BackendStatusResponse(pydantic.BaseModel):
     server_live: bool
     pipelines_online: list[str] | str
     endpoint_url: str
+    latency: float
 
 
 class PipelineRegistrationResponse(pydantic.BaseModel):
