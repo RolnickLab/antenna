@@ -497,7 +497,7 @@ class Pipeline(BaseModel):
         if not isinstance(backend_id, int):
             return backend_id
 
-        if not self.backends.filter(pk=backend_id).first().endpoint_url:  # @TODO: use a get backend function
+        if not self.backends.filter(pk=backend_id).first().endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
             endpoint_url=urljoin(self.backends.filter(pk=backend_id).first().endpoint_url, "/process_images"),

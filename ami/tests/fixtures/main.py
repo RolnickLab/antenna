@@ -37,8 +37,6 @@ def update_site_settings(**kwargs):
     return site
 
 
-# @TODO: To test this: delete project in admin, then run migrate
-# (this will execute the signal in ami-platform/ami/tests/fixtures/signals.py)
 def create_ml_backends(project):
     backends_to_add = [
         {

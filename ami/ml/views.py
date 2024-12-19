@@ -59,7 +59,6 @@ class PipelineViewSet(DefaultViewSet):
             SourceImage.objects.all().order_by("?").first()
         )  # TODO: Filter images by projects user has access to
         results = pipeline.process_images(images=[random_image], job_id=None)
-        # @TODO: Add error or info messages to the response if image already processed or no detections returned
         return Response(results.dict())
 
 

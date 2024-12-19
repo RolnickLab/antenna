@@ -110,9 +110,7 @@ class TestPipelineWithMLBackend(TestCase):
         self.test_images = [image for image, frame in self.captures]
         self.backend_instance = create_ml_backends(self.project)
         self.backend = self.backend_instance
-        # @TODO: Create function to get most recent OK backend
         self.pipeline = self.backend_instance.pipelines.all().filter(slug="constant").first()
-        # @TODO: Add error or info messages to the response if image already processed or no detections returned
 
     def test_run_pipeline(self):
         # Send images to ML backend to process and return detections
