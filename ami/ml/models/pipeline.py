@@ -621,11 +621,11 @@ def create_and_update_occurrences_for_detections(
     for detection in detections:
         detections_by_source_image[detection.source_image_id].append(detection)
 
-    occurrences_to_create = []
-    detections_to_update = []
-
     for source_image_id, detections in detections_by_source_image.items():
         logger.info(f"Determining occurrences for {len(detections)} detections for source image {source_image_id}")
+
+        occurrences_to_create = []
+        detections_to_update = []
 
         for detection in detections:
             if not detection.occurrence:
@@ -663,6 +663,8 @@ def create_and_update_occurrences_for_detections(
             f"Updated the determination of {len(occurrences_to_update)} occurrences, "
             f"left {len(occurrences_to_leave)} unchanged"
         )
+
+        SourceImage.objects.get(pk=source_image_id).save()
 
 
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
