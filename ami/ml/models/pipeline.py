@@ -1,3 +1,4 @@
+import collections
 import logging
 import time
 import typing
@@ -512,7 +513,7 @@ def create_classification(
     ).first()
 
     if existing_classification:
-        logger.warning(
+        logger.debug(
             "Duplicate classification found: "
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
             "not creating a new one."
@@ -554,10 +555,11 @@ def create_classification(
 
 
 def create_classifications(
-    detection: Detection,
-    classifications: list[ClassificationResponse],
+    detections: list[Detection],
+    detection_responses: list[DetectionResponse],
     algorithms_used: dict[str, Algorithm],
     logger: logging.Logger = logger,
+    save: bool = True,
 ) -> list[Classification]:
     """
     Efficiently create multiple Classification objects from a list of ClassificationResponse objects,
@@ -573,18 +575,21 @@ def create_classifications(
     """
     existing_classifications: list[Classification] = []
     new_classifications: list[Classification] = []
-    for classification_resp in classifications:
-        classification, created = create_classification(
-            detection=detection,
-            classification_resp=classification_resp,
-            algorithms_used=algorithms_used,
-            save=False,
-            logger=logger,
-        )
-        if created:
-            new_classifications.append(classification)
-        else:
-            existing_classifications.append(classification)
+
+    for detection, detection_resp in zip(detections, detection_responses):
+        for classification_resp in detection_resp.classifications:
+            classification, created = create_classification(
+                detection=detection,
+                classification_resp=classification_resp,
+                algorithms_used=algorithms_used,
+                save=False,
+                logger=logger,
+            )
+            if created:
+                new_classifications.append(classification)
+            else:
+                # @TODO consider adding logits, scores and terminal state to existing classifications (new fields)
+                existing_classifications.append(classification)
 
     Classification.objects.bulk_create(new_classifications)
     logger.info(
@@ -684,27 +689,24 @@ def save_results(
         logger=job_logger,
     )
 
-    for detection, detection_resp in zip(detections, results.detections):
-        detection_classifications = create_classifications(
-            detection=detection,
-            classifications=detection_resp.classifications,
-            algorithms_used=algorithms_used,
-            logger=job_logger,
-        )
+    create_classifications(
+        detections=detections,
+        detection_responses=results.detections,
+        algorithms_used=algorithms_used,
+        logger=job_logger,
+    )
 
-        # Create a new occurrence for each detection (no tracking yet)
-        # @TODO remove when we implement tracking!
-        create_occurrence_for_detection(
-            detection=detection,
-            classifications=detection_classifications,
-            logger=job_logger,
-        )
+    # Create a new occurrence for each detection (no tracking yet)
+    # @TODO remove when we implement tracking!
+    create_and_update_occurrences_for_detections(
+        detections=detections,
+        logger=job_logger,
+    )
 
     # Update precalculated counts on source images and events
     # collect all source images for the detections
-    with transaction.atomic():
-        for source_image in source_images:
-            source_image.save()
+    for source_image in source_images:
+        source_image.save()
 
     image_cropping_task = create_detection_images.delay(
         source_image_ids=[source_image.pk for source_image in source_images],
@@ -720,7 +722,7 @@ def save_results(
         # to avoid reprocessing, and for tracking provenance.
         if algo not in registered_algos:
             pipeline.algorithms.add(algo)
-            job_logger.info(f"Added unregistered algorithm {algo} to pipeline {pipeline}")
+            job_logger.debug(f"Added algorithm {algo} to pipeline {pipeline}")
 
     if return_created:
         return []
