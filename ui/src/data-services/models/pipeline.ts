@@ -81,4 +81,28 @@ export class Pipeline {
       date: new Date(this._pipeline.updated_at),
     })
   }
+
+  get backendsOnline(): string {
+    const backends = this._pipeline.backends
+    let total_online = 0
+    for (const backend of backends) {
+      if (backend.last_checked_live) {
+        total_online += 1
+      }
+    }
+
+    return total_online + '/' + backends.length
+  }
+
+  get backendsOnlineLastChecked(): string | undefined {
+    const backends = this._pipeline.backends
+    const last_checked_times = []
+    for (const backend of backends) {
+      last_checked_times.push(new Date(backend.last_checked).getTime())
+    }
+
+    return getFormatedDateTimeString({
+      date: new Date(Math.max(...last_checked_times)),
+    })
+  }
 }

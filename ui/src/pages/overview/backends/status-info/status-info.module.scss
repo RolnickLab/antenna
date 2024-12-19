@@ -1,0 +1,53 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.wrapper {
+  display: flex;
+  align-items: center;
+  height: 38px;
+}
+
+.content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+
+  span {
+    @include paragraph-small();
+    color: $color-neutral-300;
+  }
+}
+
+.iconContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border-width: 2px;
+  border-style: solid;
+  flex-shrink: 0;
+
+  &.notConnected {
+    border-color: $color-destructive-500;
+  }
+
+  &.connecting {
+    border-color: $color-warning-500;
+    border-top-color: transparent;
+    animation: spin 0.7s ease-in-out infinite;
+  }
+
+  &.connected {
+    border-color: $color-success-600;
+  }
+}
+
+@keyframes spin {
+  to {
+    -webkit-transform: rotate(360deg);
+  }
+}
