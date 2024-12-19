@@ -47,6 +47,36 @@ class TestMLBackendAPI(APITestCase):
         self.assertEqual(resp.status_code, 201)
         return resp.json()
 
+    def _get_backend_id_by_slug(self, slug: str) -> int:
+        backends_list_url = reverse_with_params("api:backend-list")
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.get(backends_list_url)
+        self.client.force_authenticate(user=None)
+        self.assertEqual(resp.status_code, 200)
+
+        # Find the backend ID by slug
+        resp = resp.json()
+        backends = resp["results"]
+        backend = next((b for b in backends if b["slug"] == slug), None)
+        self.assertIsNotNone(backend, f"No backend found with slug '{slug}'")
+        return backend["id"]
+
+    def _delete_backend(self, backend_id: int):
+        backends_delete_url = reverse_with_params("api:backend-detail", kwargs={"pk": backend_id})
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.delete(backends_delete_url)
+        self.client.force_authenticate(user=None)
+        self.assertEqual(resp.status_code, 204)
+        return resp
+
+    def _register_pipelines(self, backend_id):
+        backends_register_pipelines_url = reverse_with_params("api:backend-register-pipelines", args=[backend_id])
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(backends_register_pipelines_url)
+        data = resp.json()
+        self.assertEqual(data["success"], True)
+        return data
+
     def test_create_backend(self):
         self._create_backend(name="ML Backend Test", slug="ml_backend_test", endpoint_url="http://ml_backend:2000")
 
@@ -57,6 +87,20 @@ class TestMLBackendAPI(APITestCase):
         backend_id = response["id"]
         backend = Backend.objects.get(pk=backend_id)
         self.assertIn(self.project, backend.projects.all())
+
+    def test_backend_pipeline_registration(self):
+        # register a backend
+        response = self._create_backend(
+            name="ML Backend Test", slug="ml_backend_test", endpoint_url="http://ml_backend:2000"
+        )
+        backend_id = response["id"]
+
+        # sync the backend to create/add the associate pipelines
+        response = self._register_pipelines(backend_id)
+        backend = Backend.objects.get(pk=backend_id)
+        pipelines_queryset = backend.pipelines.all()
+
+        self.assertEqual(pipelines_queryset.count(), len(response["pipelines"]))
 
 
 class TestPipelineWithMLBackend(TestCase):
