@@ -106,6 +106,7 @@ class BackendSerializer(DefaultSerializer):
         model = Backend
         fields = [
             "id",
+            "details",
             "name",
             "slug",
             "description",
