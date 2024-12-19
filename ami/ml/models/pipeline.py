@@ -477,14 +477,7 @@ class Pipeline(BaseModel):
                 job.logger.error(msg)
             logger.error(msg)
 
-            results = PipelineResponse(
-                pipeline=self.slug,
-                total_time=0,
-                source_images=[],
-                detections=[],
-                errors=msg,
-            )
-            return results
+            raise Exception(msg)
         else:
             if job:
                 job.logger.info(f"Using Backend with ID={backend_id_lowest_latency}")
