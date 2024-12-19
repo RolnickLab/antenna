@@ -383,3 +383,32 @@ class TestPipeline(TestCase):
         images_again = list(collect_images(collection=self.image_collection, pipeline=new_pipeline))
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, len(images), "Images not re-processed with new pipeline")
+
+
+class TestAlgorithmCategoryMaps(TestCase):
+    def setUp(self):
+        self.algorithm_responses = create_algorithms_and_category_map(ALGORITHM_CHOICES)
+        self.algorithms = {key: Algorithm.objects.get(key=key) for key in ALGORITHM_CHOICES.keys()}
+
+    def test_create_algorithms_and_category_map(self):
+        assert len(self.algorithms) > 0
+        assert (
+            Algorithm.objects.filter(
+                key__in=self.algorithms.keys(),
+            )
+            .exclude(category_map=None)
+            .count()
+        ) > 0
+
+    def test_algorithm_category_maps(self):
+        for algorithm in Algorithm.objects.filter(
+            key__in=self.algorithms.keys(),
+        ).exclude(category_map=None):
+            assert algorithm.category_map  # For type checker, not the test
+            assert algorithm.category_map.labels
+            assert algorithm.category_map.labels_hash
+            assert algorithm.category_map.data
+
+            # Ensure the full labels in the data match the simple, ordered list of labels
+            sorted_data = sorted(algorithm.category_map.data, key=lambda x: x["index"])
+            assert [category["label"] for category in sorted_data] == algorithm.category_map.labels
