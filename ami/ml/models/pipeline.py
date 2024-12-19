@@ -22,6 +22,7 @@ from ami.main.models import (
     Taxon,
     TaxonRank,
     update_calculated_fields_for_events,
+    update_occurrence_determination,
 )
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
@@ -600,13 +601,12 @@ def create_classifications(
     return existing_classifications + new_classifications
 
 
-def create_occurrence_for_detection(
-    detection: Detection,
-    classifications: list[Classification],
+def create_and_update_occurrences_for_detections(
+    detections: list[Detection],
     logger: logging.Logger = logger,
-) -> Occurrence:
+):
     """
-    Create an Occurrence object from a Detection and a list of Classification objects.
+    Create an Occurrence object for each Detection, and update the occurrence determination.
 
     Select the best terminal classification for the occurrence determination.
 
@@ -616,29 +616,53 @@ def create_occurrence_for_detection(
     :return: The Occurrence object
     """
 
-    terminal_classifications = [c for c in classifications if c.terminal]
-    if not terminal_classifications:
-        logger.warning(
-            f"No terminal classification found for detection {detection}. " "Using intermediates if available."
-        )
-        terminal_classifications = classifications
+    # Group detections by source image id so we don't create duplicate occurrences
+    detections_by_source_image = collections.defaultdict(list)
+    for detection in detections:
+        detections_by_source_image[detection.source_image_id].append(detection)
 
-    best_classification = max(terminal_classifications, key=lambda c: c.score or float("-inf"))
+    occurrences_to_create = []
+    detections_to_update = []
 
-    if not detection.occurrence:
-        occurrence = Occurrence.objects.create(
-            event=detection.source_image.event,
-            deployment=detection.source_image.deployment,
-            project=detection.source_image.project,
-            determination=best_classification.taxon,
-            determination_score=best_classification.score,
-        )
-        occurrence.save()  # Ensure any signals are triggered
-        logger.info(f"Created new occurrence {occurrence} for detection {detection}")
-        detection.occurrence = occurrence  # type: ignore
-        detection.save()
+    for source_image_id, detections in detections_by_source_image.items():
+        logger.info(f"Determining occurrences for {len(detections)} detections for source image {source_image_id}")
 
-    return detection.occurrence
+        for detection in detections:
+            if not detection.occurrence:
+                occurrence = Occurrence(
+                    event=detection.source_image.event,
+                    deployment=detection.source_image.deployment,
+                    project=detection.source_image.project,
+                )
+            occurrences_to_create.append(occurrence)
+            logger.debug(f"Created new occurrence {occurrence} for detection {detection}")
+            detection.occurrence = occurrence  # type: ignore
+            detections_to_update.append(detection)
+
+        occurrences = Occurrence.objects.bulk_create(occurrences_to_create)
+        logger.info(f"Created {len(occurrences)} new occurrences")
+        Detection.objects.bulk_update(detections_to_update, ["occurrence"])
+
+        with transaction.atomic():
+            occurrences_to_update = []
+            occurrences_to_leave = []
+            for detection in detections:
+                assert detection.occurrence, f"No occurrence found for detection {detection}"
+                needs_update = update_occurrence_determination(
+                    detection.occurrence,
+                    current_determination=detection.occurrence.determination,
+                    save=False,
+                )
+                if needs_update:
+                    occurrences_to_update.append(detection.occurrence)
+                else:
+                    occurrences_to_leave.append(detection.occurrence)
+
+            Occurrence.objects.bulk_update(occurrences_to_update, ["determination", "determination_score"])
+            logger.info(
+                f"Updated {len(detections)} occurrences with best determinations "
+                f"(left {len(occurrences_to_leave)} unchanged)"
+            )
 
 
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
@@ -662,6 +686,9 @@ def save_results(
 
         job = Job.objects.get(pk=job_id)
         job_logger = job.logger
+
+    # @TODO set this level back to INFO
+    # job_logger.setLevel(logging.DEBUG)
 
     if results_json:
         results = PipelineResponse.parse_raw(results_json)
