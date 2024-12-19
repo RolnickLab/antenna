@@ -486,9 +486,10 @@ class Pipeline(BaseModel):
             return backend_id_lowest_latency
 
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        backend_id = self.choose_backend_for_pipeline(job_id)
-        if not isinstance(backend_id, int):
-            return backend_id
+        try:
+            backend_id = self.choose_backend_for_pipeline(job_id)
+        except Exception:
+            return
 
         if not self.backends.filter(pk=backend_id).first().endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
