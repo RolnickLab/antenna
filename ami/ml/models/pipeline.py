@@ -622,6 +622,7 @@ def create_and_update_occurrences_for_detections(
         detections_by_source_image[detection.source_image_id].append(detection)
 
     occurrences_to_create = []
+    detections_to_update = []
 
     for source_image_id, detections in detections_by_source_image.items():
         logger.info(f"Determining occurrences for {len(detections)} detections for source image {source_image_id}")
@@ -636,9 +637,12 @@ def create_and_update_occurrences_for_detections(
                 occurrences_to_create.append(occurrence)
                 logger.debug(f"Created new occurrence {occurrence} for detection {detection}")
                 detection.occurrence = occurrence  # type: ignore
+                detections_to_update.append(detection)
 
         occurrences = Occurrence.objects.bulk_create(occurrences_to_create)
         logger.info(f"Created {len(occurrences)} new occurrences")
+        Detection.objects.bulk_update(detections_to_update, ["occurrence"])
+        logger.info(f"Updated {len(detections_to_update)} detections with occurrences")
 
         occurrences_to_update = []
         occurrences_to_leave = []
@@ -656,8 +660,8 @@ def create_and_update_occurrences_for_detections(
 
         Occurrence.objects.bulk_update(occurrences_to_update, ["determination", "determination_score"])
         logger.info(
-            f"Updated {len(detections)} occurrences with best determinations "
-            f"(left {len(occurrences_to_leave)} unchanged)"
+            f"Updated the determination of {len(occurrences_to_update)} occurrences, "
+            f"left {len(occurrences_to_leave)} unchanged"
         )
 
 
