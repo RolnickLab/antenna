@@ -36,11 +36,7 @@ $dialog-padding-medium: 32px;
   max-width: calc(100% - (2 * $dialog-padding-large));
   height: calc(100vh - (2 * $dialog-padding-large));
   height: calc(100dvh - (2 * $dialog-padding-large));
-  border-radius: 4px;
-  background-color: $color-generic-white;
-  box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   z-index: 3;
-  overflow: hidden;
 
   &.compact {
     height: fit-content;
@@ -54,6 +50,9 @@ $dialog-padding-medium: 32px;
 .dialogContent {
   height: inherit;
   max-width: 100%;
+  border-radius: 4px;
+  background-color: $color-generic-white;
+  box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   overflow-y: auto;
   overflow-x: auto;
 }

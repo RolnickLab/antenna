@@ -3,6 +3,7 @@ import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
+import { Occurrence } from 'data-services/models/occurrence'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -12,7 +13,6 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -30,7 +30,7 @@ import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
-import styles from './occurrences.module.scss'
+import { OccurrenceNavigation } from './occurrence-navigation'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -70,9 +70,17 @@ export const Occurrences = () => {
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
+  useEffect(() => {
+    document.getElementById('app')?.scrollTo({ top: 0 })
+  }, [pagination.page])
+
+  useEffect(() => {
+    if (id) {
+      document
+        .getElementById(id)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [id])
 
   return (
     <>
@@ -135,27 +143,27 @@ export const Occurrences = () => {
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              items={occurrences}
-              isLoading={!id && isLoading}
               columns={columns(
                 projectId as string,
                 selectedItems.length === 0
               ).filter((column) => !!columnSettings[column.id])}
-              sortable
-              sortSettings={sort}
-              selectable={user.loggedIn}
-              selectedItems={selectedItems}
+              error={error}
+              isLoading={!id && isLoading}
+              items={occurrences}
               onSelectedItemsChange={setSelectedItems}
               onSortSettingsChange={setSort}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
+              sortable
+              sortSettings={sort}
             />
           )}
           {selectedView === 'gallery' && (
-            <div className={styles.galleryContent}>
-              <OccurrenceGallery
-                occurrences={occurrences}
-                isLoading={!id && isLoading}
-              />
-            </div>
+            <OccurrenceGallery
+              error={error}
+              isLoading={!id && isLoading}
+              occurrences={occurrences}
+            />
           )}
         </div>
       </div>
@@ -187,12 +195,20 @@ export const Occurrences = () => {
           />
         ) : null}
       </PageFooter>
-      {id ? <OccurrenceDetailsDialog id={id} /> : null}
+      {id ? (
+        <OccurrenceDetailsDialog id={id} occurrences={occurrences} />
+      ) : null}
     </>
   )
 }
 
-const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
+const OccurrenceDetailsDialog = ({
+  id,
+  occurrences,
+}: {
+  id: string
+  occurrences?: Occurrence[]
+}) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
@@ -226,6 +242,7 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
         error={error}
       >
         {occurrence ? <OccurrenceDetails occurrence={occurrence} /> : null}
+        <OccurrenceNavigation occurrences={occurrences} />
       </Dialog.Content>
     </Dialog.Root>
   )

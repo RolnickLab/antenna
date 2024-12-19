@@ -6,11 +6,13 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 
 export const OccurrenceGallery = ({
-  occurrences = [],
+  error,
   isLoading,
+  occurrences = [],
 }: {
-  occurrences?: Occurrence[]
+  error?: any
   isLoading: boolean
+  occurrences?: Occurrence[]
 }) => {
   const { projectId } = useParams()
 
@@ -32,5 +34,5 @@ export const OccurrenceGallery = ({
     [occurrences, projectId]
   )
 
-  return <Gallery items={items} isLoading={isLoading} />
+  return <Gallery error={error} isLoading={isLoading} items={items} />
 }

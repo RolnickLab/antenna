@@ -1,10 +1,6 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-.galleryContent {
-  padding-top: 24px;
-}
-
 .taxonCell {
   .taxonCellContent {
     display: flex;
@@ -33,11 +29,5 @@
     display: block;
     @include paragraph-medium();
     color: $color-neutral-700;
-  }
-}
-
-@media only screen and (max-width: $small-screen-breakpoint) {
-  .galleryContent {
-    padding-top: 16px;
   }
 }

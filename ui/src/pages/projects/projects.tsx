@@ -2,7 +2,6 @@ import { useProjects } from 'data-services/hooks/projects/useProjects'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { Error } from 'pages/error/error'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
@@ -16,10 +15,6 @@ export const Projects = () => {
     useProjects({ pagination })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
-
   return (
     <>
       <PageHeader
@@ -31,7 +26,11 @@ export const Projects = () => {
         {canCreate && <NewProjectDialog />}
       </PageHeader>
       <div className={styles.galleryContent}>
-        <ProjectGallery projects={projects} isLoading={isLoading} />
+        <ProjectGallery
+          error={error}
+          isLoading={isLoading}
+          projects={projects}
+        />
       </div>
       <PageFooter>
         {projects?.length ? (

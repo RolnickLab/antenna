@@ -35,10 +35,6 @@ export const SessionInfo = ({ session }: { session: Session }) => {
       value: session.numImages,
     },
     {
-      label: translate(STRING.FIELD_LABEL_DETECTIONS),
-      value: session.numDetections,
-    },
-    {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value: session.numOccurrences,
       to: getAppRoute({

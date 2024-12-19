@@ -6,11 +6,13 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 
 export const SpeciesGallery = ({
-  species = [],
+  error,
   isLoading,
+  species = [],
 }: {
-  species?: Species[]
+  error?: any
   isLoading: boolean
+  species?: Species[]
 }) => {
   const { projectId } = useParams()
 
@@ -31,5 +33,5 @@ export const SpeciesGallery = ({
     [species]
   )
 
-  return <Gallery items={items} isLoading={isLoading} />
+  return <Gallery error={error} isLoading={isLoading} items={items} />
 }

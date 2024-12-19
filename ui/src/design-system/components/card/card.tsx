@@ -11,6 +11,7 @@ export enum CardSize {
 
 interface CardProps {
   children?: ReactNode
+  id?: string
   image?: {
     src: string
     alt?: string
@@ -24,6 +25,7 @@ interface CardProps {
 
 export const Card = ({
   children,
+  id,
   image,
   maxWidth,
   size = CardSize.Medium,
@@ -32,7 +34,7 @@ export const Card = ({
   to,
 }: CardProps) => {
   return (
-    <div className={styles.container} style={{ maxWidth }}>
+    <div id={id} className={styles.container} style={{ maxWidth }}>
       <div className={styles.square}>
         {image ? (
           to ? (

@@ -4,7 +4,6 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
-import { Error } from 'pages/error/error'
 import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -28,10 +27,6 @@ export const StorageSources = () => {
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
-
   return (
     <>
       <PageHeader
@@ -47,14 +42,14 @@ export const StorageSources = () => {
           <NewEntityDialog collection={API_ROUTES.STORAGE} type="storage" />
         )}
       </PageHeader>
-
       <Table
-        items={items}
-        isLoading={isLoading}
         columns={columns(projectId as string)}
+        error={error}
+        isLoading={isLoading}
+        items={items}
+        onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
-        onSortSettingsChange={setSort}
       />
       {items?.length ? (
         <PaginationBar

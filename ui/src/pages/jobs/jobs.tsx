@@ -9,7 +9,6 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import _ from 'lodash'
-import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
 import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect } from 'react'
@@ -46,10 +45,6 @@ export const Jobs = () => {
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
-
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       <div className="space-y-6">
@@ -80,11 +75,12 @@ export const Jobs = () => {
           {canCreate ? <NewJobDialog /> : null}
         </PageHeader>
         <Table
-          items={jobs}
-          isLoading={!id && isLoading}
           columns={columns(projectId as string).filter(
             (column) => !!columnSettings[column.id]
           )}
+          error={error}
+          items={jobs}
+          isLoading={!id && isLoading}
           sortable
           sortSettings={sort}
           onSortSettingsChange={setSort}

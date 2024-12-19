@@ -3,7 +3,6 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
-import { Error } from 'pages/error/error'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -37,10 +36,6 @@ export const Entities = ({
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
-
   return (
     <>
       <PageHeader
@@ -57,12 +52,13 @@ export const Entities = ({
         )}
       </PageHeader>
       <Table
-        items={entities}
-        isLoading={isLoading}
         columns={columns(collection, type)}
+        error={error}
+        isLoading={isLoading}
+        items={entities}
+        onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
-        onSortSettingsChange={setSort}
       />
       {entities?.length ? (
         <PaginationBar

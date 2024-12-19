@@ -5,9 +5,11 @@ import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 
 export const SessionGallery = ({
+  error,
   sessions = [],
   isLoading,
 }: {
+  error?: any
   sessions?: Session[]
   isLoading: boolean
 }) => {
@@ -27,5 +29,5 @@ export const SessionGallery = ({
     [sessions, projectId]
   )
 
-  return <Gallery items={items} isLoading={isLoading} />
+  return <Gallery error={error} isLoading={isLoading} items={items} />
 }
