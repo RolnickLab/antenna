@@ -2065,9 +2065,11 @@ class Occurrence(BaseModel):
         """
         Use the best prediction as the best identification if there are no human identifications.
 
-        Only consider terminal classifications (the final output of a pipeline, not intermediate models).
+        Uses the highest scoring classification (from any algorithm) as the best prediction.
+        Considers terminal classifications first, then non-terminal ones.
+        (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
         """
-        return self.predictions().filter(terminal=True).order_by("-score").first()
+        return self.predictions().order_by("-terminal", "-score").first()
 
     @functools.cached_property
     def best_identification(self):

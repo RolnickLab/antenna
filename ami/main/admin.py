@@ -221,11 +221,38 @@ class SourceImageAdmin(AdminBase):
 class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     """Admin panel example for ``Occurrence`` model."""
 
-    list_display = ("id", "determination", "project", "deployment", "event")
+    list_display = (
+        "id",
+        "determination",
+        "project",
+        "deployment",
+        "event",
+        "detections_count",
+        "created_at",
+        "updated_at",
+    )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
-        return qs.select_related("determination", "project", "deployment", "event")
+        qs = qs.select_related("determination", "project", "deployment", "event")
+        # Add detections count to queryset
+        qs = qs.annotate(detections_count=models.Count("detections"))
+        # Add min, max and avg detection__classifications counts to queryset
+        # qs = qs.annotate(
+        #     min_detection_classifications=models.Min("detections__classifications"),
+        #     max_detection_classifications=models.Max("detections__classifications"),
+        #     avg_detection_classifications=models.Avg("detections__classifications"),
+        # )
+        return qs
+
+    @admin.display(
+        description="Detections",
+        ordering="detections_count",
+    )
+    def detections_count(self, obj) -> int:
+        return obj.detections_count
+
+    ordering = ("-created_at",)
 
 
 @admin.register(Classification)
