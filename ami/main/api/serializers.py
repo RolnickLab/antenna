@@ -719,12 +719,24 @@ class ClassificationSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
+            "scores",
+            "logits",
             "created_at",
         ]
 
 
-class OccurrenceClassificationSerializer(ClassificationSerializer):
-    pass
+class ClassificationNestedSerializer(ClassificationSerializer):
+    class Meta:
+        model = Classification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "score",
+            "terminal",
+            "algorithm",
+            "created_at",
+        ]
 
 
 class CaptureDetectionsSerializer(DefaultSerializer):
@@ -769,7 +781,7 @@ class DetectionCaptureNestedSerializer(DefaultSerializer):
 
 
 class DetectionNestedSerializer(DefaultSerializer):
-    classifications = ClassificationSerializer(many=True, read_only=True)
+    classifications = ClassificationNestedSerializer(many=True, read_only=True)
     capture = DetectionCaptureNestedSerializer(read_only=True, source="source_image")
 
     class Meta:
@@ -1080,7 +1092,7 @@ class OccurrenceListSerializer(DefaultSerializer):
         if identification or not obj.best_prediction:
             prediction = None
         else:
-            prediction = OccurrenceClassificationSerializer(obj.best_prediction, context=context).data
+            prediction = ClassificationNestedSerializer(obj.best_prediction, context=context).data
 
         return dict(
             taxon=taxon,
@@ -1093,7 +1105,8 @@ class OccurrenceListSerializer(DefaultSerializer):
 class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
-    predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)

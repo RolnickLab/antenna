@@ -40,7 +40,7 @@ export const IdentificationCard = ({
   const canDelete = identification.userPermissions.includes(
     UserPermission.Update
   )
-  const showAgree = !byCurrentUser && canAgree && !identification.overridden
+  const showAgree = !byCurrentUser && canAgree
   const showDelete = byCurrentUser && canDelete
 
   if (deleteIdOpen) {

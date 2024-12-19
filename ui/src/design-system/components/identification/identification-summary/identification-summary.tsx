@@ -49,6 +49,22 @@ export const IdentificationSummary = ({
       {identification.algorithm && (
         <AlgorithmDetails algorithm={identification.algorithm} />
       )}
+
+      {identification.score && (
+        <div className={styles.AlgorithmDetails}>
+          <span>{`${identification.score.toPrecision(4)}`}</span>
+        </div>
+      )}
+      {identification.terminal !== undefined && (
+        <div className={styles.AlgorithmDetails}>
+          {identification.terminal
+            ? translate(STRING.TERMINAL_CLASSIFICATION)
+            : translate(STRING.INTERMEDIATE_CLASSIFICATION)}
+        </div>
+      )}
+      <div className={styles.AlgorithmDetails}>
+        <span>{formattedTime}</span>
+      </div>
     </div>
   )
 }

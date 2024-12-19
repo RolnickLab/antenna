@@ -5,13 +5,21 @@ import logging
 import pathlib
 import re
 import tempfile
-import urllib.request
 from urllib.parse import urlparse
 
 import PIL.Image
+import PIL.ImageFile
+import requests
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+PIL.ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+# This is polite and required by some hosts
+# see: https://foundation.wikimedia.org/wiki/Policy:User-Agent_policy
+USER_AGENT = "AntennaInsectDataPlatform/1.0 (https://insectai.org)"
 
 
 def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
@@ -44,17 +52,20 @@ def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
 
     else:
         logger.info(f"Downloading {path_or_url} to {local_filepath}")
-        try:
-            resulting_filepath, _headers = urllib.request.urlretrieve(url=path_or_url, filename=local_filepath)
-        except Exception as e:
-            raise Exception(f"Could not retrieve {path_or_url}: {e}")
+        headers = {"User-Agent": USER_AGENT}
+        response = requests.get(path_or_url, stream=True, headers=headers)
+        response.raise_for_status()  # Raise an exception for HTTP errors
 
-        resulting_filepath = pathlib.Path(resulting_filepath)
+        with open(local_filepath, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        resulting_filepath = pathlib.Path(local_filepath).resolve()
         logger.info(f"Downloaded to {resulting_filepath}")
         return resulting_filepath
 
 
-def open_image(fp: str | bytes | pathlib.Path, raise_exception: bool = True) -> PIL.Image.Image | None:
+def open_image(fp: str | bytes | pathlib.Path | io.BytesIO, raise_exception: bool = True) -> PIL.Image.Image | None:
     """
     Wrapper from PIL.Image.open that handles errors and converts to RGB.
     """
