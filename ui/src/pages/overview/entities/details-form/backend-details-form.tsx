@@ -61,7 +61,10 @@ export const BackendDetailsForm = ({
     setError: setFieldError,
   } = useForm<BackendFormValues>({
     defaultValues: {
-      endpoint_url: backend?.endpointUrl,
+      name: backend?.name ?? '',
+      slug: backend?.slug ?? '',
+      endpoint_url: backend?.endpointUrl ?? '',
+      description: backend?.description ?? '',
     },
     mode: 'onChange',
   })
