@@ -4,7 +4,7 @@ import time
 import typing
 
 import requests
-from django.db import models, transaction
+from django.db import models
 from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
@@ -622,7 +622,6 @@ def create_and_update_occurrences_for_detections(
         detections_by_source_image[detection.source_image_id].append(detection)
 
     occurrences_to_create = []
-    detections_to_update = []
 
     for source_image_id, detections in detections_by_source_image.items():
         logger.info(f"Determining occurrences for {len(detections)} detections for source image {source_image_id}")
@@ -634,35 +633,32 @@ def create_and_update_occurrences_for_detections(
                     deployment=detection.source_image.deployment,
                     project=detection.source_image.project,
                 )
-            occurrences_to_create.append(occurrence)
-            logger.debug(f"Created new occurrence {occurrence} for detection {detection}")
-            detection.occurrence = occurrence  # type: ignore
-            detections_to_update.append(detection)
+                occurrences_to_create.append(occurrence)
+                logger.debug(f"Created new occurrence {occurrence} for detection {detection}")
+                detection.occurrence = occurrence  # type: ignore
 
         occurrences = Occurrence.objects.bulk_create(occurrences_to_create)
         logger.info(f"Created {len(occurrences)} new occurrences")
-        Detection.objects.bulk_update(detections_to_update, ["occurrence"])
 
-        with transaction.atomic():
-            occurrences_to_update = []
-            occurrences_to_leave = []
-            for detection in detections:
-                assert detection.occurrence, f"No occurrence found for detection {detection}"
-                needs_update = update_occurrence_determination(
-                    detection.occurrence,
-                    current_determination=detection.occurrence.determination,
-                    save=False,
-                )
-                if needs_update:
-                    occurrences_to_update.append(detection.occurrence)
-                else:
-                    occurrences_to_leave.append(detection.occurrence)
-
-            Occurrence.objects.bulk_update(occurrences_to_update, ["determination", "determination_score"])
-            logger.info(
-                f"Updated {len(detections)} occurrences with best determinations "
-                f"(left {len(occurrences_to_leave)} unchanged)"
+        occurrences_to_update = []
+        occurrences_to_leave = []
+        for detection in detections:
+            assert detection.occurrence, f"No occurrence found for detection {detection}"
+            needs_update = update_occurrence_determination(
+                detection.occurrence,
+                current_determination=detection.occurrence.determination,
+                save=False,
             )
+            if needs_update:
+                occurrences_to_update.append(detection.occurrence)
+            else:
+                occurrences_to_leave.append(detection.occurrence)
+
+        Occurrence.objects.bulk_update(occurrences_to_update, ["determination", "determination_score"])
+        logger.info(
+            f"Updated {len(detections)} occurrences with best determinations "
+            f"(left {len(occurrences_to_leave)} unchanged)"
+        )
 
 
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
