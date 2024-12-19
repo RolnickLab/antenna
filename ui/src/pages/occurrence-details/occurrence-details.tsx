@@ -110,10 +110,6 @@ export const OccurrenceDetails = ({
       label: translate(STRING.FIELD_LABEL_DURATION),
       value: occurrence.durationLabel,
     },
-    {
-      label: translate(STRING.FIELD_LABEL_DETECTIONS),
-      value: occurrence.numDetections,
-    },
   ]
 
   return (

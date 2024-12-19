@@ -160,14 +160,6 @@ export const columns: (
     ),
   },
   {
-    id: 'detections',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
-    sortField: 'detections_count',
-    renderCell: (item: Occurrence) => (
-      <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',

@@ -9,7 +9,6 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { Error } from 'pages/error/error'
 import { SpeciesDetails } from 'pages/species-details/species-details'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -23,7 +22,6 @@ import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
-import styles from './species.module.scss'
 
 export const Species = () => {
   const { projectId, id } = useParams()
@@ -37,10 +35,6 @@ export const Species = () => {
     filters,
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
-
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
 
   return (
     <>
@@ -78,18 +72,21 @@ export const Species = () => {
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              items={species}
-              isLoading={!id && isLoading}
               columns={columns(projectId as string)}
+              error={error}
+              isLoading={!id && isLoading}
+              items={species}
+              onSortSettingsChange={setSort}
               sortable
               sortSettings={sort}
-              onSortSettingsChange={setSort}
             />
           )}
           {selectedView === 'gallery' && (
-            <div className={styles.galleryContent}>
-              <SpeciesGallery species={species} isLoading={!id && isLoading} />
-            </div>
+            <SpeciesGallery
+              error={error}
+              isLoading={!id && isLoading}
+              species={species}
+            />
           )}
         </div>
       </div>

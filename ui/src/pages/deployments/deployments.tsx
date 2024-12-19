@@ -3,7 +3,6 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { Table } from 'design-system/components/table/table/table'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
-import { Error } from 'pages/error/error'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useClientSideSort } from 'utils/useClientSideSort'
@@ -23,10 +22,6 @@ export const Deployments = () => {
   })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
-
   return (
     <>
       <PageHeader
@@ -41,12 +36,13 @@ export const Deployments = () => {
         {canCreate ? <NewDeploymentDialog /> : null}
       </PageHeader>
       <Table
-        items={sortedItems}
-        isLoading={!id && isLoading}
         columns={columns(projectId as string)}
+        error={error}
+        isLoading={!id && isLoading}
+        items={sortedItems}
+        onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
-        onSortSettingsChange={setSort}
       />
       {id ? <DeploymentDetailsDialog id={id} /> : null}
     </>
