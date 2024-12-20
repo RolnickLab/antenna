@@ -420,6 +420,7 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
             "name",
             "rank",
             "details",
+            "gbif_taxon_key",
         ]
 
 
@@ -689,6 +690,7 @@ class TaxonSerializer(DefaultSerializer):
             "detections_count",
             "events_count",
             "occurrences",
+            "gbif_taxon_key",
         ]
 
 
@@ -708,6 +710,34 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
 
 
 class ClassificationSerializer(DefaultSerializer):
+    taxon = TaxonNestedSerializer(read_only=True)
+    algorithm = AlgorithmSerializer(read_only=True)
+
+    class Meta:
+        model = Classification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "score",
+            "algorithm",
+            "scores",
+            "logits",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ClassificationWithTaxaSerializer(ClassificationSerializer):
+    taxa = TaxonNestedSerializer(many=True, read_only=True)
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = ClassificationSerializer.Meta.fields + [
+            "taxa",
+        ]
+
+
+class ClassificationListSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
 
@@ -748,6 +778,7 @@ class CaptureDetectionsSerializer(DefaultSerializer):
         # queryset = Detection.objects.prefetch_related("classifications")
         fields = [
             "id",
+            "details",
             "url",
             "width",
             "height",
@@ -789,6 +820,7 @@ class DetectionNestedSerializer(DefaultSerializer):
         # queryset = Detection.objects.prefetch_related("classifications")
         fields = [
             "id",
+            "details",
             "timestamp",
             "url",
             "capture",
@@ -823,6 +855,7 @@ class DetectionSerializer(DefaultSerializer):
     detection_algorithm_id = serializers.PrimaryKeyRelatedField(
         queryset=Algorithm.objects.all(), source="detection_algorithm", write_only=True
     )
+    classifications = ClassificationNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = Detection
@@ -830,6 +863,7 @@ class DetectionSerializer(DefaultSerializer):
             "source_image",
             "detection_algorithm",
             "detection_algorithm_id",
+            "classifications",
         ]
 
 
@@ -1070,6 +1104,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_details",
             "identifications",
             "created_at",
+            "updated_at",
         ]
 
     def get_determination_details(self, obj: Occurrence):

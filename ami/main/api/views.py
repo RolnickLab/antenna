@@ -46,7 +46,9 @@ from ..models import (
     update_detection_counts,
 )
 from .serializers import (
+    ClassificationListSerializer,
     ClassificationSerializer,
+    ClassificationWithTaxaSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
     DetectionListSerializer,
@@ -674,9 +676,9 @@ class DetectionViewSet(DefaultViewSet):
     API endpoint that allows detections to be viewed or edited.
     """
 
-    queryset = Detection.objects.all()
+    queryset = Detection.objects.all().select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
-    filterset_fields = ["source_image", "detection_algorithm"]
+    filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
     ordering_fields = ["created_at", "updated_at", "detection_score", "timestamp"]
 
     def get_serializer_class(self):
@@ -1195,7 +1197,7 @@ class ClassificationViewSet(DefaultViewSet):
     API endpoint for viewing and adding classification results from a model.
     """
 
-    queryset = Classification.objects.all()
+    queryset = Classification.objects.all().select_related("taxon", "algorithm", "detection")
     serializer_class = ClassificationSerializer
     filterset_fields = ["detection", "detection__occurrence", "taxon", "algorithm"]
     ordering_fields = [
@@ -1203,6 +1205,18 @@ class ClassificationViewSet(DefaultViewSet):
         "updated_at",
         "score",
     ]
+
+    def get_serializer_class(self):
+        """
+        Return a different serializer for list and detail views.
+        If "with_taxa" is in the query params, return a different serializer.
+        """
+        if self.action == "list":
+            return ClassificationListSerializer
+        elif "with_taxa" in self.request.query_params:
+            return ClassificationWithTaxaSerializer
+        else:
+            return ClassificationSerializer
 
 
 class SummaryView(GenericAPIView):
