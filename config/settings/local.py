@@ -23,15 +23,6 @@ ALLOWED_HOSTS = [
     "django",
 ] + env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
-# CACHES
-# ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#caches
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "",
-    }
-}
 
 # EMAIL
 # ------------------------------------------------------------------------------
