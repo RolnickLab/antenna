@@ -35,6 +35,7 @@ from ami.ml.schemas import (
     SourceImageRequest,
 )
 from ami.ml.tasks import celery_app, create_detection_images
+from ami.utils.requests import create_session
 
 logger = logging.getLogger(__name__)
 
@@ -184,16 +185,18 @@ def process_images(
         ],
     )
 
-    resp = requests.post(endpoint_url, json=request_data.dict())
+    session = create_session()
+    resp = session.post(endpoint_url, json=request_data.dict())
     if not resp.ok:
         try:
             msg = resp.json()["detail"]
-        except Exception:
+        except (ValueError, KeyError):
             msg = resp.content
         if job:
             job.logger.error(msg)
         else:
             logger.error(msg)
+            raise requests.HTTPError(msg)
 
         resp.raise_for_status()
 
