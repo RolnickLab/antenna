@@ -1203,9 +1203,16 @@ class ClassificationViewSet(DefaultViewSet):
     API endpoint for viewing and adding classification results from a model.
     """
 
-    queryset = Classification.objects.all().select_related("taxon", "algorithm", "detection")
+    queryset = Classification.objects.all()  # .select_related("taxon", "algorithm", "detection")
     serializer_class = ClassificationSerializer
-    filterset_fields = ["detection", "detection__occurrence", "taxon", "algorithm"]
+    filterset_fields = [
+        "detection",
+        "detection__occurrence",
+        "taxon",
+        "algorithm",
+        "detection__source_image",
+        "detection__source_image__project",
+    ]
     ordering_fields = [
         "created_at",
         "updated_at",

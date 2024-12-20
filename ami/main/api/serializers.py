@@ -738,9 +738,6 @@ class ClassificationWithTaxaSerializer(ClassificationSerializer):
 
 
 class ClassificationListSerializer(DefaultSerializer):
-    taxon = TaxonNestedSerializer(read_only=True)
-    algorithm = AlgorithmSerializer(read_only=True)
-
     class Meta:
         model = Classification
         fields = [
@@ -749,9 +746,8 @@ class ClassificationListSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
-            "scores",
-            "logits",
             "created_at",
+            "updated_at",
         ]
 
 
