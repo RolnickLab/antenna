@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 import logging
 import time
 import typing
@@ -667,13 +668,23 @@ def create_and_update_occurrences_for_detections(
         SourceImage.objects.get(pk=source_image_id).save()
 
 
+@dataclasses.dataclass
+class PipelineSaveResults:
+    pipeline: "Pipeline"
+    source_images: list[SourceImage]
+    detections: list[Detection]
+    classifications: list[Classification]
+    algorithms: dict[str, Algorithm]
+    total_time: float
+
+
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
 def save_results(
     results: PipelineResponse | None = None,
     results_json: str | None = None,
     job_id: int | None = None,
     return_created=False,
-):
+) -> PipelineSaveResults | None:
     """
     Save results from ML pipeline API.
 
@@ -698,6 +709,7 @@ def save_results(
     job_logger.info(f"Saving results from pipeline {results.pipeline}")
 
     results = PipelineResponse.parse_obj(results.dict())
+    assert results, "No results from pipeline to save"
     source_images = SourceImage.objects.filter(pk__in=[int(img.id) for img in results.source_images]).distinct()
 
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
@@ -718,7 +730,7 @@ def save_results(
         logger=job_logger,
     )
 
-    create_classifications(
+    classifications = create_classifications(
         detections=detections,
         detection_responses=results.detections,
         algorithms_used=algorithms_used,
@@ -753,11 +765,21 @@ def save_results(
             pipeline.algorithms.add(algo)
             job_logger.debug(f"Added algorithm {algo} to pipeline {pipeline}")
 
-    if return_created:
-        return []
-
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
+
+    if return_created:
+        """
+        By default, return None because celery tasks need special handling to return objects.
+        """
+        return PipelineSaveResults(
+            pipeline=pipeline,
+            source_images=source_images,
+            detections=detections,
+            classifications=classifications,
+            algorithms=algorithms_used,
+            total_time=total_time,
+        )
 
 
 class PipelineStage(ConfigurableStage):
