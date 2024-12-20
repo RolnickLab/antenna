@@ -515,20 +515,27 @@ def create_classification(
     ).first()
 
     if existing_classification:
+        # @TODO remove this after all existing classifications have been updated (added 2024-12-20)
+        NEW_FIELDS = ["logits", "scores", "terminal", "category_map"]
         logger.debug(
             "Duplicate classification found: "
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
-            "not creating a new one."
+            f"not creating a new one, but updating new fields if they are None ({NEW_FIELDS})"
         )
         fields_to_update = []
-        for field in ["logits", "scores", "terminal"]:
+        for field in NEW_FIELDS:
             # update new fields if they are None
             if getattr(existing_classification, field) is None:
                 fields_to_update.append(field)
         if fields_to_update:
             logger.info(f"Updating fields {fields_to_update} for existing classification {existing_classification}")
             for field in fields_to_update:
-                setattr(existing_classification, field, getattr(classification_resp, field))
+                if field == "category_map":
+                    # Use the foreign key from the classification algorithm
+                    setattr(existing_classification, field, classification_algo.category_map)
+                else:
+                    # Get the value from the classification response
+                    setattr(existing_classification, field, getattr(classification_resp, field))
             existing_classification.save(update_fields=fields_to_update)
             logger.info(f"Updated existing classification {existing_classification}")
 
@@ -544,6 +551,7 @@ def create_classification(
             logits=classification_resp.logits,
             scores=classification_resp.scores,
             terminal=classification_resp.terminal,
+            category_map=classification_algo.category_map,
         )
         classification = new_classification
 
