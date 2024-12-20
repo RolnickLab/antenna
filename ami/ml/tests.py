@@ -31,6 +31,45 @@ class TestPipelineWithMLBackend(TestCase):
         pipeline_response = self.pipeline.process_images(self.test_images)
         assert pipeline_response.detections
 
+    def test_created_category_maps(self):
+        # Send images to ML backend to process and return detections
+        pipeline_response = self.pipeline.process_images(self.test_images)
+        save_results(pipeline_response, return_created=True)
+
+        source_images = SourceImage.objects.filter(pk__in=[image.id for image in pipeline_response.source_images])
+        detections = Detection.objects.filter(source_image__in=source_images).select_related(
+            "detection_algorithm",
+            "detection_algorithm__category_map",
+        )
+        assert detections.count() > 0
+        for detection in detections:
+            # No detection algorithm should have category map at this time (but this may change!)
+            assert detection.detection_algorithm
+            assert detection.detection_algorithm.category_map is None
+
+            # Ensure that all classification algorithms have a category map
+            classification_taxa = set()
+            for classification in detection.classifications.all().select_related(
+                "algorithm",
+                "algorithm__category_map",
+            ):
+                assert classification.algorithm is not None
+                assert classification.category_map is not None
+                assert classification.algorithm.category_map == classification.category_map
+
+                _, top_score = list(classification.predictions(sort=True))[0]
+                assert top_score == classification.score
+
+                top_taxon, top_taxon_score = list(classification.predictions_with_taxa(sort=True))[0]
+                assert top_taxon == classification.taxon
+                assert top_taxon_score == classification.score
+
+                classification_taxa.add(top_taxon)
+
+            # Check the occurrence determination taxon
+            assert detection.occurrence
+            assert detection.occurrence.determination in classification_taxa
+
 
 class TestPipeline(TestCase):
     def setUp(self):

@@ -65,7 +65,8 @@ class AlgorithmCategoryMap(BaseModel):
         :param category_field: The field in the category data to match against the Taxon name
         :return: The category map with the taxon objects added
 
-        @TODO consider creating missing taxa
+        @TODO need a top_n parameter to limit the number of taxa to fetch
+        @TODO consider creating missing taxa?
         """
 
         from ami.main.models import Taxon

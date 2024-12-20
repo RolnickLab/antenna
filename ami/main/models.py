@@ -1773,6 +1773,55 @@ class Classification(BaseModel):
             f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id} ({terminal})"
         )
 
+    def predictions(self, sort=True) -> typing.Iterable[tuple[str, float]]:
+        """
+        Return all label-score pairs for this classification using the category map.
+        """
+        if not self.category_map:
+            raise ValueError("Classification must have a category map to get predictions.")
+        scores = self.scores or []
+        preds = zip(self.category_map.labels, scores)
+        if sort:
+            return sorted(preds, key=lambda x: x[1], reverse=True)
+        else:
+            return preds
+
+    def predictions_with_taxa(self, sort=True) -> typing.Iterable[tuple["Taxon", float]]:
+        """
+        Return taxa objects and their scores for this classification using the category map.
+
+        @TODO make this more efficient with numpy and/or postgres array functions. especially when we only need
+        the top N out of thousands of taxa.
+        """
+        if not self.category_map:
+            raise ValueError("Classification must have a category map to get predictions.")
+        scores = self.scores or []
+        category_data_with_taxa = self.category_map.with_taxa()
+        taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
+        preds = zip(taxa_sorted_by_index, scores)
+        if sort:
+            return sorted(preds, key=lambda x: x[1], reverse=True)
+        else:
+            return preds
+
+    def taxa(self) -> typing.Iterable["Taxon"]:
+        """
+        Return the taxa objects for this classification using the category map.
+        """
+        if not self.category_map:
+            return []
+        category_data_with_taxa = self.category_map.with_taxa()
+        taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
+        return taxa_sorted_by_index
+
+    def save(self, *args, **kwargs):
+        """
+        Set the category map based on the algorithm.
+        """
+        if self.algorithm and not self.category_map:
+            self.category_map = self.algorithm.category_map
+        super().save(*args, **kwargs)
+
 
 @final
 class Detection(BaseModel):
@@ -2187,12 +2236,12 @@ def update_occurrence_determination(
             new_score = top_prediction.score
 
     if new_determination and new_determination != current_determination:
-        logger.info(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
+        logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
         occurrence.determination = new_determination
         needs_update = True
 
     if new_score and new_score != occurrence.determination_score:
-        logger.info(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
+        logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
         needs_update = True
 
