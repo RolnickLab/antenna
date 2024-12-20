@@ -60,6 +60,11 @@ EMAIL_SUBJECT_PREFIX = env(
 INSTALLED_APPS = ["whitenoise.runserver_nostatic"] + INSTALLED_APPS  # noqa: F405
 
 
+# Long queries can be a problem in development, this should stop them after 30s
+database_options = DATABASES["default"].get("OPTIONS", {})  # noqa: F405
+database_options["options"] = "-c statement_timeout=30s"
+DATABASES["default"]["OPTIONS"] = database_options  # noqa: F405
+
 # django-debug-toolbar
 # ------------------------------------------------------------------------------
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#prerequisites
