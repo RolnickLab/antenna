@@ -753,7 +753,8 @@ def save_results(
     )
 
     # Update precalculated counts on source images and events
-    # collect all source images for the detections
+    source_images = list(source_images)
+    logger.info(f"Updating calculated fields for {len(source_images)} source images")
     for source_image in source_images:
         source_image.save()
 
