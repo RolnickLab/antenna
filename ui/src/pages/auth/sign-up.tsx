@@ -94,7 +94,7 @@ export const SignUp = () => {
           {isSuccess ? (
             <>
               <Icon
-                type={IconType.Checkmark}
+                type={IconType.RadixCheck}
                 size={12}
                 theme={IconTheme.Success}
               />

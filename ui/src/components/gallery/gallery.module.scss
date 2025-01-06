@@ -5,14 +5,11 @@
 .gallery {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
   gap: 16px;
   width: 100%;
   min-height: 320px;
-
-  &.large {
-    grid-template-columns: 1fr 1fr 1fr 1fr 1fr !important;
-  }
+  padding-top: 24px;
 
   &.loading {
     margin: 0;
@@ -24,11 +21,8 @@
 }
 
 .loadingWrapper {
-  position: absolute;
   width: 100%;
-  height: 100%;
-  top: 0;
-  right: 0;
+  min-height: 320px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -36,30 +30,19 @@
 
 @media only screen and (max-width: $large-screen-breakpoint) {
   .gallery {
-    grid-template-columns: 1fr 1fr 1fr 1fr 1fr !important;
-
-    &.large {
-      grid-template-columns: 1fr 1fr 1fr !important;
-    }
+    grid-template-columns: 1fr 1fr 1fr !important;
   }
 }
 
 @media only screen and (max-width: $medium-screen-breakpoint) {
   .gallery {
-    grid-template-columns: 1fr 1fr 1fr !important;
-
-    &.large {
-      grid-template-columns: 1fr 1fr !important;
-    }
+    grid-template-columns: 1fr 1fr !important;
   }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
   .gallery {
-    grid-template-columns: 1fr 1fr !important;
-
-    &.large {
-      grid-template-columns: 1fr !important;
-    }
+    grid-template-columns: 1fr !important;
+    padding-top: 16px;
   }
 }

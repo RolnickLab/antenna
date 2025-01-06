@@ -16,7 +16,7 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   white-space: nowrap;
 }
 
@@ -35,18 +35,19 @@
 .value {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   white-space: pre-wrap;
 
   &.link {
     color: $color-primary-1-600;
+    font-weight: 600;
   }
 }
 
 .description {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   font-style: italic;
   word-break: break-word;
 }
@@ -60,6 +61,7 @@
 }
 
 .input {
+  all: unset;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -68,8 +70,8 @@
   padding: 8px 12px;
   @include paragraph-small();
   background-color: $color-generic-white;
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
+  color: $color-neutral-700;
+  border: 1px solid $color-neutral-100;
   box-sizing: border-box;
 
   &.password {
@@ -77,7 +79,7 @@
   }
 
   &::placeholder {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     opacity: 1; /* For Firefox */
   }
 

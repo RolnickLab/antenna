@@ -2,17 +2,14 @@
 @import 'src/design-system/variables/typography.scss';
 
 .wrapper {
-  position: sticky;
-  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid $color-neutral-200;
+  padding: 2px 2px 24px;
+  border-bottom: 1px solid $color-neutral-100;
   background-color: $color-neutral-50;
-  height: 96px;
-  margin: -16px 0 0;
   box-sizing: border-box;
-  z-index: 2;
+  z-index: 3;
 }
 
 .row {
@@ -25,13 +22,20 @@
 .title {
   @include paragraph-large();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin: 0;
 }
 
 .subTitle {
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   margin: 0;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .details {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

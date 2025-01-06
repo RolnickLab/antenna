@@ -7,8 +7,8 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
 from ami.main.models import Event, Occurrence, Project, Taxon, TaxonRank, group_images_into_events
+from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
-from tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,76 @@ class TestImageGrouping(TestCase):
 #         )
 #         if deployment:
 #             sync_source_images(deployment.pk)
+
+
+class TestEvents(TestCase):
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_captures(deployment=deployment, num_nights=2, images_per_night=5)
+        group_images_into_events(deployment=deployment)
+        self.project = project
+        self.deployment = deployment
+        return super().setUp()
+
+    def test_event_calculated_fields(self):
+        event, event_2 = self.deployment.events.all()
+
+        # Test initial calculated fields
+        event.update_calculated_fields(save=True)
+        event.refresh_from_db()
+
+        self.assertEqual(event.captures_count, 5)
+        self.assertIsNotNone(event.detections_count)
+        self.assertIsNotNone(event.occurrences_count)
+
+        initial_update_date = event.calculated_fields_updated_at
+        self.assertIsNotNone(initial_update_date)
+
+        # Add more captures and test that the calculated fields are updated
+        for capture in event_2.captures.all():
+            event.captures.add(capture)  # type: ignore
+
+        event.update_calculated_fields(save=True)
+        event.refresh_from_db()
+
+        self.assertEqual(event.captures_count, event.get_captures_count())
+        self.assertEqual(event.captures_count, 10)
+        self.assertGreater(event.calculated_fields_updated_at, initial_update_date)  # type: ignore
+
+    def test_event_calculated_fields_batch(self):
+        from ami.main.models import update_calculated_fields_for_events
+
+        last_updated_timestamps = []
+        for event in self.deployment.events.all().order_by("pk"):
+            self.assertEqual(event.captures_count, event.get_captures_count())
+            self.assertEqual(event.detections_count, event.get_detections_count())
+            self.assertEqual(event.occurrences_count, event.get_occurrences_count())
+            self.assertIsNotNone(event.calculated_fields_updated_at)
+            last_updated_timestamps.append(event.calculated_fields_updated_at)
+
+        # Delete all detections for all source images and test that the calculated fields are updated
+        from ami.main.models import Detection
+
+        Detection.objects.all().delete()
+
+        update_calculated_fields_for_events(last_updated=datetime.datetime(3000, 1, 1, 0, 0, 0))
+
+        for event, last_updated in zip(self.deployment.events.all().order_by("pk"), last_updated_timestamps):
+            self.assertEqual(event.captures_count, event.get_captures_count())
+            self.assertEqual(event.detections_count, event.get_detections_count())
+            self.assertEqual(event.occurrences_count, event.get_occurrences_count())
+            self.assertGreater(event.calculated_fields_updated_at, last_updated)
+
+        # Delete all captures and test that the calculated fields are updated
+        self.deployment.captures.all().delete()
+
+        update_calculated_fields_for_events(last_updated=datetime.datetime(3000, 1, 1, 0, 0, 0))
+
+        for event, last_updated in zip(self.deployment.events.all().order_by("pk"), last_updated_timestamps):
+            self.assertEqual(event.captures_count, event.get_captures_count())
+            self.assertEqual(event.detections_count, event.get_detections_count())
+            self.assertEqual(event.occurrences_count, event.get_occurrences_count())
+            self.assertGreater(event.calculated_fields_updated_at, last_updated)  # type: ignore
 
 
 class TestDuplicateFieldsOnChildren(TestCase):

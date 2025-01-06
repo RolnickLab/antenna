@@ -1,5 +1,9 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { FilterSection } from 'components/filtering/filter-section'
+import { someActive } from 'components/filtering/utils'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
+import { Occurrence } from 'data-services/models/occurrence'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -9,7 +13,6 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { Error } from 'pages/error/error'
 import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
 import { useContext, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -17,36 +20,44 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { useUser } from 'utils/user/userContext'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
-import styles from './occurrences.module.scss'
+import { OccurrenceNavigation } from './occurrence-navigation'
 
 export const Occurrences = () => {
+  const { user } = useUser()
+  const { userPreferences } = useUserPreferences()
   const { projectId, id } = useParams()
-  const [columnSettings, setColumnSettings] = useState<{
-    [id: string]: boolean
-  }>({
-    batch: true,
-    snapshots: true,
-    id: true,
-    date: true,
-    deployment: true,
-    duration: false,
-    detections: true,
-    score: true,
-    ['created-at']: true,
-  })
+  const { columnSettings, setColumnSettings } = useColumnSettings(
+    'occurrences',
+    {
+      batch: true,
+      snapshots: true,
+      id: true,
+      date: true,
+      deployment: true,
+      duration: false,
+      detections: true,
+      score: true,
+      ['created-at']: true,
+    }
+  )
   const { sort, setSort } = useSort({
     field: 'created_at',
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters()
+  const { activeFilters, filters } = useFilters({
+    classification_threshold: `${userPreferences.scoreThreshold}`,
+  })
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -59,69 +70,109 @@ export const Occurrences = () => {
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
+  useEffect(() => {
+    document.getElementById('app')?.scrollTo({ top: 0 })
+  }, [pagination.page])
+
+  useEffect(() => {
+    if (id) {
+      document
+        .getElementById(id)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [id])
 
   return (
     <>
-      <PageHeader
-        title={translate(STRING.NAV_ITEM_OCCURRENCES)}
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        showAppliedFilters
-        tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
-      >
-        <ToggleGroup
-          items={[
-            {
-              value: 'table',
-              label: translate(STRING.TAB_ITEM_TABLE),
-              icon: IconType.TableView,
-            },
-            {
-              value: 'gallery',
-              label: translate(STRING.TAB_ITEM_GALLERY),
-              icon: IconType.GalleryView,
-            },
-          ]}
-          value={selectedView}
-          onValueChange={setSelectedView}
-        />
-        <ColumnSettings
-          columns={columns(projectId as string)}
-          columnSettings={columnSettings}
-          onColumnSettingsChange={setColumnSettings}
-        />
-      </PageHeader>
-      {selectedView === 'table' && (
-        <Table
-          items={occurrences}
-          isLoading={!id && isLoading}
-          columns={columns(
-            projectId as string,
-            selectedItems.length === 0
-          ).filter((column) => !!columnSettings[column.id])}
-          sortable
-          sortSettings={sort}
-          selectable
-          selectedItems={selectedItems}
-          onSelectedItemsChange={setSelectedItems}
-          onSortSettingsChange={setSort}
-        />
-      )}
-      {selectedView === 'gallery' && (
-        <div className={styles.galleryContent}>
-          <OccurrenceGallery
-            occurrences={occurrences}
-            isLoading={!id && isLoading}
-          />
+      <div className="flex flex-col gap-6 md:flex-row">
+        <div className="space-y-6">
+          <FilterSection defaultOpen>
+            <FilterControl field="detections__source_image" readonly />
+            <FilterControl field="event" readonly />
+            <FilterControl field="date_start" />
+            <FilterControl field="date_end" />
+            <FilterControl field="taxon" />
+            <FilterControl clearable={false} field="classification_threshold" />
+            <FilterControl field="verified" />
+            {user.loggedIn && <FilterControl field="verified_by_me" />}
+          </FilterSection>
+          <FilterSection
+            title="More filters"
+            defaultOpen={someActive(
+              ['collection', 'deployment', 'algorithm', 'not_algorithm'],
+              activeFilters
+            )}
+          >
+            <FilterControl field="collection" />
+            <FilterControl field="deployment" />
+            <FilterControl field="algorithm" />
+            <FilterControl field="not_algorithm" />
+          </FilterSection>
         </div>
-      )}
-      <PageFooter>
+        <div className="w-full overflow-hidden">
+          <PageHeader
+            isFetching={isFetching}
+            isLoading={isLoading}
+            subTitle={translate(STRING.RESULTS, {
+              total,
+            })}
+            title={translate(STRING.NAV_ITEM_OCCURRENCES)}
+            tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
+          >
+            <ToggleGroup
+              items={[
+                {
+                  value: 'table',
+                  label: translate(STRING.TAB_ITEM_TABLE),
+                  icon: IconType.TableView,
+                },
+                {
+                  value: 'gallery',
+                  label: translate(STRING.TAB_ITEM_GALLERY),
+                  icon: IconType.GalleryView,
+                },
+              ]}
+              value={selectedView}
+              onValueChange={setSelectedView}
+            />
+            <ColumnSettings
+              columns={columns(projectId as string)}
+              columnSettings={columnSettings}
+              onColumnSettingsChange={setColumnSettings}
+            />
+          </PageHeader>
+          {selectedView === 'table' && (
+            <Table
+              columns={columns(
+                projectId as string,
+                selectedItems.length === 0
+              ).filter((column) => !!columnSettings[column.id])}
+              error={error}
+              isLoading={!id && isLoading}
+              items={occurrences}
+              onSelectedItemsChange={setSelectedItems}
+              onSortSettingsChange={setSort}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
+              sortable
+              sortSettings={sort}
+            />
+          )}
+          {selectedView === 'gallery' && (
+            <OccurrenceGallery
+              error={error}
+              isLoading={!id && isLoading}
+              occurrences={occurrences}
+            />
+          )}
+        </div>
+      </div>
+      <PageFooter
+        hide={
+          selectedItems.length === 0 &&
+          (!occurrences || occurrences.length === 0)
+        }
+      >
         {selectedItems.length ? (
           <BulkActionBar
             selectedItems={selectedItems.filter((id) =>
@@ -144,12 +195,20 @@ export const Occurrences = () => {
           />
         ) : null}
       </PageFooter>
-      {id ? <OccurrenceDetailsDialog id={id} /> : null}
+      {id ? (
+        <OccurrenceDetailsDialog id={id} occurrences={occurrences} />
+      ) : null}
     </>
   )
 }
 
-const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
+const OccurrenceDetailsDialog = ({
+  id,
+  occurrences,
+}: {
+  id: string
+  occurrences?: Occurrence[]
+}) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
@@ -183,6 +242,7 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
         error={error}
       >
         {occurrence ? <OccurrenceDetails occurrence={occurrence} /> : null}
+        <OccurrenceNavigation occurrences={occurrences} />
       </Dialog.Content>
     </Dialog.Root>
   )

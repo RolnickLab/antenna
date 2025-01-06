@@ -1,7 +1,9 @@
 import io
 import logging
 import pathlib
+import random
 import re
+import string
 import time
 import typing
 import urllib.parse
@@ -20,7 +22,7 @@ from django.core.cache import cache
 from mypy_boto3_s3.client import S3Client
 from mypy_boto3_s3.paginator import ListObjectsV2Paginator
 from mypy_boto3_s3.service_resource import Bucket, ObjectSummary, S3ServiceResource
-from mypy_boto3_s3.type_defs import BucketTypeDef, ObjectTypeDef, PaginatorConfigTypeDef
+from mypy_boto3_s3.type_defs import BucketTypeDef, CreateBucketOutputTypeDef, ObjectTypeDef, PaginatorConfigTypeDef
 from rich import print
 
 from .storages import IMAGE_FILE_EXTENSIONS, ConnectionTestResult
@@ -123,6 +125,19 @@ def get_resource(config: S3Config) -> S3ServiceResource:
         # api_version="s3v4",
     )
     return s3
+
+
+def create_bucket(config: S3Config, bucket_name: str, exists_ok: bool = True) -> CreateBucketOutputTypeDef | None:
+    client = get_s3_client(config)
+    try:
+        # Create bucket if it doesn't exist
+        return client.create_bucket(Bucket=bucket_name)
+    except botocore.exceptions.ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "UnknownBotoError")
+        if error_code == "BucketAlreadyOwnedByYou" and exists_ok:
+            pass
+        else:
+            raise
 
 
 def list_buckets(config: S3Config) -> list[BucketTypeDef]:
@@ -644,16 +659,24 @@ def resize_image_body(client: S3Client, bucket: str, key: str, width: int, heigh
     return buffer.getvalue()
 
 
+def write_random_file(config: S3Config, key_prefix: str = "test") -> tuple[str, bytes]:
+    test_key = f"{key_prefix}{random.randint(0, 99999)}.jpg"
+    test_val = "".join(random.choice(string.ascii_letters) for _ in range(10)).encode("utf-8")
+    obj = write_file(config, key=test_key, body=test_val)
+    obj.wait_until_exists()
+    return obj.key, test_val
+
+
 def test():
     # boto3.set_stream_logger(name="botocore")
 
     config = S3Config(
-        endpoint_url="http://localhost:9000",
+        endpoint_url="http://minio:9000",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
         bucket_name="test",
         prefix="",
-        public_base_url="http://localhost:9000/test",
+        public_base_url="http://minio:9000/test",
     )
 
     projects = list_projects(config)

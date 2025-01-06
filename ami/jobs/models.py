@@ -6,7 +6,9 @@ import typing
 from dataclasses import dataclass
 
 import pydantic
-from django.db import models
+from celery import uuid
+from celery.result import AsyncResult
+from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
@@ -114,10 +116,11 @@ class JobProgress(pydantic.BaseModel):
     logs: list[str] = []
 
     def get_stage_key(self, name: str) -> str:
+        """Generate a key for a stage or param based on its name"""
         return python_slugify(name)
 
-    def add_stage(self, name: str) -> JobProgressStageDetail:
-        key = self.get_stage_key(name)
+    def add_stage(self, name: str, key: str | None = None) -> JobProgressStageDetail:
+        key = key or self.get_stage_key(name)
         try:
             return self.get_stage(key)
         except ValueError:
@@ -185,6 +188,16 @@ class JobProgress(pydantic.BaseModel):
                     # Otherwise update or add matching parameter within the stage's params list
                     self.add_or_update_stage_param(stage_key, k, v)
             return stage
+
+    def reset(self, status: JobState = JobState.CREATED):
+        """
+        Set the progress of summary and all stages to 0.
+        """
+        self.summary.progress = 0
+        self.summary.status = status
+        for stage in self.stages:
+            stage.progress = 0
+            stage.status = status
 
     class Config:
         use_enum_values = True
@@ -263,6 +276,12 @@ class JobLogHandler(logging.Handler):
 
 @dataclass
 class JobType:
+    """
+    The run method of a job is specific to the job type.
+
+    Job types must be defined as classes because they define code, not just configuration.
+    """
+
     name: str
     key: str
 
@@ -271,10 +290,7 @@ class JobType:
         """
         Execute the run function specific to this job type.
         """
-        pass
-
-
-AnyJobType = typing.TypeVar("AnyJobType", bound=JobType)
+        raise NotImplementedError("Job type has not implemented the run method")
 
 
 class MLJob(JobType):
@@ -342,10 +358,6 @@ class MLJob(JobType):
                 job.logger.info("Shuffling images")
                 random.shuffle(images)
 
-            # @TODO remove this temporary limit
-            TEMPORARY_LIMIT = 1000
-            job.limit = job.limit or TEMPORARY_LIMIT
-
             if job.limit and source_image_count > job.limit:
                 job.logger.warn(f"Limiting number of images to {job.limit} (out of {source_image_count})")
                 images = images[: job.limit]
@@ -363,7 +375,7 @@ class MLJob(JobType):
             total_detections = 0
             total_classifications = 0
 
-            CHUNK_SIZE = 4  # Keep it low to see more progress updates
+            CHUNK_SIZE = 2  # Keep it low to see more progress updates
             chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
 
             for i, chunk in enumerate(chunks):
@@ -389,15 +401,10 @@ class MLJob(JobType):
                     classifications=total_classifications,
                 )
                 job.save()
-                objects = job.pipeline.save_results(results=results, job_id=job.pk)
-                job.progress.update_stage(
-                    "results",
-                    status=JobState.STARTED,
-                    progress=(i + 1) / len(chunks),
-                    objects_created=len(objects),
-                )
-                job.update_progress()
-                job.save()
+
+                if results.source_images or results.detections:
+                    save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
+                    job.logger.info(f"Saving results in sub-task {save_results_task.id}")
 
             job.progress.update_stage(
                 "process",
@@ -419,14 +426,6 @@ class DataStorageSyncJob(JobType):
     key = "data_storage_sync"
 
     @classmethod
-    def setup(cls, job: "Job", save=True):
-        job.progress = job.progress or default_job_progress
-        job.progress.add_stage(name=cls.name)
-
-        if save:
-            job.save()
-
-    @classmethod
     def run(cls, job: "Job"):
         """
         Run the data storage sync job.
@@ -434,7 +433,8 @@ class DataStorageSyncJob(JobType):
         This is meant to be called by an async task, not directly.
         """
 
-        job.progress.add_stage_param(cls.key, "Total Files", "")
+        job.progress.add_stage(cls.name)
+        job.progress.add_stage_param(cls.key, "Total files", "")
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -468,6 +468,62 @@ class DataStorageSyncJob(JobType):
         job.save()
 
 
+class SourceImageCollectionPopulateJob(JobType):
+    name = "Populate captures collection"
+    key = "populate_captures_collection"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        """
+        Run the populate source image collection job.
+
+        This is meant to be called by an async task, not directly.
+        """
+        job.progress.add_stage(cls.name, key=cls.key)
+        job.progress.add_stage_param(cls.key, "Captures added", "")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        if not job.source_image_collection:
+            job.logger.error("No source image collection provided")
+            job.update_status(JobState.FAILURE)
+            job.finished_at = datetime.datetime.now()
+            job.save()
+            return
+
+        job.logger.info(f"Populating source image collection {job.source_image_collection}")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.update_stage(
+            cls.key,
+            status=JobState.STARTED,
+            progress=0.10,
+            captures_added=0,
+        )
+        job.update_progress(save=True)
+
+        job.source_image_collection.populate_sample(job=job)
+        job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
+        job.save()
+
+        captures_added = job.source_image_collection.images.count()
+        job.logger.info(f"Added {captures_added} captures to source image collection {job.source_image_collection}")
+
+        job.progress.update_stage(
+            cls.key,
+            status=JobState.SUCCESS,
+            progress=1,
+            captures_added=captures_added,
+        )
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=False)
+        job.update_progress(save=False)
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -477,6 +533,32 @@ class UnknownJobType(JobType):
         job.logger.error(f"Unknown job type '{job.job_type()}'")
         job.update_status(JobState.UNKNOWN)
         job.save()
+
+
+VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType]
+
+
+def get_job_type_by_key(key: str) -> type[JobType] | None:
+    for job_type in VALID_JOB_TYPES:
+        if job_type.key == key:
+            return job_type
+
+
+def get_job_type_by_inferred_key(job: "Job") -> type[JobType] | None:
+    """
+    Infer the job type from the job's attributes.
+
+    This is used for a data migration to set the job type of existing jobs
+    before the job type field was added to the model.
+    """
+
+    if job.pipeline:
+        return MLJob
+    # Check the key of the first stage in the job progress
+    if job.progress.stages:
+        job_type = get_job_type_by_key(job.progress.stages[0].key)
+        if job_type:
+            return job_type
 
 
 class Job(BaseModel):
@@ -497,9 +579,12 @@ class Job(BaseModel):
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
     limit = models.IntegerField(
-        "Limit", null=True, blank=True, default=1000, help_text="Limit the number of images to process"
+        "Limit", null=True, blank=True, default=None, help_text="Limit the number of images to process"
     )
     shuffle = models.BooleanField("Shuffle", default=True, help_text="Process images in a random order")
+    job_type_key = models.CharField(
+        "Job Type", max_length=255, default=UnknownJobType.key, choices=[(t.key, t.name) for t in VALID_JOB_TYPES]
+    )
 
     project = models.ForeignKey(
         Project,
@@ -539,32 +624,32 @@ class Job(BaseModel):
         return f'#{self.pk} "{self.name}" ({self.status})'
 
     def job_type(self) -> type[JobType]:
-        """
-        This is a temporary way to determine the type of job.
-        @TODO rework Job classes and background tasks.
-        """
-        if self.pipeline:
-            return MLJob
-
-        try:
-            self.progress.get_stage(DataStorageSyncJob.key)
-            return DataStorageSyncJob
-        except ValueError:
-            pass
-
-        return UnknownJobType
+        job_type_class = get_job_type_by_key(self.job_type_key)
+        if job_type_class:
+            return job_type_class
+        else:
+            inferred_job_type = get_job_type_by_inferred_key(self)
+            msg = f"Could not determine job type for job {self.pk} with job_type_key '{self.job_type_key}'. "
+            if inferred_job_type:
+                msg += f"Inferred job type as '{inferred_job_type.name}'"
+            raise ValueError(msg)
 
     def enqueue(self):
         """
         Add the job to the queue so that it will run in the background.
         """
         assert self.pk is not None, "Job must be saved before it can be enqueued"
-        task_id = run_job.apply_async(kwargs={"job_id": self.pk}).id
+        task_id = uuid()
+
+        def send_task():
+            run_job.apply_async(kwargs={"job_id": self.pk}, task_id=task_id)
+
+        transaction.on_commit(send_task)
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = run_job.AsyncResult(task_id).status
+        self.status = AsyncResult(task_id).status
         self.update_progress(save=False)
         self.save()
 
@@ -605,6 +690,19 @@ class Job(BaseModel):
         job_type.run(job=self)
         return None
 
+    def retry(self, async_task=True):
+        """
+        Retry the job.
+        """
+        self.logger.info(f"Re-running job {self}")
+        self.progress.reset()
+        self.status = JobState.RETRY
+        self.save()
+        if async_task:
+            self.enqueue()
+        else:
+            self.run()
+
     def cancel(self):
         """
         Terminate the celery task.
@@ -615,7 +713,6 @@ class Job(BaseModel):
             task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
-                self.status = task.status
                 self.save()
         else:
             self.status = JobState.REVOKED
@@ -648,7 +745,8 @@ class Job(BaseModel):
         Update the total aggregate progress from the progress of each stage.
         """
         if not len(self.progress.stages):
-            total_progress = 1
+            # Need at least one stage to calculate progress
+            total_progress = 0
         else:
             for stage in self.progress.stages:
                 if stage.progress > 0 and stage.status == JobState.CREATED:
@@ -676,11 +774,14 @@ class Job(BaseModel):
         """
         Create the job stages if they don't exist.
         """
-        if self.progress.stages:
+        if self.pk and self.progress.stages:
             self.update_progress(save=False)
         else:
             self.setup(save=False)
         super().save(*args, **kwargs)
+        logger.debug(f"Saved job {self}")
+        if self.progress.summary.status != self.status:
+            logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
 
     @classmethod
     def default_progress(cls) -> JobProgress:
@@ -692,6 +793,7 @@ class Job(BaseModel):
         logger = logging.getLogger(f"ami.jobs.{self.pk}")
         # Also log output to a field on thie model instance
         logger.addHandler(JobLogHandler(self))
+        logger.propagate = False
         return logger
 
     class Meta:
@@ -699,4 +801,3 @@ class Job(BaseModel):
         # permissions = [
         #     ("run_job", "Can run a job"),
         #     ("cancel_job", "Can cancel a job"),
-        # ]

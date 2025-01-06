@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
@@ -10,8 +11,11 @@ import { IconType } from 'design-system/components/icon/icon'
 import { Select, SelectTheme } from 'design-system/components/select/select'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useUser } from 'utils/user/userContext'
 import styles from './capture-details.module.scss'
 import { CaptureJob } from './capture-job/capture-job'
 
@@ -22,6 +26,9 @@ export const CaptureDetails = ({
   capture?: Capture
   captureId: string
 }) => {
+  const { user } = useUser()
+  const { projectId } = useParams()
+
   if (!capture) {
     return null
   }
@@ -29,7 +36,9 @@ export const CaptureDetails = ({
   return (
     <>
       <div className={styles.starButtonWrapper}>
-        <StarButton capture={capture} captureId={captureId} />
+        {user.loggedIn && (
+          <StarButton capture={capture} captureId={captureId} />
+        )}
         <a
           href={capture.url}
           className={styles.link}
@@ -52,19 +61,61 @@ export const CaptureDetails = ({
         </div>
         <div>
           <span className={styles.label}>
-            {translate(STRING.FIELD_LABEL_DETECTIONS)}
-          </span>
-          <span className={styles.value}>{capture.numDetections}</span>
-        </div>
-        <div>
-          <span className={styles.label}>
             {translate(STRING.FIELD_LABEL_SIZE)}
           </span>
           <span className={styles.value}>{capture.sizeLabel}</span>
         </div>
+        {user.loggedIn && (
+          <div>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_PROCESS)}
+            </span>
+            <JobControls capture={capture} />
+          </div>
+        )}
         <div>
-          <span className={styles.label}>Process</span>
-          <JobControls capture={capture} />
+          <span className={styles.label}>
+            {translate(STRING.FIELD_LABEL_JOBS)}
+          </span>
+          <Link
+            to={getAppRoute({
+              to: APP_ROUTES.JOBS({
+                projectId: projectId as string,
+              }),
+              filters: {
+                source_image_single: capture.id,
+              },
+            })}
+          >
+            <span className={classNames(styles.value, styles.bubble)}>
+              {capture.numJobs}
+            </span>
+          </Link>
+        </div>
+        <div>
+          <span className={styles.label}>
+            {translate(STRING.FIELD_LABEL_OCCURRENCES)}
+          </span>
+          <Link
+            to={getAppRoute({
+              to: APP_ROUTES.OCCURRENCES({
+                projectId: projectId as string,
+              }),
+              filters: {
+                detections__source_image: capture.id,
+              },
+            })}
+          >
+            <span className={classNames(styles.value, styles.bubble)}>
+              {capture.numOccurrences}
+            </span>
+          </Link>
+        </div>
+        <div>
+          <span className={styles.label}>
+            {translate(STRING.FIELD_LABEL_TAXA)}
+          </span>
+          <span className={styles.value}>{capture.numTaxa}</span>
         </div>
       </div>
     </>
@@ -135,7 +186,7 @@ const PipelinesPicker = ({
     <Select
       loading={isLoading}
       options={pipelines.map((p) => ({
-        value: p.id,
+        value: String(p.id),
         label: p.name,
       }))}
       placeholder="Pipeline"

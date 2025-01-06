@@ -84,6 +84,19 @@ class SourceImageNestedSerializer(DefaultSerializer):
         ]
 
 
+class ExampleSourceImageNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = SourceImage
+        fields = [
+            "id",
+            "details",
+            "url",
+            "width",
+            "height",
+            "timestamp",
+        ]
+
+
 class DeviceNestedSerializer(DefaultSerializer):
     class Meta:
         model = Device
@@ -252,8 +265,7 @@ class EventListSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(
         read_only=True,
     )
-    example_captures = SourceImageNestedSerializer(many=True, read_only=True)
-    # captures = serializers.StringRelatedField(many=True, read_only=True)
+    example_captures = ExampleSourceImageNestedSerializer(many=True, read_only=True)
     captures = serializers.SerializerMethodField()
 
     class Meta:
@@ -829,7 +841,10 @@ class SourceImageListSerializer(DefaultSerializer):
             "width",
             "height",
             "size",
+            "size_display",
             "detections_count",
+            "occurrences_count",
+            "taxa_count",
             "detections",
         ]
 
@@ -972,7 +987,10 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "method",
             "kwargs",
             "source_images",
-            "source_image_count",
+            "source_images_count",
+            "source_images_with_detections_count",
+            "occurrences_count",
+            "taxa_count",
             "jobs",
             "created_at",
             "updated_at",
@@ -1013,6 +1031,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Occurrence
@@ -1037,11 +1056,14 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "identifications",
             "created_at",
         ]
 
     def get_determination_details(self, obj: Occurrence):
-        # @TODO add an equivalent method to the Occurrence model
+        # @TODO convert this to query methods to avoid N+1 queries.
+        # Currently at 100+ queries per page of 10 occurrences.
+        # Add a reusable method to the OccurrenceQuerySet class and call it from the ViewSet.
 
         context = self.context
 
@@ -1071,7 +1093,6 @@ class OccurrenceListSerializer(DefaultSerializer):
 class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
-    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
     predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
@@ -1082,7 +1103,6 @@ class OccurrenceSerializer(OccurrenceListSerializer):
         fields = OccurrenceListSerializer.Meta.fields + [
             "determination_id",
             "detections",
-            "identifications",
             "predictions",
         ]
         read_only_fields = [
@@ -1126,8 +1146,6 @@ class EventSerializer(DefaultSerializer):
     start = serializers.DateTimeField(read_only=True)
     end = serializers.DateTimeField(read_only=True)
     capture_page_offset = serializers.SerializerMethodField()
-    occurrences_count = serializers.SerializerMethodField()
-    taxa_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -1209,14 +1227,6 @@ class EventSerializer(DefaultSerializer):
             offset = request.query_params.get("offset", None)
 
         return offset
-
-    def get_occurrences_count(self, obj):
-        return obj.occurrences_count(
-            classification_threshold=get_active_classification_threshold(self.context["request"])
-        )
-
-    def get_taxa_count(self, obj):
-        return obj.taxa_count(classification_threshold=get_active_classification_threshold(self.context["request"]))
 
 
 class EventTimelineSourceImageSerializer(DefaultSerializer):
@@ -1331,7 +1341,7 @@ class StorageSourceSerializer(DefaultSerializer):
     # endpoint_url = serializers.URLField(required=False, allow_blank=True)
     # @TODO the endpoint needs to support host names without a TLD extension like "minio:9000"
     endpoint_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    public_base_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
+    public_base_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = S3StorageSource

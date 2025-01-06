@@ -5,11 +5,13 @@
 .tableHeader {
   white-space: nowrap;
   vertical-align: middle;
-  border-bottom: 2px solid $color-neutral-200;
+  padding: 2px;
+  border-bottom: 2px solid $color-neutral-100;
   background-color: $color-neutral-50;
+  text-align: left;
 
   &.active {
-    border-color: $color-neutral-400;
+    border-bottom-color: $color-neutral-400;
   }
 }
 
@@ -20,20 +22,25 @@
 }
 
 .columnName {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+
   span {
     @include paragraph-medium();
     font-weight: 600;
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
 }
 
 .sortButton {
+  outline: none;
   display: flex;
   align-items: center;
   position: relative;
 
   .columnName {
-    display: block;
     position: relative;
   }
 
@@ -48,19 +55,13 @@
 }
 
 .iconWrapper {
-  position: absolute;
-  top: 50%;
-  right: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transform-origin: center;
-  transform: translate(100%, -50%);
-  visibility: hidden;
-
-  &.visible {
-    visibility: visible;
-  }
 
   &.ascending {
-    transform: translate(100%, -50%) rotate(180deg);
+    transform: rotate(180deg);
   }
 }
 

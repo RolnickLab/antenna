@@ -27,7 +27,7 @@ export const getFetchUrl = ({
   }
   if (params?.filters?.length) {
     params.filters.forEach((filter) => {
-      if (filter.value?.length) {
+      if (filter.value?.length && !filter.error) {
         queryParams[filter.field] = filter.value
       }
     })
@@ -49,7 +49,7 @@ export const getFetchDetailsUrl = ({
   queryParams = {},
 }: {
   collection: string
-  itemId: string
+  itemId?: string
   queryParams?: QueryParams
 }) => {
   const baseUrl = `${API_URL}/${collection}/${itemId}`

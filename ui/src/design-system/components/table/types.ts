@@ -15,6 +15,7 @@ export enum TextAlign {
 export interface TableColumn<T> {
   id: string
   name: string
+  tooltip?: string
   sortField?: string
   styles?: {
     textAlign?: TextAlign

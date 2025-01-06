@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import classNames from 'classnames'
-import { Error } from 'pages/error/error'
+import { ErrorState } from 'components/error-state/error-state'
 import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
@@ -52,12 +52,13 @@ const Content = ({
         [styles.compact]: isCompact || error,
         [styles.loading]: isLoading,
       })}
+      tabIndex={-1}
       onOpenAutoFocus={onOpenAutoFocus}
     >
       <div className={styles.dialogContent}>
         {error ? (
           <div className={styles.errorContent}>
-            <Error error={error} />
+            <ErrorState error={error} />
           </div>
         ) : (
           children

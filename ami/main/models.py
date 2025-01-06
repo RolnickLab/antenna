@@ -13,12 +13,14 @@ import pydantic
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
+from django.utils import timezone
 from django_pydantic_field import SchemaField
 
 import ami.tasks
@@ -61,11 +63,6 @@ DEFAULT_RANKS = sorted(
 )
 
 
-# @TODO move to settings & make configurable
-_SOURCE_IMAGES_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/vermont/snapshots/"
-_CROPS_URL_BASE = "https://static.dev.insectai.org/ami-trapdata/crops"
-
-
 def get_media_url(path: str) -> str:
     """
     If path is a full URL, return it as-is.
@@ -76,7 +73,8 @@ def get_media_url(path: str) -> str:
     if path.startswith("http"):
         url = path
     else:
-        url = urllib.parse.urljoin(_CROPS_URL_BASE, path.lstrip("/"))
+        # @TODO add a file field to the Detection model and use that to get the URL
+        url = default_storage.url(path.lstrip("/"))
     return url
 
 
@@ -310,7 +308,7 @@ class Deployment(BaseModel):
         "S3StorageSource", on_delete=models.SET_NULL, null=True, blank=True, related_name="deployments"
     )
 
-    # Precalculated values from the data source
+    # Pre-calculated values from the data source
     data_source_total_files = models.IntegerField(blank=True, null=True)
     data_source_total_size = models.BigIntegerField(blank=True, null=True)
     data_source_subdir = models.CharField(max_length=255, blank=True, null=True)
@@ -322,7 +320,7 @@ class Deployment(BaseModel):
     # data_source_last_check_status = models.CharField(max_length=255, blank=True, null=True)
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
 
-    # Precaclulated values
+    # Pre-calculated values
     events_count = models.IntegerField(blank=True, null=True)
     occurrences_count = models.IntegerField(blank=True, null=True)
     captures_count = models.IntegerField(blank=True, null=True)
@@ -562,13 +560,14 @@ class Deployment(BaseModel):
         ]
         for model_name in child_models:
             model = apps.get_model("main", model_name)
-            project_values = set(model.objects.filter(deployment=self).values_list("project", flat=True).distinct())
-            if len(project_values) > 1:
+            qs = model.objects.filter(deployment=self).exclude(project=self.project)
+            project_values = set(qs.values_list("project", flat=True).distinct())
+            if len(project_values):
                 logger.warning(
                     f"Deployment {self} has alternate projects set on {model_name} "
                     f"objects: {project_values}. Updating them!"
                 )
-            model.objects.filter(deployment=self).exclude(project=self.project).update(project=self.project)
+            qs.update(project=self.project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
@@ -581,7 +580,6 @@ class Deployment(BaseModel):
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
         self.occurrences_count = (
             self.occurrences.filter(
-                determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 event__isnull=False,
             )
             .distinct()
@@ -590,7 +588,6 @@ class Deployment(BaseModel):
         self.taxa_count = (
             Taxon.objects.filter(
                 occurrences__deployment=self,
-                occurrences__determination_score__gte=settings.DEFAULT_CONFIDENCE_THRESHOLD,
                 occurrences__event__isnull=False,
             )
             .distinct()
@@ -603,15 +600,19 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
+        last_updated = self.updated_at or timezone.now()
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
+            # @TODO Use "dirty" flag strategy to only update when needed
+            new_or_updated_captures = self.captures.filter(updated_at__gte=last_updated).count()
+            deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
+            if new_or_updated_captures or deleted_captures:
+                ami.tasks.regroup_events.delay(self.pk)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
-            # @TODO Use "dirty" flag strategy to only update when needed
-            ami.tasks.regroup_events.delay(self.pk)
 
 
 @final
@@ -638,6 +639,12 @@ class Event(BaseModel):
 
     captures: models.QuerySet["SourceImage"]
     occurrences: models.QuerySet["Occurrence"]
+
+    # Pre-calculated values
+    captures_count = models.IntegerField(blank=True, null=True)
+    detections_count = models.IntegerField(blank=True, null=True)
+    occurrences_count = models.IntegerField(blank=True, null=True)
+    calculated_fields_updated_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         ordering = ["start"]
@@ -695,22 +702,14 @@ class Event(BaseModel):
         duration = self.duration() if callable(self.duration) else self.duration
         return ami.utils.dates.format_timedelta(duration)
 
-    # These are now loaded with annotations in EventViewSet
-    # But the serializer complains if they're not defined here.
-    def captures_count(self) -> int | None:
-        # return self.captures.distinct().count()
-        return None
+    def get_captures_count(self) -> int:
+        return self.captures.distinct().count()
 
-    def occurrences_count(self, classification_threshold: int | None = None) -> int | None:
-        return (
-            self.occurrences.distinct()
-            .filter(determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD)
-            .count()
-        )
+    def get_detections_count(self) -> int | None:
+        return Detection.objects.filter(Q(source_image__event=self)).count()
 
-    def detections_count(self) -> int | None:
-        # return Detection.objects.filter(Q(source_image__event=self)).count()
-        return None
+    def get_occurrences_count(self, classification_threshold: float = 0) -> int:
+        return self.occurrences.distinct().filter(determination_score__gte=classification_threshold).count()
 
     def stats(self) -> dict[str, int | None]:
         return (
@@ -723,17 +722,16 @@ class Event(BaseModel):
             )
         )
 
-    def taxa_count(self, classification_threshold: int | None = None) -> int:
-        return self.taxa(classification_threshold).count()
+    def taxa_count(self, classification_threshold: float = 0) -> int:
+        # Move this to a pre-calculated field or prefetch_related in the view
+        # return self.taxa(classification_threshold).count()
+        return 0
 
-    def taxa(self, classification_threshold: int | None = None) -> models.QuerySet["Taxon"]:
+    def taxa(self, classification_threshold: float = 0) -> models.QuerySet["Taxon"]:
         return Taxon.objects.filter(
             Q(occurrences__event=self),
-            occurrences__determination_score__gte=classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD,
+            occurrences__determination_score__gte=classification_threshold,
         ).distinct()
-
-    def example_captures(self, num=5):
-        return SourceImage.objects.filter(event=self).order_by("-size")[:num]
 
     def first_capture(self):
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
@@ -749,30 +747,88 @@ class Event(BaseModel):
 
         return plots
 
-    def update_calculated_fields(self, save=False):
-        if not self.group_by and self.start:
+    def update_calculated_fields(self, save=False, updated_timestamp: datetime.datetime | None = None):
+        """
+        Important: if you update a new field, add it to the bulk_update call in update_calculated_fields_for_events
+        """
+        event = self
+        if not event.group_by and event.start:
             # If no group_by is set, use the start "day"
-            self.group_by = self.start.date()
+            event.group_by = str(event.start.date())
 
-        if not self.project and self.deployment:
-            self.project = self.deployment.project
+        if not event.project and event.deployment:
+            event.project = event.deployment.project
 
-        if self.pk is not None:
+        if event.pk is not None:
             # Can only update start and end times if this is an update to an existing event
-            first = self.captures.order_by("timestamp").values("timestamp").first()
-            last = self.captures.order_by("-timestamp").values("timestamp").first()
+            first = event.captures.order_by("timestamp").values("timestamp").first()
+            last = event.captures.order_by("-timestamp").values("timestamp").first()
             if first:
-                self.start = first["timestamp"]
+                event.start = first["timestamp"]
             if last:
-                self.end = last["timestamp"]
+                event.end = last["timestamp"]
+
+            event.captures_count = event.get_captures_count()
+            event.detections_count = event.get_detections_count()
+            event.occurrences_count = event.get_occurrences_count()
+
+            event.calculated_fields_updated_at = updated_timestamp or timezone.now()
 
         if save:
-            self.save(update_calculated_fields=False)
+            event.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
+
+
+def update_calculated_fields_for_events(
+    qs: models.QuerySet[Event] | None = None,
+    pks: list[typing.Any] | None = None,
+    last_updated: datetime.datetime | None = None,
+    save=True,
+):
+    """
+    This function is called by a migration to update the calculated fields for all events.
+
+    @TODO this can likely be abstracted to a more generic function that can be used for any model
+    """
+    to_update = []
+
+    qs = qs or Event.objects.all()
+    if pks:
+        qs = qs.filter(pk__in=pks)
+    if last_updated:
+        # query for None or before the last updated time
+        qs = qs.filter(
+            Q(calculated_fields_updated_at__isnull=True) | Q(calculated_fields_updated_at__lte=last_updated)
+        )
+
+    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
+
+    updated_timestamp = timezone.now()
+    for event in qs:
+        event.update_calculated_fields(save=False, updated_timestamp=updated_timestamp)
+        to_update.append(event)
+
+    if save:
+        updated_count = Event.objects.bulk_update(
+            to_update,
+            [
+                "group_by",
+                "start",
+                "end",
+                "project",
+                "captures_count",
+                "detections_count",
+                "occurrences_count",
+                "calculated_fields_updated_at",
+            ],
+        )
+        if updated_count != len(to_update):
+            logging.error(f"Failed to update {len(to_update) - updated_count} events")
+    return to_update
 
 
 def group_images_into_events(
@@ -791,8 +847,7 @@ def group_images_into_events(
             [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
         )
         logger.warning(
-            f"Found multiple images with the same timestamp in deployment '{deployment}':\n "
-            f"{values}\n"
+            f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
             f"Only one image will be used for each timestamp for each event."
         )
 
@@ -1083,6 +1138,35 @@ def delete_source_image(sender, instance, **kwargs):
     instance.deployment.save()
 
 
+class SourceImageQuerySet(models.QuerySet):
+    def with_occurrences_count(self, classification_threshold: float = 0):
+        return self.annotate(
+            occurrences_count=models.Count(
+                "detections__occurrence",
+                filter=models.Q(
+                    detections__occurrence__determination_score__gte=classification_threshold,
+                ),
+                distinct=True,
+            )
+        )
+
+    def with_taxa_count(self, classification_threshold: float = 0):
+        return self.annotate(
+            taxa_count=models.Count(
+                "detections__occurrence__determination",
+                filter=models.Q(
+                    detections__occurrence__determination_score__gte=classification_threshold,
+                ),
+                distinct=True,
+            )
+        )
+
+
+class SourceImageManager(models.Manager):
+    def get_queryset(self) -> SourceImageQuerySet:
+        return SourceImageQuerySet(self.model, using=self._db)
+
+
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
@@ -1098,19 +1182,30 @@ class SourceImage(BaseModel):
     checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
+
+    # Precaclulated values
     detections_count = models.IntegerField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
-    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="captures", db_index=True)
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="captures",
+        db_index=True,
+        blank=True,
+    )
 
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]
 
+    objects = SourceImageManager()
+
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
-    def public_url(self) -> str:
+    def public_url(self, raise_errors=False) -> str | None:
         """
         Return the public URL for this image.
 
@@ -1120,6 +1215,7 @@ class SourceImage(BaseModel):
 
         @TODO add support for thumbnail URLs here?
         @TODO consider if we ever need to access the original image directly!
+        @TODO every source image request requires joins for the deployment and data source, is this necessary?
         """
         # Get presigned URL if access keys are configured
         data_source = self.deployment.data_source if self.deployment and self.deployment.data_source else None
@@ -1129,26 +1225,54 @@ class SourceImage(BaseModel):
             and data_source.access_key
             and data_source.secret_key
         ):
-            return ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+            url = ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
+        elif self.public_base_url:
+            url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
         else:
-            return urllib.parse.urljoin(self.public_base_url or "/", self.path.lstrip("/"))
+            msg = f"Public URL for {self} is not available. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
+        # Ensure url has a scheme
+        if not urllib.parse.urlparse(url).netloc:
+            msg = f"Public URL for {self} is invalid: {url}. Public base URL: '{self.public_base_url}'"
+            if raise_errors:
+                raise ValueError(msg)
+            else:
+                logger.error(msg)
+                return None
+        else:
+            return url
 
     # backwards compatibility
     url = public_url
 
+    def size_display(self) -> str:
+        """
+        Return the size of the image in human-readable format.
+        """
+        if self.size is None:
+            return filesizeformat(0)
+        else:
+            return filesizeformat(self.size)
+
     def get_detections_count(self) -> int:
         return self.detections.distinct().count()
 
-    def get_base_url(self) -> str:
+    def get_base_url(self) -> str | None:
         """
         Determine the public URL from the deployment's data source.
 
-        If there is no data source, return a relative URL.
+        If there is no data source, return None
+
+        If the public_base_url is None, a presigned URL will be generated for each request.
         """
         if self.deployment and self.deployment.data_source and self.deployment.data_source.public_base_url:
             return self.deployment.data_source.public_base_url
         else:
-            return "/"
+            return None
 
     def extract_timestamp(self) -> datetime.datetime | None:
         """
@@ -1227,6 +1351,14 @@ class SourceImage(BaseModel):
                 self.save()
                 return self.width, self.height
         return None, None
+
+    def occurrences_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
+
+    def taxa_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
 
     def update_calculated_fields(self, save=False):
         if self.path and not self.timestamp:
@@ -1335,7 +1467,9 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
-    minute_interval: int = 10, qs: models.QuerySet[SourceImage] | None = None, max_num: int | None = None
+    minute_interval: int = 10,
+    qs: models.QuerySet[SourceImage] | None = None,
+    max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return a sample of captures from the deployment, evenly spaced apart by minute_interval.
@@ -1345,7 +1479,8 @@ def sample_captures_by_interval(
     total = 0
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     for capture in qs.all():
@@ -1376,7 +1511,8 @@ def sample_captures_by_position(
     """
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     events = Event.objects.filter(captures__in=qs).distinct()
@@ -1413,7 +1549,8 @@ def sample_captures_by_nth(
     """
 
     if not qs:
-        qs = SourceImage.objects.all()
+        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
+
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
     events = Event.objects.filter(captures__in=qs).distinct()
@@ -1563,6 +1700,25 @@ class ClassificationResult(BaseModel):
     pass
 
 
+class ClassificationQuerySet(models.QuerySet):
+    def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
+        # Find the oldest classification for each unique combination
+        if project_id:
+            self = self.filter(detection__source_image__project_id=project_id)
+        unique_oldest = (
+            self.values("detection", "taxon", "algorithm", "score", "softmax_output", "raw_output")
+            .annotate(min_id=models.Min("id"))
+            .distinct()
+        )
+
+        # Keep only the oldest classifications
+        return self.exclude(id__in=[item["min_id"] for item in unique_oldest])
+
+
+class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)):
+    pass
+
+
 @final
 class Classification(BaseModel):
     """The output of a classifier"""
@@ -1598,6 +1754,8 @@ class Classification(BaseModel):
     )
     # job = models.CharField(max_length=255, null=True)
 
+    objects = ClassificationManager()
+
     # Type hints for auto-generated fields
     taxon_id: int
     algorithm_id: int
@@ -1632,7 +1790,16 @@ class Detection(BaseModel):
     #         upload_to="detections",
     #     ),
     # )
-    path = models.CharField(max_length=255, blank=True)
+    path = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=(
+            "Either a full URL to a cropped detection image or a relative path to a file in the default "
+            "project storage. @TODO ensure all detection crops are hosted in the project storage, "
+            "not the default media storage. Migrate external URLs."
+        ),
+    )
 
     occurrence = models.ForeignKey(
         "Occurrence",
@@ -1760,11 +1927,39 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
-@final
+class OccurrenceQuerySet(models.QuerySet):
+    def with_detections_count(self) -> models.QuerySet:
+        return self.annotate(detections_count=models.Count("detections", distinct=True))
+
+    def with_timestamps(self) -> models.QuerySet:
+        """
+        These are timestamps used for filtering and ordering in the UI.
+        """
+        return self.annotate(
+            first_appearance_timestamp=models.Min("detections__timestamp"),
+            last_appearance_timestamp=models.Max("detections__timestamp"),
+            first_appearance_time=models.Min("detections__timestamp__time"),
+            duration=models.ExpressionWrapper(
+                models.F("last_appearance_timestamp") - models.F("first_appearance_timestamp"),
+                output_field=models.DurationField(),
+            ),
+        )
+
+    def with_identifications(self) -> models.QuerySet:
+        return self.prefetch_related(
+            "identifications",
+            "identifications__taxon",
+            "identifications__user",
+        )
+
+
 class OccurrenceManager(models.Manager):
-    def get_queryset(self):
-        # prefetch determination, deployment, project
-        return super().get_queryset().select_related("determination", "deployment", "project")
+    def get_queryset(self) -> OccurrenceQuerySet:
+        return OccurrenceQuerySet(self.model, using=self._db).select_related(
+            "determination",
+            "deployment",
+            "project",
+        )
 
 
 @final
@@ -1849,8 +2044,10 @@ class Occurrence(BaseModel):
         return ami.utils.dates.format_timedelta(duration)
 
     def detection_images(self, limit=None):
-        for url in Detection.objects.filter(occurrence=self).values_list("path", flat=True)[:limit]:
-            yield urllib.parse.urljoin(_CROPS_URL_BASE, url)
+        for path in (
+            Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]
+        ):
+            yield get_media_url(path)
 
     @functools.cached_property
     def best_detection(self):
@@ -2300,7 +2497,7 @@ class Taxon(BaseModel):
         self,
         limit: int | None = 10,
         project_id: int | None = None,
-        classification_threshold: float | None = None,
+        classification_threshold: float = 0,
     ) -> list[str]:
         """
         Return one image from each occurrence of this Taxon.
@@ -2313,8 +2510,6 @@ class Taxon(BaseModel):
         Use the request.user to filter by the user's access.
         Use the request to generate the full media URLs.
         """
-
-        classification_threshold = classification_threshold or settings.DEFAULT_CONFIDENCE_THRESHOLD
 
         # Retrieve the URLs using a single optimized query
         qs = (
@@ -2472,6 +2667,50 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 ]
 
 
+class SourceImageCollectionQuerySet(models.QuerySet):
+    def with_source_images_count(self):
+        return self.annotate(
+            source_images_count=models.Count(
+                "images",
+                distinct=True,
+            )
+        )
+
+    def with_source_images_with_detections_count(self):
+        return self.annotate(
+            source_images_with_detections_count=models.Count(
+                "images", filter=models.Q(images__detections__isnull=False), distinct=True
+            )
+        )
+
+    def with_occurrences_count(self, classification_threshold: float = 0):
+        return self.annotate(
+            occurrences_count=models.Count(
+                "images__detections__occurrence",
+                filter=models.Q(
+                    images__detections__occurrence__determination_score__gte=classification_threshold,
+                ),
+                distinct=True,
+            )
+        )
+
+    def with_taxa_count(self, classification_threshold: float = 0):
+        return self.annotate(
+            taxa_count=models.Count(
+                "images__detections__occurrence__determination",
+                distinct=True,
+                filter=models.Q(
+                    images__detections__occurrence__determination_score__gte=classification_threshold,
+                ),
+            )
+        )
+
+
+class SourceImageCollectionManager(models.Manager):
+    def get_queryset(self) -> SourceImageCollectionQuerySet:
+        return SourceImageCollectionQuerySet(self.model, using=self._db)
+
+
 @final
 class SourceImageCollection(BaseModel):
     """
@@ -2504,9 +2743,25 @@ class SourceImageCollection(BaseModel):
         default=dict,
     )
 
-    def source_image_count(self) -> int:
+    objects = SourceImageCollectionManager()
+
+    def source_images_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
-        return self.images.count()
+        # return self.images.count()
+        return None
+
+    def source_images_with_detections_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        # return self.images.filter(detections__isnull=False).count()
+        return None
+
+    def occurrences_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
+
+    def taxa_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
+        return None
 
     def get_queryset(self):
         return SourceImage.objects.filter(project=self.project)
@@ -2515,17 +2770,25 @@ class SourceImageCollection(BaseModel):
     def sampling_methods(cls):
         return [method for method in dir(cls) if method.startswith("sample_")]
 
-    def populate_sample(self):
+    def populate_sample(self, job: "Job | None" = None):
         """Create a sample of source images based on the method and kwargs"""
         kwargs = self.kwargs or {}
+
+        if job:
+            task_logger = job.logger
+        else:
+            task_logger = logger
 
         method_name = f"sample_{self.method}"
         if not hasattr(self, method_name):
             raise ValueError(f"Invalid sampling method: {self.method}. Choices are: {_SOURCE_IMAGE_SAMPLING_METHODS}")
         else:
+            task_logger.info(f"Sampling using method '{method_name}' with params: {kwargs}")
             method = getattr(self, method_name)
+            task_logger.info(f"Sampling and saving captures to {self}")
             self.images.set(method(**kwargs))
             self.save()
+            task_logger.info(f"Done sampling and saving captures to {self}")
 
     def sample_random(self, size: int = 100):
         """Create a random sample of source images"""
@@ -2547,24 +2810,31 @@ class SourceImageCollection(BaseModel):
         hour_end: int | None = None,
         month_start: datetime.date | None = None,
         month_end: datetime.date | None = None,
-    ) -> list[SourceImage]:
+        day_start: datetime.date | None = None,
+        day_end: datetime.date | None = None,
+    ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
         if month_start:
             qs = qs.filter(timestamp__month__gte=month_start)
         if month_end:
             qs = qs.filter(timestamp__month__lte=month_end)
+        if day_start:
+            qs = qs.filter(timestamp__day__gte=day_start)
+        if day_end:
+            qs = qs.filter(timestamp__day__lte=day_end)
         if hour_start:
             qs = qs.filter(timestamp__hour__gte=hour_start)
         if hour_end:
             qs = qs.filter(timestamp__hour__lte=hour_end)
+        if not minute_interval and max_num:
+            qs = qs[:max_num]
         if minute_interval:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
-            qs = list(sample_captures_by_interval(minute_interval, qs, max_num=max_num))
-        if max_num:
-            qs = qs[:max_num]
-        captures = list(qs)
-        return captures
+            # Ensure the queryset is limited to the project
+            qs = qs.filter(project=self.project)
+            qs = sample_captures_by_interval(minute_interval, qs=qs, max_num=max_num)
+        return qs
 
     def sample_interval(
         self, minute_interval: int = 10, exclude_events: list[int] = [], deployment_id: int | None = None
@@ -2577,19 +2847,20 @@ class SourceImageCollection(BaseModel):
         if exclude_events:
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
-        return sample_captures_by_interval(minute_interval, qs)
+        qs = qs.filter(project=self.project)
+        return sample_captures_by_interval(minute_interval, qs=qs)
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_position(position, qs)
+        return sample_captures_by_position(position, qs=qs)
 
     def sample_nth(self, nth: int):
         """Sample every nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_nth(nth, qs)
+        return sample_captures_by_nth(nth, qs=qs)
 
     def sample_random_from_each_event(self, num_each: int = 10):
         """Sample n random source images from each event in the project."""

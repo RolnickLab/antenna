@@ -18,22 +18,23 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'thumbnail',
     name: translate(STRING.FIELD_LABEL_THUMBNAIL),
-    renderCell: (item: Capture, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
-      const detailsRoute = getAppRoute({
-        to: APP_ROUTES.SESSION_DETAILS({
-          projectId: projectId,
-          sessionId: item.sessionId,
-        }),
-        filters: {
-          capture: item.id,
-        },
-      })
+    renderCell: (item: Capture) => {
+      const detailsRoute = item.sessionId
+        ? getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId,
+              sessionId: item.sessionId,
+            }),
+            filters: {
+              capture: item.id,
+            },
+          })
+        : undefined
 
       return (
         <ImageTableCell
           images={[{ src: item.src }]}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )
@@ -69,21 +70,42 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     sortField: 'event__start',
-    renderCell: (item: Capture) => (
-      <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
-        <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
-      </Link>
-    ),
+    renderCell: (item: Capture) =>
+      item.sessionId ? (
+        <Link
+          to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}
+        >
+          <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
+        </Link>
+      ) : (
+        <BasicTableCell />
+      ),
   },
   {
-    id: 'detections',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
-    sortField: 'detections_count',
+    id: 'occurrences',
+    name: 'Occurrences',
+    sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Capture) => (
-      <BasicTableCell value={item.numDetections} />
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
+          filters: { detections__source_image: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
+      </Link>
     ),
+  },
+  {
+    id: 'taxa',
+    name: 'Taxa',
+    sortField: 'taxa_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Capture) => <BasicTableCell value={item.numTaxa} />,
   },
 ]

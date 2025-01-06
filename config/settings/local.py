@@ -20,8 +20,8 @@ ALLOWED_HOSTS = [
     "localhost",
     "0.0.0.0",
     "127.0.0.1",
-    "api.dev.insectai.org",
-]
+    "django",
+] + env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
 # CACHES
 # ------------------------------------------------------------------------------

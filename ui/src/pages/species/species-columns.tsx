@@ -22,10 +22,9 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     styles: {
       textAlign: TextAlign.Center,
     },
-    renderCell: (item: Species, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Species) => {
       const detailsRoute = getAppRoute({
-        to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+        to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
         keepSearchParams: true,
       })
 
@@ -33,7 +32,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
         <ImageTableCell
           images={item.images}
           total={item.numOccurrences}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )
@@ -46,7 +45,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     renderCell: (item: Species) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+          to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
           keepSearchParams: true,
         })}
       >
@@ -78,7 +77,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { determination: item.id },
+          filters: { taxon: item.id },
         })}
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />

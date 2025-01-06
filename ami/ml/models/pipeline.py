@@ -2,7 +2,7 @@ import logging
 import typing
 
 import requests
-from django.db import models
+from django.db import models, transaction
 from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
@@ -20,7 +20,9 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    update_calculated_fields_for_events,
 )
+from ami.ml.tasks import celery_app, create_detection_images
 
 from ..schemas import PipelineRequest, PipelineResponse, SourceImageRequest
 from .algorithm import Algorithm
@@ -121,7 +123,7 @@ def collect_images(
 
 
 def process_images(
-    pipeline_choice: str,
+    pipeline: "Pipeline",
     endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
@@ -133,27 +135,56 @@ def process_images(
     @TODO break into task chunks.
     """
     job = None
-    images = list(images)
+    task_logger = logger
 
     if job_id:
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info(f"Sending {len(images)} images to ML backend {pipeline_choice}")
+        task_logger = job.logger
+
+    prefiltered_images = list(images)
+    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline))
+    if len(images) < len(prefiltered_images):
+        # Log how many images were filtered out because they have already been processed
+        task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
+
+    if not images:
+        task_logger.info("No images to process")
+        return PipelineResponse(
+            pipeline=pipeline.slug,
+            source_images=[],
+            detections=[],
+            total_time=0,
+        )
+    task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
+    urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
     request_data = PipelineRequest(
-        pipeline=pipeline_choice,  # type: ignore
+        pipeline=pipeline.slug,
         source_images=[
             SourceImageRequest(
                 id=str(source_image.pk),
-                url=source_image.public_url(),
+                url=url,
             )
-            for source_image in images
+            for source_image, url in zip(images, urls)
+            if url
         ],
     )
 
     resp = requests.post(endpoint_url, json=request_data.dict())
-    resp.raise_for_status()
+    if not resp.ok:
+        try:
+            msg = resp.json()["detail"]
+        except Exception:
+            msg = resp.content
+        if job:
+            job.logger.error(msg)
+        else:
+            logger.error(msg)
+
+        resp.raise_for_status()
+
     results = resp.json()
     results = PipelineResponse(**results)
 
@@ -169,15 +200,20 @@ def process_images(
     return results
 
 
-def save_results(results: PipelineResponse, job_id: int | None = None) -> list[models.Model]:
+@celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
+def save_results(results: PipelineResponse | None = None, results_json: str | None = None, job_id: int | None = None):
     """
     Save results from ML pipeline API.
 
     @TODO break into task chunks.
-    @TODO rewrite this
+    @TODO rewrite this!
     """
     created_objects = []
     job = None
+
+    if results_json:
+        results = PipelineResponse.parse_raw(results_json)
+    assert results, "No results data passed to save_results task"
 
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
@@ -189,7 +225,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
-        job.logger.info("Saving results")
+        job.logger.info("Saving results...")
 
     # collection_name = f"Images processed by {results.pipeline} pipeline"
     # if job_id:
@@ -223,9 +259,14 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             detection_algorithm=detection_algo,
             bbox=list(detection_resp.bbox.dict().values()),
         ).first()
+        # Ensure that the crop image URL is not empty or only a slash. None is fine.
+        if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
+            crop_url = detection_resp.crop_image_url
+        else:
+            crop_url = None
         if existing_detection:
             if not existing_detection.path:
-                existing_detection.path = detection_resp.crop_image_url or ""
+                existing_detection.path = crop_url
                 existing_detection.save()
                 print("Updated existing detection", existing_detection)
             detection = existing_detection
@@ -234,7 +275,7 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
                 source_image=source_image,
                 bbox=list(detection_resp.bbox.dict().values()),
                 timestamp=source_image.timestamp,
-                path=detection_resp.crop_image_url or "",
+                path=crop_url,
                 detection_time=detection_resp.timestamp,
                 detection_algorithm=detection_algo,
             )
@@ -275,16 +316,20 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
             # or do we use the bbox as a unique identifier?
             # then it doesn't matter what detection algorithm was used
 
-            new_classification = Classification()
-            new_classification.detection = detection
-            new_classification.taxon = taxon
-            new_classification.algorithm = classification_algo
-            new_classification.score = max(classification.scores)
-            new_classification.timestamp = now()  # @TODO get timestamp from API response
-            # @TODO add reference to job or pipeline?
+            new_classification, created = Classification.objects.get_or_create(
+                detection=detection,
+                taxon=taxon,
+                algorithm=classification_algo,
+                score=max(classification.scores),
+                defaults={"timestamp": classification.timestamp or now()},
+            )
 
-            new_classification.save()
-            created_objects.append(new_classification)
+            if created:
+                # Optionally add reference to job or pipeline here
+                created_objects.append(new_classification)
+            else:
+                # Optionally handle the case where a duplicate is found
+                logger.warn("Duplicate classification found, not creating a new one.")
 
             # Create a new occurrence for each detection (no tracking yet)
             # @TODO remove when we implement tracking
@@ -296,13 +341,23 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
                     determination=taxon,
                     determination_score=new_classification.score,
                 )
-                detection.occurrence = occurrence
+                detection.occurrence = occurrence  # type: ignore
                 detection.save()
             detection.occurrence.save()
 
-    # Update precalculated counts on source images
-    for source_image in source_images:
-        source_image.save()
+    # Update precalculated counts on source images and events
+    with transaction.atomic():
+        for source_image in source_images:
+            source_image.save()
+
+    image_cropping_task = create_detection_images.delay(
+        source_image_ids=[source_image.pk for source_image in source_images],
+    )
+    if job:
+        job.logger.info(f"Creating detection images in sub-task {image_cropping_task.id}")
+
+    event_ids = [img.event_id for img in source_images]
+    update_calculated_fields_for_events(pks=event_ids)
 
     registered_algos = pipeline.algorithms.all()
     for algo in algorithms_used:
@@ -315,8 +370,16 @@ def save_results(results: PipelineResponse, job_id: int | None = None) -> list[m
     if job:
         if len(created_objects):
             job.logger.info(f"Created {len(created_objects)} objects")
-
-    return created_objects
+            try:
+                previously_created = int(job.progress.get_stage_param("results", "objects_created").value)
+                job.progress.update_stage(
+                    "results",
+                    objects_created=previously_created + len(created_objects),
+                )
+            except ValueError:
+                pass
+            else:
+                job.update_progress()
 
 
 class PipelineStage(ConfigurableStage):
@@ -341,8 +404,8 @@ class Pipeline(BaseModel):
             "The backend implementation of the pipeline may process data in any way."
         ),
     )
-    projects = models.ManyToManyField("main.Project", related_name="pipelines")
-    endpoint_url = models.URLField(null=True, blank=True)
+    projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
+    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
 
     class Meta:
         ordering = ["name", "version"]
@@ -373,13 +436,18 @@ class Pipeline(BaseModel):
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
             endpoint_url=self.endpoint_url,
-            pipeline_choice=self.slug,
+            pipeline=self,
             images=images,
             job_id=job_id,
         )
 
-    def save_results(self, *args, **kwargs):
-        return save_results(*args, **kwargs)
+    def save_results(self, results: PipelineResponse, job_id: int | None = None):
+        return save_results(results=results, job_id=job_id)
+
+    def save_results_async(self, results: PipelineResponse, job_id: int | None = None):
+        # Returns an AsyncResult
+        results_json = results.json()
+        return save_results.delay(results_json=results_json, job_id=job_id)
 
     def save(self, *args, **kwargs):
         if not self.slug:

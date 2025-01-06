@@ -20,7 +20,7 @@
     padding: 0 32px;
     white-space: nowrap;
     @include label();
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
 
   .itemContent {
@@ -36,8 +36,8 @@
     transform: translate(-50%, -50%);
     height: 2px;
     width: 100%;
-    background-color: $color-neutral-200;
-    z-index: -1;
+    background-color: $color-neutral-100;
+    z-index: 0;
   }
 
   .circle {
@@ -48,7 +48,7 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    border: 2px solid $color-neutral-200;
+    border: 2px solid $color-neutral-100;
     background-color: $color-generic-white;
     box-sizing: border-box;
   }

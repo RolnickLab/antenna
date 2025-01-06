@@ -1,4 +1,4 @@
-# AMI Data Companion UI
+# Antenna Data Platform UI
 
 Web interface to explore data from automated insect monitoring stations. We use React and TypeScript for the implementation. The project was setup using [Vite](https://vitejs.dev/).
 
@@ -58,29 +58,3 @@ yarn test
 ## Deployment
 
 We use [Netlify](https://www.netlify.com/) for deployment. Changes pushed to main branch are automatically deployed to https://app.preview.insectai.org/. When a pull request is opened, a preview version of the changes will be deployed. The URL to the preview deploy will be visible as a PR comment.
-
-## Storybook
-
-We use Storybook to document our design system in code. You can read more about Storybook [here](https://storybook.js.org/).
-
-To run Storybook locally:
-
-```bash
-# Install dependencies
-yarn install
-
-# Launch Storybook in development mode
-yarn storybook
-```
-
-Now you can navigate to the following URL: http://localhost:6006
-
-### Publish Storybook
-
-Build Storybook as a static web application:
-
-```bash
-yarn build-storybook
-```
-
-Read more about publishing Storybook [here](https://storybook.js.org/docs/react/sharing/publish-storybook).

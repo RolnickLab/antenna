@@ -26,7 +26,7 @@ export const StickyHeaderTable = ({
       const sticky = new StickyTableHeader(
         tableRef.current,
         tableCloneRef.current,
-        { max: 96 },
+        { max: 0 },
         document.getElementById('app') ?? undefined
       )
 

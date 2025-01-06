@@ -101,12 +101,24 @@ export class Capture {
     return this._capture.detections_count ?? 0
   }
 
-  get sessionId(): string {
-    return this._capture.event.id
+  get numJobs(): number {
+    return this._capture.jobs?.length ?? 0
+  }
+
+  get numOccurrences(): number {
+    return this._capture.occurrences_count ?? 0
+  }
+
+  get numTaxa(): number {
+    return this._capture.taxa_count ?? 0
+  }
+
+  get sessionId(): string | undefined {
+    return this._capture.event?.id
   }
 
   get sessionLabel(): string {
-    return this._capture.event.name
+    return this._capture.event?.name ?? ''
   }
 
   get src(): string {

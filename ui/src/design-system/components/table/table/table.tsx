@@ -1,4 +1,6 @@
 import classNames from 'classnames'
+import { EmptyState } from 'components/empty-state/empty-state'
+import { ErrorState } from 'components/error-state/error-state'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
@@ -19,27 +21,29 @@ export enum TableBackgroundTheme {
 interface TableProps<T> {
   backgroundTheme?: TableBackgroundTheme
   columns: TableColumn<T>[]
-  items?: T[]
+  error?: any
   isLoading?: boolean
+  items?: T[]
+  onSelectedItemsChange?: (selectedItems: string[]) => void
+  onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
   selectable?: boolean
   selectedItems?: string[]
   sortable?: boolean
   sortSettings?: TableSortSettings
-  onSelectedItemsChange?: (selectedItems: string[]) => void
-  onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
 }
 
 export const Table = <T extends { id: string }>({
   backgroundTheme = TableBackgroundTheme.Neutral,
   columns,
-  items = [],
+  error,
   isLoading,
+  items = [],
+  onSelectedItemsChange,
+  onSortSettingsChange,
   selectable,
   selectedItems = [],
   sortable,
   sortSettings,
-  onSelectedItemsChange,
-  onSortSettingsChange,
 }: TableProps<T>) => {
   const tableContainerRef = useRef<HTMLDivElement>(null)
   const showScrollFader = useScrollFader(tableContainerRef, [
@@ -47,6 +51,22 @@ export const Table = <T extends { id: string }>({
     columns,
     tableContainerRef.current,
   ])
+
+  if (isLoading) {
+    return (
+      <div className={styles.loadingWrapper}>
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (error) {
+    return <ErrorState error={error} />
+  }
+
+  if (items.length === 0) {
+    return <EmptyState />
+  }
 
   const onSortClick = (column: TableColumn<T>) => {
     if (!column.sortField) {
@@ -100,7 +120,7 @@ export const Table = <T extends { id: string }>({
             />
           </tr>
         </thead>
-        <tbody className={classNames({ [styles.loading]: isLoading })}>
+        <tbody>
           {items.map((item, rowIndex) => (
             <tr key={item.id}>
               {selectable && (
@@ -129,11 +149,6 @@ export const Table = <T extends { id: string }>({
           ))}
         </tbody>
       </StickyHeaderTable>
-      {isLoading && (
-        <div className={styles.loadingWrapper}>
-          <LoadingSpinner />
-        </div>
-      )}
       <div
         className={classNames(styles.overflowFader, {
           [styles.visible]: showScrollFader,

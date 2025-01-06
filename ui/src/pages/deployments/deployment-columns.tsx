@@ -20,8 +20,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'snapshot',
     name: translate(STRING.FIELD_LABEL_IMAGE),
-    renderCell: (item: Deployment, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Deployment) => {
       const detailsRoute = getAppRoute({
         to: APP_ROUTES.DEPLOYMENT_DETAILS({ projectId, deploymentId: item.id }),
         keepSearchParams: true,
@@ -30,7 +29,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
       return (
         <ImageTableCell
           images={item.image ? [{ src: item.image }] : []}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )
@@ -100,20 +99,20 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
-    id: 'species',
-    name: translate(STRING.FIELD_LABEL_SPECIES),
-    sortField: 'numSpecies',
+    id: 'taxa',
+    name: translate(STRING.FIELD_LABEL_TAXA),
+    sortField: 'numTaxa',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES({ projectId }),
-          filters: { occurrences__deployment: item.id },
+          to: APP_ROUTES.TAXA({ projectId }),
+          filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
+        <BasicTableCell value={item.numTaxa} theme={CellTheme.Bubble} />
       </Link>
     ),
   },

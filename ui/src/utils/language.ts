@@ -7,6 +7,7 @@ export enum STRING {
   CHANGE_IMAGE,
   CHOOSE_IMAGE,
   CLEAR,
+  CLEAR_FILTERS,
   COLLAPSE,
   CURRENT_LOCATION,
   DELETE,
@@ -22,6 +23,7 @@ export enum STRING {
   REFRESH,
   RESET,
   RETRY,
+  RERUN,
   SAVE,
   SAVED,
   SEARCH_MAP,
@@ -55,6 +57,7 @@ export enum STRING {
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_SCORE,
   FIELD_LABEL_CAPTURES,
+  FIELD_LABEL_CAPTURES_WITH_DETECTIONS,
   FIELD_LABEL_COMMENT,
   FIELD_LABEL_CONNECTION_STATUS,
   FIELD_LABEL_CREATED_AT,
@@ -64,7 +67,6 @@ export enum STRING {
   FIELD_LABEL_DELAY,
   FIELD_LABEL_DEPLOYMENT,
   FIELD_LABEL_DESCRIPTION,
-  FIELD_LABEL_DETECTIONS,
   FIELD_LABEL_DEVICE,
   FIELD_LABEL_DURATION,
   FIELD_LABEL_EMAIL,
@@ -75,6 +77,7 @@ export enum STRING {
   FIELD_LABEL_ID,
   FIELD_LABEL_IMAGE,
   FIELD_LABEL_ICON,
+  FIELD_LABEL_JOBS,
   FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
   FIELD_LABEL_LOCATION,
@@ -89,6 +92,7 @@ export enum STRING {
   FIELD_LABEL_PASSWORD_NEW,
   FIELD_LABEL_PATH,
   FIELD_LABEL_PIPELINE,
+  FIELD_LABEL_PROCESS,
   FIELD_LABEL_PROJECT,
   FIELD_LABEL_SAMPLING_METHOD,
   FIELD_LABEL_SESSION,
@@ -100,11 +104,12 @@ export enum STRING {
   FIELD_LABEL_DATA_SOURCE,
   FIELD_LABEL_SAMPLE_CAPTURES,
   FIELD_LABEL_SCORE,
+  FIELD_LABEL_SCORE_THRESHOLD,
   FIELD_LABEL_SNAPSHOTS,
-  FIELD_LABEL_SPECIES,
   FIELD_LABEL_STARTED_AT,
   FIELD_LABEL_STATUS,
   FIELD_LABEL_TAXON,
+  FIELD_LABEL_TAXA,
   FIELD_LABEL_THUMBNAIL,
   FIELD_LABEL_TIME,
   FIELD_LABEL_TIME_OBSERVED,
@@ -112,6 +117,7 @@ export enum STRING {
   FIELD_LABEL_TOTAL_FILES,
   FIELD_LABEL_TOTAL_SIZE,
   FIELD_LABEL_TRAINING_IMAGES,
+  FIELD_LABEL_TYPE,
   FIELD_LABEL_FIRST_DATE,
   FIELD_LABEL_LAST_DATE,
   FIELD_LABEL_UPDATED_AT,
@@ -136,6 +142,7 @@ export enum STRING {
   MESSAGE_NO_ACCOUNT_YET,
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS,
+  MESSAGE_NO_RESULTS_FOR_FILTERING,
   MESSAGE_PASSWORD_FORMAT,
   MESSAGE_PASSWORD_UPDATED,
   MESSAGE_PERMISSIONS_MISSING,
@@ -153,7 +160,7 @@ export enum STRING {
   NAV_ITEM_OVERVIEW,
   NAV_ITEM_PROJECTS,
   NAV_ITEM_SESSIONS,
-  NAV_ITEM_SPECIES,
+  NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
   TAB_ITEM_COLLECTIONS,
@@ -180,10 +187,12 @@ export enum STRING {
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE_TYPE,
+  TOOLTIP_JOB,
   TOOLTIP_OCCURRENCE,
   TOOLTIP_PIPELINE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
+  TOOLTIP_STATUS,
   TOOLTIP_STORAGE,
 
   /* OTHER */
@@ -231,6 +240,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CHANGE_IMAGE]: 'Change image',
   [STRING.CHOOSE_IMAGE]: 'Choose image',
   [STRING.CLEAR]: 'Clear',
+  [STRING.CLEAR_FILTERS]: 'Clear filters',
   [STRING.COLLAPSE]: 'Collapse',
   [STRING.CURRENT_LOCATION]: 'Use current location',
   [STRING.DELETE]: 'Delete',
@@ -246,6 +256,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REFRESH]: 'Refresh',
   [STRING.RESET]: 'Reset',
   [STRING.RETRY]: 'Retry',
+  [STRING.RERUN]: 'Re-run',
   [STRING.SAVE]: 'Save',
   [STRING.SAVED]: 'Saved',
   [STRING.SEARCH_MAP]: 'Search on the map',
@@ -266,6 +277,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
+  [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures w/detections',
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
@@ -274,9 +286,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DATE_OBSERVED]: 'Date observed',
   [STRING.FIELD_LABEL_DELAY]: 'Delay',
   [STRING.FIELD_LABEL_DEVICE]: 'Device type',
-  [STRING.FIELD_LABEL_DEPLOYMENT]: 'Deployment',
+  [STRING.FIELD_LABEL_DEPLOYMENT]: 'Station',
   [STRING.FIELD_LABEL_DESCRIPTION]: 'Description',
-  [STRING.FIELD_LABEL_DETECTIONS]: 'Detections',
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_EMAIL_NEW]: 'Email new',
@@ -286,6 +297,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
+  [STRING.FIELD_LABEL_JOBS]: 'Jobs',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
@@ -300,6 +312,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_PASSWORD_NEW]: 'New password',
   [STRING.FIELD_LABEL_PATH]: 'Path',
   [STRING.FIELD_LABEL_PIPELINE]: 'Pipeline',
+  [STRING.FIELD_LABEL_PROCESS]: 'Process',
   [STRING.FIELD_LABEL_PROJECT]: 'Project',
   [STRING.FIELD_LABEL_SAMPLING_METHOD]: 'Sampling method',
   [STRING.FIELD_LABEL_SESSION]: 'Session',
@@ -307,14 +320,15 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SITE]: 'Site',
   [STRING.FIELD_LABEL_SIZE]: 'Size',
   [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
-  [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
+  [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source image collection',
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
-  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample captures',
+  [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample images',
   [STRING.FIELD_LABEL_SCORE]: 'Score',
+  [STRING.FIELD_LABEL_SCORE_THRESHOLD]: 'Score threshold',
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
-  [STRING.FIELD_LABEL_SPECIES]: 'Species',
   [STRING.FIELD_LABEL_STARTED_AT]: 'Started at',
   [STRING.FIELD_LABEL_STATUS]: 'Status',
+  [STRING.FIELD_LABEL_TAXA]: 'Taxa',
   [STRING.FIELD_LABEL_TAXON]: 'Taxon',
   [STRING.FIELD_LABEL_THUMBNAIL]: 'Thumbnail',
   [STRING.FIELD_LABEL_TIME]: 'Local time',
@@ -323,9 +337,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_TOTAL_FILES]: 'Total files',
   [STRING.FIELD_LABEL_TOTAL_SIZE]: 'Total size',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
+  [STRING.FIELD_LABEL_TYPE]: 'Type',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
-  [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload captures',
+  [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload images',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
   [STRING.FIELD_LABEL_VERSION]: 'Version',
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version',
@@ -336,7 +351,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
   [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
-  [STRING.ENTITY_TYPE_DEPLOYMENT]: 'deployment',
+  [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
   [STRING.ENTITY_TYPE_PIPELINE]: 'pipeline',
   [STRING.ENTITY_TYPE_JOB]: 'job',
@@ -347,18 +362,18 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp in the format YYYYMMDDHHMMSS (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} captures can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} images can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
-    'Deployment must be created before syncing captures.',
+    'Station must be created before syncing images.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
     'To upload more than {{numCaptures}} images you must configure a data source.',
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
-    'Deployment must be created before uploading captures.',
+    'Station must be created before uploading images.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
     'Contact an administrator to change your email or password.',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
-    'A data source must be configured and saved before syncing captures.',
+    'A data source must be configured and saved before syncing images.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
@@ -368,7 +383,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
-  [STRING.MESSAGE_NO_RESULTS]: 'No results to show',
+  [STRING.MESSAGE_NO_RESULTS]: 'No results to show.',
+  [STRING.MESSAGE_NO_RESULTS_FOR_FILTERING]:
+    'No results to show for the current fitering.',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
   [STRING.MESSAGE_PASSWORD_UPDATED]: 'Your password has been updated!',
@@ -385,13 +402,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
   /* NAV_ITEM */
-  [STRING.NAV_ITEM_DEPLOYMENTS]: 'Deployments',
+  [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',
   [STRING.NAV_ITEM_JOBS]: 'Jobs',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
   [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
   [STRING.NAV_ITEM_PROJECTS]: 'Projects',
   [STRING.NAV_ITEM_SESSIONS]: 'Sessions',
-  [STRING.NAV_ITEM_SPECIES]: 'Species',
+  [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
@@ -416,21 +433,25 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TOOLTIPS */
   [STRING.TOOLTIP_COLLECTION]:
-    'A collection is a group of captures. A collection contains all or some captures in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
+    'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
-    'A deployment is defined as one monitoring station.',
+    'A monitoring station is a location where a device is deployed to take images of insects in the wild (at a “Site”).',
   [STRING.TOOLTIP_DEVICE_TYPE]:
-    'A device type is the type of equipment used for monitoring, for example an AMI system. One or many deployments can be connected to a device type.',
+    'A device type is the type of equipment or camera used for collecting source images. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
+  [STRING.TOOLTIP_JOB]:
+    'A job is a request for data processing that specifies the data to process and the pipeline to use.',
   [STRING.TOOLTIP_OCCURRENCE]:
-    'An occurrence is a group of detections of one individual. One occurrence consists of one or many detections.',
+    'An occurrence refers to when an individual is detected in a sequence of one or more images with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
-    'A pipeline is a set of algorithms used for processing. When a processing job is registered, a pipeline is picked. This list defines the pipeline options available.',
+    'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_SESSION]:
-    'A session is a fixed period of time of monitoring for one deployment. The period is typically one night.',
+    'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
-    'A site is a physical place where monitoring is taking place. One or many deployments can be connected to a site.',
+    'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
+  [STRING.TOOLTIP_STATUS]:
+    'A status is the processing stage of a job once submitted: Created > Pending > Started > Success. A Failed status means the job stopped before it had finished.',
   [STRING.TOOLTIP_STORAGE]:
-    'A storage is a place where captures are kept, for example a S3 bucket. One or many deployments can be connected to a storage.',
+    'A storage is a place where source images are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 
   /* OTHER */
   [STRING.ALGORITHMS]: 'Algorithms',
@@ -480,7 +501,9 @@ export const translate = (
   }
 
   Object.entries(values).forEach(([key, value]) => {
-    string = string.replace(`{{${key}}}`, `${value}`)
+    const valueLabel =
+      typeof value === 'number' ? value.toLocaleString() : value
+    string = string.replace(`{{${key}}}`, `${valueLabel}`)
   })
 
   return string

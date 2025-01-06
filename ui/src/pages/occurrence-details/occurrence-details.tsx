@@ -14,6 +14,7 @@ import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useMemo, useRef, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -22,7 +23,6 @@ import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
-import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
 import { IdQuickActions } from './reject-id/id-quick-actions'
@@ -110,23 +110,22 @@ export const OccurrenceDetails = ({
       label: translate(STRING.FIELD_LABEL_DURATION),
       value: occurrence.durationLabel,
     },
-    {
-      label: translate(STRING.FIELD_LABEL_DETECTIONS),
-      value: occurrence.numDetections,
-    },
   ]
 
   return (
     <div className={styles.wrapper} ref={containerRef}>
+      <Helmet>
+        <meta name="og:image" content={occurrence.images[0]?.src} />
+      </Helmet>
       <div className={styles.header}>
         <TaxonInfo
           taxon={occurrence.determinationTaxon}
           size={TaxonInfoSize.Large}
           getLink={(id: string) =>
             getAppRoute({
-              to: APP_ROUTES.SPECIES_DETAILS({
+              to: APP_ROUTES.TAXON_DETAILS({
                 projectId: projectId as string,
-                speciesId: id,
+                taxonId: id,
               }),
             })
           }
@@ -151,11 +150,7 @@ export const OccurrenceDetails = ({
           {canUpdate && (
             <>
               <Agree
-                agreed={userAgreed({
-                  identifications: occurrence.humanIdentifications,
-                  taxonId: occurrence.determinationTaxon.id,
-                  userId: userInfo?.id,
-                })}
+                agreed={userInfo ? occurrence.userAgreed(userInfo?.id) : false}
                 agreeWith={{
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,
@@ -184,7 +179,12 @@ export const OccurrenceDetails = ({
               label="Login to suggest ID"
               onClick={() =>
                 navigate(APP_ROUTES.LOGIN, {
-                  state: { to: location.pathname },
+                  state: {
+                    to: {
+                      pathname: location.pathname,
+                      search: location.search,
+                    },
+                  },
                 })
               }
             />

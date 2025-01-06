@@ -1,3 +1,4 @@
+import { LicenseInfo } from 'components/license-info/license-info'
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
@@ -5,9 +6,10 @@ import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { useState } from 'react'
-import { useThreshold } from 'utils/threshold/thresholdContext'
-import { ActivityPlot } from './activity-plot/activity-plot'
+import { useMemo, useState } from 'react'
+import { STRING, translate } from 'utils/language'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
+import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
 import { Frame } from './frame/frame'
@@ -17,15 +19,34 @@ import { ThresholdSlider } from './threshold-slider/threshold-slider'
 import { useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
-  const { threshold } = useThreshold()
+  const {
+    userPreferences: { scoreThreshold },
+  } = useUserPreferences()
   const { timeline = [] } = useSessionTimeline(session.id)
   const [showDetections, setShowDetections] = useState(true)
+  const [showDetectionsBelowThreshold, setShowDetectionsBelowThreshold] =
+    useState(false)
+  const [snapToDetections, setSnapToDetections] = useState(true)
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
   )
   const { capture: activeCapture } = useCaptureDetails(
     activeCaptureId as string
   )
+
+  const detections = useMemo(() => {
+    if (!activeCapture?.detections) {
+      return []
+    }
+
+    if (showDetectionsBelowThreshold) {
+      return activeCapture.detections
+    }
+
+    return activeCapture.detections.filter(
+      (detection) => detection.score >= scoreThreshold
+    )
+  }, [activeCapture, scoreThreshold, showDetectionsBelowThreshold])
 
   if (!session.firstCapture) {
     return null
@@ -46,12 +67,31 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           )}
           <div className={styles.sidebarSection}>
             <span className={styles.title}>View settings</span>
-            <ThresholdSlider />
+            <div>
+              <span className={styles.label}>
+                {translate(STRING.FIELD_LABEL_SCORE_THRESHOLD)}
+              </span>
+              <ThresholdSlider />
+            </div>
+            <Checkbox
+              id="show-detections-below-threshold"
+              label="Show detections below threshold"
+              checked={showDetectionsBelowThreshold}
+              onCheckedChange={setShowDetectionsBelowThreshold}
+              theme={CheckboxTheme.Neutral}
+            />
             <Checkbox
               id="show-detections"
-              label="Show detections"
+              label="Show detection frames"
               checked={showDetections}
               onCheckedChange={setShowDetections}
+              theme={CheckboxTheme.Neutral}
+            />
+            <Checkbox
+              id="snap-to-detections"
+              label="Snap to images with detections"
+              checked={snapToDetections}
+              onCheckedChange={setSnapToDetections}
               theme={CheckboxTheme.Neutral}
             />
           </div>
@@ -61,30 +101,38 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         src={activeCapture?.src}
         width={activeCapture?.width ?? session.firstCapture.width}
         height={activeCapture?.height ?? session.firstCapture.height}
-        detections={activeCapture?.detections ?? []}
+        detections={detections}
         showDetections={showDetections}
-        threshold={threshold}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>
           <CaptureNavigation
             activeCapture={activeCapture}
-            setActiveCaptureId={setActiveCaptureId}
-          />
-        </div>
-        <ActivityPlot
-          session={session}
-          timeline={timeline}
-          setActiveCaptureId={setActiveCaptureId}
-        />
-        {timeline.length > 0 && (
-          <SessionCapturesSlider
-            session={session}
+            snapToDetections={snapToDetections}
             timeline={timeline}
-            activeCapture={activeCapture}
             setActiveCaptureId={setActiveCaptureId}
           />
-        )}
+          <div className={styles.licenseInfoWrapper}>
+            <LicenseInfo />
+          </div>
+        </div>
+        <div>
+          <ActivityPlot
+            session={session}
+            snapToDetections={snapToDetections}
+            timeline={timeline}
+            setActiveCaptureId={setActiveCaptureId}
+          />
+          {timeline.length > 0 && (
+            <SessionCapturesSlider
+              session={session}
+              snapToDetections={snapToDetections}
+              timeline={timeline}
+              activeCapture={activeCapture}
+              setActiveCaptureId={setActiveCaptureId}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

@@ -36,8 +36,7 @@ export const columns: (
     styles: {
       textAlign: TextAlign.Center,
     },
-    renderCell: (item: Occurrence, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Occurrence) => {
       const detailsRoute = getAppRoute({
         to: APP_ROUTES.OCCURRENCE_DETAILS({
           projectId,
@@ -49,7 +48,7 @@ export const columns: (
       return (
         <ImageTableCell
           images={item.images}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )
@@ -61,6 +60,7 @@ export const columns: (
     sortField: 'determination__name',
     renderCell: (item: Occurrence) => (
       <TaxonCell
+        id={item.id}
         item={item}
         projectId={projectId}
         showQuickActions={showQuickActions}
@@ -161,14 +161,6 @@ export const columns: (
     ),
   },
   {
-    id: 'detections',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
-    sortField: 'detections_count',
-    renderCell: (item: Occurrence) => (
-      <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
@@ -177,10 +169,12 @@ export const columns: (
 ]
 
 const TaxonCell = ({
+  id,
   item,
   projectId,
   showQuickActions,
 }: {
+  id?: string
   item: Occurrence
   projectId: string
   showQuickActions?: boolean
@@ -195,12 +189,10 @@ const TaxonCell = ({
     keepSearchParams: true,
   })
   const canUpdate = item.userPermissions.includes(UserPermission.Update)
-  const agreed = userInfo?.id
-    ? userInfo.id === item.determinationVerifiedBy?.id
-    : false
+  const agreed = userInfo ? item.userAgreed(userInfo.id) : false
 
   return (
-    <div className={styles.taxonCell}>
+    <div id={id} className={styles.taxonCell}>
       <BasicTableCell>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>

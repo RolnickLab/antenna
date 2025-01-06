@@ -1,11 +1,13 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { API_ROUTES } from 'data-services/constants'
 import { Project } from 'data-services/models/project'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { Error } from 'pages/error/error'
+import { Helmet } from 'react-helmet-async'
 import { useOutletContext } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { useSelectedView } from 'utils/useSelectedView'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
@@ -15,6 +17,7 @@ import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
 
 export const Overview = () => {
+  const { selectedView, setSelectedView } = useSelectedView('summary')
   const { project, isLoading, error } = useOutletContext<{
     project?: Project
     isLoading: boolean
@@ -23,7 +26,7 @@ export const Overview = () => {
   }>()
 
   if (!isLoading && error) {
-    return <Error error={error} />
+    return <ErrorState error={error} />
   }
 
   if (isLoading || !project) {
@@ -36,6 +39,9 @@ export const Overview = () => {
 
   return (
     <>
+      <Helmet>
+        <meta property="og:image" content={project?.image} />
+      </Helmet>
       <div className={styles.about}>
         <div className={styles.aboutImage}>
           {project.image ? (
@@ -54,7 +60,7 @@ export const Overview = () => {
           <DeploymentsMap deployments={project.deployments} />
         </div>
       </div>
-      <Tabs.Root defaultValue="summary">
+      <Tabs.Root value={selectedView} onValueChange={setSelectedView}>
         <Tabs.List>
           <Tabs.Trigger
             value="summary"

@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { matchPath, useLocation, useParams } from 'react-router-dom'
 import { APP_ROUTES } from './constants'
 import { STRING, translate } from './language'
+import { useUser } from './user/userContext'
 
 interface NavigationItem {
   id: string
@@ -18,6 +19,9 @@ export const useNavItems = () => {
   const location = useLocation()
   const { projectId } = useParams()
   const { status } = useStatus(projectId)
+  const {
+    user: { loggedIn },
+  } = useUser()
 
   const navItems: NavigationItem[] = useMemo(
     () => [
@@ -28,16 +32,20 @@ export const useNavItems = () => {
         path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
         matchPath: APP_ROUTES.PROJECT_DETAILS({ projectId: ':projectId' }),
       },
-      {
-        id: 'jobs',
-        title: translate(STRING.NAV_ITEM_JOBS),
-        icon: IconType.BatchId,
-        path: APP_ROUTES.JOBS({ projectId: projectId as string }),
-        matchPath: APP_ROUTES.JOB_DETAILS({
-          projectId: ':projectId',
-          jobId: '*',
-        }),
-      },
+      ...(loggedIn
+        ? [
+            {
+              id: 'jobs',
+              title: translate(STRING.NAV_ITEM_JOBS),
+              icon: IconType.BatchId,
+              path: APP_ROUTES.JOBS({ projectId: projectId as string }),
+              matchPath: APP_ROUTES.JOB_DETAILS({
+                projectId: ':projectId',
+                jobId: '*',
+              }),
+            },
+          ]
+        : []),
       {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
@@ -72,18 +80,18 @@ export const useNavItems = () => {
         }),
       },
       {
-        id: 'species',
-        title: translate(STRING.NAV_ITEM_SPECIES),
+        id: 'taxa',
+        title: translate(STRING.NAV_ITEM_TAXA),
         icon: IconType.Species,
         count: status?.numSpecies,
-        path: APP_ROUTES.SPECIES({ projectId: projectId as string }),
-        matchPath: APP_ROUTES.SPECIES_DETAILS({
+        path: APP_ROUTES.TAXA({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.TAXON_DETAILS({
           projectId: ':projectId',
-          speciesId: '*',
+          taxonId: '*',
         }),
       },
     ],
-    [status, projectId]
+    [status, projectId, loggedIn]
   )
 
   const activeNavItem =

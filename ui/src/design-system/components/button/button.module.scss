@@ -12,6 +12,7 @@
   @include paragraph-x-small();
   font-weight: 600;
   border: 1px solid $color-neutral-100;
+  outline: none;
   background-color: $color-generic-white;
   color: $color-primary-1-600;
   box-sizing: border-box;
@@ -60,9 +61,14 @@
   }
 }
 
+.label {
+  padding-top: 2px;
+}
+
 .details {
+  padding-top: 2px;
   @include paragraph-xx-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   font-weight: 600;
   flex-grow: 1;
   text-align: right;

@@ -13,6 +13,20 @@ from ami.ml.schemas import (
     PipelineResponse,
     SourceImageResponse,
 )
+from ami.tests.fixtures.main import create_captures_from_files, create_ml_pipeline, setup_test_project
+
+
+class TestPipelineWithMLBackend(TestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        self.captures = create_captures_from_files(self.deployment, skip_existing=False)
+        self.test_images = [image for image, frame in self.captures]
+        self.pipeline = create_ml_pipeline(self.project)
+
+    def test_run_pipeline(self):
+        # Send images to ML backend to process and return detections
+        pipeline_response = self.pipeline.process_images(self.test_images)
+        assert pipeline_response.detections
 
 
 class TestPipeline(TestCase):
@@ -87,7 +101,9 @@ class TestPipeline(TestCase):
         for image in self.test_images:
             image.save()
             self.assertEqual(image.detections_count, 1)
+
         print(saved_objects)
+        # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
 
     def no_test_skip_existing_results(self):
         # @TODO fix issue with "None" algorithm on some detections
@@ -149,6 +165,12 @@ class TestPipeline(TestCase):
         images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, total_images)
+
+    def _test_skip_existing_per_batch_during_processing(self):
+        # Send the same batch to two simultaneous processing pipelines
+        # @TODO this needs to test the `process_images()` function with a real pipeline
+        # @TODO enable test when a pipeline is added to the CI environment in PR #576
+        pass
 
     def test_unknown_algorithm_returned_by_backend(self):
         fake_results = self.fake_pipeline_results(self.test_images, self.pipeline)

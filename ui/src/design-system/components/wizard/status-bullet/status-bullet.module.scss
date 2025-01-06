@@ -9,6 +9,7 @@
   height: 24px;
   border-radius: 12px;
   background-color: $color-primary-2-600;
+  padding-top: 2px;
   @include paragraph-x-small();
   font-weight: 600;
   color: $color-generic-white;
@@ -18,6 +19,6 @@
   }
 
   &.neutral {
-    background-color: $color-neutral-500;
+    background-color: $color-neutral-300;
   }
 }
