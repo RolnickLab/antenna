@@ -13,9 +13,12 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
+import {
+  OccurrenceDetails,
+  TABS,
+} from 'pages/occurrence-details/occurrence-details'
 import { useContext, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -210,6 +213,11 @@ const OccurrenceDetailsDialog = ({
   occurrences?: Occurrence[]
 }) => {
   const navigate = useNavigate()
+  const { state } = useLocation()
+  const { selectedView, setSelectedView } = useSelectedView(
+    state?.defaultTab ?? TABS.FIELDS,
+    'tab'
+  )
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
@@ -227,21 +235,31 @@ const OccurrenceDetailsDialog = ({
   return (
     <Dialog.Root
       open={!!id}
-      onOpenChange={() =>
+      onOpenChange={(open) => {
+        if (!open) {
+          setSelectedView(undefined)
+        }
+
         navigate(
           getAppRoute({
             to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )
-      }
+      }}
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
         error={error}
       >
-        {occurrence ? <OccurrenceDetails occurrence={occurrence} /> : null}
+        {occurrence ? (
+          <OccurrenceDetails
+            occurrence={occurrence}
+            selectedTab={selectedView}
+            setSelectedTab={setSelectedView}
+          />
+        ) : null}
         <OccurrenceNavigation occurrences={occurrences} />
       </Dialog.Content>
     </Dialog.Root>
