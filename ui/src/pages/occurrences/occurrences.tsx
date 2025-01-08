@@ -214,13 +214,17 @@ const OccurrenceDetailsDialog = ({
 }) => {
   const navigate = useNavigate()
   const { state } = useLocation()
-  const { selectedView, setSelectedView } = useSelectedView(
-    state?.defaultTab ?? TABS.FIELDS,
-    'tab'
-  )
+  const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+
+  useEffect(() => {
+    // If a default tab is set from router state, set this as active
+    if (state?.defaultTab) {
+      setSelectedView(state.defaultTab)
+    }
+  }, [state?.defaultTab])
 
   useEffect(() => {
     setDetailBreadcrumb(
