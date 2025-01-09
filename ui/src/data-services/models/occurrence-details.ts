@@ -104,6 +104,10 @@ export class OccurrenceDetails extends Occurrence {
     return this._machinePredictions
   }
 
+  get rawData(): string {
+    return JSON.stringify(this._occurrence, null, 4)
+  }
+
   getDetectionInfo(id: string) {
     const detection = this._occurrence.detections.find(
       (d: any) => `${d.id}` === id
