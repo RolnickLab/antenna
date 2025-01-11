@@ -12,7 +12,7 @@ const dateToLabel = (date: Date) => {
   }
 }
 
-export const DateFilter = ({ isValid, onAdd, onClear, value }: FilterProps) => {
+export const DateFilter = ({ error, onAdd, onClear, value }: FilterProps) => {
   const [open, setOpen] = useState(false)
   const selected = value ? new Date(value) : undefined
 
@@ -35,7 +35,7 @@ export const DateFilter = ({ isValid, onAdd, onClear, value }: FilterProps) => {
         >
           <>
             <span>{triggerLabel}</span>
-            {selected && !isValid ? (
+            {selected && error ? (
               <AlertCircleIcon className="w-4 w-4 text-destructive" />
             ) : (
               <CalendarIcon className="w-4 w-4" />

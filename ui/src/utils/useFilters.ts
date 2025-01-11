@@ -124,12 +124,10 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
 
   const filters = _filters.map(({ validate, value, ...rest }) => {
     const error = validate ? validate(value, _filters) : undefined
-    const isValid = !error
 
     return {
       ...rest,
       value,
-      isValid,
       error,
     }
   })

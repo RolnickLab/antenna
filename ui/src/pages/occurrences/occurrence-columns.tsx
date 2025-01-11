@@ -60,6 +60,7 @@ export const columns: (
     sortField: 'determination__name',
     renderCell: (item: Occurrence) => (
       <TaxonCell
+        id={item.id}
         item={item}
         projectId={projectId}
         showQuickActions={showQuickActions}
@@ -168,10 +169,12 @@ export const columns: (
 ]
 
 const TaxonCell = ({
+  id,
   item,
   projectId,
   showQuickActions,
 }: {
+  id?: string
   item: Occurrence
   projectId: string
   showQuickActions?: boolean
@@ -189,7 +192,7 @@ const TaxonCell = ({
   const agreed = userInfo ? item.userAgreed(userInfo.id) : false
 
   return (
-    <div className={styles.taxonCell}>
+    <div id={id} className={styles.taxonCell}>
       <BasicTableCell>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
