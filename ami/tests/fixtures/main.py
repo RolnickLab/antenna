@@ -37,11 +37,11 @@ def update_site_settings(**kwargs):
     return site
 
 
-def create_ml_backends(project):
+def create_processing_services(project):
     backends_to_add = [
         {
             "projects": [{"name": project.name}],
-            "endpoint_url": "http://ml_backend:2000",
+            "endpoint_url": "http://processing_service:2000",
         },
     ]
 
@@ -77,7 +77,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
         deployment, _ = Deployment.objects.get_or_create(
             project=project, name="Test Deployment", defaults=dict(data_source=data_source)
         )
-        create_ml_backends(project)
+        create_processing_services(project)
     else:
         short_id = uuid.uuid4().hex[:8]
         project = Project.objects.create(name=f"Test Project {short_id}")
@@ -85,7 +85,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
         deployment = Deployment.objects.create(
             project=project, name=f"Test Deployment {short_id}", data_source=data_source
         )
-        create_ml_backends(project)
+        create_processing_services(project)
     return project, deployment
 
 

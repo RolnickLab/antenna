@@ -15,11 +15,11 @@ from ami.ml.schemas import (
     PipelineResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_ml_backends, setup_test_project
+from ami.tests.fixtures.main import create_captures_from_files, create_processing_services, setup_test_project
 from ami.users.models import User
 
 
-class TestMLBackendAPI(APITestCase):
+class TestProcessingServiceAPI(APITestCase):
     """
     Test the ML Backends API endpoints.
     """
@@ -78,11 +78,13 @@ class TestMLBackendAPI(APITestCase):
         return data
 
     def test_create_backend(self):
-        self._create_backend(name="ML Backend Test", slug="ml_backend_test", endpoint_url="http://ml_backend:2000")
+        self._create_backend(
+            name="ML Backend Test", slug="processing_service_test", endpoint_url="http://processing_service:2000"
+        )
 
     def test_project_was_added(self):
         response = self._create_backend(
-            name="ML Backend Test", slug="ml_backend_test", endpoint_url="http://ml_backend:2000"
+            name="ML Backend Test", slug="processing_service_test", endpoint_url="http://processing_service:2000"
         )
         backend_id = response["id"]
         backend = Backend.objects.get(pk=backend_id)
@@ -91,7 +93,7 @@ class TestMLBackendAPI(APITestCase):
     def test_backend_pipeline_registration(self):
         # register a backend
         response = self._create_backend(
-            name="ML Backend Test", slug="ml_backend_test", endpoint_url="http://ml_backend:2000"
+            name="ML Backend Test", slug="processing_service_test", endpoint_url="http://processing_service:2000"
         )
         backend_id = response["id"]
 
@@ -103,12 +105,12 @@ class TestMLBackendAPI(APITestCase):
         self.assertEqual(pipelines_queryset.count(), len(response["pipelines"]))
 
 
-class TestPipelineWithMLBackend(TestCase):
+class TestPipelineWithProcessingService(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
         self.test_images = [image for image, frame in self.captures]
-        self.backend_instance = create_ml_backends(self.project)
+        self.backend_instance = create_processing_services(self.project)
         self.backend = self.backend_instance
         self.pipeline = self.backend_instance.pipelines.all().filter(slug="constant").first()
 
