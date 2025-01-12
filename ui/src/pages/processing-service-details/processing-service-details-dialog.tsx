@@ -1,15 +1,15 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { FormRow, FormSection } from 'components/form/layout/layout'
-import { useBackendDetails } from 'data-services/hooks/backends/useBackendDetails'
+import { useProcessingServiceDetails } from 'data-services/hooks/processing-services/useProcessingServiceDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
-import { ErrorState } from 'components/error-state/error-state'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { BackendPipelines } from './backend-pipelines'
+import { ProcessingServicePipelines } from './processing-service-pipelines'
 import styles from './styles.module.scss'
 
-export const BackendDetailsDialog = ({
+export const ProcessingServiceDetailsDialog = ({
   id,
   name,
 }: {
@@ -32,25 +32,31 @@ export const BackendDetailsDialog = ({
       >
         <Dialog.Header
           title={translate(STRING.ENTITY_DETAILS, {
-            type: _.capitalize(translate(STRING.ENTITY_TYPE_BACKEND)),
+            type: _.capitalize(
+              translate(STRING.ENTITY_TYPE_PROCESSING_SERVICE)
+            ),
           })}
         />
         <div className={styles.content}>
-          <BackendDetailsContent id={id} onLoadingChange={setIsLoading} />
+          <ProcessingServiceDetailsContent
+            id={id}
+            onLoadingChange={setIsLoading}
+          />
         </div>
       </Dialog.Content>
     </Dialog.Root>
   )
 }
 
-const BackendDetailsContent = ({
+const ProcessingServiceDetailsContent = ({
   id,
   onLoadingChange,
 }: {
   id: string
   onLoadingChange: (isLoading: boolean) => void
 }) => {
-  const { backend, isLoading, error } = useBackendDetails(id)
+  const { processingService, isLoading, error } =
+    useProcessingServiceDetails(id)
 
   useEffect(() => {
     onLoadingChange(isLoading)
@@ -58,45 +64,47 @@ const BackendDetailsContent = ({
 
   return (
     <>
-      {backend ? (
+      {processingService ? (
         <>
           <FormSection title={translate(STRING.SUMMARY)}>
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_ID)}
-                value={backend.id}
+                value={processingService.id}
               />
               <InputValue
                 label={translate(STRING.FIELD_LABEL_NAME)}
-                value={backend.name}
+                value={processingService.name}
               />
             </FormRow>
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
-                value={backend.description}
+                value={processingService.description}
               />
               <InputValue
                 label={translate(STRING.FIELD_LABEL_LAST_CHECKED)}
-                value={backend.lastChecked}
+                value={processingService.lastChecked}
               />
             </FormRow>
 
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_CREATED_AT)}
-                value={backend.createdAt}
+                value={processingService.createdAt}
               />
               <InputValue
                 label={translate(STRING.FIELD_LABEL_UPDATED_AT)}
-                value={backend.updatedAt}
+                value={processingService.updatedAt}
               />
             </FormRow>
           </FormSection>
-          {backend.pipelines.length > 0 && (
+          {processingService.pipelines.length > 0 && (
             <FormSection title={translate(STRING.PIPELINES)}>
               <div className={styles.tableContainer}>
-                <BackendPipelines backend={backend} />
+                <ProcessingServicePipelines
+                  processingService={processingService}
+                />
               </div>
             </FormSection>
           )}

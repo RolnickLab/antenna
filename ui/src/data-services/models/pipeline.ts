@@ -82,23 +82,25 @@ export class Pipeline {
     })
   }
 
-  get backendsOnline(): string {
-    const backends = this._pipeline.backends
+  get processingServicesOnline(): string {
+    const processingServices = this._pipeline.processing_services
     let total_online = 0
-    for (const backend of backends) {
-      if (backend.last_checked_live) {
+    for (const processingService of processingServices) {
+      if (processingService.last_checked_live) {
         total_online += 1
       }
     }
 
-    return total_online + '/' + backends.length
+    return total_online + '/' + processingServices.length
   }
 
-  get backendsOnlineLastChecked(): string | undefined {
-    const backends = this._pipeline.backends
+  get processingServicesOnlineLastChecked(): string | undefined {
+    const processingServices = this._pipeline.processing_services
     const last_checked_times = []
-    for (const backend of backends) {
-      last_checked_times.push(new Date(backend.last_checked).getTime())
+    for (const processingService of processingServices) {
+      last_checked_times.push(
+        new Date(processingService.last_checked).getTime()
+      )
     }
 
     return getFormatedDateTimeString({

@@ -12,16 +12,16 @@ interface ResponseData {
   prefix_exists: boolean
 }
 
-export const useTestBackendConnection = () => {
+export const useTestProcessingServiceConnection = () => {
   const queryClient = useQueryClient()
 
   const { data, mutateAsync, isLoading, isSuccess, error } = useMutation({
     mutationFn: (params: { id: string; subdir?: string; regex?: string }) =>
       axios.get<ResponseData>(
-        `${API_URL}/${API_ROUTES.BACKENDS}/${params.id}/status/`
+        `${API_URL}/${API_ROUTES.PROCESSING_SERVICES}/${params.id}/status/`
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries([API_ROUTES.BACKENDS])
+      queryClient.invalidateQueries([API_ROUTES.PROCESSING_SERVICES])
     },
     onError: (error: AxiosError) => error,
   })
@@ -33,7 +33,7 @@ export const useTestBackendConnection = () => {
 
   return {
     data: data?.data,
-    testBackendConnection: mutateAsync,
+    testProcessingServiceConnection: mutateAsync,
     isLoading,
     isSuccess,
     error,

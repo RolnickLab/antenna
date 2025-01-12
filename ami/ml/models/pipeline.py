@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import Backend
+    from ami.ml.models import ProcessingService
 
 import logging
 import typing
@@ -164,7 +164,7 @@ def process_images(
             detections=[],
             total_time=0,
         )
-    task_logger.info(f"Sending {len(images)} images to ML backend {pipeline.slug}")
+    task_logger.info(f"Sending {len(images)} images to Processing Service {pipeline.slug}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
     source_images = [
@@ -232,7 +232,7 @@ def save_results(results: PipelineResponse | None = None, results_json: str | No
 
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
-        logger.warning(f"Pipeline choice returned by the ML backend was not recognized! {pipeline}")
+        logger.warning(f"Pipeline choice returned by the Processing Service was not recognized! {pipeline}")
         created_objects.append(pipeline)
     algorithms_used = set()
 
@@ -420,7 +420,7 @@ class Pipeline(BaseModel):
         ),
     )
     projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
-    backends: models.QuerySet[Backend]
+    processing_services: models.QuerySet[ProcessingService]
 
     class Meta:
         ordering = ["name", "version"]
@@ -446,32 +446,32 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def choose_backend_for_pipeline(self, job_id):
+    def choose_processing_service_for_pipeline(self, job_id):
         job = None
         if job_id:
             from ami.jobs.models import Job
 
             job = Job.objects.get(pk=job_id)
 
-        backends = self.backends.all()
+        processing_services = self.processing_services.all()
 
-        # check the status of all backends
-        backend_id_lowest_latency = backends.first().id if backends.exists() else None
+        # check the status of all processing services
+        processing_service_id_lowest_latency = processing_services.first().id if processing_services.exists() else None
         lowest_latency = 10000
-        backends_online = False
+        processing_services_online = False
 
-        for backend in backends:
-            status_response = backend.get_status()
+        for processing_service in processing_services:
+            status_response = processing_service.get_status()
             if status_response.server_live:
-                backends_online = True
+                processing_services_online = True
                 if status_response.latency < lowest_latency:
                     lowest_latency = status_response.latency
-                    # pick the backend that lowest latency
-                    backend_id_lowest_latency = backend.id
+                    # pick the processing service that has lowest latency
+                    processing_service_id_lowest_latency = processing_service.id
 
         # if all offline then throw error
-        if not backends_online:
-            msg = "No backends are online."
+        if not processing_services_online:
+            msg = "No processing services are online."
 
             if job:
                 job.logger.error(msg)
@@ -480,21 +480,23 @@ class Pipeline(BaseModel):
             raise Exception(msg)
         else:
             if job:
-                job.logger.info(f"Using Backend with ID={backend_id_lowest_latency}")
-            logger.info(f"Using Backend with ID={backend_id_lowest_latency}")
+                job.logger.info(f"Using Processing Service with ID={processing_service_id_lowest_latency}")
+            logger.info(f"Using Processing Service with ID={processing_service_id_lowest_latency}")
 
-            return backend_id_lowest_latency
+            return processing_service_id_lowest_latency
 
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
         try:
-            backend_id = self.choose_backend_for_pipeline(job_id)
+            processing_service_id = self.choose_processing_service_for_pipeline(job_id)
         except Exception:
             return
 
-        if not self.backends.filter(pk=backend_id).first().endpoint_url:
+        if not self.processing_services.filter(pk=processing_service_id).first().endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
         return process_images(
-            endpoint_url=urljoin(self.backends.filter(pk=backend_id).first().endpoint_url, "/process_images"),
+            endpoint_url=urljoin(
+                self.processing_services.filter(pk=processing_service_id).first().endpoint_url, "/process_images"
+            ),
             pipeline=self,
             images=images,
             job_id=job_id,

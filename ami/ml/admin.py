@@ -3,8 +3,8 @@ from django.contrib import admin
 from ami.main.admin import AdminBase
 
 from .models.algorithm import Algorithm
-from .models.backend import Backend
 from .models.pipeline import Pipeline
+from .models.processing_service import ProcessingService
 
 
 @admin.register(Algorithm)
@@ -60,8 +60,8 @@ class PipelineAdmin(AdminBase):
     }
 
 
-@admin.register(Backend)
-class BackendAdmin(AdminBase):
+@admin.register(ProcessingService)
+class ProcessingServiceAdmin(AdminBase):
     list_display = [
         "id",
         "name",

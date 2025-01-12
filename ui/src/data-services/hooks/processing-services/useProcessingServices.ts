@@ -1,31 +1,38 @@
 import { API_ROUTES } from 'data-services/constants'
-import { Backend, ServerBackend } from 'data-services/models/backend'
+import {
+  ProcessingService,
+  ServerProcessingService,
+} from 'data-services/models/processing-service'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
 import { UserPermission } from 'utils/user/types'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
-const convertServerRecord = (record: ServerBackend) => new Backend(record)
+const convertServerRecord = (record: ServerProcessingService) =>
+  new ProcessingService(record)
 
-export const useBackends = (
+export const useProcessingServices = (
   params?: FetchParams
 ): {
-  items?: Backend[]
+  items?: ProcessingService[]
   total: number
   userPermissions?: UserPermission[]
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({ collection: API_ROUTES.BACKENDS, params })
+  const fetchUrl = getFetchUrl({
+    collection: API_ROUTES.PROCESSING_SERVICES,
+    params,
+  })
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
-    results: Backend[]
+    results: ProcessingService[]
     user_permissions?: UserPermission[]
     count: number
   }>({
-    queryKey: [API_ROUTES.BACKENDS, params],
+    queryKey: [API_ROUTES.PROCESSING_SERVICES, params],
     url: fetchUrl,
   })
 

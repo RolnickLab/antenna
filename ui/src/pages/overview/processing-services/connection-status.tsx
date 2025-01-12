@@ -1,33 +1,42 @@
 import { FormRow } from 'components/form/layout/layout'
-import { useTestBackendConnection } from 'data-services/hooks/backends/useTestBackendConnection'
+import { useTestProcessingServiceConnection } from 'data-services/hooks/processing-services/useTestProcessingServiceConnection'
 import { InputValue } from 'design-system/components/input/input'
 import * as Wizard from 'design-system/components/wizard/wizard'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
+import styles from './processing-services.module.scss'
 import { StatusInfo } from './status-info/status-info'
 import { Status } from './status-info/types'
-import styles from './backends.module.scss'
 
 export const ConnectionStatus = ({
   regex,
-  backendId,
+  processingServiceId,
   subdir,
   updatedAt,
   onConnectionChange,
 }: {
   regex?: string
-  backendId: string
+  processingServiceId: string
   subdir?: string
   updatedAt?: string
   onConnectionChange?: (isConnected: boolean) => void
 }) => {
-  const { data, testBackendConnection, isLoading, error, validationError } =
-    useTestBackendConnection()
+  const {
+    data,
+    testProcessingServiceConnection: testProcessingServiceConnection,
+    isLoading,
+    error,
+    validationError,
+  } = useTestProcessingServiceConnection()
   const [lastUpdated, setLastUpdated] = useState<Date>()
 
   const update = async () => {
-    await testBackendConnection({ id: backendId, subdir, regex })
+    await testProcessingServiceConnection({
+      id: processingServiceId,
+      subdir,
+      regex,
+    })
     setLastUpdated(new Date())
   }
 
@@ -94,7 +103,7 @@ export const ConnectionStatus = ({
 
   useEffect(() => {
     update()
-  }, [backendId, subdir, regex, updatedAt])
+  }, [processingServiceId, subdir, regex, updatedAt])
 
   useEffect(() => {
     onConnectionChange?.(status === Status.Connected)

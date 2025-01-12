@@ -6,16 +6,16 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Backend } from 'data-services/models/backend'
+import { ProcessingService } from 'data-services/models/processing-service'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
-import { ConnectionStatus } from 'pages/overview/backends/connection-status'
+import { ConnectionStatus } from 'pages/overview/processing-services/connection-status'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
-type BackendFormValues = FormValues & {
+type ProcessingServiceFormValues = FormValues & {
   slug: string
   endpoint_url: string
 }
@@ -37,7 +37,7 @@ const config: FormConfig = {
   },
   endpoint_url: {
     label: 'Endpoint URL',
-    description: 'ML Backend Endpoint',
+    description: 'Processing Service Endpoint',
     rules: {
       required: true,
     },
@@ -47,24 +47,24 @@ const config: FormConfig = {
   },
 }
 
-export const BackendDetailsForm = ({
+export const ProcessingServiceDetailsForm = ({
   entity,
   error,
   isLoading,
   isSuccess,
   onSubmit,
 }: DetailsFormProps) => {
-  const backend = entity as Backend | undefined
+  const processingService = entity as ProcessingService | undefined
   const {
     control,
     handleSubmit,
     setError: setFieldError,
-  } = useForm<BackendFormValues>({
+  } = useForm<ProcessingServiceFormValues>({
     defaultValues: {
-      name: backend?.name ?? '',
-      slug: backend?.slug ?? '',
-      endpoint_url: backend?.endpointUrl ?? '',
-      description: backend?.description ?? '',
+      name: processingService?.name ?? '',
+      slug: processingService?.slug ?? '',
+      endpoint_url: processingService?.endpointUrl ?? '',
+      description: processingService?.description ?? '',
     },
     mode: 'onChange',
   })
@@ -120,10 +120,10 @@ export const BackendDetailsForm = ({
             control={control}
           />
         </FormRow>
-        {backend?.id && (
+        {processingService?.id && (
           <ConnectionStatus
-            backendId={backend.id}
-            updatedAt={backend.updatedAtDetailed}
+            processingServiceId={processingService.id}
+            updatedAt={processingService.updatedAtDetailed}
           />
         )}
       </FormSection>

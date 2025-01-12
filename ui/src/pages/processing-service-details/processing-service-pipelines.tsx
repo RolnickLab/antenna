@@ -1,5 +1,5 @@
 import { Pipeline } from 'data-services/models/pipeline'
-import { Backend } from 'data-services/models/backend'
+import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import {
   Table,
@@ -41,10 +41,14 @@ export const columns: TableColumn<Pipeline>[] = [
   },
 ]
 
-export const BackendPipelines = ({ backend }: { backend: Backend }) => (
+export const ProcessingServicePipelines = ({
+  processingService,
+}: {
+  processingService: ProcessingService
+}) => (
   <Table
     backgroundTheme={TableBackgroundTheme.White}
-    items={backend.pipelines}
+    items={processingService.pipelines}
     columns={columns}
   />
 )

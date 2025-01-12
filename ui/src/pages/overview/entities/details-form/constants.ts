@@ -1,6 +1,6 @@
-import { StorageDetailsForm } from './storage-details-form'
 import { CollectionDetailsForm } from './collection-details-form'
-import { BackendDetailsForm } from './backend-details-form'
+import { ProcessingServiceDetailsForm } from './processing-service-details-form'
+import { StorageDetailsForm } from './storage-details-form'
 import { DetailsFormProps } from './types'
 
 export const customFormMap: {
@@ -8,5 +8,5 @@ export const customFormMap: {
 } = {
   storage: StorageDetailsForm,
   collection: CollectionDetailsForm,
-  backend: BackendDetailsForm,
+  processingService: ProcessingServiceDetailsForm,
 }

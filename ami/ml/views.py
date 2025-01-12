@@ -8,9 +8,9 @@ from ami.main.api.views import DefaultViewSet
 from ami.main.models import SourceImage
 
 from .models.algorithm import Algorithm
-from .models.backend import Backend
 from .models.pipeline import Pipeline
-from .serializers import AlgorithmSerializer, BackendSerializer, PipelineSerializer
+from .models.processing_service import ProcessingService
+from .serializers import AlgorithmSerializer, PipelineSerializer, ProcessingServiceSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -62,27 +62,27 @@ class PipelineViewSet(DefaultViewSet):
         return Response(results.dict())
 
 
-class BackendViewSet(DefaultViewSet):
+class ProcessingServiceViewSet(DefaultViewSet):
     """
-    API endpoint that allows ML processing backends to be viewed or edited.
+    API endpoint that allows processing services to be viewed or edited.
     """
 
-    queryset = Backend.objects.all()
-    serializer_class = BackendSerializer
+    queryset = ProcessingService.objects.all()
+    serializer_class = ProcessingServiceSerializer
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
 
     @action(detail=True, methods=["get"])
     def status(self, request: Request, pk=None) -> Response:
         """
-        Test the connection to the processing backend.
+        Test the connection to the processing service.
         """
-        backend = Backend.objects.get(pk=pk)
-        response = backend.get_status()
+        processing_service = ProcessingService.objects.get(pk=pk)
+        response = processing_service.get_status()
         return Response(response.dict())
 
     @action(detail=True, methods=["post"])
     def register_pipelines(self, request: Request, pk=None) -> Response:
-        backend = Backend.objects.get(pk=pk)
-        response = backend.create_pipelines()
+        processing_service = ProcessingService.objects.get(pk=pk)
+        response = processing_service.create_pipelines()
         return Response(response.dict())

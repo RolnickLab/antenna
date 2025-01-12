@@ -10,21 +10,21 @@ from django.db import models
 from ami.base.models import BaseModel
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
-from ami.ml.schemas import BackendStatusResponse, PipelineRegistrationResponse
+from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceStatusResponse
 
 logger = logging.getLogger(__name__)
 
 
 @typing.final
-class Backend(BaseModel):
+class ProcessingService(BaseModel):
     """An ML processing backend"""
 
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True)
-    projects = models.ManyToManyField("main.Project", related_name="backends", blank=True)
+    projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
     endpoint_url = models.CharField(max_length=1024)
-    pipelines = models.ManyToManyField("ml.Pipeline", related_name="backends", blank=True)
+    pipelines = models.ManyToManyField("ml.Pipeline", related_name="processing_services", blank=True)
     last_checked = models.DateTimeField(null=True)
     last_checked_live = models.BooleanField(null=True)
 
@@ -32,8 +32,8 @@ class Backend(BaseModel):
         return self.name
 
     class Meta:
-        verbose_name = "Backend"
-        verbose_name_plural = "Backends"
+        verbose_name = "ProcessingService"
+        verbose_name_plural = "ProcessingServices"
 
     def create_pipelines(self):
         # Call the status endpoint and get the pipelines/algorithms
@@ -106,7 +106,7 @@ class Backend(BaseModel):
         first_response_time = time.time()
         latency = first_response_time - start_time
 
-        response = BackendStatusResponse(
+        response = ProcessingServiceStatusResponse(
             timestamp=timestamp,
             request_successful=resp.ok,
             server_live=server_live,

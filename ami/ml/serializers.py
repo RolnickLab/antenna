@@ -5,8 +5,8 @@ from ami.main.api.serializers import DefaultSerializer
 from ami.main.models import Project
 
 from .models.algorithm import Algorithm
-from .models.backend import Backend
 from .models.pipeline import Pipeline, PipelineStage
+from .models.processing_service import ProcessingService
 
 
 class AlgorithmSerializer(DefaultSerializer):
@@ -41,9 +41,9 @@ class AlgorithmNestedSerializer(DefaultSerializer):
         ]
 
 
-class BackendNestedSerializer(DefaultSerializer):
+class ProcessingServiceNestedSerializer(DefaultSerializer):
     class Meta:
-        model = Backend
+        model = ProcessingService
         fields = [
             "name",
             "slug",
@@ -60,7 +60,7 @@ class BackendNestedSerializer(DefaultSerializer):
 class PipelineSerializer(DefaultSerializer):
     algorithms = AlgorithmSerializer(many=True, read_only=True)
     stages = SchemaField(schema=list[PipelineStage], read_only=True)
-    backends = BackendNestedSerializer(many=True, read_only=True)
+    processing_services = ProcessingServiceNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = Pipeline
@@ -72,7 +72,7 @@ class PipelineSerializer(DefaultSerializer):
             "description",
             "algorithms",
             "stages",
-            "backends",
+            "processing_services",
             "created_at",
             "updated_at",
         ]
@@ -94,7 +94,7 @@ class PipelineNestedSerializer(DefaultSerializer):
         ]
 
 
-class BackendSerializer(DefaultSerializer):
+class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
     project = serializers.PrimaryKeyRelatedField(
         write_only=True,
@@ -103,7 +103,7 @@ class BackendSerializer(DefaultSerializer):
     )
 
     class Meta:
-        model = Backend
+        model = ProcessingService
         fields = [
             "id",
             "details",

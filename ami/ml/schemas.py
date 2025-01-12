@@ -101,7 +101,7 @@ class PipelineConfig(pydantic.BaseModel):
     stages: list[PipelineStage] = []
 
 
-class BackendStatusResponse(pydantic.BaseModel):
+class ProcessingServiceStatusResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     request_successful: bool
     pipeline_configs: list[PipelineConfig] = []

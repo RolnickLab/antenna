@@ -45,7 +45,7 @@ export enum STRING {
   ENTITY_DELETE,
   ENTITY_DETAILS,
   ENTITY_EDIT,
-  ENTITY_TYPE_BACKEND,
+  ENTITY_TYPE_PROCESSING_SERVICE,
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_IDENTIFICATION,
@@ -167,7 +167,7 @@ export enum STRING {
   NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
-  TAB_ITEM_BACKENDS,
+  TAB_ITEM_PROCESSING_SERVICES,
   TAB_ITEM_COLLECTIONS,
   TAB_ITEM_DEVICES,
   TAB_ITEM_FIELDS,
@@ -189,7 +189,7 @@ export enum STRING {
   DONE,
 
   /* TOOLTIPS */
-  TOOLTIP_BACKEND,
+  TOOLTIP_PROCESSING_SERVICE,
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE_TYPE,
@@ -360,7 +360,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
-  [STRING.ENTITY_TYPE_BACKEND]: 'backend',
+  [STRING.ENTITY_TYPE_PROCESSING_SERVICE]: 'processing service',
   [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
@@ -422,7 +422,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
-  [STRING.TAB_ITEM_BACKENDS]: 'Backends',
+  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing Services',
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
@@ -444,8 +444,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DONE]: 'Done',
 
   /* TOOLTIPS */
-  [STRING.TOOLTIP_BACKEND]:
-    'A backend is a group of pipelines used for processing images/collections.',
+  [STRING.TOOLTIP_PROCESSING_SERVICE]:
+    'A processing service is a group of pipelines used for processing images/collections.',
   [STRING.TOOLTIP_COLLECTION]:
     'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:

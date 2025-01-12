@@ -20,7 +20,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models.backend import Backend
+from ami.ml.models.processing_service import ProcessingService
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
 
@@ -38,35 +38,35 @@ def update_site_settings(**kwargs):
 
 
 def create_processing_services(project):
-    backends_to_add = [
+    processing_services_to_add = [
         {
             "projects": [{"name": project.name}],
             "endpoint_url": "http://processing_service:2000",
         },
     ]
 
-    for backend_data in backends_to_add:
-        backend, created = Backend.objects.get_or_create(
-            endpoint_url=backend_data["endpoint_url"],
+    for processing_service_data in processing_services_to_add:
+        processing_service, created = ProcessingService.objects.get_or_create(
+            endpoint_url=processing_service_data["endpoint_url"],
         )
 
         if created:
-            logger.info(f'Successfully created backend with {backend_data["endpoint_url"]}.')
+            logger.info(f'Successfully created processing service with {processing_service_data["endpoint_url"]}.')
         else:
-            logger.info(f'Using existing backend with {backend_data["endpoint_url"]}.')
+            logger.info(f'Using existing processing service with {processing_service_data["endpoint_url"]}.')
 
-        for project_data in backend_data["projects"]:
+        for project_data in processing_service_data["projects"]:
             try:
                 project = Project.objects.get(name=project_data["name"])
-                backend.projects.add(project)
+                processing_service.projects.add(project)
             except Exception:
                 logger.error(f'Could not find project {project_data["name"]}.')
 
-        backend.save()
+        processing_service.save()
 
-    backend.create_pipelines()
+    processing_service.create_pipelines()
 
-    return backend
+    return processing_service
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
