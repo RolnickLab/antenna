@@ -37,32 +37,33 @@ def update_site_settings(**kwargs):
     return site
 
 
-def create_processing_services(project):
-    processing_services_to_add = [
-        {
-            "projects": [{"name": project.name}],
-            "endpoint_url": "http://processing_service:2000",
-        },
-    ]
+def create_processing_service(project):
+    processing_service_to_add = {
+        "slug": "test_processing_service",
+        "name": "Test Processing Service",
+        "projects": [{"name": project.name}],
+        "endpoint_url": "http://processing_service:2000",
+    }
 
-    for processing_service_data in processing_services_to_add:
-        processing_service, created = ProcessingService.objects.get_or_create(
-            endpoint_url=processing_service_data["endpoint_url"],
-        )
+    processing_service, created = ProcessingService.objects.get_or_create(
+        name=processing_service_to_add["name"],
+        slug=processing_service_to_add["slug"],
+        endpoint_url=processing_service_to_add["endpoint_url"],
+    )
+    processing_service.save()
 
-        if created:
-            logger.info(f'Successfully created processing service with {processing_service_data["endpoint_url"]}.')
-        else:
-            logger.info(f'Using existing processing service with {processing_service_data["endpoint_url"]}.')
+    if created:
+        logger.info(f'Successfully created processing service with {processing_service_to_add["endpoint_url"]}.')
+    else:
+        logger.info(f'Using existing processing service with {processing_service_to_add["endpoint_url"]}.')
 
-        for project_data in processing_service_data["projects"]:
-            try:
-                project = Project.objects.get(name=project_data["name"])
-                processing_service.projects.add(project)
-            except Exception:
-                logger.error(f'Could not find project {project_data["name"]}.')
-
-        processing_service.save()
+    for project_data in processing_service_to_add["projects"]:
+        try:
+            project = Project.objects.get(name=project_data["name"])
+            processing_service.projects.add(project)
+            processing_service.save()
+        except Exception:
+            logger.error(f'Could not find project {project_data["name"]}.')
 
     processing_service.create_pipelines()
 
@@ -77,7 +78,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
         deployment, _ = Deployment.objects.get_or_create(
             project=project, name="Test Deployment", defaults=dict(data_source=data_source)
         )
-        create_processing_services(project)
+        create_processing_service(project)
     else:
         short_id = uuid.uuid4().hex[:8]
         project = Project.objects.create(name=f"Test Project {short_id}")
@@ -85,7 +86,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
         deployment = Deployment.objects.create(
             project=project, name=f"Test Deployment {short_id}", data_source=data_source
         )
-        create_processing_services(project)
+        create_processing_service(project)
     return project, deployment
 
 

@@ -32,8 +32,8 @@ class ProcessingService(BaseModel):
         return self.name
 
     class Meta:
-        verbose_name = "ProcessingService"
-        verbose_name_plural = "ProcessingServices"
+        verbose_name = "Processing Service"
+        verbose_name_plural = "Processing Services"
 
     def create_pipelines(self):
         # Call the status endpoint and get the pipelines/algorithms

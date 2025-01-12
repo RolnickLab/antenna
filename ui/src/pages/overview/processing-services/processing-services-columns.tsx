@@ -86,14 +86,14 @@ export const columns: (
           <UpdateEntityDialog
             collection={API_ROUTES.PROCESSING_SERVICES}
             entity={item}
-            type="processingService"
+            type="service"
           />
         )}
         {item.canDelete && (
           <DeleteEntityDialog
             collection={API_ROUTES.PROCESSING_SERVICES}
             id={item.id}
-            type="processingService"
+            type="service"
           />
         )}
       </div>

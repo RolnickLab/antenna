@@ -46,7 +46,7 @@ export const ProcessingServices = () => {
         {canCreate && (
           <NewEntityDialog
             collection={API_ROUTES.PROCESSING_SERVICES}
-            type="processingService"
+            type="service"
           />
         )}
       </PageHeader>

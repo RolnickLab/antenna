@@ -8,5 +8,5 @@ export const customFormMap: {
 } = {
   storage: StorageDetailsForm,
   collection: CollectionDetailsForm,
-  processingService: ProcessingServiceDetailsForm,
+  service: ProcessingServiceDetailsForm,
 }

@@ -37,7 +37,7 @@ const config: FormConfig = {
   },
   endpoint_url: {
     label: 'Endpoint URL',
-    description: 'Processing Service Endpoint',
+    description: 'Processing service endpoint.',
     rules: {
       required: true,
     },

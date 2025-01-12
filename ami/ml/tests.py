@@ -15,7 +15,7 @@ from ami.ml.schemas import (
     PipelineResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_processing_services, setup_test_project
+from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
 from ami.users.models import User
 
 
@@ -34,7 +34,7 @@ class TestProcessingServiceAPI(APITestCase):
         self.factory = APIRequestFactory()
 
     def _create_processing_service(self, name: str, slug: str, endpoint_url: str):
-        processing_services_create_url = reverse_with_params("api:processing-service-list")
+        processing_services_create_url = reverse_with_params("api:processingservice-list")
         self.client.force_authenticate(user=self.user)
         processing_service_data = {
             "project": self.project.pk,
@@ -48,7 +48,7 @@ class TestProcessingServiceAPI(APITestCase):
         return resp.json()
 
     def _get_processing_service_id_by_slug(self, slug: str) -> int:
-        processing_services_list_url = reverse_with_params("api:processing-service-list")
+        processing_services_list_url = reverse_with_params("api:processingservice-list")
         self.client.force_authenticate(user=self.user)
         resp = self.client.get(processing_services_list_url)
         self.client.force_authenticate(user=None)
@@ -73,7 +73,7 @@ class TestProcessingServiceAPI(APITestCase):
 
     def _register_pipelines(self, processing_service_id):
         processing_services_register_pipelines_url = reverse_with_params(
-            "api:processing-service-register-pipelines", args=[processing_service_id]
+            "api:processingservice-register-pipelines", args=[processing_service_id]
         )
         self.client.force_authenticate(user=self.user)
         resp = self.client.post(processing_services_register_pipelines_url)
@@ -120,7 +120,7 @@ class TestPipelineWithProcessingService(TestCase):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
         self.test_images = [image for image, frame in self.captures]
-        self.processing_service_instance = create_processing_services(self.project)
+        self.processing_service_instance = create_processing_service(self.project)
         self.processing_service = self.processing_service_instance
         self.pipeline = self.processing_service_instance.pipelines.all().filter(slug="constant").first()
 
