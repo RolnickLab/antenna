@@ -2,15 +2,18 @@ import { useSearchParams } from 'react-router-dom'
 
 const SEARCH_PARAM_KEY_VIEW = 'view'
 
-export const useSelectedView = (defaultValue: string) => {
+export const useSelectedView = (
+  defaultValue: string,
+  key: string = SEARCH_PARAM_KEY_VIEW
+) => {
   const [searchParams, setSearchParams] = useSearchParams()
-  const selectedView = searchParams.get(SEARCH_PARAM_KEY_VIEW) ?? undefined
+  const selectedView = searchParams.get(key) ?? undefined
 
-  const setSelectedView = (selectedView: string | null) => {
-    searchParams.delete(SEARCH_PARAM_KEY_VIEW)
+  const setSelectedView = (selectedView?: string) => {
+    searchParams.delete(key)
 
     if (selectedView && selectedView !== defaultValue) {
-      searchParams.set(SEARCH_PARAM_KEY_VIEW, selectedView)
+      searchParams.set(key, selectedView ?? defaultValue)
     }
 
     setSearchParams(searchParams)
