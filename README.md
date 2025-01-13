@@ -141,6 +141,12 @@ docker compose run --rm django python manage.py test -k pattern
 docker compose run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
+##### Speed up development of tests by reusing the db between test runs
+
+```bash
+docker compose run --rm django python manage.py test --keepdb
+```
+
 ##### Run management scripts
 
 ```bash
