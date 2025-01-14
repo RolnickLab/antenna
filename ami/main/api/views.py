@@ -10,6 +10,7 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -549,7 +550,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     )
     serializer_class = SourceImageCollectionSerializer
 
-    filterset_fields = ["project", "method"]
+    filterset_fields = ["method"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -562,11 +563,16 @@ class SourceImageCollectionViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         classification_threshold = get_active_classification_threshold(self.request)
-        queryset = (
-            super()
-            .get_queryset()
-            .with_occurrences_count(classification_threshold=classification_threshold)  # type: ignore
-            .with_taxa_count(classification_threshold=classification_threshold)
+        query_set: QuerySet = super().get_queryset()
+        project_id = self.request.query_params.get("project_id")
+        if project_id is not None:
+            project = Project.objects.filter(id=project_id).first()
+            if project:
+                query_set = query_set.filter(project=project)
+        queryset = query_set.with_occurrences_count(
+            classification_threshold=classification_threshold
+        ).with_taxa_count(  # type: ignore
+            classification_threshold=classification_threshold
         )
         return queryset
 
@@ -646,6 +652,19 @@ class SourceImageCollectionViewSet(DefaultViewSet):
                 "total_images": collection.images.count(),
             }
         )
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="project_id",
+                description="Filter by project ID",
+                required=False,
+                type=int,
+            )
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class SourceImageUploadViewSet(DefaultViewSet):
@@ -1207,16 +1226,25 @@ class ClassificationViewSet(DefaultViewSet):
 
 class SummaryView(GenericAPIView):
     permission_classes = [IsActiveStaffOrReadOnly]
-    filterset_fields = ["project"]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="project_id",
+                description="Filter by project ID",
+                required=False,
+                type=int,
+            )
+        ]
+    )
     def get(self, request):
         """
         Return counts of all models.
         """
-        project_id = request.query_params.get("project")
+        project_id = request.query_params.get("project_id")
         confidence_threshold = get_active_classification_threshold(request)
         if project_id:
-            project = Project.objects.get(id=project_id)
+            project = Project.objects.filter(id=project_id).first()
             data = {
                 "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
                 "deployments_count": Deployment.objects.filter(project=project).count(),
@@ -1358,12 +1386,34 @@ class SiteViewSet(DefaultViewSet):
 
     queryset = Site.objects.all()
     serializer_class = SiteSerializer
-    filterset_fields = ["project", "deployments"]
+    filterset_fields = ["deployments"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "name",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project_id = self.request.query_params.get("project_id")
+        if project_id is not None:
+            project = Project.objects.filter(id=project_id).first()
+            if project:
+                query_set = query_set.filter(project=project)
+        return query_set
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="project_id",
+                description="Filter by project ID",
+                required=False,
+                type=int,
+            )
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class DeviceViewSet(DefaultViewSet):
@@ -1373,12 +1423,34 @@ class DeviceViewSet(DefaultViewSet):
 
     queryset = Device.objects.all()
     serializer_class = DeviceSerializer
-    filterset_fields = ["project", "deployments"]
+    filterset_fields = ["deployments"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "name",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project_id = self.request.query_params.get("project_id")
+        if project_id is not None:
+            project = Project.objects.filter(id=project_id).first()
+            if project:
+                query_set = query_set.filter(project=project)
+        return query_set
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="project_id",
+                description="Filter by project ID",
+                required=False,
+                type=int,
+            )
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class StorageSourceConnectionTestSerializer(serializers.Serializer):
@@ -1393,12 +1465,34 @@ class StorageSourceViewSet(DefaultViewSet):
 
     queryset = S3StorageSource.objects.all()
     serializer_class = StorageSourceSerializer
-    filterset_fields = ["project", "deployments"]
+    filterset_fields = ["deployments"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "name",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project_id = self.request.query_params.get("project_id")
+        if project_id is not None:
+            project = Project.objects.filter(id=project_id).first()
+            if project:
+                query_set = query_set.filter(project=project)
+        return query_set
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="project_id",
+                description="Filter by project ID",
+                required=False,
+                type=int,
+            )
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], name="test", serializer_class=StorageSourceConnectionTestSerializer)
     def test(self, request: Request, pk=None) -> Response:
