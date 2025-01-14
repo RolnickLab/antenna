@@ -446,7 +446,7 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def choose_processing_service_for_pipeline(self, job_id):
+    def choose_processing_service_for_pipeline(self, job_id, pipeline_name):
         job = None
         if job_id:
             from ami.jobs.models import Job
@@ -471,7 +471,7 @@ class Pipeline(BaseModel):
 
         # if all offline then throw error
         if not processing_services_online:
-            msg = "No processing services are online."
+            msg = f'No processing services are online for the pipeline "{pipeline_name}".'
 
             if job:
                 job.logger.error(msg)
@@ -486,10 +486,7 @@ class Pipeline(BaseModel):
             return processing_service_id_lowest_latency
 
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        try:
-            processing_service_id = self.choose_processing_service_for_pipeline(job_id)
-        except Exception:
-            return
+        processing_service_id = self.choose_processing_service_for_pipeline(job_id, self.name)
 
         if not self.processing_services.filter(pk=processing_service_id).first().endpoint_url:
             raise ValueError("No endpoint URL configured for this pipeline")
