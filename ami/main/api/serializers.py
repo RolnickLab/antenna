@@ -127,13 +127,28 @@ class StorageSourceNestedSerializer(DefaultSerializer):
         ]
 
 
+class JobTypeSerializer(serializers.Serializer):
+    """
+    Serializer for the JobType json field in the Job model.
+
+    This is duplicated from ami.jobs.serializers to avoid circular imports.
+    but it is extremely simple.
+    """
+
+    name = serializers.CharField(read_only=True)
+    key = serializers.SlugField(read_only=True)
+
+
 class JobStatusSerializer(DefaultSerializer):
+    job_type = JobTypeSerializer(read_only=True)
+
     class Meta:
         model = Job
         fields = [
             "id",
             "details",
             "status",
+            "job_type",
             "created_at",
             "updated_at",
         ]
