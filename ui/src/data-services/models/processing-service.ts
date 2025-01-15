@@ -68,4 +68,8 @@ export class ProcessingService extends Entity {
       date: new Date(this._processingService.last_checked),
     })
   }
+
+  get num_piplines_added(): number {
+    return this._pipelines.length
+  }
 }

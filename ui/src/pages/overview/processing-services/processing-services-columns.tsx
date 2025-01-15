@@ -53,6 +53,14 @@ export const columns: (
     ),
   },
   {
+    id: 'num-pipelines-added',
+    name: translate(STRING.FIELD_LABEL_NUM_PIPELINES_ADDED),
+    sortField: 'num_pipelines_added',
+    renderCell: (item: ProcessingService) => (
+      <BasicTableCell value={item.num_piplines_added} />
+    ),
+  },
+  {
     id: 'processing-service-actions',
     name: '',
     styles: {
