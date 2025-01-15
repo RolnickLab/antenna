@@ -16,7 +16,6 @@ import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
 type ProcessingServiceFormValues = FormValues & {
-  slug: string
   endpoint_url: string
 }
 
@@ -24,13 +23,6 @@ const config: FormConfig = {
   name: {
     label: translate(STRING.FIELD_LABEL_NAME),
     description: 'A descriptive name for internal reference.',
-    rules: {
-      required: true,
-    },
-  },
-  slug: {
-    label: translate(STRING.FIELD_LABEL_SLUG),
-    description: 'A unique identifier for internal reference.',
     rules: {
       required: true,
     },
@@ -61,9 +53,8 @@ export const ProcessingServiceDetailsForm = ({
     setError: setFieldError,
   } = useForm<ProcessingServiceFormValues>({
     defaultValues: {
-      name: processingService?.name ?? '',
-      slug: processingService?.slug ?? '',
-      endpoint_url: processingService?.endpointUrl ?? '',
+      name: processingService?.name,
+      endpoint_url: processingService?.endpointUrl,
       description: processingService?.description ?? '',
     },
     mode: 'onChange',
@@ -78,7 +69,6 @@ export const ProcessingServiceDetailsForm = ({
           name: values.name,
           description: values.description,
           customFields: {
-            slug: values.slug,
             endpoint_url: values.endpoint_url,
           },
         })
@@ -100,19 +90,13 @@ export const ProcessingServiceDetailsForm = ({
             control={control}
           />
           <FormField
-            name="slug"
+            name="endpoint_url"
             type="text"
             config={config}
             control={control}
           />
         </FormRow>
         <FormRow>
-          <FormField
-            name="endpoint_url"
-            type="text"
-            config={config}
-            control={control}
-          />
           <FormField
             name="description"
             type="text"

@@ -1,5 +1,7 @@
 import logging
 
+from django.utils.text import slugify
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -71,6 +73,14 @@ class ProcessingServiceViewSet(DefaultViewSet):
     serializer_class = ProcessingServiceSerializer
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        data["slug"] = slugify(data["name"])
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"])
     def status(self, request: Request, pk=None) -> Response:
