@@ -549,7 +549,7 @@ class TestTaxonomyViews(TestCase):
     def test_occurrences_for_project(self):
         # Test that occurrences are specific to each project
         for project in [self.project_one, self.project_two]:
-            response = self.client.get(f"/api/v2/occurrences/?project={project.pk}")
+            response = self.client.get(f"/api/v2/occurrences/?project_id={project.pk}")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
@@ -592,7 +592,7 @@ class TestTaxonomyViews(TestCase):
         """
         from ami.main.models import Taxon
 
-        response = self.client.get(f"/api/v2/taxa/?project={project.pk}")
+        response = self.client.get(f"/api/v2/taxa/?project_id={project.pk}")
         self.assertEqual(response.status_code, 200)
         project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
         # project_any_taxa = Taxon.objects.filter(projects=project)
