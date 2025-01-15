@@ -82,22 +82,36 @@ class ProcessingService(BaseModel):
     def get_status(self):
         info_url = urljoin(self.endpoint_url, "info")
         start_time = time.time()
-
-        resp = requests.get(info_url)
-        if not resp.ok:
-            try:
-                msg = resp.json()["detail"]
-            except Exception:
-                msg = resp.content
-
-            logger.error(msg)
-
+        error = None
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.last_checked = timestamp
 
-        pipeline_configs = resp.json() if resp.ok else []
-        error = f"{resp.status_code} - {msg}" if not resp.ok else None
+        try:
+            resp = requests.get(info_url)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            self.last_checked_live = False
+            self.save()
+            print(self)
+            print(self.last_checked_live)
+            error = f"Error connecting to {info_url}: {e}"
+            logger.error(error)
 
+            first_response_time = time.time()
+            latency = first_response_time - start_time
+
+            return ProcessingServiceStatusResponse(
+                timestamp=timestamp,
+                request_successful=False,
+                server_live=False,
+                pipelines_online=[],
+                pipeline_configs=[],
+                endpoint_url=self.endpoint_url,
+                error=error,
+                latency=latency,
+            )
+
+        pipeline_configs = resp.json()
         server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
         pipelines_online = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status")
         self.last_checked_live = server_live
