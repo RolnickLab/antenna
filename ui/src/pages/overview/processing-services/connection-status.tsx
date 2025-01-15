@@ -127,7 +127,7 @@ export const ConnectionStatus = ({
                 value={data?.server_live ? 'Online' : 'Offline'}
               />
               <InputValue
-                label="Pipelines Online"
+                label="Pipelines Available"
                 value={data?.pipelines_online.length}
               />
             </FormRow>
