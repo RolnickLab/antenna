@@ -1,5 +1,6 @@
 export enum STRING {
   /* BUTTON */
+  ADD_PIPELINES,
   AGREE,
   AGREED,
   BACK,
@@ -35,7 +36,6 @@ export enum STRING {
   SUBMIT,
   SUGGEST_ID,
   SUGGEST_ID_SHORT,
-  SYNC,
   TEST,
   TEST_CONNECTION,
   VIEW_PUBLIC_PROJECTS,
@@ -240,6 +240,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.ADD_PIPELINES]: 'Add Pipelines',
   [STRING.AGREE]: 'Agree',
   [STRING.AGREED]: 'Agreed',
   [STRING.BACK]: 'Back',
@@ -275,7 +276,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
-  [STRING.SYNC]: 'Sync',
   [STRING.TEST]: 'Test',
   [STRING.TEST_CONNECTION]: 'Test Connection',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',

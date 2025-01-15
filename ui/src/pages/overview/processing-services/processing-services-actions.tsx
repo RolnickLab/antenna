@@ -19,7 +19,7 @@ export const PopulateProcessingService = ({
 
   return (
     <Button
-      label={translate(STRING.SYNC)}
+      label={translate(STRING.ADD_PIPELINES)}
       loading={isPopulating}
       disabled={isPopulating}
       theme={ButtonTheme.Success}
