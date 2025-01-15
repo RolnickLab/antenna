@@ -1068,26 +1068,22 @@ class TaxonViewSet(DefaultViewSet):
         """
 
         occurrence_id = self.request.query_params.get("occurrence")
-        project_id = self.request.query_params.get("project") or self.request.query_params.get(
-            "occurrences__project"
-        )  # @TBD
-        project_id = self.request.query_params.get("project_id")
+        project = get_active_project(self.request)
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
             "occurrences__deployment"
         )
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
-        filter_active = any([occurrence_id, project_id, deployment_id, event_id, collection_id])
+        filter_active = any([occurrence_id, project, deployment_id, event_id, collection_id])
 
-        if not project_id:
+        if not project:
             # Raise a 400 if no project is specified
             raise api_exceptions.ValidationError(detail="A project must be specified")
 
         queryset = super().get_queryset()
         try:
-            if project_id:
-                project = Project.objects.get(id=project_id)
+            if project:
                 queryset = queryset.filter(occurrences__project=project)
             if occurrence_id:
                 occurrence = Occurrence.objects.get(id=occurrence_id)
