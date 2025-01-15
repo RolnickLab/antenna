@@ -10,7 +10,7 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -25,7 +25,7 @@ from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
-from ami.utils.requests import get_active_classification_threshold
+from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -564,11 +564,8 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         classification_threshold = get_active_classification_threshold(self.request)
         query_set: QuerySet = super().get_queryset()
-        project_id = self.request.query_params.get("project_id")
-        if project_id is not None:
-            project = Project.objects.filter(id=project_id).first()
-            if project:
-                query_set = query_set.filter(project=project)
+        project = get_active_project(self.request)
+        query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(
             classification_threshold=classification_threshold
         ).with_taxa_count(  # type: ignore
@@ -653,16 +650,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
             }
         )
 
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="project_id",
-                description="Filter by project ID",
-                required=False,
-                type=int,
-            )
-        ]
-    )
+    @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -1227,24 +1215,14 @@ class ClassificationViewSet(DefaultViewSet):
 class SummaryView(GenericAPIView):
     permission_classes = [IsActiveStaffOrReadOnly]
 
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="project_id",
-                description="Filter by project ID",
-                required=False,
-                type=int,
-            )
-        ]
-    )
+    @extend_schema(parameters=[project_id_doc_param])
     def get(self, request):
         """
         Return counts of all models.
         """
-        project_id = request.query_params.get("project_id")
+        project = get_active_project(request)
         confidence_threshold = get_active_classification_threshold(request)
-        if project_id:
-            project = Project.objects.filter(id=project_id).first()
+        if project:
             data = {
                 "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
                 "deployments_count": Deployment.objects.filter(project=project).count(),
@@ -1395,23 +1373,11 @@ class SiteViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project_id = self.request.query_params.get("project_id")
-        if project_id is not None:
-            project = Project.objects.filter(id=project_id).first()
-            if project:
-                query_set = query_set.filter(project=project)
+        project = get_active_project(self.request)
+        query_set = query_set.filter(project=project)
         return query_set
 
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="project_id",
-                description="Filter by project ID",
-                required=False,
-                type=int,
-            )
-        ]
-    )
+    @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -1432,23 +1398,11 @@ class DeviceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project_id = self.request.query_params.get("project_id")
-        if project_id is not None:
-            project = Project.objects.filter(id=project_id).first()
-            if project:
-                query_set = query_set.filter(project=project)
+        project = get_active_project(self.request)
+        query_set = query_set.filter(project=project)
         return query_set
 
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="project_id",
-                description="Filter by project ID",
-                required=False,
-                type=int,
-            )
-        ]
-    )
+    @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -1474,23 +1428,11 @@ class StorageSourceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project_id = self.request.query_params.get("project_id")
-        if project_id is not None:
-            project = Project.objects.filter(id=project_id).first()
-            if project:
-                query_set = query_set.filter(project=project)
+        project = get_active_project(self.request)
+        query_set = query_set.filter(project=project)
         return query_set
 
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="project_id",
-                description="Filter by project ID",
-                required=False,
-                type=int,
-            )
-        ]
-    )
+    @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 

@@ -70,7 +70,7 @@ def create_ml_pipeline(project):
         for algorithm_data in pipeline_data["algorithms"]:
             algorithm, _ = Algorithm.objects.get_or_create(name=algorithm_data["name"], key=algorithm_data["key"])
             pipeline.algorithms.add(algorithm)
-        pipeline.projects.add(project)  # @TBD
+        pipeline.projects.add(project)
         pipeline.save()
 
     return pipeline

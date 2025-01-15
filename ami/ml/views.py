@@ -1,8 +1,8 @@
 from django.db.models.query import QuerySet
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import extend_schema
 
 from ami.main.api.views import DefaultViewSet
-from ami.main.models import Project
+from ami.utils.requests import get_active_project, project_id_doc_param
 
 from .models.algorithm import Algorithm
 from .models.pipeline import Pipeline
@@ -40,26 +40,13 @@ class PipelineViewSet(DefaultViewSet):
         "updated_at",
     ]
 
-    def get_queryset(self) -> QuerySet:  # @TBD
+    def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project_id = self.request.query_params.get("project_id")
-        if project_id is not None:
-            project = Project.objects.filter(id=project_id).first()
-            if project:
-                query_set = query_set.filter(projects=project)
+        project = get_active_project(self.request)
+        query_set = query_set.filter(projects=project)
         return query_set
 
-    # @TBD
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="project_id",
-                description="Filter by project ID",
-                required=False,
-                type=int,
-            )
-        ]
-    )
+    @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
