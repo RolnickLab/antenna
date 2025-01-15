@@ -792,8 +792,8 @@ class TestProjectSettingsFiltering(APITestCase):
 
     def test_project_summary(self):
         project_id = self.project_ids[1]
-        end_point_url = f"/api/v2/status/summary/?project_id={project_id}"
-        response = self.client.get(end_point_url)
+        endpoint_url = f"/api/v2/status/summary/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
         response_data = response.json()
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         project = Project.objects.get(pk=project_id)
@@ -832,8 +832,8 @@ class TestProjectSettingsFiltering(APITestCase):
     def test_project_collections(self):
         project_id = self.project_ids[1]
         project = Project.objects.get(pk=project_id)
-        end_point_url = f"/api/v2/captures/collections/?project_id={project_id}"
-        response = self.client.get(end_point_url)
+        endpoint_url = f"/api/v2/captures/collections/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
         response_data = response.json()
         expected_project_collection_ids = {
             source_image_collection.id
@@ -845,8 +845,8 @@ class TestProjectSettingsFiltering(APITestCase):
     def test_project_pipelines(self):
         project_id = self.project_ids[0]
         project = Project.objects.get(pk=project_id)
-        end_point_url = f"/api/v2/ml/pipelines/?project_id={project_id}"
-        response = self.client.get(end_point_url)
+        endpoint_url = f"/api/v2/ml/pipelines/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
         response_data = response.json()
 
         expected_project_pipeline_ids = {pipeline.id for pipeline in Pipeline.objects.filter(projects=project)}
@@ -856,8 +856,8 @@ class TestProjectSettingsFiltering(APITestCase):
     def test_project_storage(self):
         project_id = self.project_ids[0]
         project = Project.objects.get(pk=project_id)
-        end_point_url = f"/api/v2/storage/?project_id={project_id}"
-        response = self.client.get(end_point_url)
+        endpoint_url = f"/api/v2/storage/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
         response_data = response.json()
         expected_storage_ids = {storage.id for storage in S3StorageSource.objects.filter(project=project)}
         response_storage_ids = {storage.get("id") for storage in response_data["results"]}
@@ -866,8 +866,8 @@ class TestProjectSettingsFiltering(APITestCase):
     def test_project_sites(self):
         project_id = self.project_ids[1]
         project = Project.objects.get(pk=project_id)
-        end_point_url = f"/api/v2/deployments/sites/?project_id={project_id}"
-        response = self.client.get(end_point_url)
+        endpoint_url = f"/api/v2/deployments/sites/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
         response_data = response.json()
         exepcted_site_ids = {site.id for site in Site.objects.filter(project=project)}
         response_site_ids = {site.get("id") for site in response_data["results"]}
@@ -876,8 +876,8 @@ class TestProjectSettingsFiltering(APITestCase):
     def test_project_devices(self):
         project_id = self.project_ids[1]
         project = Project.objects.get(pk=project_id)
-        end_point_url = f"/api/v2/deployments/devices/?project_id={project_id}"
-        response = self.client.get(end_point_url)
+        endpoint_url = f"/api/v2/deployments/devices/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
         response_data = response.json()
         exepcted_device_ids = {device.id for device in Device.objects.filter(project=project)}
         response_device_ids = {device.get("id") for device in response_data["results"]}
