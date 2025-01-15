@@ -45,14 +45,6 @@ export const columns: (
     ),
   },
   {
-    id: 'updated-at',
-    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
-    sortField: 'updated_at',
-    renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.updatedAt} />
-    ),
-  },
-  {
     id: 'last-checked',
     name: translate(STRING.FIELD_LABEL_LAST_CHECKED),
     sortField: 'last_checked',
