@@ -43,7 +43,8 @@ class PipelineViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
         project = get_active_project(self.request)
-        query_set = query_set.filter(projects=project)
+        if project:
+            query_set = query_set.filter(projects=project)
         return query_set
 
     @extend_schema(parameters=[project_id_doc_param])
