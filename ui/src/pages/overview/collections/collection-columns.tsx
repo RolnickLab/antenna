@@ -7,6 +7,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
 import styles from 'pages/overview/entities/styles.module.scss'
@@ -63,10 +64,14 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       }
 
       return (
-        <StatusTableCell
-          color={item.currentJob.status.color}
-          label={item.currentJob.status.label}
-        />
+        <Tooltip content={item.currentJob.type.label}>
+          <div>
+            <StatusTableCell
+              color={item.currentJob.status.color}
+              label={item.currentJob.status.label}
+            />
+          </div>
+        </Tooltip>
       )
     },
   },

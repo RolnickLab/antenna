@@ -24,7 +24,7 @@ export const PopulateCollection = ({
         icon={error ? IconType.Error : undefined}
         loading={isLoading}
         onClick={() => populateCollection(collection.id)}
-        theme={error ? ButtonTheme.Error : undefined}
+        theme={error ? ButtonTheme.Error : ButtonTheme.Success}
       />
     </Tooltip>
   )
