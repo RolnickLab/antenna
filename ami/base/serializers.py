@@ -2,6 +2,7 @@ import typing
 import urllib.parse
 
 from django.db import models
+from rest_framework import exceptions as api_exceptions
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
@@ -91,3 +92,83 @@ class MinimalNestedModelSerializer(DefaultSerializer):
     def create_for_model(cls, model: type[models.Model]) -> type["MinimalNestedModelSerializer"]:
         class_name = f"MinimalNestedModelSerializer_{model.__name__}"
         return type(class_name, (cls,), {"Meta": type("Meta", (), {"model": model, "fields": cls.Meta.fields})})
+
+
+T = typing.TypeVar("T")
+
+
+class SingleParamSerializer(serializers.Serializer, typing.Generic[T]):
+    """
+    A serializer for validating individual GET parameters in DRF views/filters.
+
+    This class provides a reusable way to validate single parameters using DRF's
+    serializer fields, while maintaining type hints and clean error handling.
+
+    Example:
+        >>> field = serializers.IntegerField(required=True, min_value=1)
+        >>> value = SingleParamSerializer[int].validate_param('page', field, request.query_params)
+    """
+
+    @classmethod
+    def clean(
+        cls,
+        param_name: str,
+        field: serializers.Field,
+        data: dict[str, typing.Any],
+    ) -> T:
+        """
+        Validate a single parameter using the provided field configuration.
+
+        Args:
+            param_name: The name of the parameter to validate
+            field: The DRF Field instance to use for validation
+            data: Dictionary containing the parameter value (typically request.query_params)
+
+        Returns:
+            The validated and transformed parameter value
+
+        Raises:
+            ValidationError: If the parameter value is invalid according to the field rules
+        """
+        instance = cls(param_name, field, data=data)
+        if instance.is_valid(raise_exception=True):
+            return typing.cast(T, instance.validated_data.get(param_name))
+
+        # This shouldn't be reached due to raise_exception=True, but keeps type checker happy
+        raise api_exceptions.ValidationError(f"Invalid value for parameter: {param_name}")
+
+    def __init__(
+        self,
+        param_name: str,
+        field: serializers.Field,
+        *args: typing.Any,
+        **kwargs: typing.Any,
+    ) -> None:
+        """
+        Initialize the serializer with a single field for the given parameter.
+
+        Args:
+            param_name: The name of the parameter to validate
+            field: The DRF Field instance to use for validation
+            *args: Additional positional arguments passed to parent
+            **kwargs: Additional keyword arguments passed to parent
+        """
+        super().__init__(*args, **kwargs)
+        self.fields[param_name] = field
+
+
+class FilterParamsSerializer(serializers.Serializer):
+    """
+    Serializer for validating query parameters in DRF views.
+    Typically in filters for list views.
+
+    A normal serializer with one helpful method to:
+    1) run .is_valid()
+    2) raise any validation exceptions
+    3) then return the cleaned data.
+    """
+
+    def clean(self) -> dict[str, typing.Any]:
+        if self.is_valid(raise_exception=True):
+            return self.validated_data
+        raise api_exceptions.ValidationError("Invalid filter parameters")

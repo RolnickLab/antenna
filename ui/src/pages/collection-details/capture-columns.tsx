@@ -82,17 +82,6 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       ),
   },
   {
-    id: 'detections',
-    name: 'Detections',
-    sortField: 'detections_count',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Capture) => (
-      <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
     id: 'occurrences',
     name: 'Occurrences',
     sortField: 'occurrences_count',

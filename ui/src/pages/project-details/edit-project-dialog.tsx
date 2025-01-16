@@ -1,9 +1,9 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
-import { Error } from 'pages/error/error'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { ProjectDetailsForm } from './project-details-form'
@@ -66,7 +66,7 @@ const EditProjectDialogContent = ({
         />
       ) : loadError ? (
         <div className={styles.errorContent}>
-          <Error error={error} />
+          <ErrorState error={error} />
         </div>
       ) : null}
     </div>

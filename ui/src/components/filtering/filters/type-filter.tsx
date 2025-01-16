@@ -3,10 +3,10 @@ import { Select } from 'nova-ui-kit'
 import { FilterProps } from './types'
 
 const OPTIONS = SERVER_JOB_TYPES.map((key) => {
-  const typrInfo = Job.getJobTypeInfo(key)
+  const typeInfo = Job.getJobTypeInfo(key)
 
   return {
-    ...typrInfo,
+    ...typeInfo,
   }
 })
 

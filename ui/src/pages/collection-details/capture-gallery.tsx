@@ -7,9 +7,11 @@ import { getAppRoute } from 'utils/getAppRoute'
 
 export const CaptureGallery = ({
   captures = [],
+  error,
   isLoading,
 }: {
   captures?: Capture[]
+  error?: any
   isLoading: boolean
 }) => {
   const { projectId } = useParams()
@@ -35,5 +37,5 @@ export const CaptureGallery = ({
     [captures, projectId]
   )
 
-  return <Gallery items={items} isLoading={isLoading} />
+  return <Gallery error={error} isLoading={isLoading} items={items} />
 }

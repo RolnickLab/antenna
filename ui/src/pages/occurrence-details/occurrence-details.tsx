@@ -35,8 +35,12 @@ export const TABS = {
 
 export const OccurrenceDetails = ({
   occurrence,
+  selectedTab,
+  setSelectedTab,
 }: {
   occurrence: Occurrence
+  selectedTab?: string
+  setSelectedTab: (selectedTab?: string) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const suggestIdInputRef = useRef<HTMLInputElement>(null)
@@ -48,9 +52,6 @@ export const OccurrenceDetails = ({
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const [selectedTab, setSelectedTab] = useState<string | undefined>(
-    state?.defaultTab ?? TABS.FIELDS
-  )
   const [suggestIdOpen, setSuggestIdOpen] = useState<boolean>(
     state?.suggestIdOpen ?? false
   )
@@ -109,10 +110,6 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_DURATION),
       value: occurrence.durationLabel,
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_DETECTIONS),
-      value: occurrence.numDetections,
     },
   ]
 

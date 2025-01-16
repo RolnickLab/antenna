@@ -99,17 +99,6 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     renderCell: (item: Session) => <BasicTableCell value={item.numImages} />,
   },
   {
-    id: 'detections',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
-    sortField: 'detections_count',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Session) => (
-      <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',

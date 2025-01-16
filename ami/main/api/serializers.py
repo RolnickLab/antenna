@@ -532,7 +532,7 @@ class TaxonListSerializer(DefaultSerializer):
 
         # request = self.context.get("request")
         # project_id = request.query_params.get("project") if request else None
-        project_id = self.context["request"].query_params["project"]
+        project_id = self.context["request"].query_params["project_id"]
         classification_threshold = get_active_classification_threshold(self.context["request"])
 
         return obj.occurrence_images(
