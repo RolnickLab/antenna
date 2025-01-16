@@ -10,6 +10,7 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -24,7 +25,7 @@ from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
-from ami.utils.requests import get_active_classification_threshold
+from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -139,7 +140,6 @@ class DeploymentViewSet(DefaultViewSet):
     """
 
     queryset = Deployment.objects.select_related("project", "device", "research_site")
-    filterset_fields = ["project"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -162,7 +162,9 @@ class DeploymentViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
-
+        project = get_active_project(self.request)
+        if project:
+            qs = qs.filter(project=project)
         num_example_captures = 10
         if self.action == "retrieve":
             qs = qs.prefetch_related(
@@ -206,6 +208,10 @@ class DeploymentViewSet(DefaultViewSet):
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
 
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
 
 class EventViewSet(DefaultViewSet):
     """
@@ -214,7 +220,7 @@ class EventViewSet(DefaultViewSet):
 
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    filterset_fields = ["deployment", "project"]
+    filterset_fields = ["deployment"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -239,6 +245,9 @@ class EventViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        if project:
+            qs = qs.filter(project=project)
         qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             duration=models.F("end") - models.F("start"),
@@ -364,6 +373,10 @@ class EventViewSet(DefaultViewSet):
             context={"request": request},
         )
         return Response(serializer.data)
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class SourceImageViewSet(DefaultViewSet):
@@ -557,7 +570,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     )
     serializer_class = SourceImageCollectionSerializer
 
-    filterset_fields = ["project", "method"]
+    filterset_fields = ["method"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -570,11 +583,14 @@ class SourceImageCollectionViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         classification_threshold = get_active_classification_threshold(self.request)
-        queryset = (
-            super()
-            .get_queryset()
-            .with_occurrences_count(classification_threshold=classification_threshold)  # type: ignore
-            .with_taxa_count(classification_threshold=classification_threshold)
+        query_set: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        if project:
+            query_set = query_set.filter(project=project)
+        queryset = query_set.with_occurrences_count(
+            classification_threshold=classification_threshold
+        ).with_taxa_count(  # type: ignore
+            classification_threshold=classification_threshold
         )
         return queryset
 
@@ -654,6 +670,10 @@ class SourceImageCollectionViewSet(DefaultViewSet):
                 "total_images": collection.images.count(),
             }
         )
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class SourceImageUploadViewSet(DefaultViewSet):
@@ -911,7 +931,6 @@ class OccurrenceViewSet(DefaultViewSet):
     filterset_fields = [
         "event",
         "deployment",
-        "project",
         "determination__rank",
         "detections__source_image",
     ]
@@ -941,7 +960,10 @@ class OccurrenceViewSet(DefaultViewSet):
             return OccurrenceSerializer
 
     def get_queryset(self) -> QuerySet:
+        project = get_active_project(self.request)
         qs = super().get_queryset()
+        if project:
+            qs = qs.filter(project=project)
         qs = qs.select_related(
             "determination",
             "deployment",
@@ -968,6 +990,10 @@ class OccurrenceViewSet(DefaultViewSet):
             )
 
         return qs
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class TaxonViewSet(DefaultViewSet):
@@ -1050,23 +1076,22 @@ class TaxonViewSet(DefaultViewSet):
         """
 
         occurrence_id = self.request.query_params.get("occurrence")
-        project_id = self.request.query_params.get("project") or self.request.query_params.get("occurrences__project")
+        project = get_active_project(self.request)
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
             "occurrences__deployment"
         )
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
-        filter_active = any([occurrence_id, project_id, deployment_id, event_id, collection_id])
+        filter_active = any([occurrence_id, project, deployment_id, event_id, collection_id])
 
-        if not project_id:
+        if not project:
             # Raise a 400 if no project is specified
             raise api_exceptions.ValidationError(detail="A project must be specified")
 
         queryset = super().get_queryset()
         try:
-            if project_id:
-                project = Project.objects.get(id=project_id)
+            if project:
                 queryset = queryset.filter(occurrences__project=project)
             if occurrence_id:
                 occurrence = Occurrence.objects.get(id=occurrence_id)
@@ -1188,6 +1213,10 @@ class TaxonViewSet(DefaultViewSet):
 
         return qs
 
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     # def retrieve(self, request: Request, *args, **kwargs) -> Response:
     #     """
     #     Override the serializer to include the recursive occurrences count
@@ -1234,16 +1263,15 @@ class ClassificationViewSet(DefaultViewSet):
 
 class SummaryView(GenericAPIView):
     permission_classes = [IsActiveStaffOrReadOnly]
-    filterset_fields = ["project"]
 
+    @extend_schema(parameters=[project_id_doc_param])
     def get(self, request):
         """
         Return counts of all models.
         """
-        project_id = request.query_params.get("project")
+        project = get_active_project(request)
         confidence_threshold = get_active_classification_threshold(request)
-        if project_id:
-            project = Project.objects.get(id=project_id)
+        if project:
             data = {
                 "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
                 "deployments_count": Deployment.objects.filter(project=project).count(),
@@ -1385,12 +1413,23 @@ class SiteViewSet(DefaultViewSet):
 
     queryset = Site.objects.all()
     serializer_class = SiteSerializer
-    filterset_fields = ["project", "deployments"]
+    filterset_fields = ["deployments"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "name",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        if project:
+            query_set = query_set.filter(project=project)
+        return query_set
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class DeviceViewSet(DefaultViewSet):
@@ -1400,12 +1439,23 @@ class DeviceViewSet(DefaultViewSet):
 
     queryset = Device.objects.all()
     serializer_class = DeviceSerializer
-    filterset_fields = ["project", "deployments"]
+    filterset_fields = ["deployments"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "name",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        if project:
+            query_set = query_set.filter(project=project)
+        return query_set
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class StorageSourceConnectionTestSerializer(serializers.Serializer):
@@ -1420,12 +1470,22 @@ class StorageSourceViewSet(DefaultViewSet):
 
     queryset = S3StorageSource.objects.all()
     serializer_class = StorageSourceSerializer
-    filterset_fields = ["project", "deployments"]
+    filterset_fields = ["deployments"]
     ordering_fields = [
         "created_at",
         "updated_at",
         "name",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        query_set = query_set.filter(project=project)
+        return query_set
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], name="test", serializer_class=StorageSourceConnectionTestSerializer)
     def test(self, request: Request, pk=None) -> Response:

@@ -3,11 +3,13 @@ import logging
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
+from ami.utils.requests import get_active_project, project_id_doc_param
 
 from .models import Job, JobState
 from .serializers import JobListSerializer, JobSerializer
@@ -35,7 +37,6 @@ class JobViewSet(DefaultViewSet):
     """
 
     queryset = Job.objects.select_related(
-        "project",
         "deployment",
         "pipeline",
         "source_image_collection",
@@ -123,7 +124,9 @@ class JobViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()
-
+        project = get_active_project(self.request)
+        if project:
+            jobs = jobs.filter(project=project)
         cutoff_hours = IntegerField(required=False, min_value=0).clean(
             self.request.query_params.get("cutoff_hours", Job.FAILED_CUTOFF_HOURS)
         )
@@ -133,3 +136,7 @@ class JobViewSet(DefaultViewSet):
             status=JobState.failed_states(),
             updated_at__lt=cutoff_datetime,
         )
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
