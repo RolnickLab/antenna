@@ -80,12 +80,13 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
           />
         )}
         <FormRow>
+          <UserEmailField value={userInfo.email} />
+          <UserPasswordField value="************" />
           <form
             ref={formRef}
             onSubmit={handleSubmit((values) => updateUserInfo(values))}
             className="grid gap-8"
           >
-            <UserEmailField value={userInfo.email} />
             <FormField
               name="name"
               type="text"
@@ -111,7 +112,6 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
               )}
             />
           </form>
-          <UserPasswordField value="************" />
         </FormRow>
       </FormSection>
       <FormActions>
