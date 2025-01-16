@@ -8,11 +8,11 @@ Brief description of what this PR does. (tl;dr).
 * etc.
 
 ### Related Issues
-If the PR closes or is related to an issue, reference it here. 
+If the PR closes or is related to an issue, reference it here.
 For example, "Closes #123", "Fixes #456" or "Relates to #741" .
 
 ## Detailed Description
-A clear and detailed description of the changes, how they solve/fix the related issues. 
+A clear and detailed description of the changes, how they solve/fix the related issues.
 
 Mention potential side effects or risks associated with the changes, if applicable.
 
@@ -27,7 +27,7 @@ Include instructions if this PR requires specific steps for its deployment (data
 
 ## Checklist
 
-- [ ] I have tested these changes appropriatly.
+- [ ] I have tested these changes appropriately.
 - [ ] I have added and/or modified relevant tests.
 - [ ] I updated relevant documentation or comments.
 - [ ] I have verified that this PR follows the project's coding standards.
