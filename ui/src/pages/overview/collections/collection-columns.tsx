@@ -121,19 +121,6 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     renderCell: (item: Collection) => <BasicTableCell value={item.updatedAt} />,
   },
   {
-    id: 'collection-actions',
-    name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: Collection) => (
-      <div className={styles.entityActions}>
-        {item.canPopulate && <PopulateCollection collection={item} />}
-      </div>
-    ),
-  },
-  {
     id: 'actions',
     name: '',
     styles: {
@@ -142,6 +129,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     },
     renderCell: (item: Collection) => (
       <div className={styles.entityActions}>
+        {item.canPopulate && <PopulateCollection collection={item} />}
         {item.canUpdate && editableSamplingMethods.includes(item.method) && (
           <UpdateEntityDialog
             collection={API_ROUTES.COLLECTIONS}
