@@ -20,13 +20,13 @@ class ProcessingService(BaseModel):
     """An ML processing service"""
 
     name = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True)
     projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
     endpoint_url = models.CharField(max_length=1024)
     pipelines = models.ManyToManyField("ml.Pipeline", related_name="processing_services", blank=True)
     last_checked = models.DateTimeField(null=True)
     last_checked_live = models.BooleanField(null=True)
+    last_checked_latency = models.FloatField(null=True)
 
     def __str__(self):
         return f'#{self.pk} "{self.name}" at {self.endpoint_url}'
@@ -119,7 +119,7 @@ class ProcessingService(BaseModel):
         first_response_time = time.time()
         latency = first_response_time - start_time
         self.last_checked_live = server_live
-        # self.last_checked_latency = latency
+        self.last_checked_latency = latency
         self.save()
 
         response = ProcessingServiceStatusResponse(

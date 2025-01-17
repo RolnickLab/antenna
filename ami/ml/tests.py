@@ -33,33 +33,18 @@ class TestProcessingServiceAPI(APITestCase):
         )
         self.factory = APIRequestFactory()
 
-    def _create_processing_service(self, name: str, slug: str, endpoint_url: str):
+    def _create_processing_service(self, name: str, endpoint_url: str):
         processing_services_create_url = reverse_with_params("api:processingservice-list")
         self.client.force_authenticate(user=self.user)
         processing_service_data = {
             "project": self.project.pk,
             "name": name,
             "endpoint_url": endpoint_url,
-            "slug": slug,
         }
         resp = self.client.post(processing_services_create_url, processing_service_data)
         self.client.force_authenticate(user=None)
         self.assertEqual(resp.status_code, 201)
         return resp.json()
-
-    def _get_processing_service_id_by_slug(self, slug: str) -> int:
-        processing_services_list_url = reverse_with_params("api:processingservice-list")
-        self.client.force_authenticate(user=self.user)
-        resp = self.client.get(processing_services_list_url)
-        self.client.force_authenticate(user=None)
-        self.assertEqual(resp.status_code, 200)
-
-        # Find the processing service ID by slug
-        resp = resp.json()
-        processing_services = resp["results"]
-        processing_service = next((b for b in processing_services if b["slug"] == slug), None)
-        self.assertIsNotNone(processing_service, f"No processing service found with slug '{slug}'")
-        return processing_service["id"]
 
     def _delete_processing_service(self, processing_service_id: int):
         processing_services_delete_url = reverse_with_params(
@@ -84,14 +69,12 @@ class TestProcessingServiceAPI(APITestCase):
     def test_create_processing_service(self):
         self._create_processing_service(
             name="Processing Service Test",
-            slug="processing_service_test",
             endpoint_url="http://processing_service:2000",
         )
 
     def test_project_was_added(self):
         response = self._create_processing_service(
             name="Processing Service Test",
-            slug="processing_service_test",
             endpoint_url="http://processing_service:2000",
         )
         processing_service_id = response["id"]
@@ -102,7 +85,6 @@ class TestProcessingServiceAPI(APITestCase):
         # register a processing service
         response = self._create_processing_service(
             name="Processing Service Test",
-            slug="processing_service_test",
             endpoint_url="http://processing_service:2000",
         )
         processing_service_id = response["id"]
@@ -126,6 +108,7 @@ class TestPipelineWithProcessingService(TestCase):
 
     def test_run_pipeline(self):
         # Send images to Processing Service to process and return detections
+        assert self.pipeline
         pipeline_response = self.pipeline.process_images(self.test_images, job_id=None)
         assert pipeline_response.detections
 
@@ -319,7 +302,7 @@ class TestPipeline(TestCase):
         # print(fake_results)
         # print("END FAKE RESULTS")
 
-        saved_objects = save_results(fake_results)
+        saved_objects = save_results(fake_results) or []
         saved_detections = [obj for obj in saved_objects if isinstance(obj, Detection)]
         saved_classifications = [obj for obj in saved_objects if isinstance(obj, Classification)]
 

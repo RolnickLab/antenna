@@ -40,7 +40,6 @@ def update_site_settings(**kwargs):
 
 def create_processing_service(project):
     processing_service_to_add = {
-        "slug": "test_processing_service",
         "name": "Test Processing Service",
         "projects": [{"name": project.name}],
         "endpoint_url": "http://processing_service:2000",
@@ -48,7 +47,6 @@ def create_processing_service(project):
 
     processing_service, created = ProcessingService.objects.get_or_create(
         name=processing_service_to_add["name"],
-        slug=processing_service_to_add["slug"],
         endpoint_url=processing_service_to_add["endpoint_url"],
     )
     processing_service.save()
@@ -254,6 +252,7 @@ def create_detections(
             timestamp=source_image.timestamp,
             bbox=bbox,
         )
+        assert source_image.deployment
         taxon = Taxon.objects.filter(projects=source_image.deployment.project).order_by("?").first()
         if taxon:
             detection.classifications.create(

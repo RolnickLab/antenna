@@ -452,6 +452,8 @@ class Pipeline(BaseModel):
         )
 
     def choose_processing_service_for_pipeline(self, job_id, pipeline_name) -> ProcessingService:
+        # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
+
         job = None
         task_logger = logger
         if job_id:

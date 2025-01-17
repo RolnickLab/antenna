@@ -46,7 +46,6 @@ class ProcessingServiceNestedSerializer(DefaultSerializer):
         model = ProcessingService
         fields = [
             "name",
-            "slug",
             "id",
             "details",
             "endpoint_url",
@@ -108,7 +107,6 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "id",
             "details",
             "name",
-            "slug",
             "description",
             "projects",
             "project",

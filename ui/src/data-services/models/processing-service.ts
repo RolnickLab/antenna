@@ -37,10 +37,6 @@ export class ProcessingService extends Entity {
     return `${this._processingService.name}`
   }
 
-  get slug(): string {
-    return `${this._processingService.slug}`
-  }
-
   get endpointUrl(): string {
     return `${this._processingService.endpoint_url}`
   }
