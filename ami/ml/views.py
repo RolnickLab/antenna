@@ -1,6 +1,8 @@
 import logging
 
+from django.db.models.query import QuerySet
 from django.utils.text import slugify
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -8,6 +10,7 @@ from rest_framework.response import Response
 
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import SourceImage
+from ami.utils.requests import get_active_project, project_id_doc_param
 
 from .models.algorithm import Algorithm
 from .models.pipeline import Pipeline
@@ -47,6 +50,18 @@ class PipelineViewSet(DefaultViewSet):
         "created_at",
         "updated_at",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        if project:
+            query_set = query_set.filter(projects=project)
+        return query_set
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     # Don't enable projects filter until we can use the current users
     # membership to filter the projects.
     # filterset_fields = ["projects"]
@@ -60,6 +75,8 @@ class PipelineViewSet(DefaultViewSet):
         random_image = (
             SourceImage.objects.all().order_by("?").first()
         )  # TODO: Filter images by projects user has access to
+        if not random_image:
+            return Response({"error": "No image found to process."}, status=status.HTTP_404_NOT_FOUND)
         results = pipeline.process_images(images=[random_image], job_id=None)
         return Response(results.dict())
 

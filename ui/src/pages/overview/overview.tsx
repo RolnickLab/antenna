@@ -18,7 +18,7 @@ import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
 
 export const Overview = () => {
-  const { selectedView, setSelectedView } = useSelectedView('summary')
+  const { selectedView, setSelectedView } = useSelectedView('summary', 'tab')
   const { project, isLoading, error } = useOutletContext<{
     project?: Project
     isLoading: boolean
