@@ -87,13 +87,13 @@ const UpdatePasswordForm = ({ onCancel }: { onCancel: () => void }) => {
       )}
       <div className={styles.miniFormContent}>
         <FormField
-          name="new_password"
+          name="current_password"
           type="password"
           config={config}
           control={control}
         />
         <FormField
-          name="current_password"
+          name="new_password"
           type="password"
           config={config}
           control={control}

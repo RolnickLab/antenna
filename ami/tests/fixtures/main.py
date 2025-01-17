@@ -6,6 +6,7 @@ import random
 import uuid
 
 from django.db import transaction
+from django.utils import timezone
 
 from ami.main.models import (
     Deployment,
@@ -76,22 +77,44 @@ def create_ml_pipeline(project):
     return pipeline
 
 
+def create_deployment(
+    project: Project,
+    data_source,
+    name="Test Deployment",
+) -> Deployment:
+    """
+    Create a test deployment with a data source for source images.
+    """
+    deployment, _ = Deployment.objects.get_or_create(
+        project=project,
+        name=name,
+        defaults=dict(
+            description=f"Created at {timezone.now()}",
+            data_source=data_source,
+            data_source_subdir="/",
+            data_source_regex=".*\\.jpg",
+            latitude=45.0,
+            longitude=-123.0,
+            research_site=project.sites.first(),
+            device=project.devices.first(),
+        ),
+    )
+    return deployment
+
+
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
-    if reuse:
-        project, _ = Project.objects.get_or_create(name="Test Project")
-        data_source = create_storage_source(project, "Test Data Source")
-        deployment, _ = Deployment.objects.get_or_create(
-            project=project, name="Test Deployment", defaults=dict(data_source=data_source)
-        )
-        create_ml_pipeline(project)
-    else:
+    project = Project.objects.filter(name__startswith="Test Project").first()
+
+    if not project or not reuse:
         short_id = uuid.uuid4().hex[:8]
         project = Project.objects.create(name=f"Test Project {short_id}")
         data_source = create_storage_source(project, f"Test Data Source {short_id}")
-        deployment = Deployment.objects.create(
-            project=project, name=f"Test Deployment {short_id}", data_source=data_source
-        )
+        deployment = create_deployment(project, data_source, f"Test Deployment {short_id}")
         create_ml_pipeline(project)
+    else:
+        deployment = Deployment.objects.filter(project=project).first()
+        assert deployment, "No deployment found for existing project. Create a new project instead."
+
     return project, deployment
 
 

@@ -116,6 +116,7 @@ class Project(BaseModel):
 
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
+    jobs: models.QuerySet["Job"]
 
     def deployments_count(self) -> int:
         return self.deployments.count()
@@ -349,6 +350,7 @@ class Deployment(BaseModel):
     events: models.QuerySet["Event"]
     captures: models.QuerySet["SourceImage"]
     occurrences: models.QuerySet["Occurrence"]
+    jobs: models.QuerySet["Job"]
 
     objects = DeploymentManager()
 
@@ -1201,6 +1203,7 @@ class SourceImage(BaseModel):
     event_id: int | None
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]
+    jobs: models.QuerySet["Job"]
 
     objects = SourceImageManager()
 
@@ -2827,6 +2830,8 @@ class SourceImageCollection(BaseModel):
     )
 
     objects = SourceImageCollectionManager()
+
+    jobs: models.QuerySet["Job"]
 
     def source_images_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations

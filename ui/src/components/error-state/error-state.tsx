@@ -10,7 +10,8 @@ export const ErrorState = ({ error }: ErrorStateProps) => {
   const data = error?.response?.data
 
   const description = useMemo(() => {
-    const entries = data ? Object.entries(data) : undefined
+    const entries =
+      data && typeof data === 'object' ? Object.entries(data) : undefined
 
     if (entries?.length) {
       const [key, value] = entries[0]

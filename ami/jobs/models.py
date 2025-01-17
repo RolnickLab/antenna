@@ -290,6 +290,11 @@ class JobType:
     name: str
     key: str
 
+    # @TODO Consider adding custom vocabulary for job types to be used in the UI
+    # verb: str = "Sync"
+    # present_participle: str = "syncing"
+    # past_participle: str = "synced"
+
     @classmethod
     def run(cls, job: "Job"):
         """
