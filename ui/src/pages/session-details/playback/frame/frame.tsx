@@ -4,17 +4,19 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, SCORE_THRESHOLDS } from 'utils/constants'
 import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
 
+const FALLBACK_RATIO = 16 / 9
+
 interface FrameProps {
   src?: string
-  width: number
-  height: number
+  width: number | null
+  height: number | null
   detections: CaptureDetection[]
-  showOverlay?: boolean
+  showDetections?: boolean
 }
 
 export const Frame = ({
@@ -22,21 +24,40 @@ export const Frame = ({
   width,
   height,
   detections,
-  showOverlay,
+  showDetections,
 }: FrameProps) => {
+  const [naturalSize, setNaturalSize] = useState<{
+    width: number
+    height: number
+  }>()
   const imageRef = useRef<HTMLImageElement>(null)
   const [isLoading, setIsLoading] = useState<boolean>()
-  const [rendeOverlay, setRenderOverlay] = useState<boolean>()
+  const [renderOverlay, setRenderOverlay] = useState<boolean>()
 
   useLayoutEffect(() => {
     if (!imageRef.current) {
       return
     }
+
     setIsLoading(true)
+    setNaturalSize(undefined)
+
     if (src) {
       imageRef.current.src = src
-      imageRef.current.onload = () => setIsLoading(false)
-      imageRef.current.onerror = () => setIsLoading(false)
+      imageRef.current.onload = () => {
+        if (imageRef.current?.width && imageRef.current.height) {
+          setNaturalSize({
+            width: imageRef.current.naturalWidth,
+            height: imageRef.current.naturalHeight,
+          })
+        }
+        setIsLoading(false)
+      }
+
+      imageRef.current.onerror = () => {
+        setNaturalSize(undefined)
+        setIsLoading(false)
+      }
     }
   }, [src])
 
@@ -52,31 +73,56 @@ export const Frame = ({
         const boxWidth = boxRight - boxLeft
         const boxHeight = boxBottom - boxTop
 
+        const _width = naturalSize?.width ?? width
+        const _height = naturalSize?.height ?? height
+
+        if (!_width || !_height) {
+          return result
+        }
+
         result[detection.id] = {
-          width: `${(boxWidth / width) * 100}%`,
-          height: `${(boxHeight / height) * 100}%`,
-          top: `${(boxTop / height) * 100}%`,
-          left: `${(boxLeft / width) * 100}%`,
+          width: `${(boxWidth / _width) * 100}%`,
+          height: `${(boxHeight / _height) * 100}%`,
+          top: `${(boxTop / _height) * 100}%`,
+          left: `${(boxLeft / _width) * 100}%`,
         }
 
         return result
       }, {}),
-    [width, height, detections]
+    [width, height, naturalSize, detections]
   )
+
+  const ratio = useMemo(() => {
+    if (naturalSize) {
+      return naturalSize.width / naturalSize.height
+    }
+
+    if (width && height) {
+      return width / height
+    }
+
+    return FALLBACK_RATIO
+  }, [width, height, naturalSize])
 
   return (
     <div
       className={classNames(styles.wrapper)}
-      style={{ paddingBottom: `${(height / width) * 100}%` }}
+      style={{
+        paddingBottom: `${(1 / ratio) * 100}%`,
+      }}
     >
       <img ref={imageRef} className={styles.image} />
       <div
         className={classNames(styles.details, {
-          [styles.showOverlay]: showOverlay,
+          [styles.showOverlay]: showDetections,
         })}
       >
-        {rendeOverlay && <FrameOverlay boxStyles={boxStyles} />}
-        <FrameDetections detections={detections} boxStyles={boxStyles} />
+        {renderOverlay && <FrameOverlay boxStyles={boxStyles} />}
+        <FrameDetections
+          boxStyles={boxStyles}
+          detections={detections}
+          showDetections={showDetections}
+        />
       </div>
       {isLoading && (
         <div className={styles.loadingWrapper}>
@@ -119,11 +165,13 @@ const FrameOverlay = ({
 )
 
 const FrameDetections = ({
-  detections,
   boxStyles,
+  detections,
+  showDetections,
 }: {
-  detections: CaptureDetection[]
   boxStyles: { [key: number]: BoxStyle }
+  detections: CaptureDetection[]
+  showDetections?: boolean
 }) => {
   const { projectId } = useParams()
   const containerRef = useRef(null)
@@ -146,13 +194,13 @@ const FrameDetections = ({
       {Object.entries(boxStyles).map(([id, style]) => {
         const detection = detections.find((d) => d.id === id)
 
-        if (!detection) {
-          return null
-        }
-
-        const isActive = detection.occurrenceId
+        const isActive = detection?.occurrenceId
           ? activeOccurrences.includes(detection.occurrenceId)
           : false
+
+        if (!detection || (!showDetections && !isActive)) {
+          return null
+        }
 
         return (
           <Tooltip
@@ -172,8 +220,10 @@ const FrameDetections = ({
             <div
               style={style}
               className={classNames(styles.detection, {
-                [styles.clickable]: !!detection.occurrenceId,
                 [styles.active]: isActive,
+                [styles.warning]: detection.score < SCORE_THRESHOLDS.WARNING,
+                [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
+                [styles.clickable]: !!detection.occurrenceId,
               })}
               onClick={() => {
                 if (detection.occurrenceId) {

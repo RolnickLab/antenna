@@ -1,8 +1,9 @@
+import classNames from 'classnames'
 import _Plot from 'react-plotly.js'
 import styles from './plot.module.scss'
 import { PlotProps } from './types'
 
-const fontFamily = 'AzoSans, sans-serif'
+const fontFamily = 'Mazzard, sans-serif'
 const borderColor = '#f0f0f0'
 const markerColor = '#5f8ac6'
 const textColor = '#222426'
@@ -17,7 +18,9 @@ const Plot = ({
   type = 'bar',
   showRangeSlider,
 }: PlotProps) => (
-  <div className={styles.plot}>
+  <div
+    className={classNames(styles.plot, { [styles.round]: data.x.length >= 3 })}
+  >
     <_Plot
       data={[
         {
@@ -30,6 +33,13 @@ const Plot = ({
           marker: {
             color: markerColor,
           },
+          hovertemplate:
+            type === 'bar' && orientation === 'h'
+              ? '%{x}'
+              : type === 'bar'
+              ? '%{y}'
+              : '<b>%{x}</b>: %{y}',
+          name: '', // Remove ‘trace 0’ next to hover
         },
       ]}
       config={{
@@ -64,6 +74,7 @@ const Plot = ({
         },
         yaxis: {
           color: textColor,
+          fixedrange: true,
           showgrid: true,
           gridcolor: borderColor,
           zeroline: true,
@@ -72,6 +83,7 @@ const Plot = ({
         },
         xaxis: {
           color: textColor,
+          fixedrange: true,
           showgrid: false,
           zeroline: false,
           tickvals: data.tickvals,

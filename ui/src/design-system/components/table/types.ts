@@ -9,11 +9,13 @@ export enum CellTheme {
 export enum TextAlign {
   Left = 'left',
   Right = 'right',
+  Center = 'center',
 }
 
 export interface TableColumn<T> {
   id: string
   name: string
+  tooltip?: string
   sortField?: string
   styles?: {
     textAlign?: TextAlign

@@ -4,6 +4,7 @@ import { DeploymentDetails } from 'data-services/models/deployment-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import _ from 'lodash'
 import { useContext, useEffect, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
@@ -16,7 +17,7 @@ export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { deployment, isLoading } = useDeploymentDetails(id)
+  const { deployment, isLoading, error } = useDeploymentDetails(id)
 
   useEffect(() => {
     setDetailBreadcrumb(deployment ? { title: deployment.name } : undefined)
@@ -41,6 +42,7 @@ export const DeploymentDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {deployment ? (
           <DeploymentDetailsDialogContent deployment={deployment} />
@@ -57,16 +59,19 @@ const DeploymentDetailsDialogContent = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false)
   const { updateDeployment, isLoading, error } = useUpdateDeployment(
-    deployment?.id
+    deployment.id
   )
 
   useEffect(() => {
     // Reset to view mode when a new deployment is selected
     setIsEditing(false)
-  }, [deployment?.id])
+  }, [deployment.id])
 
   return (
     <>
+      <Helmet>
+        <meta name="og:image" content={deployment.image} />
+      </Helmet>
       {!isEditing ? (
         <DeploymentDetailsInfo
           deployment={deployment}

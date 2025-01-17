@@ -1,6 +1,7 @@
 export const API_URL = '/api/v2'
 
 export const API_ROUTES = {
+  ALGORITHM: 'ml/algorithms',
   CAPTURES: 'captures',
   COLLECTIONS: 'captures/collections',
   DEPLOYMENTS: 'deployments',
@@ -14,6 +15,8 @@ export const API_ROUTES = {
   PAGES: 'pages',
   PIPELINES: 'ml/pipelines',
   PROJECTS: 'projects',
+  RESET_PASSWORD: 'users/reset_password',
+  RESET_PASSWORD_CONFIRM: 'users/reset_password_confirm',
   SESSIONS: 'events',
   SITES: 'deployments/sites',
   SPECIES: 'taxa',

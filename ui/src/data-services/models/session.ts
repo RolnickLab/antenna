@@ -42,6 +42,10 @@ export class Session {
     return this._event.duration_label
   }
 
+  get endDate(): Date {
+    return new Date(this._event.end)
+  }
+
   get exampleCaptures(): { src: string }[] {
     return this._exampleCaptures
   }
@@ -66,8 +70,19 @@ export class Session {
     return this._event.occurrences_count
   }
 
-  get numSpecies(): number | undefined {
+  get numTaxa(): number | undefined {
+    // Workaround for taxa count being 0 when occurrences count > 0
+    if (this.numOccurrences) {
+      if (this._event.taxa_count === 0) {
+        return undefined
+      }
+    }
+
     return this._event.taxa_count
+  }
+
+  get startDate(): Date {
+    return new Date(this._event.start)
   }
 
   get tempLabel(): string | undefined {

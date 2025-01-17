@@ -1,13 +1,12 @@
 import { Identification } from 'data-services/models/occurrence-details'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { ReactNode } from 'react'
+import { AlgorithmDetails } from 'pages/occurrence-details/algorithm-details/algorithm-details'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './identification-summary.module.scss'
 
 interface IdentificationSummaryProps {
-  children: ReactNode
   user?: {
     name: string
     image?: string
@@ -16,7 +15,6 @@ interface IdentificationSummaryProps {
 }
 
 export const IdentificationSummary = ({
-  children,
   user,
   identification,
 }: IdentificationSummaryProps) => {
@@ -25,7 +23,7 @@ export const IdentificationSummary = ({
   })
 
   return (
-    <div>
+    <div className={styles.wrapper}>
       <div className={styles.user}>
         {user ? (
           <div className={styles.profileImage}>
@@ -48,7 +46,9 @@ export const IdentificationSummary = ({
           </span>
         </Tooltip>
       </div>
-      {children}
+      {identification.algorithm && (
+        <AlgorithmDetails algorithm={identification.algorithm} />
+      )}
     </div>
   )
 }

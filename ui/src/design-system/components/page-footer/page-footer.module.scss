@@ -1,0 +1,34 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.wrapper {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: $color-generic-white;
+  border-top: 1px solid $color-neutral-100;
+  z-index: 2;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 64px;
+  padding: 0 100px;
+  box-sizing: border-box;
+}
+
+@media only screen and (max-width: $medium-screen-breakpoint) {
+  .content {
+    padding: 0 32px;
+  }
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .content {
+    padding: 0 16px;
+  }
+}

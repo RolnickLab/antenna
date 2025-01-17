@@ -1,13 +1,19 @@
+import * as Portal from '@radix-ui/react-portal'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import classNames from 'classnames'
+import { Analytics } from 'components/analytics'
+import { CookieDialog } from 'components/cookie-dialog/cookie-dialog'
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
+import { InfoPage } from 'components/info-page/info-page'
 import { Menu } from 'components/menu/menu'
+import { TermsOfServiceInfo } from 'components/terms-of-service-info/terms-of-service-info'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
-import { SignUp } from 'pages/auth/sign-up'
+import { ResetPassword } from 'pages/auth/reset-password'
+import { ResetPasswordConfirm } from 'pages/auth/reset-password-confirm'
 import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
@@ -18,64 +24,96 @@ import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
-import { useContext, useEffect } from 'react'
+import { ReactNode, useContext, useEffect } from 'react'
+import { Helmet, HelmetProvider } from 'react-helmet-async'
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   BreadcrumbContext,
   BreadcrumbContextProvider,
 } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
+import { CookieConsentContextProvider } from 'utils/cookieConsent/cookieConsentContext'
 import { STRING, translate } from 'utils/language'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
 import { UserContextProvider } from 'utils/user/userContext'
+import { UserInfoContextProvider } from 'utils/user/userInfoContext'
+import { UserPreferencesContextProvider } from 'utils/userPreferences/userPreferencesContext'
 import styles from './app.module.scss'
 
 const queryClient = new QueryClient()
+const APP_CONTAINER_ID = 'app'
+const INTRO_CONTAINER_ID = 'intro'
 
-export const App = () => {
-  return (
+export const App = () => (
+  <AppProviders>
+    <Helmet>
+      <title>Antenna Data Platform</title>
+      <meta
+        name="description"
+        content="An interdisciplinary platform to upload, classify, and analyse in-the-wild images of invertebrates for research and conservation efforts."
+      />
+    </Helmet>
+    <div id={APP_CONTAINER_ID} className={styles.wrapper}>
+      <div id={INTRO_CONTAINER_ID}>
+        <Header />
+      </div>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to={{
+                pathname: 'projects',
+                search: location.search,
+              }}
+              replace={true}
+            />
+          }
+        />
+        <Route path="auth" element={<AuthContainer />}>
+          <Route path="login" element={<Login />} />
+          <Route path="reset-password" element={<ResetPassword />} />
+          <Route
+            path="reset-password-confirm"
+            element={<ResetPasswordConfirm />}
+          />
+        </Route>
+        <Route path="projects" element={<ProjectsContainer />} />
+        <Route path="projects/:projectId" element={<ProjectContainer />}>
+          <Route path="" element={<Overview />} />
+          <Route path="jobs/:id?" element={<Jobs />} />
+          <Route path="deployments/:id?" element={<Deployments />} />
+          <Route path="sessions" element={<Sessions />} />
+          <Route path="sessions/:id" element={<SessionDetails />} />
+          <Route path="occurrences/:id?" element={<Occurrences />} />
+          <Route path="taxa/:id?" element={<Species />} />
+          <Route path="collections/:id" element={<CollectionDetails />} />
+          <Route path="*" element={<UnderConstruction />} />
+        </Route>
+        <Route path="/:slug" element={<InfoPageContainer />} />
+      </Routes>
+    </div>
+    <ReactQueryDevtools initialIsOpen={false} />
+    <CookieDialog />
+    <Analytics />
+  </AppProviders>
+)
+
+const AppProviders = ({ children }: { children: ReactNode }) => (
+  <HelmetProvider>
     <QueryClientProvider client={queryClient}>
-      <UserContextProvider>
-        <BreadcrumbContextProvider>
-          <ReactQueryDevtools initialIsOpen={false} />
-          <div className={styles.wrapper}>
-            <Header />
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <Navigate
-                    to={{
-                      pathname: 'projects',
-                      search: location.search,
-                    }}
-                    replace={true}
-                  />
-                }
-              />
-              <Route path="auth" element={<AuthContainer />}>
-                <Route path="login" element={<Login />} />
-                <Route path="sign-up" element={<SignUp />} />
-              </Route>
-              <Route path="projects" element={<ProjectsContainer />} />
-              <Route path="projects/:projectId" element={<ProjectContainer />}>
-                <Route path="" element={<Overview />} />
-                <Route path="jobs/:id?" element={<Jobs />} />
-                <Route path="deployments/:id?" element={<Deployments />} />
-                <Route path="sessions" element={<Sessions />} />
-                <Route path="sessions/:id" element={<SessionDetails />} />
-                <Route path="occurrences/:id?" element={<Occurrences />} />
-                <Route path="species/:id?" element={<Species />} />
-                <Route path="collections/:id" element={<CollectionDetails />} />
-                <Route path="*" element={<UnderConstruction />} />
-              </Route>
-            </Routes>
-          </div>
-        </BreadcrumbContextProvider>
-      </UserContextProvider>
+      <CookieConsentContextProvider>
+        <UserPreferencesContextProvider>
+          <UserContextProvider>
+            <UserInfoContextProvider>
+              <BreadcrumbContextProvider>{children}</BreadcrumbContextProvider>
+            </UserInfoContextProvider>
+          </UserContextProvider>
+        </UserPreferencesContextProvider>
+      </CookieConsentContextProvider>
     </QueryClientProvider>
-  )
-}
+  </HelmetProvider>
+)
 
 const AuthContainer = () => (
   <main className={classNames(styles.main, styles.fullscreen)}>
@@ -95,6 +133,7 @@ const ProjectsContainer = () => {
 
   return (
     <main className={styles.main}>
+      <TermsOfServiceInfo />
       <div className={styles.content}>
         <ErrorBoundary>
           <Projects />
@@ -125,25 +164,17 @@ const ProjectContainer = () => {
     }
   }, [projectDetails.project])
 
-  useEffect(() => {
-    const meta = document.getElementsByTagName('meta').namedItem('description')
-    const newDescription = projectDetails.project?.description
-    const prevDescription = meta?.content
-
-    if (meta && newDescription) {
-      meta.content = newDescription
-    }
-
-    return () => {
-      if (meta && prevDescription) {
-        meta.content = prevDescription
-      }
-    }
-  }, [projectDetails.project])
-
   return (
     <>
-      <Menu />
+      <Helmet>
+        <meta
+          name="description"
+          content={projectDetails.project?.description}
+        />
+      </Helmet>
+      <Portal.Root container={document.getElementById(INTRO_CONTAINER_ID)}>
+        <Menu />
+      </Portal.Root>
       <main className={styles.main}>
         <div className={styles.content}>
           <ErrorBoundary>
@@ -152,5 +183,19 @@ const ProjectContainer = () => {
         </div>
       </main>
     </>
+  )
+}
+
+const InfoPageContainer = () => {
+  const { slug } = useParams()
+
+  return (
+    <main className={styles.main}>
+      <div className={styles.content}>
+        <ErrorBoundary>
+          <InfoPage slug={slug as string} />
+        </ErrorBoundary>
+      </div>
+    </main>
   )
 }

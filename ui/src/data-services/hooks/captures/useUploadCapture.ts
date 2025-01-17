@@ -9,7 +9,7 @@ interface UploadCaptureFieldValues {
   file: File
 }
 
-export const useUploadCapture = (onSuccess?: () => void) => {
+export const useUploadCapture = (onSuccess?: (id: string) => void) => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
@@ -25,16 +25,20 @@ export const useUploadCapture = (onSuccess?: () => void) => {
         data.append('image', '')
       }
 
-      return axios.post(`${API_URL}/${API_ROUTES.CAPTURES}/upload/`, data, {
-        headers: {
-          ...getAuthHeader(user),
-          'Content-Type': 'multipart/form-data',
-        },
-      })
+      return axios.post<{ source_image: { id: number } }>(
+        `${API_URL}/${API_ROUTES.CAPTURES}/upload/`,
+        data,
+        {
+          headers: {
+            ...getAuthHeader(user),
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      )
     },
-    onSuccess: () => {
+    onSuccess: ({ data }) => {
       queryClient.invalidateQueries([API_ROUTES.DEPLOYMENTS])
-      onSuccess?.()
+      onSuccess?.(`${data.source_image.id}`)
     },
   })
 

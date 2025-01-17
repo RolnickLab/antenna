@@ -1,5 +1,4 @@
-import { Job, JobStatus } from 'data-services/models/job'
-import { Status } from 'design-system/components/status/types'
+import { Job } from 'data-services/models/job'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
@@ -31,10 +30,107 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     ),
   },
   {
+    id: 'status',
+    name: translate(STRING.FIELD_LABEL_STATUS),
+    tooltip: translate(STRING.TOOLTIP_STATUS),
+    sortField: 'status',
+    renderCell: (item: Job) => (
+      <StatusTableCell
+        color={item.status.color}
+        details={item.progress.label}
+        label={item.status.label}
+      />
+    ),
+  },
+  {
+    id: 'job-type',
+    name: 'Type',
+    renderCell: (item: Job) => <BasicTableCell value={item.type.label} />,
+  },
+  {
+    id: 'deployment',
+    sortField: 'deployment',
+    name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    renderCell: (item: Job) =>
+      item.deployment ? (
+        <Link
+          to={APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId,
+            deploymentId: item.deployment?.id,
+          })}
+        >
+          <BasicTableCell
+            value={item.deployment?.name}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      ) : (
+        <></>
+      ),
+  },
+  {
+    id: 'pipeline',
+    sortField: 'pipeline',
+    name: translate(STRING.FIELD_LABEL_PIPELINE),
+    renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
+  },
+  {
+    id: 'source-image',
+    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGE),
+    renderCell: (item: Job) =>
+      item.sourceImage?.sessionId ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId as string,
+              sessionId: item.sourceImage.sessionId,
+            }),
+            filters: {
+              capture: item.sourceImage.id,
+            },
+          })}
+        >
+          <BasicTableCell
+            value={item.sourceImage?.label}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      ) : (
+        <></>
+      ),
+  },
+  {
+    id: 'source-image-collection',
+    sortField: 'source_image_collection',
+    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
+    renderCell: (item: Job) =>
+      item.sourceImages ? (
+        <Link
+          to={APP_ROUTES.COLLECTION_DETAILS({
+            projectId,
+            collectionId: item.sourceImages?.id,
+          })}
+        >
+          <BasicTableCell
+            value={item.sourceImages?.name}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      ) : (
+        <></>
+      ),
+  },
+  {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
     renderCell: (item: Job) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Job) => <BasicTableCell value={item.updatedAt} />,
   },
   {
     id: 'started-at',
@@ -47,34 +143,6 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     name: translate(STRING.FIELD_LABEL_FINISHED_AT),
     sortField: 'finished_at',
     renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
-  },
-  {
-    id: 'status',
-    name: translate(STRING.FIELD_LABEL_STATUS),
-    sortField: 'status',
-    renderCell: (item: Job) => {
-      const status = (() => {
-        switch (item.status) {
-          case JobStatus.Created:
-            return Status.Neutral
-          case JobStatus.Pending:
-          case JobStatus.Started:
-            return Status.Warning
-          case JobStatus.Success:
-            return Status.Success
-          default:
-            return Status.Error
-        }
-      })()
-
-      return (
-        <StatusTableCell
-          label={item.statusLabel}
-          status={status}
-          details={item.statusDetails}
-        />
-      )
-    },
   },
   {
     id: 'actions',

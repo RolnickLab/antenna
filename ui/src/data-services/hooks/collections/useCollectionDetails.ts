@@ -3,6 +3,8 @@ import { Collection, ServerCollection } from 'data-services/models/collection'
 import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
+const REFETCH_INTERVAL = 10000 // Refetch every 10 second
+
 const convertServerRecord = (record: ServerCollection) => new Collection(record)
 
 export const useCollectionDetails = (
@@ -17,6 +19,7 @@ export const useCollectionDetails = (
     {
       queryKey: [API_ROUTES.COLLECTIONS, id],
       url: `${API_URL}/${API_ROUTES.COLLECTIONS}/${id}/`,
+      refetchInterval: REFETCH_INTERVAL,
     }
   )
 

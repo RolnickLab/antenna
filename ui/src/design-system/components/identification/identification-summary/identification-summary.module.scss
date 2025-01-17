@@ -1,18 +1,26 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
 .user {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  margin-bottom: 4px;
 
   .profileImage {
     width: 46px;
     height: 46px;
     border-radius: 50%;
-    background-color: $color-primary-2-50;
+    background-color: $color-generic-white;
+    border: 1px solid $color-neutral-100;
     display: flex;
     align-items: center;
     justify-content: center;

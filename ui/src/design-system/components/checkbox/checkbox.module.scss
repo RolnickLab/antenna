@@ -3,27 +3,39 @@
 
 .wrapper {
   display: flex;
+  align-items: center;
 }
 
 .checkboxRoot {
+  outline: none;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  border: 1px solid $color-neutral-300;
+  border: 1px solid $color-neutral-100;
+  flex-shrink: 0;
+
+  &.neutral {
+    border-color: $color-neutral-400;
+  }
 
   &:focus-visible {
     box-shadow: 0 0 0 2px $color-generic-black;
   }
 
-  &[data-state='checked'] {
+  &[data-state='checked'],
+  &[data-state='indeterminate'] {
     background-color: $color-neutral-600;
     border-color: $color-neutral-600;
   }
 
-  &:hover {
+  &[data-disabled] {
+    opacity: 0.5;
+  }
+
+  &:hover:not([data-disabled]) {
     opacity: 0.7;
     cursor: pointer;
   }
@@ -38,7 +50,7 @@
 
 .label {
   @include paragraph-x-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   margin-left: 6px;
 
   &.success {
@@ -47,5 +59,9 @@
 
   &.alert {
     color: $color-alert-600;
+  }
+
+  &.neutral {
+    color: $color-generic-white;
   }
 }

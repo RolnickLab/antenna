@@ -2,7 +2,7 @@ import classNames from 'classnames'
 import { Command } from 'cmdk'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from '../styles.module.scss'
-import { TreeItem } from './types'
+import { TreeItem } from 'components/taxon-search/types'
 
 export const ComboBoxTreeItem = ({
   level = 0,

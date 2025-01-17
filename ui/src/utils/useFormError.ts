@@ -4,9 +4,11 @@ import { parseServerError } from 'utils/parseServerError/parseServerError'
 
 export const useFormError = ({
   error,
+  fields,
   setFieldError,
 }: {
   error: unknown
+  fields?: string[]
   setFieldError?: UseFormSetError<any>
 }) => {
   const [errorMessage, setErrorMessage] = useState<string | undefined>()
@@ -18,11 +20,15 @@ export const useFormError = ({
       const { message, fieldErrors } = parseServerError(error)
       setErrorMessage(message)
       fieldErrors.forEach((error) => {
-        setFieldError?.(
-          error.key,
-          { message: error.message },
-          { shouldFocus: true }
-        )
+        if (!fields || fields.includes(error.key)) {
+          setFieldError?.(
+            error.key,
+            { message: error.message },
+            { shouldFocus: true }
+          )
+        } else {
+          setErrorMessage(error.message)
+        }
       })
     }
   }, [error])

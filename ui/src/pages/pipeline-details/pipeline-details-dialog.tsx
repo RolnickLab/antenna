@@ -1,3 +1,4 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { usePipelineDetails } from 'data-services/hooks/pipelines/usePipelineDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -17,7 +18,7 @@ export const PipelineDetailsDialog = ({
   name: string
 }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -28,7 +29,7 @@ export const PipelineDetailsDialog = ({
       </Dialog.Trigger>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={!isLoaded}
+        isLoading={isLoading}
       >
         <Dialog.Header
           title={translate(STRING.ENTITY_DETAILS, {
@@ -36,7 +37,7 @@ export const PipelineDetailsDialog = ({
           })}
         />
         <div className={styles.content}>
-          <PipelineDetailsContent id={id} onLoaded={() => setIsLoaded(true)} />
+          <PipelineDetailsContent id={id} onLoadingChange={setIsLoading} />
         </div>
       </Dialog.Content>
     </Dialog.Root>
@@ -45,24 +46,32 @@ export const PipelineDetailsDialog = ({
 
 const PipelineDetailsContent = ({
   id,
-  onLoaded,
+  onLoadingChange,
 }: {
   id: string
-  onLoaded: () => void
+  onLoadingChange: (isLoading: boolean) => void
 }) => {
-  const { pipeline, isLoading } = usePipelineDetails(id)
+  const { pipeline, isLoading, error } = usePipelineDetails(id)
 
   useEffect(() => {
-    if (!isLoading) {
-      onLoaded()
-    }
+    onLoadingChange(isLoading)
   }, [isLoading])
 
   return (
     <>
-      {pipeline && (
+      {pipeline ? (
         <>
           <FormSection title={translate(STRING.SUMMARY)}>
+            <FormRow>
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_ID)}
+                value={pipeline.id}
+              />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_VERSION)}
+                value={pipeline.versionLabel}
+              />
+            </FormRow>
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_NAME)}
@@ -73,12 +82,7 @@ const PipelineDetailsContent = ({
                 value={pipeline.description}
               />
             </FormRow>
-            <FormRow>
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_VERSION)}
-                value={pipeline.versionLabel}
-              />
-            </FormRow>
+
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_CREATED_AT)}
@@ -103,7 +107,11 @@ const PipelineDetailsContent = ({
             </FormSection>
           )}
         </>
-      )}
+      ) : error ? (
+        <div className={styles.errorContent}>
+          <ErrorState error={error} />
+        </div>
+      ) : null}
     </>
   )
 }

@@ -1,22 +1,32 @@
 # General
-# ------------------------------------------------------------------------------
 DJANGO_SETTINGS_MODULE="config.settings.local"
 USE_DOCKER=yes
 DJANGO_DEBUG=True
 IPYTHONDIR=/app/.ipython
+
+# Default superuser for local development
+DJANGO_SUPERUSER_EMAIL=antenna@insectai.org
+DJANGO_SUPERUSER_PASSWORD=localadmin
+
 # Redis
-# ------------------------------------------------------------------------------
 REDIS_URL=redis://redis:6379/0
 
-# Celery
-# ------------------------------------------------------------------------------
-
-# Flower
+# Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
 
-# Monitoring
-NEW_RELIC_CONFIG_FILE=newrelic.ini
-NEW_RELIC_ENVIRONMENT=development
+# This is the hostname for the frontend server
+EXTERNAL_HOSTNAME=localhost:4000
+DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:4000
 
-DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:3000,
+# CORS
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:4000
+
+# Minio local S3 storage backend
+MINIO_ENDPOINT=http://minio:9000
+MINIO_ROOT_USER=amistorage
+MINIO_ROOT_PASSWORD=amistorage
+MINIO_DEFAULT_BUCKET=ami
+MINIO_STORAGE_USE_HTTPS=False
+MINIO_TEST_BUCKET=ami-test
+MINIO_BROWSER_REDIRECT_URL=http://minio:9001

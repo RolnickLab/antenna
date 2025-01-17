@@ -5,6 +5,8 @@ import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
+const REFETCH_INTERVAL = 10000 // Refetch every 10 second
+
 const convertServerRecord = (record: ServerCapture) => new Capture(record)
 
 export const useCaptures = (
@@ -24,6 +26,7 @@ export const useCaptures = (
   }>({
     queryKey: [API_ROUTES.CAPTURES, params],
     url: fetchUrl,
+    refetchInterval: REFETCH_INTERVAL,
   })
 
   const captures = useMemo(() => data?.results.map(convertServerRecord), [data])

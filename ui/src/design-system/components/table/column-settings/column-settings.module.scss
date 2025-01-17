@@ -1,6 +1,10 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
+.triggerButton {
+  flex-direction: row-reverse;
+}
+
 .wrapper {
   padding: 20px;
   min-width: 180px;
@@ -11,12 +15,12 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   margin-bottom: 16px;
 }
 
 .settings {
-  :not(:last-child) {
-    margin-bottom: 4px;
-  }
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }

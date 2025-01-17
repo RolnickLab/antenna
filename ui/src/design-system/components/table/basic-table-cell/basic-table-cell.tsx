@@ -20,7 +20,7 @@ export const BasicTableCell = ({
   style = {},
 }: BasicTableCellProps) => {
   const textAlign = _.isNumber(value) ? TextAlign.Right : TextAlign.Left
-  const label = _.isNumber(value) ? value.toLocaleString() : value
+  const valueLabel = _.isNumber(value) ? value.toLocaleString() : value
 
   return (
     <div
@@ -30,7 +30,7 @@ export const BasicTableCell = ({
       })}
       style={{ textAlign, ...style }}
     >
-      {label && <span className={styles.label}>{label}</span>}
+      {valueLabel ? <span className={styles.label}>{valueLabel}</span> : null}
       {details &&
         details.map((detail, index) => (
           <span key={index} className={styles.details}>

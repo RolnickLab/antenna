@@ -1,53 +1,64 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useEntities } from 'data-services/hooks/entities/useEntities'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
-import { Error } from 'pages/error/error'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { columns } from './entities-columns'
 import { NewEntityDialog } from './new-entity-dialog'
-import styles from './styles.module.scss'
 
 export const Entities = ({
+  title,
   collection,
   type,
+  tooltip,
 }: {
+  title: string
   collection: string
   type: string
+  tooltip?: string
 }) => {
   const { projectId } = useParams()
-  const [sort, setSort] = useState<TableSortSettings>()
+  const [sort, setSort] = useState<TableSortSettings | undefined>({
+    field: 'created_at',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
-  const { entities, total, isLoading, isFetching, error } = useEntities(
-    collection,
-    {
+  const { entities, userPermissions, total, isLoading, isFetching, error } =
+    useEntities(collection, {
       projectId,
       pagination,
       sort,
-    }
-  )
-
-  if (!isLoading && error) {
-    return <Error />
-  }
+    })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
-      <Table
-        items={entities}
+      <PageHeader
+        title={title}
+        subTitle={translate(STRING.RESULTS, {
+          total,
+        })}
         isLoading={isLoading}
+        isFetching={isFetching}
+        tooltip={tooltip}
+      >
+        {canCreate && (
+          <NewEntityDialog collection={collection} type={type} isCompact />
+        )}
+      </PageHeader>
+      <Table
         columns={columns(collection, type)}
+        error={error}
+        isLoading={isLoading}
+        items={entities}
+        onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
-        onSortSettingsChange={setSort}
       />
       {entities?.length ? (
         <PaginationBar
@@ -56,7 +67,6 @@ export const Entities = ({
           setPage={setPage}
         />
       ) : null}
-      <NewEntityDialog collection={collection} type={type} />
     </>
   )
 }

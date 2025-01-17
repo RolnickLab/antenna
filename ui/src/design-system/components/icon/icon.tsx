@@ -16,12 +16,14 @@ import Overview from './assets/overview.svg?react'
 import Photograph from './assets/photograph.svg?react'
 import PlayButton from './assets/play-button.svg?react'
 import RadixCheck from './assets/radix/check.svg?react'
+import CircleBackslash from './assets/radix/circle-backslash.svg?react'
 import RadixClock from './assets/radix/clock.svg?react'
 import Cross from './assets/radix/cross.svg?react'
 import Error from './assets/radix/error.svg?react'
 import ExternalLink from './assets/radix/external-link.svg?react'
 import HeartFilled from './assets/radix/heart-filled.svg?react'
 import Heart from './assets/radix/heart.svg?react'
+import RadixMinus from './assets/radix/minus.svg?react'
 import Options from './assets/radix/options.svg?react'
 import Pencil from './assets/radix/pencil.svg?react'
 import Plus from './assets/radix/plus.svg?react'
@@ -34,7 +36,6 @@ import RadixTrash from './assets/radix/trash.svg?react'
 import RadixUpdate from './assets/radix/update.svg?react'
 import Sessions from './assets/sessions.svg?react'
 import Settings from './assets/settings.svg?react'
-import ShieldAlert from './assets/shield-alert.svg?react'
 import ShieldCheck from './assets/shield-check.svg?react'
 import Sort from './assets/sort.svg?react'
 import Species from './assets/species.svg?react'
@@ -44,6 +45,7 @@ import styles from './icon.module.scss'
 export enum IconType {
   BatchId = 'batch-id',
   Checkmark = 'checkmark',
+  CircleBackslash = 'circle-backslash',
   Close = 'close',
   Cross = 'cross',
   Deployments = 'deployments',
@@ -67,13 +69,13 @@ export enum IconType {
   Plus = 'plus',
   RadixCheck = 'radix-check',
   RadixClock = 'radix-clock',
+  RadixMinus = 'radix-minus',
   RadixQuestionMark = 'radix-question-mark',
   RadixSearch = 'radix-search',
   RadixTrash = 'radix-trash',
   RadixUpdate = 'radix-update',
   Sessions = 'sessions',
   Settings = 'settings',
-  ShieldAlert = 'shield-alert',
   ShieldCheck = 'shield-check',
   Sort = 'sort',
   Species = 'species',
@@ -95,6 +97,7 @@ export enum IconTheme {
 const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.BatchId]: BatchId,
   [IconType.Checkmark]: Checkmark,
+  [IconType.CircleBackslash]: CircleBackslash,
   [IconType.Close]: Close,
   [IconType.Cross]: Cross,
   [IconType.Deployments]: Deployments,
@@ -118,13 +121,13 @@ const COMPONENT_MAP: { [key in IconType]: FunctionComponent } = {
   [IconType.Plus]: Plus,
   [IconType.RadixCheck]: RadixCheck,
   [IconType.RadixClock]: RadixClock,
+  [IconType.RadixMinus]: RadixMinus,
   [IconType.RadixQuestionMark]: RadixQuestionMark,
   [IconType.RadixSearch]: RadixSearch,
   [IconType.RadixTrash]: RadixTrash,
   [IconType.RadixUpdate]: RadixUpdate,
   [IconType.Sessions]: Sessions,
   [IconType.Settings]: Settings,
-  [IconType.ShieldAlert]: ShieldAlert,
   [IconType.ShieldCheck]: ShieldCheck,
   [IconType.Sort]: Sort,
   [IconType.Species]: Species,

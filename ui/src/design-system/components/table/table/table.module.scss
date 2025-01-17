@@ -3,6 +3,7 @@
 
 .wrapper {
   position: relative;
+  min-height: 320px;
 
   &.white {
     .overflowFader {
@@ -13,7 +14,7 @@
       );
     }
 
-    .table {
+    .tableContainer {
       tbody {
         tr:nth-child(odd) {
           background-color: $color-neutral-50;
@@ -23,19 +24,9 @@
   }
 }
 
-.tableWrapper {
-  position: relative;
-  min-height: 320px;
-  padding: 2px;
-  overflow-x: auto;
-}
-
 .loadingWrapper {
-  position: absolute;
   width: 100%;
-  height: 100%;
-  top: 0;
-  right: 0;
+  min-height: 320px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -61,45 +52,37 @@
   }
 }
 
-.table {
-  display: table;
-  all: unset;
+.tableContainer {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  z-index: 2;
 
-  tbody,
-  td,
-  thead,
-  tr {
+  .table,
+  .tableClone {
     all: unset;
-  }
-
-  thead {
-    display: table-header-group;
+    display: table;
+    border-collapse: collapse;
   }
 
   tbody {
     position: relative;
-    display: table-row-group;
 
-    tr:nth-child(even) {
-      background-color: rgba(255, 255, 255, 0.6);
-    }
-
-    tr:nth-child(odd) {
+    tr {
       background-color: $color-generic-white;
     }
 
-    &.loading {
-      opacity: 0.5;
+    tr:not(:last-child) {
+      border-bottom: 1px solid $color-neutral-100;
     }
   }
 
-  tr {
-    display: table-row;
-  }
-
   td {
-    display: table-cell;
     white-space: nowrap;
     vertical-align: middle;
+
+    a {
+      width: 100%;
+    }
   }
 }

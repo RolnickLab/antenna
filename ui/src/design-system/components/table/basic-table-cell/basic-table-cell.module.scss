@@ -7,7 +7,7 @@
   .label {
     display: block;
     @include paragraph-medium();
-    color: $color-neutral-800;
+    color: $color-neutral-700;
   }
 
   .details {
@@ -25,14 +25,8 @@
 
   &.bubble {
     .label {
+      @include bubble-label();
       display: inline-flex;
-      height: 30px;
-      border-radius: 15px;
-      padding: 0 12px;
-      background-color: #f2f3fe;
-      line-height: 30px;
-      color: $color-primary-1-600;
-      font-weight: 600;
     }
   }
 }

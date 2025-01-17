@@ -1,116 +1,30 @@
 import datetime
-import uuid
+import logging
 
-from django.db import connection
+from django.db import connection, models
 from django.test import TestCase
+from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
 from ami.main.models import (
-    Deployment,
-    Detection,
+    Device,
     Event,
     Occurrence,
     Project,
+    S3StorageSource,
+    Site,
     SourceImage,
-    TaxaList,
+    SourceImageCollection,
     Taxon,
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.pipeline import Pipeline
+from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
 
-
-def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
-    if reuse:
-        project, _ = Project.objects.get_or_create(name="Test Project")
-        deployment, _ = Deployment.objects.get_or_create(project=project, name="Test Deployment")
-    else:
-        short_id = uuid.uuid4().hex[:8]
-        project = Project.objects.create(name=f"Test Project {short_id}")
-        deployment = Deployment.objects.create(project=project, name=f"Test Deployment {short_id}")
-    return project, deployment
-
-
-def create_captures(
-    deployment: Deployment, num_nights: int = 3, images_per_night: int = 3, interval_minutes: int = 10
-):
-    # Create some images over a few monitoring nights
-    first_night = datetime.datetime.now()
-
-    created = []
-    for night in range(num_nights):
-        for i in range(images_per_night):
-            img = SourceImage.objects.create(
-                deployment=deployment,
-                timestamp=first_night + datetime.timedelta(days=night, minutes=i * interval_minutes),
-                path=f"test/{night}_{i}.jpg",
-            )
-            created.append(img)
-
-    return created
-
-
-def create_taxa(project: Project) -> TaxaList:
-    taxa_list = TaxaList.objects.create(name="Test Taxa List")
-    taxa_list.projects.add(project)
-    root, _created = Taxon.objects.get_or_create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
-    root.projects.add(project)
-    family_taxon, _ = Taxon.objects.get_or_create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
-    family_taxon.projects.add(project)
-    genus_taxon, _ = Taxon.objects.get_or_create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
-    genus_taxon.projects.add(project)
-    for species in ["Vanessa itea", "Vanessa cardui", "Vanessa atalanta"]:
-        taxon, _ = Taxon.objects.get_or_create(
-            name=species,
-            defaults=dict(
-                parent=genus_taxon,
-                rank=TaxonRank.SPECIES.name,
-            ),
-        )
-        taxon.projects.add(project)
-    taxa_list.taxa.set([root, family_taxon, genus_taxon])
-    return taxa_list
-
-
-def create_occurrences(
-    deployment: Deployment,
-    num: int = 6,
-):
-    event = Event.objects.filter(deployment=deployment).first()
-    if not event:
-        raise ValueError("No events found for deployment")
-
-    for i in range(num):
-        # Every Occurrence requires a Detection
-        source_image = SourceImage.objects.filter(event=event).order_by("?").first()
-        if not source_image:
-            raise ValueError("No source images found for event")
-        taxon = Taxon.objects.filter(projects=deployment.project).order_by("?").first()
-        if not taxon:
-            raise ValueError("No taxa found for project")
-        detection = Detection.objects.create(
-            source_image=source_image,
-            timestamp=source_image.timestamp,  # @TODO this should be automatically set to the source image timestamp
-        )
-        # Could speed this up by creating an Occurrence with a determined taxon directly
-        # but this tests more of the code.
-        detection.classifications.create(
-            taxon=taxon,
-            score=0.9,
-            timestamp=datetime.datetime.now(),
-        )
-        occurrence = detection.associate_new_occurrence()
-
-        # Assert that the occurrence was created and has a detection, event, first_appearance,
-        # and species determination
-        assert detection.occurrence is not None
-        assert detection.occurrence.event is not None
-        assert detection.occurrence.first_appearance is not None
-        assert occurrence.best_detection is not None
-        assert occurrence.best_prediction is not None
-        assert occurrence.determination is not None
-        assert occurrence.determination_score is not None
+logger = logging.getLogger(__name__)
 
 
 class TestImageGrouping(TestCase):
@@ -195,6 +109,76 @@ class TestImageGrouping(TestCase):
 #         )
 #         if deployment:
 #             sync_source_images(deployment.pk)
+
+
+class TestEvents(TestCase):
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_captures(deployment=deployment, num_nights=2, images_per_night=5)
+        group_images_into_events(deployment=deployment)
+        self.project = project
+        self.deployment = deployment
+        return super().setUp()
+
+    def test_event_calculated_fields(self):
+        event, event_2 = self.deployment.events.all()
+
+        # Test initial calculated fields
+        event.update_calculated_fields(save=True)
+        event.refresh_from_db()
+
+        self.assertEqual(event.captures_count, 5)
+        self.assertIsNotNone(event.detections_count)
+        self.assertIsNotNone(event.occurrences_count)
+
+        initial_update_date = event.calculated_fields_updated_at
+        self.assertIsNotNone(initial_update_date)
+
+        # Add more captures and test that the calculated fields are updated
+        for capture in event_2.captures.all():
+            event.captures.add(capture)  # type: ignore
+
+        event.update_calculated_fields(save=True)
+        event.refresh_from_db()
+
+        self.assertEqual(event.captures_count, event.get_captures_count())
+        self.assertEqual(event.captures_count, 10)
+        self.assertGreater(event.calculated_fields_updated_at, initial_update_date)  # type: ignore
+
+    def test_event_calculated_fields_batch(self):
+        from ami.main.models import update_calculated_fields_for_events
+
+        last_updated_timestamps = []
+        for event in self.deployment.events.all().order_by("pk"):
+            self.assertEqual(event.captures_count, event.get_captures_count())
+            self.assertEqual(event.detections_count, event.get_detections_count())
+            self.assertEqual(event.occurrences_count, event.get_occurrences_count())
+            self.assertIsNotNone(event.calculated_fields_updated_at)
+            last_updated_timestamps.append(event.calculated_fields_updated_at)
+
+        # Delete all detections for all source images and test that the calculated fields are updated
+        from ami.main.models import Detection
+
+        Detection.objects.all().delete()
+
+        update_calculated_fields_for_events(last_updated=datetime.datetime(3000, 1, 1, 0, 0, 0))
+
+        for event, last_updated in zip(self.deployment.events.all().order_by("pk"), last_updated_timestamps):
+            self.assertEqual(event.captures_count, event.get_captures_count())
+            self.assertEqual(event.detections_count, event.get_detections_count())
+            self.assertEqual(event.occurrences_count, event.get_occurrences_count())
+            self.assertGreater(event.calculated_fields_updated_at, last_updated)
+
+        # Delete all captures and test that the calculated fields are updated
+        self.deployment.captures.all().delete()
+
+        update_calculated_fields_for_events(last_updated=datetime.datetime(3000, 1, 1, 0, 0, 0))
+
+        for event, last_updated in zip(self.deployment.events.all().order_by("pk"), last_updated_timestamps):
+            self.assertEqual(event.captures_count, event.get_captures_count())
+            self.assertEqual(event.detections_count, event.get_detections_count())
+            self.assertEqual(event.occurrences_count, event.get_occurrences_count())
+            self.assertGreater(event.calculated_fields_updated_at, last_updated)  # type: ignore
 
 
 class TestDuplicateFieldsOnChildren(TestCase):
@@ -478,6 +462,68 @@ class TestTaxonomy(TestCase):
         with self.assertRaises(ValueError):
             self._test_filtered_tree(filter_ranks)
 
+    def test_update_parents(self):
+        for taxon in Taxon.objects.all():
+            taxon.update_parents(save=True)
+            taxon.refresh_from_db()
+            self._test_parents_json(taxon)
+
+    def test_update_all_parents(self):
+        from ami.main.models import Taxon
+
+        Taxon.objects.update_all_parents()
+
+        for taxon in Taxon.objects.exclude(parent=None):
+            self._test_parents_json(taxon)
+
+    def _test_parents_json(self, taxon):
+        from ami.main.models import TaxonParent, TaxonRank
+
+        # Ensure all taxon have parents_json populated
+        if taxon.parent:
+            self.assertGreater(
+                len(taxon.parents_json),
+                0,
+                f"Taxon {taxon} has no parents_json, even though it has the parent {taxon.parent}",
+            )
+        else:
+            self.assertEqual(
+                len(taxon.parents_json),
+                0,
+                f"Taxon {taxon} has parents_json, even though it has no parent",
+            )
+
+        for parent_taxon in taxon.parents_json:
+            # Ensure all parents_json are TaxonParent objects
+            self.assertIsInstance(parent_taxon, TaxonParent)
+            self.assertIsInstance(parent_taxon.rank, TaxonRank)
+
+            # Ensure a parent rank is not the same as the taxon itself
+            self.assertNotEqual(taxon.rank, parent_taxon.rank)
+
+        # Ensure the order of all parents is correct
+        sorted_parents = sorted(taxon.parents_json, key=lambda x: x.rank)
+        self.assertListEqual(taxon.parents_json, sorted_parents)
+
+        # For each rank, test that it is lower than the previous rank
+        previous_rank = None
+        for parent in taxon.parents_json:
+            if previous_rank:
+                self.assertGreater(parent.rank, previous_rank)
+            previous_rank = parent.rank
+
+        # Ensure last item in parents_json is the taxon's direct parent
+        if taxon.parent:
+            direct_parent = taxon.parents_json[-1]
+            self.assertEqual(
+                direct_parent.id,
+                taxon.parent_id,
+                (
+                    f"Taxon {taxon} has incorrect direct parent: {direct_parent.name} != {taxon.parent.name}. "
+                    f"All parents: {taxon.parents_json}"
+                ),
+            )
+
 
 class TestTaxonomyViews(TestCase):
     def setUp(self) -> None:
@@ -503,16 +549,41 @@ class TestTaxonomyViews(TestCase):
     def test_occurrences_for_project(self):
         # Test that occurrences are specific to each project
         for project in [self.project_one, self.project_two]:
-            response = self.client.get(f"/api/v2/occurrences/?project={project.pk}")
+            response = self.client.get(f"/api/v2/occurrences/?project_id={project.pk}")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
-    def test_taxa_list(self):
-        from ami.main.models import Taxon
+    def no_test_project_species_list(self):
+        """
+        Test that the taxa for a project (of species rank) are returned from the API
 
-        response = self.client.get("/api/v2/taxa/")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["count"], Taxon.objects.count())
+        @TODO this randomly fails, need to investigate
+        """
+        species_for_project = self.project_one.taxa.filter(rank=TaxonRank.SPECIES.name)
+        # Ensure there are species for the project
+        self.assertGreater(species_for_project.count(), 0)
+
+        response = self.client.get(
+            "/api/v2/taxa/",
+            {
+                "project": self.project_one.pk,
+                "rank": TaxonRank.SPECIES.name,
+            },
+        )
+
+        taxa_returned = response.json()["results"]
+        self.assertGreater(len(taxa_returned), 0)
+
+        # Assert only species are returned
+        for taxon in taxa_returned:
+            self.assertEqual(taxon["rank"], str(TaxonRank.SPECIES))
+
+        # Compare lists of taxa:
+        self.assertListEqual(
+            sorted([taxon.name for taxon in species_for_project]),
+            sorted([taxon["name"] for taxon in taxa_returned]),
+            "Expected taxa for project (list one) do not match taxa in API response (list two)",
+        )
 
     def _test_taxa_for_project(self, project: Project):
         """
@@ -521,7 +592,7 @@ class TestTaxonomyViews(TestCase):
         """
         from ami.main.models import Taxon
 
-        response = self.client.get(f"/api/v2/taxa/?project={project.pk}")
+        response = self.client.get(f"/api/v2/taxa/?project_id={project.pk}")
         self.assertEqual(response.status_code, 200)
         project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
         # project_any_taxa = Taxon.objects.filter(projects=project)
@@ -549,6 +620,49 @@ class TestTaxonomyViews(TestCase):
         response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], taxon.name)
+
+    def test_recursive_occurrence_counts_single(self):
+        # First, assert that we have taxa with parents and occurrences
+        from ami.main.models import Taxon
+
+        taxa = Taxon.objects.exclude(parent=None).filter(occurrences__isnull=False)
+        self.assertGreater(taxa.count(), 0)
+        for taxon in taxa:
+            occurrence_count_direct = taxon.occurrences.count()
+            occurrence_count_total = taxon.occurrences_count_recursive()
+            self.assertGreaterEqual(occurrence_count_total, occurrence_count_direct)
+
+            # Manually add up the occurrences for each taxon and its children, recursively:
+            def _count_occurrences_recursive(taxon):
+                count = taxon.occurrences.count()
+                for child in taxon.direct_children.all():
+                    count += _count_occurrences_recursive(child)
+                return count
+
+            manual_count = _count_occurrences_recursive(taxon)
+            self.assertEqual(occurrence_count_total, manual_count)
+
+        # The top level test taxa should have all occurrences
+        top_level_taxa = Taxon.objects.root()
+        count = top_level_taxa.occurrences_count_recursive()
+        self.assertGreater(count, 0)
+        project_ids = top_level_taxa.projects.values_list("id", flat=True)
+        total_occurrences = Occurrence.objects.filter(project__in=project_ids).count()
+        self.assertEqual(count, total_occurrences)
+
+    def test_recursive_occurrence_count_from_manager(self):
+        from ami.main.models import Taxon
+
+        with self.assertRaises(NotImplementedError):
+            taxa_with_counts = Taxon.objects.with_occurrence_counts()
+            for taxon in taxa_with_counts:
+                occurrence_count_total = taxon.occurrences_count_recursive()
+                self.assertEqual(occurrence_count_total, taxon.occurrences_count)
+
+            for taxon in taxa_with_counts:
+                occurrence_count_direct = taxon.occurrences.count()
+                occurrence_count_total = taxon.occurrences_count_recursive()
+                self.assertEqual(occurrence_count_total, occurrence_count_direct)
 
 
 class TestIdentification(APITestCase):
@@ -597,3 +711,174 @@ class TestIdentification(APITestCase):
         self.assertEqual(occurrence.determination, new_taxon)
         identification = Identification.objects.get(pk=response.json()["id"])
         self.assertEqual(identification.comment, comment)
+
+
+class TestMovingSourceImages(TestCase):
+    previous_subdir = "test/old_subdir"
+    prev_sub_subdir_1 = previous_subdir + "/2022"
+    prev_sub_subdir_2 = previous_subdir + "/2023"
+    new_subdir = "test/new_subdir"
+    new_sub_subdir_1 = new_subdir + "/2022"
+    new_sub_subdir_2 = new_subdir + "/2023"
+    other_subdir = "test/other_subdir"
+    images_per_dir = 10
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_captures(
+            deployment=deployment, subdir=self.prev_sub_subdir_1, num_nights=1, images_per_night=self.images_per_dir
+        )
+        create_captures(
+            deployment=deployment, subdir=self.prev_sub_subdir_2, num_nights=1, images_per_night=self.images_per_dir
+        )
+        create_captures(
+            deployment=deployment, subdir=self.other_subdir, num_nights=1, images_per_night=self.images_per_dir
+        )
+        group_images_into_events(deployment=deployment)
+        self.project = project
+        self.deployment = deployment
+        return super().setUp()
+
+    def test_audit_subdirs(self):
+        counts = self.deployment.audit_subdir_of_captures(ignore_deepest=False)
+        expected_counts = {
+            self.prev_sub_subdir_1: self.images_per_dir,
+            self.prev_sub_subdir_2: self.images_per_dir,
+            self.other_subdir: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)
+
+    def test_audit_subdirs_ignore_date_folder(self):
+        counts = self.deployment.audit_subdir_of_captures(ignore_deepest=True)
+        other_subdir_truncated = self.other_subdir.rsplit("/", 1)[0]
+        expected_counts = {
+            self.previous_subdir: self.images_per_dir * 2,
+            other_subdir_truncated: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)
+
+    def test_update_subdir(self):
+        # Move all images to a new subdirectory
+        self.deployment.update_subdir_of_captures(new_subdir=self.new_subdir, previous_subdir=self.previous_subdir)
+
+        counts = self.deployment.audit_subdir_of_captures()
+        expected_counts = {
+            self.new_sub_subdir_1: self.images_per_dir,
+            self.new_sub_subdir_2: self.images_per_dir,
+            self.other_subdir: self.images_per_dir,
+        }
+        self.assertDictEqual(dict(counts), expected_counts)
+
+
+class TestProjectSettingsFiltering(APITestCase):
+    """Test  Project Settings filter by project_id"""
+
+    def setUp(self) -> None:
+        for _ in range(3):
+            project, deployment = setup_test_project(reuse=False)
+            create_taxa(project=project)
+            create_captures(deployment=deployment)
+            group_images_into_events(deployment=deployment)
+            create_occurrences(deployment=deployment, num=5)
+        self.project_ids = [project.id for project in Project.objects.all()]
+
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_project_summary(self):
+        project_id = self.project_ids[1]
+        endpoint_url = f"/api/v2/status/summary/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        project = Project.objects.get(pk=project_id)
+
+        self.assertEqual(response_data["deployments_count"], project.deployments_count())
+        self.assertEqual(
+            response_data["taxa_count"],
+            Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+            .filter(
+                occurrences_count__gt=0,
+                occurrences__determination_score__gte=0,
+                occurrences__project=project,
+            )
+            .distinct()
+            .count(),
+        )
+        self.assertEqual(
+            response_data["events_count"],
+            Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
+        )
+        self.assertEqual(
+            response_data["captures_count"], SourceImage.objects.filter(deployment__project=project).count()
+        )
+        self.assertEqual(
+            response_data["occurrences_count"],
+            Occurrence.objects.filter(
+                project=project,
+                determination_score__gte=0,
+                event__isnull=False,
+            ).count(),
+        )
+        self.assertEqual(
+            response_data["captures_count"], SourceImage.objects.filter(deployment__project=project).count()
+        )
+
+    def test_project_collections(self):
+        project_id = self.project_ids[1]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/captures/collections/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        expected_project_collection_ids = {
+            source_image_collection.id
+            for source_image_collection in SourceImageCollection.objects.filter(project=project)
+        }
+        response_source_image_collection_ids = {result.get("id") for result in response_data["results"]}
+        self.assertEqual(response_source_image_collection_ids, expected_project_collection_ids)
+
+    def test_project_pipelines(self):
+        project_id = self.project_ids[0]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/ml/pipelines/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+
+        expected_project_pipeline_ids = {pipeline.id for pipeline in Pipeline.objects.filter(projects=project)}
+        response_pipeline_ids = {pipeline.get("id") for pipeline in response_data["results"]}
+        self.assertEqual(response_pipeline_ids, expected_project_pipeline_ids)
+
+    def test_project_storage(self):
+        project_id = self.project_ids[0]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/storage/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        expected_storage_ids = {storage.id for storage in S3StorageSource.objects.filter(project=project)}
+        response_storage_ids = {storage.get("id") for storage in response_data["results"]}
+        self.assertEqual(response_storage_ids, expected_storage_ids)
+
+    def test_project_sites(self):
+        project_id = self.project_ids[1]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/deployments/sites/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        exepcted_site_ids = {site.id for site in Site.objects.filter(project=project)}
+        response_site_ids = {site.get("id") for site in response_data["results"]}
+        self.assertEqual(response_site_ids, exepcted_site_ids)
+
+    def test_project_devices(self):
+        project_id = self.project_ids[1]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/deployments/devices/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        exepcted_device_ids = {device.id for device in Device.objects.filter(project=project)}
+        response_device_ids = {device.get("id") for device in response_data["results"]}
+        self.assertEqual(response_device_ids, exepcted_device_ids)

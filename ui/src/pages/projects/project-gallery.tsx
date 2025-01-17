@@ -11,11 +11,13 @@ import { STRING, translate } from 'utils/language'
 import styles from './projects.module.scss'
 
 export const ProjectGallery = ({
-  projects = [],
+  error,
   isLoading,
+  projects = [],
 }: {
-  projects?: Project[]
+  error?: any
   isLoading: boolean
+  projects?: Project[]
 }) => {
   const navigate = useNavigate()
   const items = useMemo(
@@ -36,6 +38,7 @@ export const ProjectGallery = ({
 
   return (
     <Gallery
+      error={error}
       cardSize={CardSize.Large}
       isLoading={isLoading}
       items={items}
@@ -58,7 +61,7 @@ export const ProjectGallery = ({
                 label={translate(STRING.ENTITY_VIEW, {
                   type: translate(STRING.ENTITY_TYPE_PROJECT),
                 })}
-                onClick={() => navigate(item.to)}
+                onClick={() => item.to && navigate(item.to)}
               />
             </div>
           </Card>

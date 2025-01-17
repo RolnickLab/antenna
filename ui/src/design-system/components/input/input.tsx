@@ -21,9 +21,11 @@ interface InputProps {
   error?: string
   label: string
   name: string
+  noArrows?: boolean
   placeholder?: string
-  value?: string | number
+  step?: number
   type?: 'text' | 'number' | 'password'
+  value?: string | number
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   onFocus?: (e: FocusEvent<HTMLInputElement>) => void
@@ -37,6 +39,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       error,
       label,
       name,
+      noArrows,
+      step = 'any',
       type: initialType,
       ...rest
     } = props
@@ -66,19 +70,20 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             aria-describedby={descriptionId}
             aria-errormessage={errorId}
             aria-invalid={hasError}
-            autoComplete="on"
+            autoComplete="off"
             className={classNames(styles.input, {
               [styles.password]: initialType === 'password',
+              [styles.noArrows]: noArrows,
             })}
             disabled={disabled}
             id={name}
             name={name}
             ref={forwardedRef}
-            step={type === 'number' ? 'any' : undefined}
+            step={type === 'number' ? step : undefined}
             type={type}
             {...rest}
           />
-          {initialType === 'password' ? (
+          {initialType === 'password' && !disabled ? (
             <div className={styles.passwordButtonContainer}>
               <Tooltip
                 content={`${type === 'password' ? 'Show' : 'Hide'} password`}
@@ -106,19 +111,19 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 
 export const InputValue = ({
   label,
-  value: _value,
+  value,
   to,
 }: {
   label: string
   value?: string | number
   to?: string
 }) => {
-  const value =
-    _value === undefined
+  const valueLabel =
+    value === undefined || value === ''
       ? translate(STRING.VALUE_NOT_AVAILABLE)
-      : _.isNumber(_value)
-      ? _value.toLocaleString()
-      : _value
+      : _.isNumber(value)
+      ? value.toLocaleString()
+      : value
 
   return (
     <InputContent label={label}>
@@ -127,7 +132,7 @@ export const InputValue = ({
           {value}
         </Link>
       ) : (
-        <span className={styles.value}>{value}</span>
+        <span className={styles.value}>{valueLabel}</span>
       )}
     </InputContent>
   )
@@ -162,3 +167,63 @@ export const InputContent = ({
     </div>
   )
 }
+
+export const LockedInput = ({
+  editing,
+  setEditing,
+  onCancel,
+  onSubmit,
+  children,
+}: {
+  editing: boolean
+  setEditing: (editing: boolean) => void
+  onCancel: () => void
+  onSubmit: () => void
+  children: ReactNode
+}) => (
+  <div className={styles.lockedInputContainer}>
+    <div className={styles.editButtonContainer}>
+      <IconButton
+        icon={editing ? IconType.Cross : IconType.Pencil}
+        onClick={() => {
+          if (editing) {
+            setEditing(false)
+            onCancel()
+          } else {
+            setEditing(true)
+          }
+        }}
+      />
+      {editing && (
+        <IconButton
+          icon={IconType.RadixCheck}
+          onClick={() => {
+            setEditing(false)
+            onSubmit()
+          }}
+        />
+      )}
+    </div>
+
+    {children}
+  </div>
+)
+
+export const EditableInput = ({
+  editing,
+  onEdit,
+  children,
+}: {
+  editing: boolean
+  onEdit: () => void
+  children: ReactNode
+}) => (
+  <div className={styles.lockedInputContainer}>
+    <div className={styles.editButtonContainer}>
+      {!editing && (
+        <IconButton icon={IconType.Pencil} onClick={() => onEdit()} />
+      )}
+    </div>
+    {children}
+  </div>
+)

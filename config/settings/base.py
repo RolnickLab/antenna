@@ -23,6 +23,9 @@ if READ_DOT_ENV_FILE:
 
 # GENERAL
 # ------------------------------------------------------------------------------
+EXTERNAL_HOSTNAME = env("EXTERNAL_HOSTNAME", default="localhost:8000")  # type: ignore[no-untyped-call]
+EXTERNAL_BASE_URL = env("EXTERNAL_BASE_URL", default=f"http://{EXTERNAL_HOSTNAME}")  # type: ignore[no-untyped-call]
+
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)  # type: ignore[no-untyped-call]
 # Local time zone. Choices are
@@ -312,7 +315,7 @@ CELERY_TASK_SEND_SENT_EVENT = True
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("ami.base.permissions.IsActiveStaffOrReadOnly",),
@@ -332,14 +335,15 @@ CSRF_TRUSTED_ORIGINS = env.list(
     default=[
         "https://api.dev.insectai.org",
         "http://api.dev.insectai.org",
+        EXTERNAL_BASE_URL,
     ],  # type: ignore[no-untyped-call]
 )
 
 # User authentication and registration via REST API endpoints
 # https://djoser.readthedocs.io/en/latest/settings.html
 DJOSER = {
-    # "PASSWORD_RESET_CONFIRM_URL": "#/password/reset/confirm/{uid}/{token}",
-    # "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
+    "PASSWORD_RESET_CONFIRM_URL": "auth/reset-password-confirm?uid={uid}&token={token}",
+    "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
     # "ACTIVATION_URL": "#/activate/{uid}/{token}",
     "SEND_CONFIRMATION_EMAIL": True,
     # "SEND_ACTIVATION_EMAIL": True,
@@ -347,6 +351,9 @@ DJOSER = {
     "SERIALIZERS": {
         "user": "ami.users.api.serializers.UserSerializer",
         "current_user": "ami.users.api.serializers.CurrentUserSerializer",
+    },
+    "PERMISSIONS": {
+        "user_create": ["rest_framework.permissions.IsAdminUser"],
     },
 }
 
@@ -362,4 +369,7 @@ SPECTACULAR_SETTINGS = {
 # Your stuff...
 # ------------------------------------------------------------------------------
 
-DEFAULT_CONFIDENCE_THRESHOLD = env.float("DEFAULT_CONFIDENCE_THRESHOLD", default=0.29)  # type: ignore[no-untyped-call]
+S3_TEST_ENDPOINT = env("MINIO_ENDPOINT", default="http://minio:9000")  # type: ignore[no-untyped-call]
+S3_TEST_KEY = env("MINIO_ROOT_USER", default=None)  # type: ignore[no-untyped-call]
+S3_TEST_SECRET = env("MINIO_ROOT_PASSWORD", default=None)  # type: ignore[no-untyped-call]
+S3_TEST_BUCKET = env("MINIO_TEST_BUCKET", default="ami-test")  # type: ignore[no-untyped-call]

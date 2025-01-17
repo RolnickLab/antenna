@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import _ from 'lodash'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import styles from './info-block.module.scss'
@@ -16,18 +17,23 @@ export const InfoBlock = ({ fields }: { fields: Field[] }) => (
         field.value === undefined
           ? translate(STRING.VALUE_NOT_AVAILABLE)
           : field.value
+      const valueLabel = _.isNumber(value) ? value.toLocaleString() : value
 
       return (
         <p className={styles.field} key={index}>
           <span className={styles.fieldLabel}>{field.label}</span>
           {field.to ? (
             <Link to={field.to}>
-              <span className={classNames(styles.fieldValue, styles.link)}>
-                {value}
+              <span
+                className={classNames(styles.fieldValue, styles.link, {
+                  [styles.bubble]: _.isNumber(value),
+                })}
+              >
+                {valueLabel}
               </span>
             </Link>
           ) : (
-            <span className={styles.fieldValue}>{value}</span>
+            <span className={styles.fieldValue}>{valueLabel}</span>
           )}
         </p>
       )

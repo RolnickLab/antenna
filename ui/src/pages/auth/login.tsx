@@ -3,9 +3,11 @@ import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useLogin } from 'data-services/hooks/auth/useLogin'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
+import buttonStyles from 'design-system/components/button/button.module.scss'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, LANDING_PAGE_WAITLIST_URL } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
@@ -38,6 +40,7 @@ export const Login = () => {
     onSuccess: () => navigate(state?.to ?? APP_ROUTES.HOME),
   })
   const {
+    getValues,
     control,
     handleSubmit,
     setError: setFieldError,
@@ -53,7 +56,9 @@ export const Login = () => {
 
   return (
     <>
-      <h1 className={styles.title}>{translate(STRING.LOGIN)}</h1>
+      <div className={styles.intro}>
+        <h1 className={styles.title}>{translate(STRING.LOGIN)}</h1>
+      </div>
       <form
         className={styles.form}
         onSubmit={handleSubmit((values) => login(values))}
@@ -76,20 +81,42 @@ export const Login = () => {
             {errorMessage}
           </p>
         )}
+      </form>
+      <div className={styles.outro}>
         <p className={styles.text}>
-          {translate(STRING.MESSAGE_NO_ACCOUNT_YET)}{' '}
-          <Link to={APP_ROUTES.SIGN_UP}>{translate(STRING.SIGN_UP)}</Link>
+          {translate(STRING.FORGOT_PASSWORD)}{' '}
+          <Link
+            to={APP_ROUTES.RESET_PASSWORD}
+            state={{ email: getValues('email') ?? undefined }}
+          >
+            {translate(STRING.RESET)}
+          </Link>
         </p>
+        {/* TODO: Add link to join waitlist */}
         <p className={classNames(styles.text, styles.divider)}>
           {translate(STRING.OR).toUpperCase()}
         </p>
-        <Button
-          label={translate(STRING.VIEW_PUBLIC_PROJECTS)}
-          type="button"
-          theme={ButtonTheme.Default}
-          onClick={() => navigate(APP_ROUTES.HOME)}
-        />
-      </form>
+        <Link className={buttonStyles.button} to={APP_ROUTES.HOME}>
+          <span className={buttonStyles.label}>
+            {translate(STRING.VIEW_PUBLIC_PROJECTS)}
+          </span>
+        </Link>
+        <a
+          href={LANDING_PAGE_WAITLIST_URL}
+          rel="noreferrer"
+          target="_blank"
+          className={buttonStyles.button}
+        >
+          <span className={buttonStyles.label}>
+            {translate(STRING.SIGN_UP)}
+          </span>
+          <Icon
+            type={IconType.ExternalLink}
+            theme={IconTheme.Primary}
+            size={14}
+          />
+        </a>
+      </div>
     </>
   )
 }

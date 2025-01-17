@@ -25,13 +25,22 @@ export const FormSection = ({
   children,
   style,
   title,
+  description,
 }: {
-  children: ReactNode
+  children?: ReactNode
   style?: CSSProperties
   title?: string
+  description?: string
 }) => (
   <div className={styles.section} style={style}>
-    {title && <h2 className={styles.sectionTitle}>{title}</h2>}
+    {title && (
+      <div className={styles.sectionHeader}>
+        <h2 className={styles.sectionTitle}>{title}</h2>
+        {description && (
+          <h2 className={styles.sectionDescription}>{description}</h2>
+        )}
+      </div>
+    )}
     <div className={styles.sectionContent}>{children}</div>
   </div>
 )

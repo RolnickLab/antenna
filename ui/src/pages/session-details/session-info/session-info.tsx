@@ -35,10 +35,6 @@ export const SessionInfo = ({ session }: { session: Session }) => {
       value: session.numImages,
     },
     {
-      label: translate(STRING.FIELD_LABEL_DETECTIONS),
-      value: session.numDetections,
-    },
-    {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value: session.numOccurrences,
       to: getAppRoute({
@@ -46,18 +42,18 @@ export const SessionInfo = ({ session }: { session: Session }) => {
         filters: { event: session.id },
       }),
     },
-    {
-      label: translate(STRING.FIELD_LABEL_SPECIES),
-      value: session.numSpecies,
-      to: getAppRoute({
-        to: APP_ROUTES.SPECIES({ projectId: projectId as string }),
-        filters: { occurrences__event: session.id },
-      }),
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_AVG_TEMP),
-      value: session.tempLabel,
-    },
+    ...(session.numTaxa !== undefined
+      ? [
+          {
+            label: translate(STRING.FIELD_LABEL_TAXA),
+            value: session.numTaxa,
+            to: getAppRoute({
+              to: APP_ROUTES.TAXA({ projectId: projectId as string }),
+              filters: { event: session.id },
+            }),
+          },
+        ]
+      : []),
   ]
 
   return (

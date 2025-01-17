@@ -1,132 +1,73 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-.label {
-  display: block;
-  @include paragraph-small();
-  font-weight: 600;
-  color: $color-neutral-800;
-  margin-bottom: 4px;
-}
-
-.description {
-  display: block;
-  @include paragraph-small();
-  color: $color-neutral-500;
-  font-style: italic;
-}
-
-.sliderRoot {
-  all: unset;
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 24px;
-  padding-bottom: 28px;
-  margin-bottom: 8px;
-  cursor: pointer;
-}
-
-.sliderTrack {
-  background-color: $color-neutral-200;
-  position: relative;
-  flex-grow: 1;
-  border-radius: 2px;
-  height: 4px;
-}
-
-.sliderRange {
-  position: absolute;
-  background-color: $color-success-600;
-  border-radius: 2px;
-  height: 100%;
-}
-
-.sliderThumb {
-  all: unset;
-  position: relative;
-  display: block;
-  width: 24px;
-  height: 24px;
-  background-color: $color-generic-white;
-  border: 2px solid $color-neutral-300;
-  border-radius: 50%;
-  box-sizing: border-box;
-
-  &:focus {
-    border-color: $color-success-600 !important;
-    box-shadow: 0 0 0 4px $color-success-100;
-  }
-}
-
-.sliderValue {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  @include paragraph-small();
-  color: $color-neutral-800;
-  margin-top: 8px;
-}
-
-.playbackSlider {
-  width: 100%;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  justify-content: center;
+.timestampSlider {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
 
   .label {
+    display: block;
     @include paragraph-xx-small();
+    font-weight: 600;
+    color: $color-generic-white;
     text-transform: uppercase;
-    font-weight: 700;
-    color: $color-neutral-200;
-    margin: 0;
+    white-space: nowrap;
   }
 
-  .value {
-    display: block;
-    @include paragraph-x-small();
-    font-weight: 700;
-    color: $color-neutral-200;
-    width: 32px;
-    text-align: right;
-    overflow: hidden;
-    flex-shrink: 0;
+  .labels {
+    display: flex;
+    justify-content: space-between;
+
+    .label {
+      color: $color-neutral-300;
+    }
   }
 
   .sliderRoot {
-    margin: 0;
-    padding: 0;
-  }
+    all: unset;
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 24px;
 
-  .sliderRange {
-    background-color: $color-primary-2-500;
+    &:not([data-disabled]) {
+      cursor: pointer;
+    }
   }
 
   .sliderTrack {
+    position: relative;
     background-color: $color-neutral-400;
+    flex-grow: 1;
+    border-radius: 2px;
+    height: 4px;
+  }
+
+  .sliderRange {
+    position: absolute;
+    background-color: $color-neutral-400;
+    border-radius: 2px;
+    height: 100%;
   }
 
   .sliderThumb {
-    width: 20px;
-    height: 20px;
-    background-color: $color-neutral-200;
-    border: none;
+    all: unset;
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    transform: translateY(calc(50% + 2px));
 
-    &:focus {
-      box-shadow: none;
+    .label {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%) translateY(calc(-100% - 12px));
     }
 
-    &.default {
-      background-color: $color-neutral-400;
-      transform: var(--radix-slider-thumb-transform);
-      position: absolute;
-
-      &.primary {
-        background-color: $color-primary-2-500;
-      }
+    svg {
+      vertical-align: middle;
     }
   }
 }

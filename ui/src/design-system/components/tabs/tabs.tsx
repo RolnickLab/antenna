@@ -48,7 +48,7 @@ const Trigger = ({
 }) => (
   <Tabs.Trigger value={value} className={styles.tabsTrigger}>
     {icon && <Icon type={icon} />}
-    <span>{label}</span>
+    <span className={styles.label}>{label}</span>
   </Tabs.Trigger>
 )
 
@@ -59,7 +59,7 @@ const Content = ({
   value: string
   children: ReactNode
 }) => (
-  <Tabs.Content value={value} className={styles.tabsContent}>
+  <Tabs.Content value={value} tabIndex={-1}>
     {children}
   </Tabs.Content>
 )

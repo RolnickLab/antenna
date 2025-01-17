@@ -20,8 +20,8 @@ ALLOWED_HOSTS = [
     "localhost",
     "0.0.0.0",
     "127.0.0.1",
-    "api.dev.insectai.org",
-]
+    "django",
+] + env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
 # CACHES
 # ------------------------------------------------------------------------------
@@ -40,8 +40,8 @@ EMAIL_HOST = env("EMAIL_HOST", default="mailhog")
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-port
 EMAIL_PORT = 1025
 
-# EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
-EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
     default="Automated Monitoring of Insects ML Platform <michael.bunsen@mila.quebec>",

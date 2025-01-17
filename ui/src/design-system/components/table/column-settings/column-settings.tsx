@@ -1,5 +1,5 @@
+import { Button } from 'design-system/components/button/button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import * as Popover from 'design-system/components/popover/popover'
 import { STRING, translate } from 'utils/language'
@@ -18,32 +18,36 @@ export const ColumnSettings = ({
 }: ColumnSettingsProps) => (
   <Popover.Root>
     <Popover.Trigger>
-      <IconButton icon={IconType.Options} />
+      <Button
+        label={translate(STRING.COLUMNS)}
+        icon={IconType.ToggleDown}
+        customClass={styles.triggerButton}
+      />
     </Popover.Trigger>
     <Popover.Content
       ariaCloselabel={translate(STRING.CLOSE)}
-      align="start"
-      side="left"
+      align="end"
+      side="bottom"
     >
       <div className={styles.wrapper}>
-        <span className={styles.description}>
-          {translate(STRING.SELECT_COLUMNS)}
-        </span>
+        <span className={styles.description}>{translate(STRING.COLUMNS)}</span>
         <div className={styles.settings}>
-          {columns.map((column) => (
-            <Checkbox
-              key={column.id}
-              id={column.id}
-              label={column.name}
-              onCheckedChange={(checked) => {
-                onColumnSettingsChange({
-                  ...columnSettings,
-                  [column.id]: checked,
-                })
-              }}
-              defaultChecked={columnSettings[column.id]}
-            />
-          ))}
+          {columns.map((column) =>
+            column.name.length ? (
+              <Checkbox
+                key={column.id}
+                checked={columnSettings[column.id]}
+                id={column.id}
+                label={column.name}
+                onCheckedChange={(checked) => {
+                  onColumnSettingsChange({
+                    ...columnSettings,
+                    [column.id]: checked,
+                  })
+                }}
+              />
+            ) : null
+          )}
         </div>
       </div>
     </Popover.Content>

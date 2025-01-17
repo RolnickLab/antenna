@@ -1,18 +1,20 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
-import { Error } from 'pages/error/error'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { columns } from './pipelines-columns'
-import styles from './pipelines.module.scss'
 
 export const Pipelines = () => {
   const { projectId } = useParams()
-  const [sort, setSort] = useState<TableSortSettings>()
+  const [sort, setSort] = useState<TableSortSettings | undefined>({
+    field: 'id',
+    order: 'asc',
+  })
   const { pagination, setPage } = usePagination()
   const { pipelines, total, isLoading, isFetching, error } = usePipelines({
     projectId,
@@ -20,24 +22,25 @@ export const Pipelines = () => {
     sort,
   })
 
-  if (!isLoading && error) {
-    return <Error />
-  }
-
   return (
     <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
-      <Table
-        items={pipelines}
+      <PageHeader
+        title={translate(STRING.TAB_ITEM_PIPELINES)}
+        subTitle={translate(STRING.RESULTS, {
+          total,
+        })}
         isLoading={isLoading}
+        isFetching={isFetching}
+        tooltip={translate(STRING.TOOLTIP_PIPELINE)}
+      />
+      <Table
         columns={columns(projectId as string)}
+        error={error}
+        isLoading={isLoading}
+        items={pipelines}
+        onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
-        onSortSettingsChange={setSort}
       />
       {pipelines?.length ? (
         <PaginationBar

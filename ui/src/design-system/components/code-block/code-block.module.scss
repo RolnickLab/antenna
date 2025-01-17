@@ -15,7 +15,7 @@
 
 .codeBlockContentWrapper {
   max-height: 160px;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: hidden;
 
   &.expanded {

@@ -1,11 +1,14 @@
-import { FetchInfo } from 'components/fetch-info/fetch-info'
+import { FilterControl } from 'components/filtering/filter-control'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
 import * as Dialog from 'design-system/components/dialog/dialog'
+import { PageFooter } from 'design-system/components/page-footer/page-footer'
+import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import _ from 'lodash'
-import { Error } from 'pages/error/error'
 import { JobDetails } from 'pages/job-details/job-details'
 import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect } from 'react'
@@ -14,56 +17,86 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useColumnSettings } from 'utils/useColumnSettings'
+import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSort } from 'utils/useSort'
 import { UserPermission } from 'utils/user/types'
 import { columns } from './jobs-columns'
-import styles from './jobs.module.scss'
 
 export const Jobs = () => {
   const { projectId, id } = useParams()
   const { pagination, setPage } = usePagination()
-  const { sort, setSort } = useSort()
+  const { filters } = useFilters()
+  const { sort, setSort } = useSort({ field: 'created_at', order: 'desc' })
+  const { columnSettings, setColumnSettings } = useColumnSettings('jobs', {
+    name: true,
+    status: true,
+    'job-type': true,
+    pipeline: true,
+    'created-at': true,
+  })
   const { jobs, userPermissions, total, isLoading, isFetching, error } =
     useJobs({
       projectId,
-      pagination,
       sort,
+      pagination,
+      filters,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
-  if (!isLoading && error) {
-    return <Error />
-  }
-
   return (
-    <>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
-      <Table
-        items={jobs}
-        isLoading={isLoading}
-        columns={columns(projectId as string)}
-        sortable
-        sortSettings={sort}
-        onSortSettingsChange={setSort}
-      />
-      {jobs?.length ? (
-        <PaginationBar
-          pagination={pagination}
-          total={total}
-          setPage={setPage}
+    <div className="flex flex-col gap-6 md:flex-row">
+      <div className="space-y-6">
+        <FilterSection defaultOpen>
+          <FilterControl field="source_image_single" readonly />
+          <FilterControl field="status" />
+          <FilterControl field="job_type_key" />
+          <FilterControl field="deployment" />
+          <FilterControl field="pipeline" />
+          <FilterControl field="source_image_collection" />
+        </FilterSection>
+      </div>
+      <div className="w-full overflow-hidden">
+        <PageHeader
+          title={translate(STRING.NAV_ITEM_JOBS)}
+          subTitle={translate(STRING.RESULTS, {
+            total,
+          })}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          tooltip={translate(STRING.TOOLTIP_JOB)}
+        >
+          <ColumnSettings
+            columns={columns(projectId as string)}
+            columnSettings={columnSettings}
+            onColumnSettingsChange={setColumnSettings}
+          />
+          {canCreate ? <NewJobDialog /> : null}
+        </PageHeader>
+        <Table
+          columns={columns(projectId as string).filter(
+            (column) => !!columnSettings[column.id]
+          )}
+          error={error}
+          items={jobs}
+          isLoading={!id && isLoading}
+          sortable
+          sortSettings={sort}
+          onSortSettingsChange={setSort}
         />
-      ) : null}
-      {!isLoading && id ? (
-        <JobDetailsDialog id={id} />
-      ) : canCreate ? (
-        <NewJobDialog />
-      ) : null}
-    </>
+      </div>
+      <PageFooter>
+        {jobs?.length ? (
+          <PaginationBar
+            pagination={pagination}
+            total={total}
+            setPage={setPage}
+          />
+        ) : null}
+      </PageFooter>
+      {id ? <JobDetailsDialog id={id} /> : null}
+    </div>
   )
 }
 
@@ -71,7 +104,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { job, isLoading, isFetching } = useJobDetails(id)
+  const { job, isLoading, isFetching, error } = useJobDetails(id)
 
   useEffect(() => {
     setDetailBreadcrumb(job ? { title: job.name } : undefined)
@@ -94,6 +127,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
+        error={error}
       >
         {job ? (
           <JobDetails

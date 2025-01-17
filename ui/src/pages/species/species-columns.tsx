@@ -1,3 +1,4 @@
+import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -17,15 +18,13 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
 ) => [
   {
     id: 'snapshots',
-    sortField: 'updated_at',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
+    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
-      padding: '16px 32px 16px 50px',
+      textAlign: TextAlign.Center,
     },
-    renderCell: (item: Species, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Species) => {
       const detailsRoute = getAppRoute({
-        to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+        to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
         keepSearchParams: true,
       })
 
@@ -33,7 +32,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
         <ImageTableCell
           images={item.images}
           total={item.numOccurrences}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )
@@ -42,16 +41,29 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
   {
     id: 'name',
     sortField: 'name',
-    name: translate(STRING.FIELD_LABEL_NAME),
+    name: translate(STRING.FIELD_LABEL_TAXON),
     renderCell: (item: Species) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+          to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell>
+          <TaxonInfo compact taxon={item} />
+        </BasicTableCell>
       </Link>
+    ),
+  },
+  {
+    id: 'score',
+    sortField: 'best_determination_score',
+    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <BasicTableCell value={item.scoreLabel} style={{ textAlign: 'right' }} />
     ),
   },
   {
@@ -65,22 +77,11 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { determination: item.id },
+          filters: { taxon: item.id },
         })}
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
-    ),
-  },
-  {
-    id: 'score',
-    sortField: 'best_determination_score',
-    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.score.toFixed(2)} />
     ),
   },
   {

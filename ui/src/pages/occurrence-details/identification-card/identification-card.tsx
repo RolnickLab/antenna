@@ -15,8 +15,6 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
-import { userAgreed } from '../agree/userAgreed'
-import { AlgorithmDetails } from '../algorithm-details/algorithm-details'
 import { StatusLabel } from '../status-label/status-label'
 import styles from './identification-card.module.scss'
 
@@ -56,34 +54,34 @@ export const IdentificationCard = ({
 
   return (
     <div className={styles.identificationCard}>
+      <div className={styles.header}>
+        {identification.applied && (
+          <StatusLabel label={translate(STRING.ID_APPLIED)} />
+        )}
+        <IdentificationSummary user={user} identification={identification} />
+      </div>
       <div className={styles.content}>
-        <IdentificationSummary user={user} identification={identification}>
-          {identification.applied && (
-            <StatusLabel label={translate(STRING.ID_APPLIED)} />
-          )}
-          <AlgorithmDetails algorithm={identification.algorithm} />
-          <TaxonInfo
-            overridden={identification.overridden}
-            taxon={identification.taxon}
-            getLink={(id: string) =>
-              getAppRoute({
-                to: APP_ROUTES.SPECIES_DETAILS({
-                  projectId: projectId as string,
-                  speciesId: id,
-                }),
-              })
-            }
-          />
-          <div className={styles.comment}>{identification.comment}</div>
-        </IdentificationSummary>
+        <TaxonInfo
+          overridden={identification.overridden}
+          taxon={identification.taxon}
+          getLink={(id: string) =>
+            getAppRoute({
+              to: APP_ROUTES.TAXON_DETAILS({
+                projectId: projectId as string,
+                taxonId: id,
+              }),
+            })
+          }
+        />
+        {identification.comment && (
+          <div className={styles.comment}>"{identification.comment}"</div>
+        )}
         <div className={styles.actions}>
           {showAgree && (
             <Agree
-              agreed={userAgreed({
-                identifications: occurrence.humanIdentifications,
-                taxonId: identification.taxon.id,
-                userId: currentUser?.id,
-              })}
+              agreed={
+                currentUser ? occurrence.userAgreed(currentUser?.id) : false
+              }
               agreeWith={
                 user
                   ? { identificationId: identification.id }

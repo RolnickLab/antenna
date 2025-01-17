@@ -1,7 +1,7 @@
 import { FormConfig } from 'components/form/types'
-import { bytesToMB } from 'utils/bytesToMB'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { bytesToMB } from 'utils/numberFormats'
 
 export const config: FormConfig = {
   name: {
@@ -37,7 +37,13 @@ export const config: FormConfig = {
     },
   },
   dataSourceId: {
-    label: translate(STRING.FIELD_LABEL_DATA_SOURCE),
+    label: 'Storage',
+  },
+  dataSourceSubdir: {
+    label: 'Sub directory',
+  },
+  dataSourceRegex: {
+    label: 'Regex filter',
   },
   latitude: {
     label: translate(STRING.FIELD_LABEL_LATITUDE),

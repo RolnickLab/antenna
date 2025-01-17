@@ -17,13 +17,11 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
 ) => [
   {
     id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    sortField: 'updated_at',
+    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
-      padding: '16px 32px 16px 50px',
+      textAlign: TextAlign.Center,
     },
-    renderCell: (item: Session, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    renderCell: (item: Session) => {
       const detailsRoute = APP_ROUTES.SESSION_DETAILS({
         projectId,
         sessionId: item.id,
@@ -34,7 +32,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
           images={item.exampleCaptures}
           total={item.numImages}
           to={detailsRoute}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
         />
       )
     },
@@ -101,17 +99,6 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     renderCell: (item: Session) => <BasicTableCell value={item.numImages} />,
   },
   {
-    id: 'detections',
-    name: translate(STRING.FIELD_LABEL_DETECTIONS),
-    sortField: 'detections_count',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Session) => (
-      <BasicTableCell value={item.numDetections} />
-    ),
-  },
-  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
@@ -131,25 +118,20 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   },
   {
     id: 'species',
-    name: translate(STRING.FIELD_LABEL_SPECIES),
-    // sortField: 'taxa_count',
+    name: translate(STRING.FIELD_LABEL_TAXA),
+    sortField: 'taxa_count',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Session) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES({ projectId }),
-          filters: { occurrences__event: item.id },
+          to: APP_ROUTES.TAXA({ projectId }),
+          filters: { event: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Bubble} />
+        <BasicTableCell value={item.numTaxa} theme={CellTheme.Bubble} />
       </Link>
     ),
-  },
-  {
-    id: 'avg-temp',
-    name: translate(STRING.FIELD_LABEL_AVG_TEMP),
-    renderCell: (item: Session) => <BasicTableCell value={item.tempLabel} />,
   },
 ]

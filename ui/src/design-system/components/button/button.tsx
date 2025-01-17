@@ -14,6 +14,7 @@ export enum ButtonTheme {
 
 interface ButtonProps {
   customClass?: string
+  details?: string
   disabled?: boolean
   icon?: IconType
   label: string
@@ -27,6 +28,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ ...props }, forwardedRef) => {
     const {
       customClass,
+      details,
       disabled,
       icon,
       label,
@@ -76,7 +78,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...rest}
       >
         {icon && <Icon type={icon} theme={iconTheme} size={14} />}
-        <span>{!loading ? label : `${label}...`}</span>
+        <span className={styles.label}>{!loading ? label : `${label}...`}</span>
+        {details && <span className={styles.details}>{details}</span>}
       </button>
     )
   }

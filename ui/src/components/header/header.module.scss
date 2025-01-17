@@ -18,6 +18,16 @@
   overflow-x: auto;
 }
 
+.logoContainer {
+  padding: 2px;
+  border-radius: 50%;
+
+  &:hover {
+    opacity: 1;
+    background: $color-primary-1-50;
+  }
+}
+
 .logo {
   object-fit: contain;
   vertical-align: middle;
