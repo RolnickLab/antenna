@@ -29,7 +29,7 @@ class ProcessingService(BaseModel):
     last_checked_live = models.BooleanField(null=True)
 
     def __str__(self):
-        return self.name
+        return f'#{self.pk} "{self.name}" at {self.endpoint_url}'
 
     class Meta:
         verbose_name = "Processing Service"
@@ -50,6 +50,7 @@ class ProcessingService(BaseModel):
                 version=pipeline_data.version,
                 description=pipeline_data.description or "",
             )
+            pipeline.projects.add(*self.projects.all())
             self.pipelines.add(pipeline)
 
             if created:
@@ -83,7 +84,7 @@ class ProcessingService(BaseModel):
         info_url = urljoin(self.endpoint_url, "info")
         start_time = time.time()
         error = None
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.now()
         self.last_checked = timestamp
 
         try:
@@ -114,11 +115,12 @@ class ProcessingService(BaseModel):
         pipeline_configs = resp.json()
         server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
         pipelines_online = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status")
-        self.last_checked_live = server_live
-        self.save()
 
         first_response_time = time.time()
         latency = first_response_time - start_time
+        self.last_checked_live = server_live
+        # self.last_checked_latency = latency
+        self.save()
 
         response = ProcessingServiceStatusResponse(
             timestamp=timestamp,

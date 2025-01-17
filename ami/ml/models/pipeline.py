@@ -31,7 +31,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
 )
 from ami.ml.models.algorithm import Algorithm
-from ami.ml.schemas import PipelineRequest, PipelineResponse, SourceImageRequest
+from ami.ml.schemas import PipelineRequest, PipelineResponse, SourceImageRequest, SourceImageResponse
 from ami.ml.tasks import celery_app, create_detection_images
 
 logger = logging.getLogger(__name__)
@@ -164,7 +164,7 @@ def process_images(
             detections=[],
             total_time=0,
         )
-    task_logger.info(f"Sending {len(images)} images to Processing Service {pipeline.slug}")
+    task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
     source_images = [
@@ -186,7 +186,7 @@ def process_images(
         try:
             msg = resp.json()["detail"]
         except Exception:
-            msg = resp.content
+            msg = str(resp.content)
         if job:
             job.logger.error(msg)
         else:
@@ -195,7 +195,9 @@ def process_images(
         results = PipelineResponse(
             pipeline=pipeline.slug,
             total_time=0,
-            source_images=source_images,
+            source_images=[
+                SourceImageResponse(id=source_image.id, url=source_image.url) for source_image in source_images
+            ],
             detections=[],
             errors=msg,
         )
@@ -429,6 +431,9 @@ class Pipeline(BaseModel):
             ["name", "version"],
         ]
 
+    def __str__(self):
+        return f'#{self.pk} "{self.name}" ({self.slug}) v{self.version}'
+
     def collect_images(
         self,
         collection: SourceImageCollection | None = None,
@@ -446,54 +451,55 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def choose_processing_service_for_pipeline(self, job_id, pipeline_name):
+    def choose_processing_service_for_pipeline(self, job_id, pipeline_name) -> ProcessingService:
         job = None
+        task_logger = logger
         if job_id:
             from ami.jobs.models import Job
 
             job = Job.objects.get(pk=job_id)
+            task_logger = job.logger
 
         processing_services = self.processing_services.all()
 
         # check the status of all processing services
-        processing_service_id_lowest_latency = processing_services.first().id if processing_services.exists() else None
-        lowest_latency = 10000
+        timeout = 5 * 60.0  # 5 minutes
+        lowest_latency = timeout
         processing_services_online = False
 
         for processing_service in processing_services:
-            status_response = processing_service.get_status()
+            status_response = processing_service.get_status()  # @TODO pass timeout to get_status()
             if status_response.server_live:
                 processing_services_online = True
                 if status_response.latency < lowest_latency:
                     lowest_latency = status_response.latency
                     # pick the processing service that has lowest latency
-                    processing_service_id_lowest_latency = processing_service.id
+                    processing_service_lowest_latency = processing_service
 
         # if all offline then throw error
         if not processing_services_online:
             msg = f'No processing services are online for the pipeline "{pipeline_name}".'
-
-            if job:
-                job.logger.error(msg)
-            logger.error(msg)
+            task_logger.error(msg)
 
             raise Exception(msg)
         else:
-            if job:
-                job.logger.info(f"Using Processing Service with ID={processing_service_id_lowest_latency}")
-            logger.info(f"Using Processing Service with ID={processing_service_id_lowest_latency}")
+            task_logger.info(
+                f"Using processing service with latency {round(lowest_latency, 4)}: "
+                "{processing_service_lowest_latency}"
+            )
 
-            return processing_service_id_lowest_latency
+            return processing_service_lowest_latency
 
     def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        processing_service_id = self.choose_processing_service_for_pipeline(job_id, self.name)
+        processing_service = self.choose_processing_service_for_pipeline(job_id, self.name)
 
-        if not self.processing_services.filter(pk=processing_service_id).first().endpoint_url:
-            raise ValueError("No endpoint URL configured for this pipeline")
+        if not processing_service.endpoint_url:
+            raise ValueError(
+                f"No endpoint URL configured for this pipeline's processing service ({processing_service})"
+            )
+
         return process_images(
-            endpoint_url=urljoin(
-                self.processing_services.filter(pk=processing_service_id).first().endpoint_url, "/process_images"
-            ),
+            endpoint_url=urljoin(processing_service.endpoint_url, "/process_images"),
             pipeline=self,
             images=images,
             job_id=job_id,

@@ -38,6 +38,9 @@ class Algorithm(BaseModel):
             ["name", "version"],
         ]
 
+    def __str__(self):
+        return f'#{self.pk} "{self.name}" ({self.key}) v{self.version}'
+
     def save(self, *args, **kwargs):
         if not self.key:
             self.key = slugify(self.name)
