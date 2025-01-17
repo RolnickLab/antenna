@@ -102,19 +102,32 @@ def create_deployment(
     return deployment
 
 
+def create_test_project(name: str | None) -> Project:
+    short_id = uuid.uuid4().hex[:8]
+    name = name or f"Test Project {short_id}"
+    project = Project.objects.create(name=name)
+    data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
+    create_deployment(project, data_source, f"Test Deployment {short_id}")
+    create_ml_pipeline(project)
+    return project
+
+
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
-    project = Project.objects.filter(name__startswith="Test Project").first()
+    """
+    Always return a valid project and deployment, creating them if necessary.
+    """
+    project = None
+    shared_test_project_name = "Shared Test Project"
 
-    if not project or not reuse:
-        short_id = uuid.uuid4().hex[:8]
-        project = Project.objects.create(name=f"Test Project {short_id}")
-        data_source = create_storage_source(project, f"Test Data Source {short_id}")
-        deployment = create_deployment(project, data_source, f"Test Deployment {short_id}")
-        create_ml_pipeline(project)
+    if reuse:
+        project = Project.objects.filter(name=shared_test_project_name).first()
+        if not project:
+            project = create_test_project(name=shared_test_project_name)
     else:
-        deployment = Deployment.objects.filter(project=project).first()
-        assert deployment, "No deployment found for existing project. Create a new project instead."
+        project = create_test_project(name=None)
 
+    deployment = Deployment.objects.filter(project=project).first()
+    assert deployment, f"No deployment found for project {project}. Recreate the project."
     return project, deployment
 
 
