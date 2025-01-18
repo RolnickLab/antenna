@@ -487,7 +487,7 @@ class Pipeline(BaseModel):
         else:
             task_logger.info(
                 f"Using processing service with latency {round(lowest_latency, 4)}: "
-                "{processing_service_lowest_latency}"
+                f"{processing_service_lowest_latency}"
             )
 
             return processing_service_lowest_latency
