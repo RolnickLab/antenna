@@ -1480,7 +1480,8 @@ class StorageSourceViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
         project = get_active_project(self.request)
-        query_set = query_set.filter(project=project)
+        if project:
+            query_set = query_set.filter(project=project)
         return query_set
 
     @extend_schema(parameters=[project_id_doc_param])
