@@ -1,4 +1,8 @@
+from django.db.models.query import QuerySet
+from drf_spectacular.utils import extend_schema
+
 from ami.main.api.views import DefaultViewSet
+from ami.utils.requests import get_active_project, project_id_doc_param
 
 from .models.algorithm import Algorithm
 from .models.pipeline import Pipeline
@@ -35,6 +39,18 @@ class PipelineViewSet(DefaultViewSet):
         "created_at",
         "updated_at",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        if project:
+            query_set = query_set.filter(projects=project)
+        return query_set
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     # Don't enable projects filter until we can use the current users
     # membership to filter the projects.
     # filterset_fields = ["projects"]
