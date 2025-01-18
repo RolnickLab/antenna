@@ -2,12 +2,21 @@ import datetime
 import math
 import random
 
-from .schemas import BoundingBox, Classification, Detection, SourceImage
+from . import algorithms
+from .schemas import (
+    AlgorithmReference,
+    AlgorithmResponse,
+    BoundingBox,
+    ClassificationResponse,
+    DetectionResponse,
+    SourceImage,
+)
 
 
 def make_random_bbox(source_image_width: int, source_image_height: int):
     # Make a random box.
-    # Ensure that the box is within the image bounds and the bottom right corner is greater than the top left corner.
+    # Ensure that the box is within the image bounds and the bottom right corner is greater than the
+    # top left corner.
     x1 = random.randint(0, source_image_width)
     x2 = random.randint(0, source_image_width)
     y1 = random.randint(0, source_image_height)
@@ -54,6 +63,27 @@ def generate_adaptive_grid_bounding_boxes(image_width: int, image_height: int, n
     return boxes
 
 
+def make_fake_prediction(
+    algorithm: AlgorithmResponse,
+    terminal: bool = True,
+    max_labels: int = 2,
+) -> ClassificationResponse:
+    assert algorithm.category_map is not None
+    category_labels = algorithm.category_map.labels
+    logits = [random.random() for _ in category_labels]
+    softmax = [math.exp(logit) / sum([math.exp(logit) for logit in logits]) for logit in logits]
+    top_class = category_labels[softmax.index(max(softmax))]
+    return ClassificationResponse(
+        classification=top_class,
+        labels=category_labels if len(category_labels) <= max_labels else None,
+        scores=softmax,
+        logits=logits,
+        timestamp=datetime.datetime.now(),
+        algorithm=AlgorithmReference(name=algorithm.name, key=algorithm.key),
+        terminal=terminal,
+    )
+
+
 def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
     source_image.open(raise_exception=True)
     assert source_image.width is not None and source_image.height is not None
@@ -61,19 +91,23 @@ def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
     timestamp = datetime.datetime.now()
 
     return [
-        Detection(
+        DetectionResponse(
             source_image_id=source_image.id,
             bbox=bbox,
             timestamp=timestamp,
-            algorithm="Random Detector",
+            algorithm=AlgorithmReference(
+                name=algorithms.RANDOM_DETECTOR.name,
+                key=algorithms.RANDOM_DETECTOR.key,
+            ),
             classifications=[
-                Classification(
-                    classification="moth",
-                    labels=["moth"],
-                    scores=[random.random()],
-                    timestamp=timestamp,
-                    algorithm="Always Moth Classifier",
-                )
+                make_fake_prediction(
+                    algorithm=algorithms.RANDOM_BINARY_CLASSIFIER,
+                    terminal=False,
+                ),
+                make_fake_prediction(
+                    algorithm=algorithms.RANDOM_SPECIES_CLASSIFIER,
+                    terminal=True,
+                ),
             ],
         )
         for bbox in bboxes
@@ -91,13 +125,13 @@ def make_constant_detections(source_image: SourceImage, num_detections: int = 10
     timestamp = datetime.datetime.now()
 
     return [
-        Detection(
+        DetectionResponse(
             source_image_id=source_image.id,
             bbox=bbox,
             timestamp=timestamp,
             algorithm="Fixed Detector",
             classifications=[
-                Classification(
+                ClassificationResponse(
                     classification="moth",
                     labels=["moth"],
                     scores=[0.9],  # Constant score for each detection
@@ -116,7 +150,7 @@ class DummyPipeline:
     def __init__(self, source_images: list[SourceImage]):
         self.source_images = source_images
 
-    def run(self) -> list[Detection]:
+    def run(self) -> list[DetectionResponse]:
         results = [make_fake_detections(source_image) for source_image in self.source_images]
         # Flatten the list of lists
         return [item for sublist in results for item in sublist]
@@ -128,7 +162,7 @@ class ConstantPipeline:
     def __init__(self, source_images: list[SourceImage]):
         self.source_images = source_images
 
-    def run(self) -> list[Detection]:
+    def run(self) -> list[DetectionResponse]:
         results = [make_constant_detections(source_image) for source_image in self.source_images]
         # Flatten the list of lists
         return [item for sublist in results for item in sublist]

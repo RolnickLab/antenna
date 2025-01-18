@@ -4,9 +4,24 @@ from rest_framework import serializers
 from ami.main.api.serializers import DefaultSerializer
 from ami.main.models import Project
 
-from .models.algorithm import Algorithm
+from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
+
+
+class AlgorithmCategoryMapSerializer(DefaultSerializer):
+    class Meta:
+        model = AlgorithmCategoryMap
+        fields = [
+            "id",
+            "labels",
+            "data",
+            "algorithms",
+            "version",
+            "url",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class AlgorithmSerializer(DefaultSerializer):
@@ -18,9 +33,11 @@ class AlgorithmSerializer(DefaultSerializer):
             "name",
             "key",
             "description",
-            "url",
+            "uri",
             "version",
             "version_name",
+            "task_type",
+            "category_map",
             "created_at",
             "updated_at",
         ]

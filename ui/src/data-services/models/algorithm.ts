@@ -27,8 +27,8 @@ export class Algorithm {
     return this._algorithm.name
   }
 
-  get url(): string {
-    return this._algorithm.url
+  get uri(): string {
+    return this._algorithm.uri
   }
 
   get updatedAt(): string | undefined {

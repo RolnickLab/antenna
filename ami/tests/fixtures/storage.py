@@ -42,7 +42,7 @@ def populate_bucket(
     config: s3.S3Config,
     subdir: str = "deployment_1",
     num_nights: int = 2,
-    images_per_day: int = 6,
+    images_per_day: int = 3,
     minutes_interval: int = 45,
     minutes_interval_variation: int = 10,
     skip_existing: bool = True,

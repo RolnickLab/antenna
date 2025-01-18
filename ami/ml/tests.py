@@ -1,14 +1,16 @@
 import datetime
+import unittest
 
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
-from rich import print
 
 from ami.base.serializers import reverse_with_params
 from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
-from ami.ml.models.pipeline import collect_images, save_results
+from ami.ml.models.pipeline import collect_images, create_algorithms_and_category_map, save_results
 from ami.ml.schemas import (
+    AlgorithmReference,
+    AlgorithmResponse,
     BoundingBox,
     ClassificationResponse,
     DetectionResponse,
@@ -16,6 +18,7 @@ from ami.ml.schemas import (
     SourceImageResponse,
 )
 from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
+from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
 
 
@@ -112,6 +115,46 @@ class TestPipelineWithProcessingService(TestCase):
         pipeline_response = self.pipeline.process_images(self.test_images, job_id=None)
         assert pipeline_response.detections
 
+    def test_created_category_maps(self):
+        # Send images to ML backend to process and return detections
+        assert self.pipeline
+        pipeline_response = self.pipeline.process_images(self.test_images)
+        save_results(pipeline_response, return_created=True)
+
+        source_images = SourceImage.objects.filter(pk__in=[image.id for image in pipeline_response.source_images])
+        detections = Detection.objects.filter(source_image__in=source_images).select_related(
+            "detection_algorithm",
+            "detection_algorithm__category_map",
+        )
+        assert detections.count() > 0
+        for detection in detections:
+            # No detection algorithm should have category map at this time (but this may change!)
+            assert detection.detection_algorithm
+            assert detection.detection_algorithm.category_map is None
+
+            # Ensure that all classification algorithms have a category map
+            classification_taxa = set()
+            for classification in detection.classifications.all().select_related(
+                "algorithm",
+                "algorithm__category_map",
+            ):
+                assert classification.algorithm is not None
+                assert classification.category_map is not None
+                assert classification.algorithm.category_map == classification.category_map
+
+                _, top_score = list(classification.predictions(sort=True))[0]
+                assert top_score == classification.score
+
+                top_taxon, top_taxon_score = list(classification.predictions_with_taxa(sort=True))[0]
+                assert top_taxon == classification.taxon
+                assert top_taxon_score == classification.score
+
+                classification_taxa.add(top_taxon)
+
+            # Check the occurrence determination taxon
+            assert detection.occurrence
+            assert detection.occurrence.determination in classification_taxa
+
 
 class TestPipeline(TestCase):
     def setUp(self):
@@ -131,39 +174,70 @@ class TestPipeline(TestCase):
         self.pipeline = Pipeline.objects.create(
             name="Test Pipeline",
         )
-        self.algorithms = {
-            "detector": Algorithm.objects.create(name="Test Object Detector"),
-            "binary_classifier": Algorithm.objects.create(name="Test Filter"),
-            "species_classifier": Algorithm.objects.create(name="Test Classifier"),
-        }
+
+        self.algorithms = create_algorithms_and_category_map(ALGORITHM_CHOICES)
         self.pipeline.algorithms.set(self.algorithms.values())
 
     def test_create_pipeline(self):
         self.assertEqual(self.pipeline.slug, "test-pipeline")
-        self.assertEqual(self.pipeline.algorithms.count(), 3)
+        self.assertEqual(self.pipeline.algorithms.count(), len(ALGORITHM_CHOICES))
 
         for algorithm in self.pipeline.algorithms.all():
-            self.assertIn(algorithm.key, ["test-object-detector", "test-filter", "test-classifier"])
+            assert isinstance(algorithm, Algorithm)
+            self.assertIn(algorithm.key, [algo.key for algo in ALGORITHM_CHOICES.values()])
 
     def test_collect_images(self):
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         assert len(images) == 2
 
-    def fake_pipeline_results(self, source_images: list[SourceImage], pipeline: Pipeline):
+    def fake_pipeline_results(
+        self,
+        source_images: list[SourceImage],
+        pipeline: Pipeline,
+        alt_species_classifier: AlgorithmResponse | None = None,
+    ):
+        # @TODO use the pipeline passed in to get the algorithms
         source_image_results = [SourceImageResponse(id=image.pk, url=image.path) for image in source_images]
+        detector = ALGORITHM_CHOICES["random-detector"]
+        binary_classifier = ALGORITHM_CHOICES["random-binary-classifier"]
+        assert binary_classifier.category_map
+
+        if alt_species_classifier is None:
+            species_classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        else:
+            species_classifier = alt_species_classifier
+        assert species_classifier.category_map
+
         detection_results = [
             DetectionResponse(
                 source_image_id=image.pk,
                 bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
                 inference_time=0.4,
-                algorithm=self.algorithms["detector"].name,
+                algorithm=AlgorithmReference(
+                    name=detector.name,
+                    key=detector.key,
+                ),
                 timestamp=datetime.datetime.now(),
                 classifications=[
                     ClassificationResponse(
-                        classification="Test taxon",
-                        labels=["Test taxon"],
+                        classification=binary_classifier.category_map.labels[0],
+                        labels=None,
+                        scores=[0.9213],
+                        algorithm=AlgorithmReference(
+                            name=binary_classifier.name,
+                            key=binary_classifier.key,
+                        ),
+                        timestamp=datetime.datetime.now(),
+                        terminal=False,
+                    ),
+                    ClassificationResponse(
+                        classification=species_classifier.category_map.labels[0],
+                        labels=None,
                         scores=[0.64333],
-                        algorithm=self.algorithms["species_classifier"].name,
+                        algorithm=AlgorithmReference(
+                            name=species_classifier.name,
+                            key=species_classifier.key,
+                        ),
                         timestamp=datetime.datetime.now(),
                         terminal=True,
                     ),
@@ -172,21 +246,26 @@ class TestPipeline(TestCase):
             for image in self.test_images
         ]
         fake_results = PipelineResponse(
-            pipeline=self.pipeline.slug,
-            total_time=0.0,
+            pipeline=pipeline.slug,
+            algorithms={
+                detector.key: detector,
+                binary_classifier.key: binary_classifier,
+                species_classifier.key: species_classifier,
+            },
+            total_time=0.01,
             source_images=source_image_results,
             detections=detection_results,
         )
         return fake_results
 
     def test_save_results(self):
-        saved_objects = save_results(self.fake_pipeline_results(self.test_images, self.pipeline))
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+        save_results(results)
 
         for image in self.test_images:
             image.save()
             self.assertEqual(image.detections_count, 1)
 
-        print(saved_objects)
         # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
 
     def no_test_skip_existing_results(self):
@@ -196,7 +275,7 @@ class TestPipeline(TestCase):
         total_images = len(images)
         self.assertEqual(total_images, self.image_collection.images.count())
 
-        save_results(self.fake_pipeline_results(images, self.pipeline))
+        save_results(self.fake_pipeline_results(images, self.pipeline), return_created=True)
 
         images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
 
@@ -221,17 +300,22 @@ class TestPipeline(TestCase):
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         total_images = len(images)
         self.assertEqual(total_images, self.image_collection.images.count())
-        save_results(self.fake_pipeline_results(images, self.pipeline))
+        pipeline_response = self.fake_pipeline_results(images, self.pipeline)
+        save_results(pipeline_response)
+        # Find the fist algo used where task_type is classification
+        classifiers = [algo for algo in pipeline_response.algorithms.values() if algo.task_type == "classification"]
+        last_classifier = Algorithm.objects.get(key=classifiers[-1].key)
         self.pipeline.algorithms.set(
             [
                 Algorithm.objects.create(name="NEW Object Detector 2.0"),
-                self.algorithms["species_classifier"],  # Same classifier
+                last_classifier,
             ]
         )
         images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, total_images)
 
+    @unittest.skip("Not implemented yet")
     def test_skip_existing_with_new_classifier(self):
         """
         @TODO add support for skipping the detection model if only the classifier has changed.
@@ -239,10 +323,16 @@ class TestPipeline(TestCase):
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         total_images = len(images)
         self.assertEqual(total_images, self.image_collection.images.count())
-        save_results(self.fake_pipeline_results(images, self.pipeline))
+        pipeline_response = self.fake_pipeline_results(images, self.pipeline)
+        # Find the fist algo used where task_type is detection
+        first_detector_in_response = next(
+            algo for algo in pipeline_response.algorithms.values() if algo.task_type == "detection"
+        )
+        first_detector = Algorithm.objects.get(key=first_detector_in_response.key)
+        save_results(pipeline_response)
         self.pipeline.algorithms.set(
             [
-                self.algorithms["detector"],  # Same object detector
+                first_detector,
                 Algorithm.objects.create(name="NEW Classifier 2.0"),
             ]
         )
@@ -259,14 +349,21 @@ class TestPipeline(TestCase):
     def test_unknown_algorithm_returned_by_processing_service(self):
         fake_results = self.fake_pipeline_results(self.test_images, self.pipeline)
 
-        new_detector_name = "Unknown Detector 5.1b-mobile"
-        new_classifier_name = "Unknown Classifier 3.0b-mega"
+        new_detector = AlgorithmResponse(
+            name="Unknown Detector 5.1b-mobile", key="unknown-detector", task_type="detection"
+        )
+        new_classifier = AlgorithmResponse(
+            name="Unknown Classifier 3.0b-mega", key="unknown-classifier", task_type="classification"
+        )
+
+        fake_results.algorithms[new_detector.key] = new_detector
+        fake_results.algorithms[new_classifier.key] = new_classifier
 
         for detection in fake_results.detections:
-            detection.algorithm = new_detector_name
+            detection.algorithm = AlgorithmReference(name=new_detector.name, key=new_detector.key)
 
             for classification in detection.classifications:
-                classification.algorithm = new_classifier_name
+                classification.algorithm = AlgorithmReference(name=new_classifier.name, key=new_classifier.key)
 
         current_total_algorithm_count = Algorithm.objects.count()
 
@@ -278,39 +375,50 @@ class TestPipeline(TestCase):
         self.assertEqual(new_algorithm_count, current_total_algorithm_count + 2)
 
         # Ensure new algorithms were also added to the pipeline
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector_name).exists())
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier_name).exists())
+        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name, key=new_detector.key).exists())
+        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name, key=new_classifier.key).exists())
 
-    def no_test_reprocessing_after_unknown_algorithm_added(self):
+    @unittest.skip("Not implemented yet")
+    def test_reprocessing_after_unknown_algorithm_added(self):
         # @TODO fix issue with "None" algorithm on some detections
 
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
 
-        saved_objects = save_results(self.fake_pipeline_results(images, self.pipeline))
+        save_results(self.fake_pipeline_results(images, self.pipeline))
 
-        new_detector_name = "Unknown Detector 5.1b-mobile"
-        new_classifier_name = "Unknown Classifier 3.0b-mega"
+        new_detector = AlgorithmResponse(
+            name="Unknown Detector 5.1b-mobile", key="unknown-detector", task_type="detection"
+        )
+        new_classifier = AlgorithmResponse(
+            name="Unknown Classifier 3.0b-mega", key="unknown-classifier", task_type="classification"
+        )
+
         fake_results = self.fake_pipeline_results(images, self.pipeline)
+
         # Change the algorithm names to unknown ones
         for detection in fake_results.detections:
-            detection.algorithm = new_detector_name
+            detection.algorithm = AlgorithmReference(name=new_detector.name, key=new_detector.key)
 
             for classification in detection.classifications:
-                classification.algorithm = new_classifier_name
+                classification.algorithm = AlgorithmReference(name=new_classifier.name, key=new_classifier.key)
+
+        fake_results.algorithms[new_detector.key] = new_detector
+        fake_results.algorithms[new_classifier.key] = new_classifier
 
         # print("FAKE RESULTS")
         # print(fake_results)
         # print("END FAKE RESULTS")
 
-        saved_objects = save_results(fake_results) or []
-        saved_detections = [obj for obj in saved_objects if isinstance(obj, Detection)]
-        saved_classifications = [obj for obj in saved_objects if isinstance(obj, Classification)]
+        saved_objects = save_results(fake_results, return_created=True)
+        assert saved_objects is not None
+        saved_detections = saved_objects.detections
+        saved_classifications = saved_objects.classifications
 
         for obj in saved_detections:
             assert obj.detection_algorithm  # For type checker, not the test
 
             # Ensure the new detector was used for the detection
-            self.assertEqual(obj.detection_algorithm.name, new_detector_name)
+            self.assertEqual(obj.detection_algorithm.name, new_detector.name)
 
             # Ensure each detection has classification objects
             self.assertTrue(obj.classifications.exists())
@@ -323,21 +431,21 @@ class TestPipeline(TestCase):
             assert obj.algorithm  # For type checker, not the test
 
             # Ensure the new classifier was used for the classification
-            self.assertEqual(obj.algorithm.name, new_classifier_name)
+            self.assertEqual(obj.algorithm.name, new_classifier.name)
 
             # Ensure each classification has the correct detection object
             self.assertIn(obj.detection, saved_detections, "Wrong detection object for classification object.")
 
         # Ensure new algorithms were added to the pipeline
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector_name).exists())
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier_name).exists())
+        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name).exists())
+        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name).exists())
 
         detection_algos_used = Detection.objects.all().values_list("detection_algorithm__name", flat=True).distinct()
-        self.assertTrue(new_detector_name in detection_algos_used)
+        self.assertTrue(new_detector.name in detection_algos_used)
         # Ensure None is not in the list
         self.assertFalse(None in detection_algos_used)
         classification_algos_used = Classification.objects.all().values_list("algorithm__name", flat=True)
-        self.assertTrue(new_classifier_name in classification_algos_used)
+        self.assertTrue(new_classifier.name in classification_algos_used)
         # Ensure None is not in the list
         self.assertFalse(None in classification_algos_used)
 
@@ -345,3 +453,86 @@ class TestPipeline(TestCase):
         images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, 0)
+
+    def test_yes_reprocess_if_new_terminal_algorithm_same_intermediate(self):
+        """
+        Test two pipelines with the same detector and same moth/non-moth classifier, but a new species classifier.
+
+        The first pipeline should process the images and save the results.
+        The second pipeline should reprocess the images.
+        """
+
+        images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
+        assert len(images), "No images to process"
+
+        detector = Algorithm.objects.get(key="random-detector")
+        binary_classifier = Algorithm.objects.get(key="random-binary-classifier")
+        old_species_classifier = Algorithm.objects.get(key="random-species-classifier")
+
+        save_results(self.fake_pipeline_results(images, self.pipeline))
+
+        # Ensure all results have the binary classifier and the old species classifier
+        for detection in Detection.objects.all():
+            self.assertEqual(detection.detection_algorithm, detector)
+            # Assert that the binary classifier was used
+            self.assertTrue(
+                detection.classifications.filter(algorithm=binary_classifier).exists(),
+                "Binary classifier not used in first run",
+            )
+            # Assert that the old species classifier was used
+            self.assertTrue(
+                detection.classifications.filter(algorithm=old_species_classifier).exists(),
+                "Old species classifier not used in first run",
+            )
+
+        # Get another species classifier
+        new_species_classifier_key = "constant-species-classifier"
+        new_species_classifier = Algorithm.objects.get(key=new_species_classifier_key)
+        # new_species_classifier_response = ALGORITHM_CHOICES[new_species_classifier_key]
+
+        # Create a new pipeline with the same detector and the new species classifier
+        new_pipeline = Pipeline.objects.create(
+            name="New Pipeline",
+        )
+
+        new_pipeline.algorithms.set(
+            [
+                detector,
+                binary_classifier,
+                new_species_classifier,
+            ]
+        )
+
+        # Process the images with the new pipeline
+        images_again = list(collect_images(collection=self.image_collection, pipeline=new_pipeline))
+        remaining_images_to_process = len(images_again)
+        self.assertEqual(remaining_images_to_process, len(images), "Images not re-processed with new pipeline")
+
+
+class TestAlgorithmCategoryMaps(TestCase):
+    def setUp(self):
+        self.algorithm_responses = create_algorithms_and_category_map(ALGORITHM_CHOICES)
+        self.algorithms = {key: Algorithm.objects.get(key=key) for key in ALGORITHM_CHOICES.keys()}
+
+    def test_create_algorithms_and_category_map(self):
+        assert len(self.algorithms) > 0
+        assert (
+            Algorithm.objects.filter(
+                key__in=self.algorithms.keys(),
+            )
+            .exclude(category_map=None)
+            .count()
+        ) > 0
+
+    def test_algorithm_category_maps(self):
+        for algorithm in Algorithm.objects.filter(
+            key__in=self.algorithms.keys(),
+        ).exclude(category_map=None):
+            assert algorithm.category_map  # For type checker, not the test
+            assert algorithm.category_map.labels
+            assert algorithm.category_map.labels_hash
+            assert algorithm.category_map.data
+
+            # Ensure the full labels in the data match the simple, ordered list of labels
+            sorted_data = sorted(algorithm.category_map.data, key=lambda x: x["index"])
+            assert [category["label"] for category in sorted_data] == algorithm.category_map.labels

@@ -7,7 +7,8 @@ import time
 
 import fastapi
 
-from .pipeline import ConstantPipeline, DummyPipeline
+from .algorithms import ALGORITHM_CHOICES
+from .pipelines import ConstantPipeline, DummyPipeline
 from .schemas import (
     AlgorithmConfig,
     PipelineConfig,
@@ -98,6 +99,7 @@ async def process(data: PipelineRequest) -> PipelineResponse:
 
     response = PipelineResponse(
         pipeline=data.pipeline,
+        algorithms=ALGORITHM_CHOICES,
         source_images=source_image_results,
         detections=results,
         total_time=seconds_elapsed,
