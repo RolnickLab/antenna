@@ -93,8 +93,6 @@ class ProcessingService(BaseModel):
         except requests.exceptions.RequestException as e:
             self.last_checked_live = False
             self.save()
-            print(self)
-            print(self.last_checked_live)
             error = f"Error connecting to {info_url}: {e}"
             logger.error(error)
 
