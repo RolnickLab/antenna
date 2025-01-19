@@ -61,19 +61,6 @@ export const columns: (
     ),
   },
   {
-    id: 'processing-service-actions',
-    name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: ProcessingService) => (
-      <div className={styles.entityActions}>
-        <PopulateProcessingService processingService={item} />
-      </div>
-    ),
-  },
-  {
     id: 'actions',
     name: '',
     styles: {
@@ -82,6 +69,7 @@ export const columns: (
     },
     renderCell: (item: ProcessingService) => (
       <div className={styles.entityActions}>
+        {<PopulateProcessingService processingService={item} />}
         {item.canUpdate && (
           <UpdateEntityDialog
             collection={API_ROUTES.PROCESSING_SERVICES}
