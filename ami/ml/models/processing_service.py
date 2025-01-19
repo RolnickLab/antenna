@@ -38,6 +38,9 @@ class ProcessingService(BaseModel):
     def create_pipelines(self):
         # Call the status endpoint and get the pipelines/algorithms
         resp = self.get_status()
+        if resp.error:
+            resp.raise_for_status()
+
         pipelines_to_add = resp.pipeline_configs
         pipelines = []
         pipelines_created = []
@@ -99,16 +102,7 @@ class ProcessingService(BaseModel):
             first_response_time = time.time()
             latency = first_response_time - start_time
 
-            return ProcessingServiceStatusResponse(
-                timestamp=timestamp,
-                request_successful=False,
-                server_live=False,
-                pipelines_online=[],
-                pipeline_configs=[],
-                endpoint_url=self.endpoint_url,
-                error=error,
-                latency=latency,
-            )
+            return ProcessingServiceStatusResponse(error=error)
 
         pipeline_configs = resp.json()
         server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
