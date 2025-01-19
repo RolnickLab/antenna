@@ -91,6 +91,17 @@ class ProcessingServiceViewSet(DefaultViewSet):
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
 
+    def get_queryset(self) -> QuerySet:
+        query_set: QuerySet = super().get_queryset()
+        project = get_active_project(self.request)
+        if project:
+            query_set = query_set.filter(projects=project)
+        return query_set
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         data["slug"] = slugify(data["name"])
