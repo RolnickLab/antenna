@@ -38,8 +38,6 @@ class ProcessingService(BaseModel):
     def create_pipelines(self):
         # Call the status endpoint and get the pipelines/algorithms
         resp = self.get_status()
-        if resp.error:
-            resp.raise_for_status()
 
         pipelines_to_add = resp.pipeline_configs
         pipelines = []
@@ -94,23 +92,32 @@ class ProcessingService(BaseModel):
             resp = requests.get(info_url)
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
+            latency = time.time() - start_time
             self.last_checked_live = False
+            self.last_checked_latency = latency
             self.save()
             error = f"Error connecting to {info_url}: {e}"
             logger.error(error)
 
-            first_response_time = time.time()
-            latency = first_response_time - start_time
-
-            return ProcessingServiceStatusResponse(error=error)
+            return ProcessingServiceStatusResponse(
+                error=error,
+                timestamp=timestamp,
+                request_successful=False,
+                server_live=False,
+                pipelines_online=[],
+                pipeline_configs=[],
+                endpoint_url=self.endpoint_url,
+                latency=latency,
+            )
 
         info_data = ProcessingServiceInfoResponse.parse_obj(resp.json())
         pipeline_configs = info_data.pipelines
+
+        # @TODO these are likely extra requests that could be avoided
         server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
         pipelines_online = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status")
 
-        first_response_time = time.time()
-        latency = first_response_time - start_time
+        latency = time.time() - start_time
         self.last_checked_live = server_live
         self.last_checked_latency = latency
         self.save()
