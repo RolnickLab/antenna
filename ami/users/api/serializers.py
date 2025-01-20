@@ -42,14 +42,14 @@ class CurrentUserSerializer(UserSerializer):
     """
 
     email = serializers.EmailField(read_only=True)
-    projects = ProjectNestedSerializer(many=True, read_only=True)
+    projects = serializers.SerializerMethodField()
 
     def get_projects(self, user):
         # return only projects that the current user is involved in as an owner or  a user
         current_user = self.context["request"].user
         if current_user == user:
             projects = Project.objects.filter(Q(owner=user) | Q(users=user)).distinct()
-            return ProjectNestedSerializer(projects)
+            return ProjectNestedSerializer(projects, many=True, context={"request": self.context["request"]}).data
         return []
 
     class Meta(UserSerializer.Meta):
