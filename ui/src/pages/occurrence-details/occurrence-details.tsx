@@ -245,7 +245,14 @@ export const OccurrenceDetails = ({
                   </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.RAW}>
-                  <CodeBlock snippet={occurrence.rawData} />
+                  <div className="flex flex-col gap-4">
+                    <CodeBlock
+                      className="flex items-center"
+                      externalLink={occurrence.endpointURL}
+                      snippet={`GET ${occurrence.endpointURL}`}
+                    />
+                    <CodeBlock collapsible snippet={occurrence.rawData} />
+                  </div>
                 </Tabs.Content>
               </Tabs.Root>
             </div>

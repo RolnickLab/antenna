@@ -92,6 +92,10 @@ export class OccurrenceDetails extends Occurrence {
       })
   }
 
+  get endpointURL(): string {
+    return this._occurrence.details
+  }
+
   get detections(): string[] {
     return this._detections
   }
