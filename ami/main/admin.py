@@ -56,7 +56,19 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
 
-    list_display = ("name", "priority", "active", "created_at", "updated_at")
+    list_display = ("name", "owner", "priority", "active", "created_at", "updated_at", "get_users")
+    list_filter = ("active", "owner")
+    search_fields = ("name", "owner__username", "users__username")
+    filter_horizontal = ("users",)
+
+    @admin.display(description="Project Users")
+    def get_users(self, obj):
+        return ", ".join([user.email for user in obj.users.all() if user])
+
+    fieldsets = (
+        (None, {"fields": ("name", "description", "priority", "active")}),
+        ("Ownership & Access", {"fields": ("owner", "users"), "classes": ("wide",)}),
+    )
 
     @admin.action(description="Remove duplicate classifications from all detections")
     def _remove_duplicate_classifications(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:
@@ -386,3 +398,21 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
+
+
+# @admin.register(Project)
+# class ProjectAdmin(admin.ModelAdmin):
+#     list_display = ("name", "created_at", "get_users")
+#     search_fields = ("name", "users__username")
+#     filter_horizontal = ("users",)  # This creates a nice widget for managing many-to-many relationships
+
+#     def get_users(self, obj):
+#         return ", ".join([user.username for user in obj.users.all()])
+
+#     get_users.short_description = "Project Users"
+
+#     # Optional: If you want to customize the form further
+#     fieldsets = (
+#         (None, {"fields": ("name", "description")}),
+#         ("User Management", {"fields": ("users",), "classes": ("wide",)}),
+#     )
