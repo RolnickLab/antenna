@@ -14,7 +14,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.request import Request
@@ -131,8 +131,11 @@ class ProjectViewSet(DefaultViewSet):
             return ProjectSerializer
 
     def perform_create(self, serializer):
+        # Check if user is authenticated
+        if not self.request.user or not self.request.user.is_authenticated:
+            raise PermissionDenied("You must be authenticated to create a project.")
+
         # Add current user as project owner
-        assert self.request.user.is_authenticated, "User must be authenticated to create a project."
         serializer.save(owner=self.request.user)
 
 
