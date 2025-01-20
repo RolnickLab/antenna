@@ -398,21 +398,3 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
-
-
-# @admin.register(Project)
-# class ProjectAdmin(admin.ModelAdmin):
-#     list_display = ("name", "created_at", "get_users")
-#     search_fields = ("name", "users__username")
-#     filter_horizontal = ("users",)  # This creates a nice widget for managing many-to-many relationships
-
-#     def get_users(self, obj):
-#         return ", ".join([user.username for user in obj.users.all()])
-
-#     get_users.short_description = "Project Users"
-
-#     # Optional: If you want to customize the form further
-#     fieldsets = (
-#         (None, {"fields": ("name", "description")}),
-#         ("User Management", {"fields": ("users",), "classes": ("wide",)}),
-#     )
