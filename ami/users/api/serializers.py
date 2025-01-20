@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.db.models import Q
 from rest_framework import serializers
 
-from ami.main.api.serializers import DefaultSerializer
+from ami.main.api.serializers import DefaultSerializer, ProjectNestedSerializer
+from ami.main.models import Project
 
 User = get_user_model()
 
@@ -40,9 +42,18 @@ class CurrentUserSerializer(UserSerializer):
     """
 
     email = serializers.EmailField(read_only=True)
+    projects = ProjectNestedSerializer(many=True, read_only=True)
+
+    def get_projects(self, user):
+        # return only projects that the current user is involved in as an owner or  a user
+        current_user = self.context["request"].user
+        if current_user == user:
+            projects = Project.objects.filter(Q(owner=user) | Q(users=user)).distinct()
+            return ProjectNestedSerializer(projects)
+        return []
 
     class Meta(UserSerializer.Meta):
-        fields = UserSerializer.Meta.fields + ["email"]
+        fields = UserSerializer.Meta.fields + ["email", "projects"]
 
 
 class GroupSerializer(DefaultSerializer):
