@@ -37,8 +37,12 @@ export const TABS = {
 
 export const OccurrenceDetails = ({
   occurrence,
+  selectedTab,
+  setSelectedTab,
 }: {
   occurrence: Occurrence
+  selectedTab?: string
+  setSelectedTab: (selectedTab?: string) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const suggestIdInputRef = useRef<HTMLInputElement>(null)
@@ -50,9 +54,6 @@ export const OccurrenceDetails = ({
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const [selectedTab, setSelectedTab] = useState<string | undefined>(
-    state?.defaultTab ?? TABS.FIELDS
-  )
   const [suggestIdOpen, setSuggestIdOpen] = useState<boolean>(
     state?.suggestIdOpen ?? false
   )

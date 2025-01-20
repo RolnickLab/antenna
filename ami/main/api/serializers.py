@@ -127,12 +127,40 @@ class StorageSourceNestedSerializer(DefaultSerializer):
         ]
 
 
+class JobTypeSerializer(serializers.Serializer):
+    """
+    Serializer for the JobType json field in the Job model.
+
+    This is duplicated from ami.jobs.serializers to avoid circular imports.
+    but it is extremely simple.
+    """
+
+    name = serializers.CharField(read_only=True)
+    key = serializers.SlugField(read_only=True)
+
+
+class JobStatusSerializer(DefaultSerializer):
+    job_type = JobTypeSerializer(read_only=True)
+
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "details",
+            "status",
+            "job_type",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
     project = ProjectNestedSerializer(read_only=True)
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
+    jobs = JobStatusSerializer(many=True, read_only=True)
 
     class Meta:
         model = Deployment
@@ -156,6 +184,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "last_date",
             "device",
             "research_site",
+            "jobs",
         ]
 
     def get_events(self, obj):
@@ -503,7 +532,7 @@ class TaxonListSerializer(DefaultSerializer):
 
         # request = self.context.get("request")
         # project_id = request.query_params.get("project") if request else None
-        project_id = self.context["request"].query_params["project"]
+        project_id = self.context["request"].query_params["project_id"]
         classification_threshold = get_active_classification_threshold(self.context["request"])
 
         return obj.occurrence_images(
@@ -846,18 +875,6 @@ class SourceImageListSerializer(DefaultSerializer):
             "occurrences_count",
             "taxa_count",
             "detections",
-        ]
-
-
-class JobStatusSerializer(DefaultSerializer):
-    class Meta:
-        model = Job
-        fields = [
-            "id",
-            "details",
-            "status",
-            "created_at",
-            "updated_at",
         ]
 
 

@@ -6,6 +6,7 @@ import random
 import uuid
 
 from django.db import transaction
+from django.utils import timezone
 
 from ami.main.models import (
     Deployment,
@@ -70,28 +71,63 @@ def create_ml_pipeline(project):
         for algorithm_data in pipeline_data["algorithms"]:
             algorithm, _ = Algorithm.objects.get_or_create(name=algorithm_data["name"], key=algorithm_data["key"])
             pipeline.algorithms.add(algorithm)
-
+        pipeline.projects.add(project)
         pipeline.save()
 
     return pipeline
 
 
+def create_deployment(
+    project: Project,
+    data_source,
+    name="Test Deployment",
+) -> Deployment:
+    """
+    Create a test deployment with a data source for source images.
+    """
+    deployment, _ = Deployment.objects.get_or_create(
+        project=project,
+        name=name,
+        defaults=dict(
+            description=f"Created at {timezone.now()}",
+            data_source=data_source,
+            data_source_subdir="/",
+            data_source_regex=".*\\.jpg",
+            latitude=45.0,
+            longitude=-123.0,
+            research_site=project.sites.first(),
+            device=project.devices.first(),
+        ),
+    )
+    return deployment
+
+
+def create_test_project(name: str | None) -> Project:
+    short_id = uuid.uuid4().hex[:8]
+    name = name or f"Test Project {short_id}"
+    project = Project.objects.create(name=name)
+    data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
+    create_deployment(project, data_source, f"Test Deployment {short_id}")
+    create_ml_pipeline(project)
+    return project
+
+
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
+    """
+    Always return a valid project and deployment, creating them if necessary.
+    """
+    project = None
+    shared_test_project_name = "Shared Test Project"
+
     if reuse:
-        project, _ = Project.objects.get_or_create(name="Test Project")
-        data_source = create_storage_source(project, "Test Data Source")
-        deployment, _ = Deployment.objects.get_or_create(
-            project=project, name="Test Deployment", defaults=dict(data_source=data_source)
-        )
-        create_ml_pipeline(project)
+        project = Project.objects.filter(name=shared_test_project_name).first()
+        if not project:
+            project = create_test_project(name=shared_test_project_name)
     else:
-        short_id = uuid.uuid4().hex[:8]
-        project = Project.objects.create(name=f"Test Project {short_id}")
-        data_source = create_storage_source(project, f"Test Data Source {short_id}")
-        deployment = Deployment.objects.create(
-            project=project, name=f"Test Deployment {short_id}", data_source=data_source
-        )
-        create_ml_pipeline(project)
+        project = create_test_project(name=None)
+
+    deployment = Deployment.objects.filter(project=project).first()
+    assert deployment, f"No deployment found for project {project}. Recreate the project."
     return project, deployment
 
 
