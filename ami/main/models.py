@@ -103,7 +103,7 @@ class Project(BaseModel):
     description = models.TextField()
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
-
+    users = models.ManyToManyField(User, related_name="user_projects")
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
     events: models.QuerySet["Event"]
