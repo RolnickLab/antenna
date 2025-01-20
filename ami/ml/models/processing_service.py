@@ -10,7 +10,7 @@ from django.db import models
 from ami.base.models import BaseModel
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
-from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceStatusResponse
+from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,8 @@ class ProcessingService(BaseModel):
 
             return ProcessingServiceStatusResponse(error=error)
 
-        pipeline_configs = resp.json()
+        info_data = ProcessingServiceInfoResponse.parse_obj(resp.json())
+        pipeline_configs = info_data.pipelines
         server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
         pipelines_online = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status")
 

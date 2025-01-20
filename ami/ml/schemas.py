@@ -196,7 +196,22 @@ class PipelineConfig(pydantic.BaseModel):
     stages: list[PipelineStage] = []
 
 
+class ProcessingServiceInfoResponse(pydantic.BaseModel):
+    """
+    Information about the processing service returned from the Processing Service backend.
+    """
+
+    name: str
+    description: str | None = None
+    pipelines: list[PipelineConfig] = []
+    algorithms: list[AlgorithmConfig] = []
+
+
 class ProcessingServiceStatusResponse(pydantic.BaseModel):
+    """
+    Status response returned by the Antenna API about the Processing Service.
+    """
+
     timestamp: datetime.datetime
     request_successful: bool
     pipeline_configs: list[PipelineConfig] = []
