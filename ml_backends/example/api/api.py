@@ -83,7 +83,7 @@ async def readyz():
         return fastapi.responses.JSONResponse(status_code=503, content={"status": "pipelines unavailable"})
 
 
-@app.post("/process_images", tags=["services"])
+@app.post("/process", tags=["services"])
 async def process(data: PipelineRequest) -> PipelineResponse:
     pipeline_slug = data.pipeline
 

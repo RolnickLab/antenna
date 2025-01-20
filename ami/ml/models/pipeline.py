@@ -925,7 +925,7 @@ class Pipeline(BaseModel):
             )
 
         return process_images(
-            endpoint_url=urljoin(processing_service.endpoint_url, "/process_images"),
+            endpoint_url=urljoin(processing_service.endpoint_url, "/process"),
             pipeline=self,
             images=images,
             job_id=job_id,
