@@ -249,3 +249,12 @@ class PipelineConfig(pydantic.BaseModel):
     description: str | None = None
     algorithms: list[AlgorithmConfig] = []
     stages: list[PipelineStage] = []
+
+
+class ProcessingServiceInfoResponse(pydantic.BaseModel):
+    """Information about the processing service."""
+
+    name: str
+    description: str | None = None
+    pipelines: list[PipelineConfig] = []
+    algorithms: list[AlgorithmConfig] = []

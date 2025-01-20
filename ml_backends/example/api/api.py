@@ -14,6 +14,7 @@ from .schemas import (
     PipelineConfig,
     PipelineRequest,
     PipelineResponse,
+    ProcessingServiceInfoResponse,
     SourceImage,
     SourceImageResponse,
 )
@@ -44,6 +45,9 @@ pipeline2 = PipelineConfig(
 )
 
 pipelines = [pipeline1, pipeline2]
+# Unique list of algorithms used in all pipelines:
+algorithms_by_key = {algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.algorithms}
+algorithms = list(algorithms_by_key.values())
 
 
 @app.get("/")
@@ -52,8 +56,14 @@ async def root():
 
 
 @app.get("/info", tags=["services"])
-async def info() -> list[PipelineConfig]:
-    return pipelines
+async def info() -> ProcessingServiceInfoResponse:
+    info = ProcessingServiceInfoResponse(
+        name="ML Backend Example",
+        description="A template for a machine learning backend service.",
+        pipelines=pipelines,
+        algorithms=algorithms,
+    )
+    return info
 
 
 # Check if the server is online
