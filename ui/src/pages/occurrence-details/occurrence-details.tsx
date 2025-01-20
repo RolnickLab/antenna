@@ -251,7 +251,7 @@ export const OccurrenceDetails = ({
                       externalLink={occurrence.endpointURL}
                       snippet={`GET ${occurrence.endpointURL}`}
                     />
-                    <CodeBlock collapsible snippet={occurrence.rawData} />
+                    <CodeBlock snippet={occurrence.rawData} />
                   </div>
                 </Tabs.Content>
               </Tabs.Root>
