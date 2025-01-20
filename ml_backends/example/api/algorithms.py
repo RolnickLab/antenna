@@ -7,7 +7,7 @@ RANDOM_DETECTOR = AlgorithmResponse(
     description="Return bounding boxes at random locations within the image bounds.",
     version=1,
     version_name="v1",
-    url="https://huggingface.co/RolnickLab/random-detector",
+    uri="https://huggingface.co/RolnickLab/random-detector",
     category_map=None,
 )
 
@@ -18,7 +18,7 @@ RANDOM_BINARY_CLASSIFIER = AlgorithmResponse(
     description="Randomly return a classification of 'Moth' or 'Not a moth'",
     version=1,
     version_name="v1",
-    url="https://huggingface.co/RolnickLab/random-binary-classifier",
+    uri="https://huggingface.co/RolnickLab/random-binary-classifier",
     category_map=AlgorithmCategoryMapResponse(
         data=[
             {
@@ -50,7 +50,7 @@ RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
     description="A random species classifier",
     version=1,
     version_name="v1",
-    url="https://huggingface.co/RolnickLab/random-species-classifier",
+    uri="https://huggingface.co/RolnickLab/random-species-classifier",
     category_map=AlgorithmCategoryMapResponse(
         data=[
             {
@@ -78,7 +78,7 @@ RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
         labels=["Vanessa atalanta", "Vanessa cardui", "Vanessa itea"],
         version="v1",
         description="A simple species classifier",
-        url="https://huggigface.co/RolnickLab/random-species-classifier",
+        uri="https://huggigface.co/RolnickLab/random-species-classifier",
     ),
 )
 

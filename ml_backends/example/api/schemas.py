@@ -123,9 +123,6 @@ class SourceImageResponse(pydantic.BaseModel):
     url: str
 
 
-PipelineChoice = typing.Literal["dummy", "constant"]
-
-
 class AlgorithmCategoryMapResponse(pydantic.BaseModel):
     data: list[dict] = pydantic.Field(
         default_factory=dict,
@@ -187,7 +184,7 @@ class AlgorithmResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["dummy",]  # @TODO add "random", "dummy",
+PipelineChoice = typing.Literal["random", "constant"]
 
 
 class PipelineRequest(pydantic.BaseModel):

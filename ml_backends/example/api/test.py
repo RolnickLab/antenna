@@ -3,7 +3,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from .api import app
-from .pipelines import DummyPipeline
+from .pipelines import RandomPipeline
 from .schemas import PipelineRequest, SourceImage, SourceImageRequest
 
 
@@ -13,7 +13,7 @@ class TestPipeline(unittest.TestCase):
             SourceImage(id="1", url="https://example.com/image1.jpg"),
             SourceImage(id="2", url="https://example.com/image2.jpg"),
         ]
-        pipeline = DummyPipeline(source_images=source_images)
+        pipeline = RandomPipeline(source_images=source_images)
         detections = pipeline.run()
 
         self.assertEqual(len(detections), 20)

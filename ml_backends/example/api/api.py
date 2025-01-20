@@ -8,7 +8,7 @@ import time
 import fastapi
 
 from .algorithms import ALGORITHM_CHOICES
-from .pipelines import ConstantPipeline, DummyPipeline
+from .pipelines import ConstantPipeline, RandomPipeline
 from .schemas import (
     AlgorithmConfig,
     PipelineConfig,
@@ -23,24 +23,23 @@ logger = logging.getLogger(__name__)
 app = fastapi.FastAPI()
 
 pipeline1 = PipelineConfig(
-    name="ML Dummy Pipeline",
-    slug="dummy",
+    name="ML Random Pipeline",
+    slug="random",
     version=1,
     algorithms=[
-        AlgorithmConfig(name="Dummy Detector", key="1"),
-        AlgorithmConfig(name="Random Detector", key="2"),
-        AlgorithmConfig(name="Always Moth Classifier", key="3"),
+        AlgorithmConfig(name="Random Detector", key="random_detector"),
+        AlgorithmConfig(name="Always Moth Classifier", key="always_moth_classifier"),
     ],
 )
 
 pipeline2 = PipelineConfig(
     name="ML Constant Pipeline",
     slug="constant",
+    description="A pipeline that always return a detection in the same position.",
     version=1,
     algorithms=[
-        AlgorithmConfig(name="Dummy Detector", key="1"),
-        AlgorithmConfig(name="Random Detector", key="2"),
-        AlgorithmConfig(name="Always Moth Classifier", key="3"),
+        AlgorithmConfig(name="Constant Detector", key="constant_detector"),
+        AlgorithmConfig(name="Always Moth Classifier", key="always_moth_classifier"),
     ],
 )
 
@@ -86,7 +85,7 @@ async def process(data: PipelineRequest) -> PipelineResponse:
     if pipeline_slug == "constant":
         pipeline = ConstantPipeline(source_images=source_images)  # returns same detections
     else:
-        pipeline = DummyPipeline(source_images=source_images)  # returns random detections
+        pipeline = RandomPipeline(source_images=source_images)  # returns random detections
 
     try:
         results = pipeline.run()

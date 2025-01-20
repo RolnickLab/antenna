@@ -84,7 +84,7 @@ def make_fake_prediction(
     )
 
 
-def make_fake_detections(source_image: SourceImage, num_detections: int = 10):
+def make_random_detections(source_image: SourceImage, num_detections: int = 10):
     source_image.open(raise_exception=True)
     assert source_image.width is not None and source_image.height is not None
     bboxes = generate_adaptive_grid_bounding_boxes(source_image.width, source_image.height, num_detections)
@@ -129,14 +129,14 @@ def make_constant_detections(source_image: SourceImage, num_detections: int = 10
             source_image_id=source_image.id,
             bbox=bbox,
             timestamp=timestamp,
-            algorithm="Fixed Detector",
+            algorithm=AlgorithmReference(name="Constant Detector", key="constant_detector"),
             classifications=[
                 ClassificationResponse(
                     classification="moth",
                     labels=["moth"],
                     scores=[0.9],  # Constant score for each detection
                     timestamp=timestamp,
-                    algorithm="Always Moth Classifier",
+                    algorithm=AlgorithmReference(name="Always Moth Classifier", key="always_moth_classifier"),
                 )
             ],
         )
@@ -144,19 +144,27 @@ def make_constant_detections(source_image: SourceImage, num_detections: int = 10
     ]
 
 
-class DummyPipeline:
+class RandomPipeline:
+    """
+    A pipeline that returns detections in random positions within the image bounds with random classifications.
+    """
+
     source_images: list[SourceImage]
 
     def __init__(self, source_images: list[SourceImage]):
         self.source_images = source_images
 
     def run(self) -> list[DetectionResponse]:
-        results = [make_fake_detections(source_image) for source_image in self.source_images]
+        results = [make_random_detections(source_image) for source_image in self.source_images]
         # Flatten the list of lists
         return [item for sublist in results for item in sublist]
 
 
 class ConstantPipeline:
+    """
+    A pipeline that always returns a detection in the same position with a fixed classification.
+    """
+
     source_images: list[SourceImage]
 
     def __init__(self, source_images: list[SourceImage]):
