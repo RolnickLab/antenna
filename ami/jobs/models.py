@@ -395,7 +395,7 @@ class MLJob(JobType):
         total_detections = 0
         total_classifications = 0
 
-        CHUNK_SIZE = 2  # Keep it low to see more progress updates
+        CHUNK_SIZE = 4  # Keep it low to see more progress updates
         chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
         request_failed_images = []
 
