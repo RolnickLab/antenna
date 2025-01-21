@@ -46,10 +46,10 @@ class ProcessingService(BaseModel):
 
         for pipeline_data in pipelines_to_add:
             pipeline, created = Pipeline.objects.get_or_create(
-                name=pipeline_data.name,
                 slug=pipeline_data.slug,
                 version=pipeline_data.version,
                 defaults={
+                    "name": pipeline_data.name,
                     "description": pipeline_data.description or "",
                 },
             )

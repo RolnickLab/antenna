@@ -942,6 +942,8 @@ class Pipeline(BaseModel):
 
     def save(self, *args, **kwargs):
         if not self.slug:
+            # @TODO find a better way to generate unique identifiers
+            # consider hashing the pipeline config or using a UUID -- but both sides need to agree on the same UUID.
             unique_suffix = str(uuid.uuid4())[:8]
             self.slug = f"{slugify(self.name)}-v{self.version}-{unique_suffix}"
         return super().save(*args, **kwargs)
