@@ -9,12 +9,12 @@ from ami.main.models import Classification, Detection, Project, SourceImage, Sou
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, create_algorithms_and_category_map, save_results
 from ami.ml.schemas import (
+    AlgorithmConfigResponse,
     AlgorithmReference,
-    AlgorithmResponse,
     BoundingBox,
     ClassificationResponse,
     DetectionResponse,
-    PipelineResponse,
+    PipelineResultsResponse,
     SourceImageResponse,
 )
 from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
@@ -194,7 +194,7 @@ class TestPipeline(TestCase):
         self,
         source_images: list[SourceImage],
         pipeline: Pipeline,
-        alt_species_classifier: AlgorithmResponse | None = None,
+        alt_species_classifier: AlgorithmConfigResponse | None = None,
     ):
         # @TODO use the pipeline passed in to get the algorithms
         source_image_results = [SourceImageResponse(id=image.pk, url=image.path) for image in source_images]
@@ -245,7 +245,7 @@ class TestPipeline(TestCase):
             )
             for image in self.test_images
         ]
-        fake_results = PipelineResponse(
+        fake_results = PipelineResultsResponse(
             pipeline=pipeline.slug,
             algorithms={
                 detector.key: detector,
@@ -349,10 +349,10 @@ class TestPipeline(TestCase):
     def test_unknown_algorithm_returned_by_processing_service(self):
         fake_results = self.fake_pipeline_results(self.test_images, self.pipeline)
 
-        new_detector = AlgorithmResponse(
+        new_detector = AlgorithmConfigResponse(
             name="Unknown Detector 5.1b-mobile", key="unknown-detector", task_type="detection"
         )
-        new_classifier = AlgorithmResponse(
+        new_classifier = AlgorithmConfigResponse(
             name="Unknown Classifier 3.0b-mega", key="unknown-classifier", task_type="classification"
         )
 
@@ -386,10 +386,10 @@ class TestPipeline(TestCase):
 
         save_results(self.fake_pipeline_results(images, self.pipeline))
 
-        new_detector = AlgorithmResponse(
+        new_detector = AlgorithmConfigResponse(
             name="Unknown Detector 5.1b-mobile", key="unknown-detector", task_type="detection"
         )
-        new_classifier = AlgorithmResponse(
+        new_classifier = AlgorithmConfigResponse(
             name="Unknown Classifier 3.0b-mega", key="unknown-classifier", task_type="classification"
         )
 

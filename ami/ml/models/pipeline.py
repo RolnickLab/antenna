@@ -36,11 +36,11 @@ from ami.main.models import (
 )
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
-    AlgorithmResponse,
+    AlgorithmConfigResponse,
     ClassificationResponse,
     DetectionResponse,
     PipelineRequest,
-    PipelineResponse,
+    PipelineResultsResponse,
     SourceImageRequest,
     SourceImageResponse,
 )
@@ -150,7 +150,7 @@ def process_images(
     endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
-) -> PipelineResponse:
+) -> PipelineResultsResponse:
     """
     Process images using ML pipeline API.
 
@@ -174,7 +174,7 @@ def process_images(
 
     if not images:
         task_logger.info("No images to process")
-        return PipelineResponse(
+        return PipelineResultsResponse(
             pipeline=pipeline.slug,
             source_images=[],
             detections=[],
@@ -210,7 +210,7 @@ def process_images(
             logger.error(msg)
             raise requests.HTTPError(msg)
 
-        results = PipelineResponse(
+        results = PipelineResultsResponse(
             pipeline=pipeline.slug,
             total_time=0,
             source_images=[
@@ -222,7 +222,7 @@ def process_images(
         return results
 
     results = resp.json()
-    results = PipelineResponse(**results)
+    results = PipelineResultsResponse(**results)
     if job:
         job.logger.debug(f"Results: {results}")
         detections = results.detections
@@ -711,7 +711,7 @@ class PipelineSaveResults:
 
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
 def save_results(
-    results: PipelineResponse | None = None,
+    results: PipelineResultsResponse | None = None,
     results_json: str | None = None,
     job_id: int | None = None,
     return_created=False,
@@ -724,7 +724,7 @@ def save_results(
     job = None
 
     if results_json:
-        results = PipelineResponse.parse_raw(results_json)
+        results = PipelineResultsResponse.parse_raw(results_json)
     assert results, "No results data passed to save_results task"
 
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
@@ -745,11 +745,11 @@ def save_results(
     # job_logger.setLevel(logging.DEBUG)
 
     if results_json:
-        results = PipelineResponse.parse_raw(results_json)
+        results = PipelineResultsResponse.parse_raw(results_json)
     assert results, "No results data passed to save_results task"
     job_logger.info(f"Saving results from pipeline {results.pipeline}")
 
-    results = PipelineResponse.parse_obj(results.dict())
+    results = PipelineResultsResponse.parse_obj(results.dict())
     assert results, "No results from pipeline to save"
     source_images = SourceImage.objects.filter(pk__in=[int(img.id) for img in results.source_images]).distinct()
 
@@ -932,10 +932,10 @@ class Pipeline(BaseModel):
             job_id=job_id,
         )
 
-    def save_results(self, results: PipelineResponse, job_id: int | None = None):
+    def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):
         return save_results(results=results, job_id=job_id)
 
-    def save_results_async(self, results: PipelineResponse, job_id: int | None = None):
+    def save_results_async(self, results: PipelineResultsResponse, job_id: int | None = None):
         # Returns an AsyncResult
         results_json = results.json()
         return save_results.delay(results_json=results_json, job_id=job_id)

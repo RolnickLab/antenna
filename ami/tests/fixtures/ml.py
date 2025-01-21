@@ -1,6 +1,6 @@
-from ami.ml.schemas import AlgorithmCategoryMapResponse, AlgorithmResponse
+from ami.ml.schemas import AlgorithmCategoryMapResponse, AlgorithmConfigResponse
 
-RANDOM_DETECTOR = AlgorithmResponse(
+RANDOM_DETECTOR = AlgorithmConfigResponse(
     name="Random Detector",
     key="random-detector",
     task_type="detection",
@@ -11,7 +11,7 @@ RANDOM_DETECTOR = AlgorithmResponse(
     category_map=None,
 )
 
-RANDOM_BINARY_CLASSIFIER = AlgorithmResponse(
+RANDOM_BINARY_CLASSIFIER = AlgorithmConfigResponse(
     name="Random binary classifier",
     key="random-binary-classifier",
     task_type="classification",
@@ -31,7 +31,7 @@ RANDOM_BINARY_CLASSIFIER = AlgorithmResponse(
     ),
 )
 
-RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
+RANDOM_SPECIES_CLASSIFIER = AlgorithmConfigResponse(
     name="Random species classifier",
     key="random-species-classifier",
     task_type="classification",
@@ -53,7 +53,7 @@ RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
 )
 
 
-CONSTANT_SPECIES_CLASSIFIER = AlgorithmResponse(
+CONSTANT_SPECIES_CLASSIFIER = AlgorithmConfigResponse(
     name="Constant species classifier",
     key="constant-species-classifier",
     task_type="classification",

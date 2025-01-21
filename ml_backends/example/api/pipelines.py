@@ -4,11 +4,12 @@ import random
 
 from . import algorithms
 from .schemas import (
+    AlgorithmConfigResponse,
     AlgorithmReference,
-    AlgorithmResponse,
     BoundingBox,
     ClassificationResponse,
     DetectionResponse,
+    PipelineConfigResponse,
     SourceImage,
 )
 
@@ -63,8 +64,8 @@ def generate_adaptive_grid_bounding_boxes(image_width: int, image_height: int, n
     return boxes
 
 
-def make_fake_prediction(
-    algorithm: AlgorithmResponse,
+def make_random_prediction(
+    algorithm: AlgorithmConfigResponse,
     terminal: bool = True,
     max_labels: int = 2,
 ) -> ClassificationResponse:
@@ -100,11 +101,11 @@ def make_random_detections(source_image: SourceImage, num_detections: int = 10):
                 key=algorithms.RANDOM_DETECTOR.key,
             ),
             classifications=[
-                make_fake_prediction(
+                make_random_prediction(
                     algorithm=algorithms.RANDOM_BINARY_CLASSIFIER,
                     terminal=False,
                 ),
-                make_fake_prediction(
+                make_random_prediction(
                     algorithm=algorithms.RANDOM_SPECIES_CLASSIFIER,
                     terminal=True,
                 ),
@@ -124,19 +125,24 @@ def make_constant_detections(source_image: SourceImage, num_detections: int = 10
     bboxes = [BoundingBox(x1=start_x, y1=start_y, x2=start_x + box_width, y2=start_y + box_height)]
     timestamp = datetime.datetime.now()
 
+    assert algorithms.CONSTANT_CLASSIFIER.category_map is not None
+    labels = algorithms.CONSTANT_CLASSIFIER.category_map.labels
+
     return [
         DetectionResponse(
             source_image_id=source_image.id,
             bbox=bbox,
             timestamp=timestamp,
-            algorithm=AlgorithmReference(name="Constant Detector", key="constant_detector"),
+            algorithm=AlgorithmReference(name=algorithms.CONSTANT_DETECTOR.name, key=algorithms.CONSTANT_DETECTOR.key),
             classifications=[
                 ClassificationResponse(
-                    classification="moth",
-                    labels=["moth"],
+                    classification=labels[0],
+                    labels=labels,
                     scores=[0.9],  # Constant score for each detection
                     timestamp=timestamp,
-                    algorithm=AlgorithmReference(name="Always Moth Classifier", key="always_moth_classifier"),
+                    algorithm=AlgorithmReference(
+                        name=algorithms.CONSTANT_CLASSIFIER.name, key=algorithms.CONSTANT_CLASSIFIER.key
+                    ),
                 )
             ],
         )
@@ -144,33 +150,67 @@ def make_constant_detections(source_image: SourceImage, num_detections: int = 10
     ]
 
 
-class RandomPipeline:
-    """
-    A pipeline that returns detections in random positions within the image bounds with random classifications.
-    """
-
+class Pipeline:
     source_images: list[SourceImage]
 
     def __init__(self, source_images: list[SourceImage]):
         self.source_images = source_images
+
+    def run(self) -> list[DetectionResponse]:
+        raise NotImplementedError("Subclasses must implement the run method")
+
+    config = PipelineConfigResponse(
+        name="Base Pipeline",
+        slug="base",
+        description="A base class for all pipelines.",
+        version=1,
+        algorithms=[],
+    )
+
+
+class RandomPipeline(Pipeline):
+    """
+    A pipeline that returns detections in random positions within the image bounds with random classifications.
+    """
 
     def run(self) -> list[DetectionResponse]:
         results = [make_random_detections(source_image) for source_image in self.source_images]
         # Flatten the list of lists
         return [item for sublist in results for item in sublist]
 
+    config = PipelineConfigResponse(
+        name="Random Pipeline",
+        slug="random",
+        description=(
+            "A pipeline that returns detections in random positions within the image bounds "
+            "with random classifications."
+        ),
+        version=1,
+        algorithms=[
+            algorithms.RANDOM_DETECTOR,
+            algorithms.RANDOM_BINARY_CLASSIFIER,
+            algorithms.RANDOM_SPECIES_CLASSIFIER,
+        ],
+    )
 
-class ConstantPipeline:
+
+class ConstantPipeline(Pipeline):
     """
     A pipeline that always returns a detection in the same position with a fixed classification.
     """
-
-    source_images: list[SourceImage]
-
-    def __init__(self, source_images: list[SourceImage]):
-        self.source_images = source_images
 
     def run(self) -> list[DetectionResponse]:
         results = [make_constant_detections(source_image) for source_image in self.source_images]
         # Flatten the list of lists
         return [item for sublist in results for item in sublist]
+
+    config = PipelineConfigResponse(
+        name="Constant Pipeline",
+        slug="constant",
+        description="A pipeline that always returns a detection in the same position with a fixed classification.",
+        version=1,
+        algorithms=[
+            algorithms.CONSTANT_DETECTOR,
+            algorithms.CONSTANT_CLASSIFIER,
+        ],
+    )

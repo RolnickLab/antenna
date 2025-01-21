@@ -7,13 +7,11 @@ import time
 
 import fastapi
 
-from .algorithms import ALGORITHM_CHOICES
-from .pipelines import ConstantPipeline, RandomPipeline
+from .pipelines import ConstantPipeline, Pipeline, RandomPipeline
 from .schemas import (
-    AlgorithmConfig,
-    PipelineConfig,
+    AlgorithmConfigResponse,
     PipelineRequest,
-    PipelineResponse,
+    PipelineResultsResponse,
     ProcessingServiceInfoResponse,
     SourceImage,
     SourceImageResponse,
@@ -23,31 +21,12 @@ logger = logging.getLogger(__name__)
 
 app = fastapi.FastAPI()
 
-pipeline1 = PipelineConfig(
-    name="ML Random Pipeline",
-    slug="random",
-    version=1,
-    algorithms=[
-        AlgorithmConfig(name="Random Detector", key="random_detector"),
-        AlgorithmConfig(name="Always Moth Classifier", key="always_moth_classifier"),
-    ],
-)
 
-pipeline2 = PipelineConfig(
-    name="ML Constant Pipeline",
-    slug="constant",
-    description="A pipeline that always return a detection in the same position.",
-    version=1,
-    algorithms=[
-        AlgorithmConfig(name="Constant Detector", key="constant_detector"),
-        AlgorithmConfig(name="Always Moth Classifier", key="always_moth_classifier"),
-    ],
-)
-
-pipelines = [pipeline1, pipeline2]
-# Unique list of algorithms used in all pipelines:
-algorithms_by_key = {algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.algorithms}
-algorithms = list(algorithms_by_key.values())
+pipelines: list[type[Pipeline]] = [RandomPipeline, ConstantPipeline]
+pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
+algorithm_choices: dict[str, AlgorithmConfigResponse] = {
+    algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
+}
 
 
 @app.get("/")
@@ -58,10 +37,13 @@ async def root():
 @app.get("/info", tags=["services"])
 async def info() -> ProcessingServiceInfoResponse:
     info = ProcessingServiceInfoResponse(
-        name="ML Backend Example",
-        description="A template for a machine learning backend service.",
-        pipelines=pipelines,
-        algorithms=algorithms,
+        name="ML Backend Template",
+        description=(
+            "A template for an inference API that allows the user to run different sequences of machine learning "
+            "models and processing methods on images for the Antenna platform."
+        ),
+        pipelines=[pipeline.config for pipeline in pipelines],
+        # algorithms=list(algorithm_choices.values()),
     )
     return info
 
@@ -75,28 +57,34 @@ async def livez():
 # Check if the pipelines are ready to process data
 @app.get("/readyz", tags=["health checks"])
 async def readyz():
-    if pipelines:
-        return fastapi.responses.JSONResponse(
-            status_code=200, content={"status": [pipeline.slug for pipeline in pipelines]}
-        )
+    """
+    Check if the server is ready to process data.
+
+    Returns a list of pipeline slugs that are online and ready to process data.
+    @TODO may need to simplify this to just return True/False. Pipeline algorithms will likely be loaded into memory
+    on-demand when the pipeline is selected.
+    """
+    if pipeline_choices:
+        return fastapi.responses.JSONResponse(status_code=200, content={"status": list(pipeline_choices.keys())})
     else:
-        return fastapi.responses.JSONResponse(status_code=503, content={"status": "pipelines unavailable"})
+        return fastapi.responses.JSONResponse(status_code=503, content={"status": []})
 
 
 @app.post("/process", tags=["services"])
-async def process(data: PipelineRequest) -> PipelineResponse:
+async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
 
-    source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
+    source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
 
     start_time = time.time()
 
-    if pipeline_slug == "constant":
-        pipeline = ConstantPipeline(source_images=source_images)  # returns same detections
-    else:
-        pipeline = RandomPipeline(source_images=source_images)  # returns random detections
+    try:
+        Pipeline = pipeline_choices[pipeline_slug]
+    except KeyError:
+        raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
 
+    pipeline = Pipeline(source_images=source_images)
     try:
         results = pipeline.run()
     except Exception as e:
@@ -106,9 +94,9 @@ async def process(data: PipelineRequest) -> PipelineResponse:
     end_time = time.time()
     seconds_elapsed = float(end_time - start_time)
 
-    response = PipelineResponse(
-        pipeline=data.pipeline,
-        algorithms=ALGORITHM_CHOICES,
+    response = PipelineResultsResponse(
+        pipeline=pipeline_slug,
+        algorithms={algorithm.key: algorithm for algorithm in pipeline.config.algorithms},
         source_images=source_image_results,
         detections=results,
         total_time=seconds_elapsed,

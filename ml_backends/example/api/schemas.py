@@ -155,7 +155,7 @@ class AlgorithmCategoryMapResponse(pydantic.BaseModel):
     )
 
 
-class AlgorithmResponse(pydantic.BaseModel):
+class AlgorithmConfigResponse(pydantic.BaseModel):
     name: str
     key: str = pydantic.Field(
         description=("A unique key for an algorithm to lookup the category map (class list) and other metadata."),
@@ -195,7 +195,7 @@ class PipelineRequest(pydantic.BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "pipeline": "dummy",
+                "pipeline": "random",
                 "source_images": [
                     {
                         "id": "123",
@@ -206,9 +206,9 @@ class PipelineRequest(pydantic.BaseModel):
         }
 
 
-class PipelineResponse(pydantic.BaseModel):
+class PipelineResultsResponse(pydantic.BaseModel):
     pipeline: PipelineChoice
-    algorithms: dict[str, AlgorithmResponse] = pydantic.Field(
+    algorithms: dict[str, AlgorithmConfigResponse] = pydantic.Field(
         default_factory=dict,
         description="A dictionary of all algorithms used in the pipeline, including their class list and other "
         "metadata, keyed by the algorithm key.",
@@ -235,26 +235,34 @@ class PipelineStage(pydantic.BaseModel):
     description: str | None = None
 
 
-class AlgorithmConfig(pydantic.BaseModel):
-    name: str
-    key: str
-
-
-class PipelineConfig(pydantic.BaseModel):
-    """A configurable pipeline."""
+class PipelineConfigResponse(pydantic.BaseModel):
+    """Details about a pipeline, its algorithms and category maps."""
 
     name: str
     slug: str
     version: int
     description: str | None = None
-    algorithms: list[AlgorithmConfig] = []
+    algorithms: list[AlgorithmConfigResponse] = []
     stages: list[PipelineStage] = []
 
 
 class ProcessingServiceInfoResponse(pydantic.BaseModel):
     """Information about the processing service."""
 
-    name: str
-    description: str | None = None
-    pipelines: list[PipelineConfig] = []
-    algorithms: list[AlgorithmConfig] = []
+    name: str = pydantic.Field(example="Mila Research Lab - Moth AI Services")
+    description: str | None = pydantic.Field(
+        default=None,
+        examples=["Algorithms developed by the Mila Research Lab for analysis of moth images."],
+    )
+    pipelines: list[PipelineConfigResponse] = pydantic.Field(
+        default=list,
+        examples=[
+            [
+                PipelineConfigResponse(name="Random Pipeline", slug="random", version=1, algorithms=[]),
+            ]
+        ],
+    )
+    # algorithms: list[AlgorithmConfigResponse] = pydantic.Field(
+    #    default=list,
+    #    examples=[RANDOM_BINARY_CLASSIFIER],
+    # )

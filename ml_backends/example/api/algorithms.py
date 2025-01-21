@@ -1,6 +1,6 @@
-from .schemas import AlgorithmCategoryMapResponse, AlgorithmResponse
+from .schemas import AlgorithmCategoryMapResponse, AlgorithmConfigResponse
 
-RANDOM_DETECTOR = AlgorithmResponse(
+RANDOM_DETECTOR = AlgorithmConfigResponse(
     name="Random Detector",
     key="random-detector",
     task_type="detection",
@@ -11,7 +11,18 @@ RANDOM_DETECTOR = AlgorithmResponse(
     category_map=None,
 )
 
-RANDOM_BINARY_CLASSIFIER = AlgorithmResponse(
+CONSTANT_DETECTOR = AlgorithmConfigResponse(
+    name="Constant Detector",
+    key="constant-detector",
+    task_type="detection",
+    description="Return a fixed bounding box at a fixed location within the image bounds.",
+    version=1,
+    version_name="v1",
+    uri="https://huggingface.co/RolnickLab/constant-detector",
+    category_map=None,
+)
+
+RANDOM_BINARY_CLASSIFIER = AlgorithmConfigResponse(
     name="Random binary classifier",
     key="random-binary-classifier",
     task_type="classification",
@@ -43,7 +54,32 @@ RANDOM_BINARY_CLASSIFIER = AlgorithmResponse(
     ),
 )
 
-RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
+CONSTANT_CLASSIFIER = AlgorithmConfigResponse(
+    name="Constant classifier",
+    key="constant-classifier",
+    task_type="classification",
+    description="Always return a classification of 'Moth'",
+    version=1,
+    version_name="v1",
+    uri="https://huggingface.co/RolnickLab/constant-classifier",
+    category_map=AlgorithmCategoryMapResponse(
+        data=[
+            {
+                "index": 0,
+                "gbif_key": "1234",
+                "label": "Moth",
+                "source": "manual",
+                "taxon_rank": "SUPERFAMILY",
+            }
+        ],
+        labels=["Moth"],
+        version="v1",
+        description="A classifier that always returns 'Moth'",
+        uri="https://huggingface.co/RolnickLab/constant-classifier",
+    ),
+)
+
+RANDOM_SPECIES_CLASSIFIER = AlgorithmConfigResponse(
     name="Random species classifier",
     key="random-species-classifier",
     task_type="classification",
@@ -81,10 +117,3 @@ RANDOM_SPECIES_CLASSIFIER = AlgorithmResponse(
         uri="https://huggigface.co/RolnickLab/random-species-classifier",
     ),
 )
-
-
-ALGORITHM_CHOICES = {
-    RANDOM_DETECTOR.key: RANDOM_DETECTOR,
-    RANDOM_BINARY_CLASSIFIER.key: RANDOM_BINARY_CLASSIFIER,
-    RANDOM_SPECIES_CLASSIFIER.key: RANDOM_SPECIES_CLASSIFIER,
-}
