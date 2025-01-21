@@ -235,74 +235,70 @@ def process_images(
     return results
 
 
-def create_algorithms_and_category_map(
-    algorithms_data: typing.Mapping[str, AlgorithmResponse],
+def get_or_create_algorithm_and_category_map(
+    algorithm_config: AlgorithmConfigResponse,
     logger: logging.Logger = logger,
-) -> dict[str, Algorithm]:
+) -> Algorithm:
     """
-    Create algorithms and category maps from a PipelineResponse.
+    Create algorithms and category maps from a ProcessingServiceInfoResponse or a PipelineConfigResponse.
 
-    :param algorithms: A dictionary of algorithms from the pipeline response
-    :param created_objects: A list to store created objects
+    :param algorithm_configs: A dictionary of algorithms from the processing services' "/info" endpoint
+    :param logger: A logger instance from the parent function
 
     :return: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
 
     @TODO this should be called when registering a pipeline, not when saving results.
     But currently we don't have a way to register pipelines.
     """
-    algorithms_used: dict[str, Algorithm] = {}
-    for algorithm_data in algorithms_data.values():
-        category_map = None
-        category_map_data = algorithm_data.category_map
-        if category_map_data:
-            labels_hash = AlgorithmCategoryMap.make_labels_hash(category_map_data.labels)
-            category_map, _created = AlgorithmCategoryMap.objects.get_or_create(
-                # @TODO this is creating a new category map every time
-                # Will create a new category map if the labels are different
-                labels_hash=labels_hash,
-                version=category_map_data.version,
-                defaults={
-                    "data": category_map_data.data,
-                    "labels": category_map_data.labels,
-                    "description": category_map_data.description,
-                    "uri": category_map_data.uri,
-                },
-            )
-            if _created:
-                logger.info(f"Registered new category map {category_map}")
-            else:
-                logger.info(f"Assigned existing category map {category_map}")
-        else:
-            logger.warning(
-                f"No category map found for algorithm {algorithm_data.key} in response."
-                " Will attempt to create one from the classification results."
-            )
-
-        algo, _created = Algorithm.objects.get_or_create(
-            key=algorithm_data.key,
+    category_map = None
+    category_map_data = algorithm_config.category_map
+    if category_map_data:
+        labels_hash = AlgorithmCategoryMap.make_labels_hash(category_map_data.labels)
+        category_map, _created = AlgorithmCategoryMap.objects.get_or_create(
+            # @TODO this is creating a new category map every time
+            # Will create a new category map if the labels are different
+            labels_hash=labels_hash,
+            version=category_map_data.version,
             defaults={
-                "name": algorithm_data.name,
-                "task_type": algorithm_data.task_type,
-                "version": algorithm_data.version,
-                "version_name": algorithm_data.version_name,
-                "uri": algorithm_data.uri,
-                "category_map": category_map or None,
+                "data": category_map_data.data,
+                "labels": category_map_data.labels,
+                "description": category_map_data.description,
+                "uri": category_map_data.uri,
             },
         )
-
-        if not algo.category_map or len(algo.category_map.data) == 0:
-            # Update existing algorithm that is missing a category map
-            algo.category_map = category_map
-            algo.save()
-
-        algorithms_used[algo.key] = algo
-
         if _created:
-            logger.info(f"Registered new algorithm {algo}")
+            logger.info(f"Registered new category map {category_map}")
         else:
-            logger.info(f"Assigned algorithm {algo}")
+            logger.info(f"Assigned existing category map {category_map}")
+    else:
+        logger.warning(
+            f"No category map found for algorithm {algorithm_config.key} in response."
+            " Will attempt to create one from the classification results."
+        )
 
-    return algorithms_used
+    algo, _created = Algorithm.objects.get_or_create(
+        key=algorithm_config.key,
+        defaults={
+            "name": algorithm_config.name,
+            "task_type": algorithm_config.task_type,
+            "version": algorithm_config.version,
+            "version_name": algorithm_config.version_name,
+            "uri": algorithm_config.uri,
+            "category_map": category_map or None,
+        },
+    )
+
+    if not algo.category_map or len(algo.category_map.data) == 0:
+        # Update existing algorithm that is missing a category map
+        algo.category_map = category_map
+        algo.save()
+
+    if _created:
+        logger.info(f"Registered new algorithm {algo}")
+    else:
+        logger.info(f"Assigned algorithm {algo}")
+
+    return algo
 
 
 def get_or_create_detection(
@@ -325,7 +321,14 @@ def get_or_create_detection(
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
     assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-    detection_algo = algorithms_used[detection_resp.algorithm.key]
+    try:
+        detection_algo = algorithms_used[detection_resp.algorithm.key]
+    except KeyError:
+        raise ValueError(
+            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+            "The processing service must declare it in the /info endpoint. "
+            f"Known algorithms: {list(algorithms_used.keys())}"
+        )
 
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
@@ -759,11 +762,12 @@ def save_results(
             f"The pipeline returned by the ML backend was not recognized, created a placeholder: {pipeline}"
         )
 
-    # Create algorithms and category maps
-    algorithms_used = create_algorithms_and_category_map(
-        algorithms_data=results.algorithms,
-        logger=job_logger,
-    )
+    # Algorithms and category maps should be created in advance when registering the pipeline & processing service
+    # however they are also currently available in each pipeline results response as well.
+    # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of the results
+    algorithms_used = {
+        algorithm.key: get_or_create_algorithm_and_category_map(algorithm) for algorithm in pipeline.algorithms.all()
+    }
 
     detections = create_detections(
         detections=results.detections,

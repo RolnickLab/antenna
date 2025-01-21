@@ -8,8 +8,7 @@ import requests
 from django.db import models
 
 from ami.base.models import BaseModel
-from ami.ml.models.algorithm import Algorithm
-from ami.ml.models.pipeline import Pipeline
+from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
 
 logger = logging.getLogger(__name__)
@@ -62,13 +61,13 @@ class ProcessingService(BaseModel):
             else:
                 logger.info(f"Using existing pipeline {pipeline.name}.")
 
+            existing_algorithms = pipeline.algorithms.all()
             for algorithm_data in pipeline_data.algorithms:
-                algorithm, created = Algorithm.objects.get_or_create(name=algorithm_data.name, key=algorithm_data.key)
-                pipeline.algorithms.add(algorithm)
-
-                if created:
-                    logger.info(f"Successfully created algorithm {algorithm.name}.")
-                    algorithms_created.append(algorithm.name)
+                algorithm = get_or_create_algorithm_and_category_map(algorithm_data, logger=logger)
+                if algorithm not in existing_algorithms:
+                    logger.info(f"Registered new algorithm {algorithm.name} to pipeline {pipeline.name}.")
+                    pipeline.algorithms.add(algorithm)
+                    pipelines_created.append(algorithm.key)
                 else:
                     logger.info(f"Using existing algorithm {algorithm.name}.")
 

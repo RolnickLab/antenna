@@ -7,7 +7,7 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from ami.base.serializers import reverse_with_params
 from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
-from ami.ml.models.pipeline import collect_images, create_algorithms_and_category_map, save_results
+from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -175,8 +175,10 @@ class TestPipeline(TestCase):
             name="Test Pipeline",
         )
 
-        self.algorithms = create_algorithms_and_category_map(ALGORITHM_CHOICES)
-        self.pipeline.algorithms.set(self.algorithms.values())
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.pipeline.algorithms.set([algo for algo in self.algorithms.values()])
 
     def test_create_pipeline(self):
         self.assertEqual(self.pipeline.slug, "test-pipeline")
@@ -511,7 +513,9 @@ class TestPipeline(TestCase):
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):
-        self.algorithm_responses = create_algorithms_and_category_map(ALGORITHM_CHOICES)
+        self.algorithm_responses = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
         self.algorithms = {key: Algorithm.objects.get(key=key) for key in ALGORITHM_CHOICES.keys()}
 
     def test_create_algorithms_and_category_map(self):
