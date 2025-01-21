@@ -514,7 +514,14 @@ def create_classification(
     ), f"No classification algorithm was specified for classification {classification_resp}"
     logger.debug(f"Processing classification {classification_resp}")
 
-    classification_algo = algorithms_used[classification_resp.algorithm.key]
+    try:
+        classification_algo = algorithms_used[classification_resp.algorithm.key]
+    except KeyError:
+        raise ValueError(
+            f"Classification algorithm {classification_resp.algorithm.key} is not a known algorithm. "
+            "The processing service must declare it in the /info endpoint. "
+            f"Known algorithms: {list(algorithms_used.keys())}"
+        )
 
     if not classification_algo.category_map:
         logger.warning(
@@ -766,7 +773,8 @@ def save_results(
     # however they are also currently available in each pipeline results response as well.
     # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of the results
     algorithms_used = {
-        algorithm.key: get_or_create_algorithm_and_category_map(algorithm) for algorithm in pipeline.algorithms.all()
+        algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
+        for algo_key, algo_config in results.algorithms.items()
     }
 
     detections = create_detections(

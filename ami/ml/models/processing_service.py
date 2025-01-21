@@ -44,14 +44,19 @@ class ProcessingService(BaseModel):
         algorithms_created = []
 
         for pipeline_data in pipelines_to_add:
-            pipeline, created = Pipeline.objects.get_or_create(
-                slug=pipeline_data.slug,
-                version=pipeline_data.version,
-                defaults={
-                    "name": pipeline_data.name,
-                    "description": pipeline_data.description or "",
-                },
-            )
+            pipeline = Pipeline.objects.filter(
+                models.Q(slug=pipeline_data.slug) | models.Q(name=pipeline_data.name, version=pipeline_data.version)
+            ).first()
+            created = False
+            if not pipeline:
+                pipeline = Pipeline.objects.create(
+                    slug=pipeline_data.slug,
+                    name=pipeline_data.name,
+                    version=pipeline_data.version,
+                    description=pipeline_data.description or "",
+                )
+                created = True
+
             pipeline.projects.add(*self.projects.all())
             self.pipelines.add(pipeline)
 
