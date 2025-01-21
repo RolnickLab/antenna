@@ -116,8 +116,9 @@ class ProcessingService(BaseModel):
         pipeline_configs = info_data.pipelines
 
         # @TODO these are likely extra requests that could be avoided
-        server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
-        pipelines_online = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status")
+        # @TODO add schemas for these if we keep them
+        server_live: bool = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status", False)
+        pipelines_online: list[str] = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status", [])
 
         latency = time.time() - start_time
         self.last_checked_live = server_live
