@@ -10,6 +10,7 @@ import dataclasses
 import logging
 import time
 import typing
+import uuid
 from urllib.parse import urljoin
 
 import requests
@@ -941,6 +942,6 @@ class Pipeline(BaseModel):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            # @TODO slug may only need to be unique per project
-            self.slug = slugify(self.name)
+            unique_suffix = str(uuid.uuid4())[:8]
+            self.slug = f"{slugify(self.name)}-v{self.version}-{unique_suffix}"
         return super().save(*args, **kwargs)

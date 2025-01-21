@@ -49,7 +49,9 @@ class ProcessingService(BaseModel):
                 name=pipeline_data.name,
                 slug=pipeline_data.slug,
                 version=pipeline_data.version,
-                description=pipeline_data.description or "",
+                defaults={
+                    "description": pipeline_data.description or "",
+                },
             )
             pipeline.projects.add(*self.projects.all())
             self.pipelines.add(pipeline)

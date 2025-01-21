@@ -134,7 +134,7 @@ class Project(BaseModel):
         plots.append(charts.captures_per_hour(project_pk=self.pk))
         if self.occurrences.exists():
             plots.append(charts.detections_per_hour(project_pk=self.pk))
-            plots.append(charts.occurrences_accumulated(project_pk=self.pk))
+            # plots.append(charts.occurrences_accumulated(project_pk=self.pk))
         else:
             plots.append(charts.events_per_month(project_pk=self.pk))
             # plots.append(charts.captures_per_month(project_pk=self.pk))
