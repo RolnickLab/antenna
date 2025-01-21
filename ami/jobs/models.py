@@ -317,6 +317,9 @@ class MLJob(JobType):
         job.finished_at = None
         job.save()
 
+        # Keep track of sub-tasks for saving results, pair with batch number
+        save_tasks: list[tuple[int, AsyncResult]] = []
+
         if job.delay:
             update_interval_seconds = 2
             last_update = time.time()
@@ -414,7 +417,9 @@ class MLJob(JobType):
                 total_classifications += len([c for d in results.detections for c in d.classifications])
 
                 if results.source_images or results.detections:
-                    save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
+                    # @TODO add callback to report errors while saving results marking the job as failed
+                    save_results_task: AsyncResult = job.pipeline.save_results_async(results=results, job_id=job.pk)
+                    save_tasks.append((i + 1, save_results_task))
                     job.logger.info(f"Saving results for batch {i+1} in sub-task {save_results_task.id}")
 
             job.progress.update_stage(
@@ -437,6 +442,18 @@ class MLJob(JobType):
 
         percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
         job.logger.info(f"Job completed. Processed {percent_successful:.0%} of images successfully.")
+
+        # Check all celery sub-tasks for completion
+        job.logger.info(f"Checking the status of {len(save_tasks)} sub-tasks saving results")
+        for batch_num, sub_task in save_tasks:
+            if not sub_task.ready():
+                job.logger.info(f"Waiting for batch {batch_num} to finish saving results (sub-task {sub_task.id})")
+                # @TODO this is not recommended! Use a group or chain. But we need to refactor.
+                # https://docs.celeryq.dev/en/latest/userguide/tasks.html#avoid-launching-synchronous-subtasks
+                sub_task.wait(disable_sync_subtasks=False, timeout=30)
+            if not sub_task.successful():
+                job.logger.error(f"Failed to save results from batch {batch_num}! (sub-task {sub_task.id})")
+                sub_task.maybe_throw()
 
         FAILURE_THRESHOLD = 0.5
         if image_count and (percent_successful < FAILURE_THRESHOLD):
