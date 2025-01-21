@@ -319,6 +319,7 @@ class MLJob(JobType):
 
         # Keep track of sub-tasks for saving results, pair with batch number
         save_tasks: list[tuple[int, AsyncResult]] = []
+        save_tasks_completed: list[tuple[int, AsyncResult]] = []
 
         if job.delay:
             update_interval_seconds = 2
@@ -430,30 +431,52 @@ class MLJob(JobType):
                 failed=len(request_failed_images),
                 remaining=max(image_count - ((i + 1) * CHUNK_SIZE), 0),
             )
+
+            # count the completed, successful, and failed save_tasks:
+            save_tasks_completed = [t for t in save_tasks if t[1].ready()]
+            failed_save_tasks = [t for t in save_tasks_completed if not t[1].successful()]
+
+            for failed_batch_num, failed_task in failed_save_tasks:
+                # First log all errors and update the job status. Then raise exception if any failed.
+                job.logger.error(f"Failed to save results from batch {failed_batch_num} (sub-task {failed_task.id})")
+
             job.progress.update_stage(
                 "results",
-                status=JobState.STARTED,
-                progress=(i + 1) / len(chunks),
+                status=JobState.FAILURE if failed_save_tasks else JobState.STARTED,
+                progress=len(save_tasks_completed) / len(chunks),
                 captures=total_captures,
                 detections=total_detections,
                 classifications=total_classifications,
             )
             job.save()
 
-        percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
-        job.logger.info(f"Job completed. Processed {percent_successful:.0%} of images successfully.")
+            # Stop processing if any save tasks have failed
+            # Otherwise, calculate the percent of images that have failed to save
+            throw_on_save_error = True
+            for failed_batch_num, failed_task in failed_save_tasks:
+                if throw_on_save_error:
+                    failed_task.maybe_throw()
 
-        # Check all celery sub-tasks for completion
-        job.logger.info(f"Checking the status of {len(save_tasks)} sub-tasks saving results")
+        percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
+        job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
+
+        # Check all Celery sub-tasks if they have completed saving results
+        save_tasks_remaining = set(save_tasks) - set(save_tasks_completed)
+        job.logger.info(
+            f"Checking the status of {len(save_tasks_remaining)} remaining sub-tasks that are still saving results."
+        )
         for batch_num, sub_task in save_tasks:
             if not sub_task.ready():
                 job.logger.info(f"Waiting for batch {batch_num} to finish saving results (sub-task {sub_task.id})")
                 # @TODO this is not recommended! Use a group or chain. But we need to refactor.
                 # https://docs.celeryq.dev/en/latest/userguide/tasks.html#avoid-launching-synchronous-subtasks
-                sub_task.wait(disable_sync_subtasks=False, timeout=30)
+                sub_task.wait(disable_sync_subtasks=False, timeout=60)
             if not sub_task.successful():
-                job.logger.error(f"Failed to save results from batch {batch_num}! (sub-task {sub_task.id})")
+                error: Exception = sub_task.result
+                job.logger.error(f"Failed to save results from batch {batch_num}! (sub-task {sub_task.id}): {error}")
                 sub_task.maybe_throw()
+
+        job.logger.info(f"All tasks completed for job {job.pk}")
 
         FAILURE_THRESHOLD = 0.5
         if image_count and (percent_successful < FAILURE_THRESHOLD):
