@@ -2,12 +2,9 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
-import {
-  TaxonInfo,
-  TaxonInfoSize,
-} from 'components/taxon/taxon-info/taxon-info'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
+import { TaxonDetails } from 'nova-ui-kit'
 import { useMemo } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
@@ -68,18 +65,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         <meta name="og:image" content={image} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonInfo
-          taxon={species}
-          size={TaxonInfoSize.Large}
-          getLink={(id: string) =>
-            getAppRoute({
-              to: APP_ROUTES.TAXON_DETAILS({
-                projectId: projectId as string,
-                taxonId: id,
-              }),
-            })
-          }
-        />
+        <TaxonDetails size="lg" taxon={species} withTooltips />
       </div>
       <div className={styles.content}>
         <div className={styles.column}>

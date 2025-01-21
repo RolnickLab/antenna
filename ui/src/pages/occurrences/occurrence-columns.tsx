@@ -1,4 +1,3 @@
-import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
@@ -12,6 +11,7 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
@@ -196,7 +196,7 @@ const TaxonCell = ({
       <BasicTableCell>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
-            <TaxonInfo compact taxon={item.determinationTaxon} />
+            <TaxonDetails compact taxon={item.determinationTaxon} />
           </Link>
           {showQuickActions && canUpdate && (
             <div className={styles.taxonActions}>

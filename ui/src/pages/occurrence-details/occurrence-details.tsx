@@ -118,8 +118,8 @@ export const OccurrenceDetails = ({
       </Helmet>
       <div className={styles.header}>
         <TaxonDetails
-          taxon={occurrence.determinationTaxon}
           size="lg"
+          taxon={occurrence.determinationTaxon}
           withTooltips
         />
         <div className={styles.taxonActions}>
