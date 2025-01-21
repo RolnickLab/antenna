@@ -637,7 +637,7 @@ def create_classifications(
     Classification.objects.bulk_create(new_classifications)
     logger.info(
         f"Created {len(new_classifications)} new classifications, updated {len(existing_classifications)} existing "
-        f"classifications for detection {detection}"
+        f"classifications for {len(detections)} detections."
     )
 
     return existing_classifications + new_classifications
