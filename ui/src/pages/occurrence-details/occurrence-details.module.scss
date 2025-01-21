@@ -43,7 +43,7 @@
 }
 
 .infoWrapper {
-  width: 320px;
+  width: 448px;
   position: relative;
   overflow: hidden;
 
@@ -51,14 +51,14 @@
     width: 100%;
     height: 100%;
     position: absolute;
-    padding: 20px 24px 24px;
+    padding: 24px;
     box-sizing: border-box;
     overflow-y: auto;
   }
 }
 
 .blueprintWrapper {
-  width: 320px;
+  width: 448px;
   position: relative;
   overflow: hidden;
 
@@ -72,9 +72,7 @@
 
 .identifications {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  padding: 4px 0;
+  gap: 24px;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

@@ -2,10 +2,6 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
-import {
-  TaxonInfo,
-  TaxonInfoSize,
-} from 'components/taxon/taxon-info/taxon-info'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
@@ -13,6 +9,7 @@ import { IdentificationStatus } from 'design-system/components/identification/id
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { TaxonDetails } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -23,7 +20,8 @@ import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
-import { IdentificationCard } from './identification-card/identification-card'
+import { HumanIdentification } from './identification-card/human-identification'
+import { MachinePrediction } from './identification-card/machine-prediction'
 import styles from './occurrence-details.module.scss'
 import { IdQuickActions } from './reject-id/id-quick-actions'
 import { SuggestId } from './suggest-id/suggest-id'
@@ -119,17 +117,10 @@ export const OccurrenceDetails = ({
         <meta name="og:image" content={occurrence.images[0]?.src} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonInfo
+        <TaxonDetails
           taxon={occurrence.determinationTaxon}
-          size={TaxonInfoSize.Large}
-          getLink={(id: string) =>
-            getAppRoute({
-              to: APP_ROUTES.TAXON_DETAILS({
-                projectId: projectId as string,
-                taxonId: id,
-              }),
-            })
-          }
+          size="lg"
+          withTooltips
         />
         <div className={styles.taxonActions}>
           <Tooltip
@@ -222,7 +213,7 @@ export const OccurrenceDetails = ({
                     )}
 
                     {occurrence.humanIdentifications.map((i) => (
-                      <IdentificationCard
+                      <HumanIdentification
                         key={i.id}
                         identification={i}
                         occurrence={occurrence}
@@ -232,7 +223,7 @@ export const OccurrenceDetails = ({
                     ))}
 
                     {occurrence.machinePredictions.map((p) => (
-                      <IdentificationCard
+                      <MachinePrediction
                         key={p.id}
                         identification={p}
                         occurrence={occurrence}
