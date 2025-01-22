@@ -163,6 +163,7 @@ export enum STRING {
   NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
+  TAB_ITEM_ALL_PROJECTS,
   TAB_ITEM_COLLECTIONS,
   TAB_ITEM_DEVICES,
   TAB_ITEM_FIELDS,
@@ -173,6 +174,7 @@ export enum STRING {
   TAB_ITEM_STORAGE,
   TAB_ITEM_SUMMARY,
   TAB_ITEM_TABLE,
+  TAB_ITEM_USER_PROJECTS,
 
   /* JOB STATUS */
   CREATED,
@@ -411,6 +413,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
+  [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
@@ -421,6 +424,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TAB_ITEM_STORAGE]: 'Storage',
   [STRING.TAB_ITEM_SUMMARY]: 'Summary',
   [STRING.TAB_ITEM_TABLE]: 'Table view',
+  [STRING.TAB_ITEM_USER_PROJECTS]: 'My projects',
 
   /* JOB STATUS */
   [STRING.CREATED]: 'Created',
