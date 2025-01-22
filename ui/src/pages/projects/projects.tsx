@@ -1,3 +1,4 @@
+import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
@@ -18,13 +19,15 @@ export const TABS = {
 
 export const Projects = () => {
   const { user } = useUser()
+  const { userInfo} = useUserInfo()
+
   const [selectedTab, setSelectedTab] = useState(
     user.loggedIn ? TABS.USER_PROJECTS : TABS.ALL_PROJECTS
   )
   const { pagination, setPage } = usePagination()
   const filters =
     user.loggedIn && selectedTab === TABS.USER_PROJECTS
-      ? [{ field: 'public', value: 'false' }]
+      ? [{ field: 'user_id', value: userInfo?.id}]
       : []
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({ pagination, filters })
