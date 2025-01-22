@@ -901,7 +901,8 @@ def group_images_into_events(
     )
 
     if delete_empty:
-        delete_empty_events()
+        logger.info("Deleting empty events for deployment")
+        delete_empty_events(deployment=deployment)
 
     for event in events:
         # Set the width and height of all images in each event based on the first image
@@ -929,7 +930,7 @@ def group_images_into_events(
     return events
 
 
-def delete_empty_events(dry_run=False):
+def delete_empty_events(deployment: Deployment, dry_run=False):
     """
     Delete events that have no images, occurrences or other related records.
     """
@@ -941,8 +942,14 @@ def delete_empty_events(dry_run=False):
     #     if f.one_to_many or f.one_to_one or (f.many_to_many and f.auto_created)
     # ]
 
-    events = Event.objects.annotate(num_images=models.Count("captures")).filter(num_images=0)
-    events = events.annotate(num_occurrences=models.Count("occurrences")).filter(num_occurrences=0)
+    events = (
+        Event.objects.filter(deployment=deployment)
+        .annotate(
+            num_images=models.Count("captures"),
+            num_occurrences=models.Count("occurrences"),
+        )
+        .filter(num_images=0, num_occurrences=0)
+    )
 
     if dry_run:
         for event in events:
