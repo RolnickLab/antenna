@@ -52,13 +52,9 @@ export const Projects = () => {
             </Tabs.List>
           </Tabs.Root>
         ) : null}
+        {canCreate ? <NewProjectDialog /> : null}
       </PageHeader>
       <ProjectGallery error={error} isLoading={isLoading} projects={projects} />
-      {canCreate && selectedTab === TABS.USER_PROJECTS ? (
-        <div className="pt-4">
-          <NewProjectDialog />
-        </div>
-      ) : null}
       <PageFooter>
         {projects?.length ? (
           <PaginationBar
