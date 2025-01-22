@@ -132,7 +132,7 @@ class ProjectViewSet(DefaultViewSet):
             if not (user == self.request.user or is_active_staff(self.request.user)):
                 raise PermissionDenied("You can only view your projects")
             if user:
-                qs = qs.filter(owner=user).union(qs.filter(members=user))
+                qs = qs.filter_by_user(user)
         return qs
 
     def get_serializer_class(self):
@@ -150,7 +150,14 @@ class ProjectViewSet(DefaultViewSet):
             raise PermissionDenied("You must be authenticated to create a project.")
 
         # Add current user as project owner
-        serializer.save(owner=self.request.user)
+        project = serializer.save(owner=self.request.user)
+
+        # Add owner to project members if not already a member
+        if not project.members.filter(id=self.request.user.id).exists():
+            project.members.add(self.request.user)
+
+        project.save()
+        return project
 
     @extend_schema(
         parameters=[
