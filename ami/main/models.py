@@ -916,6 +916,10 @@ def group_images_into_events(
             f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
         )
 
+    logger.info("Updating relevant cached fields on deployment")
+    deployment.events_count = len(events)
+    deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+
     return events
 
 
