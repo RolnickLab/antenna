@@ -24,7 +24,7 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.base.permissions import IsActiveStaffOrReadOnly, is_active_staff
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
@@ -45,6 +45,7 @@ from ..models import (
     SourceImageCollection,
     SourceImageUpload,
     Taxon,
+    User,
     update_detection_counts,
 )
 from .serializers import (
@@ -124,11 +125,14 @@ class ProjectViewSet(DefaultViewSet):
 
     def get_queryset(self):
         qs: QuerySet = super().get_queryset()
-        # Filter projects for the current user if `public` query parameter is `False`
-        is_public = self.request.query_params.get("public")
-        if is_public and is_public.lower() == "false":
-            current_user = self.request.user
-            qs = qs.filter(owner=current_user).union(qs.filter(users=current_user))
+        # Filter projects by `user_id`
+        user_id = self.request.query_params.get("user_id")
+        if user_id:
+            user = User.objects.filter(pk=user_id).first()
+            if not (user == self.request.user or is_active_staff(self.request.user)):
+                raise PermissionDenied("You can only view your projects")
+            if user:
+                qs = qs.filter(owner=user).union(qs.filter(members=user))
         return qs
 
     def get_serializer_class(self):
@@ -151,13 +155,13 @@ class ProjectViewSet(DefaultViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                name="public",
+                name="user_id",
                 description=(
-                    'If "False", filters projects to show only those the current user owns or has access to. '
-                    "Defaults to showing all projects if omitted."
+                    "Filters projects to show only those associated with the specified user ID. "
+                    "If omitted, no user-specific filter is applied."
                 ),
                 required=False,
-                type=OpenApiTypes.BOOL,
+                type=OpenApiTypes.INT,
             ),
         ]
     )
