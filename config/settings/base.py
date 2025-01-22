@@ -276,17 +276,50 @@ LOGGING = {
 
 # Celery
 # ------------------------------------------------------------------------------
-
 if USE_TZ:
     # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-timezone
     CELERY_TIMEZONE = TIME_ZONE
-
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
 CELERY_RESULT_EXTENDED = True
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
+# https://github.com/celery/celery/pull/6122
+CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-max-retries
+CELERY_RESULT_BACKEND_MAX_RETRIES = 10
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-accept_content
+CELERY_ACCEPT_CONTENT = ["json"]
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-task_serializer
+CELERY_TASK_SERIALIZER = "json"
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_serializer
+CELERY_RESULT_SERIALIZER = "json"
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
+# TODO: set to whatever value is adequate in your circumstances
+CELERY_TASK_TIME_LIMIT = 7 * 60 * 24
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
+# TODO: set to whatever value is adequate in your circumstances
+CELERY_TASK_SOFT_TIME_LIMIT = 6 * 60 * 24
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
+CELERY_WORKER_SEND_TASK_EVENTS = True
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
+CELERY_TASK_SEND_SENT_EVENT = True
+
+# Health checking and retries, specific to Redis
+CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
+CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
+CELERY_REDIS_SOCKET_KEEPALIVE = True
+CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
+
+# Help distribute long-running tasks
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-prefetch-multiplier
+# @TODO Review and test this setting
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
 # Connection settings to match Redis timeout and keepalive
 CELERY_BROKER_TRANSPORT_OPTIONS = {
@@ -298,23 +331,9 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "max_connections": 20,  # Per process connection pool limit
 }
 
-# Health checking and retries
-CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
-CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
-CELERY_REDIS_SOCKET_KEEPALIVE = True
-CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
-
-# https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
-# https://github.com/celery/celery/pull/6122
-CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
-CELERY_RESULT_BACKEND_MAX_RETRIES = 10
 CELERY_BROKER_CONNECTION_RETRY = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
-
-# Task settings to help with reliability
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Don't prefetch tasks
-CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
 
 # django-rest-framework
