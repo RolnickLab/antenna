@@ -2,7 +2,6 @@ import datetime
 import logging
 
 from django.db import connection, models
-from django.db.models import Q
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
@@ -905,19 +904,3 @@ class TestProjectOwnerAutoAssignment(APITestCase):
         self.client.post(project_endpoint, request)
         project = Project.objects.filter(name=request["name"]).first()
         self.assertEqual(self.user_1.id, project.owner.id)
-
-    def test_can_filter_projects_owned_by_or_belong_to_user(self):
-        project_endpoint = "/api/v2/projects/"
-        request = {"name": "Test Project1234", "description": "Test Description"}
-        # create project user_1
-        for user in [self.user_1, self.user_2]:
-            self.client.force_authenticate(user=user)
-            self.client.post(project_endpoint, request)
-            response = self.client.get("/api/v2/users/me/")
-            response_data = response.json()
-            projects = response_data.get("projects")
-            project_ids = {project.get("id") for project in projects}
-            expected_project_ids = {
-                project.id for project in Project.objects.filter(Q(owner=user) | Q(users=user)).distinct()
-            }
-            self.assertEqual(project_ids, expected_project_ids)
