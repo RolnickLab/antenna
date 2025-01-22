@@ -602,11 +602,18 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
-        last_updated = self.updated_at or timezone.now()
+        events_last_updated = min(
+            [
+                self.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
+                or datetime.datetime.min,
+                self.updated_at,
+            ]
+        )
+
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
             # @TODO Use "dirty" flag strategy to only update when needed
-            new_or_updated_captures = self.captures.filter(updated_at__gte=last_updated).count()
+            new_or_updated_captures = self.captures.filter(updated_at__gte=events_last_updated).count()
             deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
             if new_or_updated_captures or deleted_captures:
                 ami.tasks.regroup_events.delay(self.pk)
