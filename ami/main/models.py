@@ -896,13 +896,19 @@ def group_images_into_events(
             f"Duration: {event.duration_label()}"
         )
 
+    logger.info(
+        f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
+    )
+
     if delete_empty:
         delete_empty_events()
 
     for event in events:
         # Set the width and height of all images in each event based on the first image
+        logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
+    logger.info("Checking for unusual statistics of events")
     events_over_24_hours = Event.objects.filter(
         deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
     )
