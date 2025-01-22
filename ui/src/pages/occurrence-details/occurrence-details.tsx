@@ -48,7 +48,7 @@ export const OccurrenceDetails = ({
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { state } = useLocation()
+  const { state, pathname } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -67,16 +67,20 @@ export const OccurrenceDetails = ({
             )
             .map((item) => ({
               ...item,
-              to: getAppRoute({
-                to: APP_ROUTES.SESSION_DETAILS({
-                  projectId: projectId as string,
-                  sessionId: occurrence.sessionId,
-                }),
-                filters: {
-                  occurrence: occurrence.id,
-                  capture: item.captureId,
-                },
-              }),
+              to: pathname.includes(
+                APP_ROUTES.SESSIONS({ projectId: projectId as string })
+              )
+                ? undefined
+                : getAppRoute({
+                    to: APP_ROUTES.SESSION_DETAILS({
+                      projectId: projectId as string,
+                      sessionId: occurrence.sessionId,
+                    }),
+                    filters: {
+                      occurrence: occurrence.id,
+                      capture: item.captureId,
+                    },
+                  }),
             }))
         : [],
     [occurrence]
@@ -91,13 +95,17 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_SESSION),
       value: occurrence.sessionLabel,
-      to: getAppRoute({
-        to: APP_ROUTES.SESSION_DETAILS({
-          projectId: projectId as string,
-          sessionId: occurrence.sessionId,
-        }),
-        filters: { occurrence: occurrence.id },
-      }),
+      to: pathname.includes(
+        APP_ROUTES.SESSIONS({ projectId: projectId as string })
+      )
+        ? undefined
+        : getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId as string,
+              sessionId: occurrence.sessionId,
+            }),
+            filters: { occurrence: occurrence.id },
+          }),
     },
     {
       label: translate(STRING.FIELD_LABEL_DATE),
@@ -106,10 +114,6 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_TIME),
       value: occurrence.timeLabel,
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_DURATION),
-      value: occurrence.durationLabel,
     },
   ]
 
