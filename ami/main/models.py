@@ -95,6 +95,19 @@ def create_default_research_site(project: "Project") -> "Site":
     return site
 
 
+class ProjectQuerySet(models.QuerySet):
+    def filter_by_user(self, user):
+        """
+        Filters projects to include only those where the given user is a member.
+        """
+        return self.filter(members=user)
+
+
+class ProjectManager(models.Manager):
+    def get_queryset(self) -> ProjectQuerySet:
+        return ProjectQuerySet(self.model, using=self._db)
+
+
 @final
 class Project(BaseModel):
     """ """
@@ -116,6 +129,7 @@ class Project(BaseModel):
 
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
+    objects = ProjectManager()
 
     def deployments_count(self) -> int:
         return self.deployments.count()
