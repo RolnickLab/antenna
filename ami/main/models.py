@@ -602,13 +602,16 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
-        events_last_updated = min(
-            [
-                self.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
-                or datetime.datetime.min,
-                self.updated_at,
-            ]
-        )
+        if self.pk:
+            events_last_updated = min(
+                [
+                    self.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
+                    or datetime.datetime.max,
+                    self.updated_at,
+                ]
+            )
+        else:
+            events_last_updated = datetime.datetime.min
 
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
