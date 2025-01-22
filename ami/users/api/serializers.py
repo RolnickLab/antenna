@@ -48,7 +48,7 @@ class CurrentUserSerializer(UserSerializer):
         # return only projects that the current user is involved in as an owner or  a user
         current_user = self.context["request"].user
         if current_user == user:
-            projects = Project.objects.filter(Q(owner=user) | Q(users=user)).distinct()
+            projects = Project.objects.filter(Q(owner=user) | Q(members=user)).distinct()
             return ProjectNestedSerializer(projects, many=True, context={"request": self.context["request"]}).data
         return []
 

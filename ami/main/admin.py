@@ -58,19 +58,19 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")
-    search_fields = ("name", "owner__username", "users__username")
-    filter_horizontal = ("users",)
+    search_fields = ("name", "owner__username", "members__username")
+    filter_horizontal = ("members",)
 
-    @admin.display(description="Project Users")
+    @admin.display(description="Project Members")
     def get_users(self, obj):
-        return ", ".join([user.email for user in obj.users.all() if user])
+        return ", ".join([user.email for user in obj.members.all() if user])
 
     fieldsets = (
         (None, {"fields": ("name", "description", "priority", "active")}),
         (
             "Ownership & Access",
             {
-                "fields": ("owner", "users"),
+                "fields": ("owner", "members"),
                 "classes": ("wide",),
             },
         ),
@@ -85,12 +85,6 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
         self.message_user(request, f"Started {len(task_ids)} tasks to delete classification: {task_ids}")
 
     actions = [_remove_duplicate_classifications]
-
-    # Make the 'users' field optional
-    def formfield_for_manytomany(self, db_field, request, **kwargs):
-        if db_field.name == "users":
-            kwargs["required"] = False  # Make the field optional
-        return super().formfield_for_manytomany(db_field, request, **kwargs)
 
 
 @admin.register(Deployment)
