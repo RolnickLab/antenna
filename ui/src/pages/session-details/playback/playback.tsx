@@ -26,7 +26,9 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   const [showDetections, setShowDetections] = useState(true)
   const [showDetectionsBelowThreshold, setShowDetectionsBelowThreshold] =
     useState(false)
-  const [snapToDetections, setSnapToDetections] = useState(true)
+  const [snapToDetections, setSnapToDetections] = useState(
+    session.numDetections ? true : false
+  )
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
   )
@@ -93,6 +95,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
               checked={snapToDetections}
               onCheckedChange={setSnapToDetections}
               theme={CheckboxTheme.Neutral}
+              disabled={session.numDetections ? false : true}
             />
           </div>
         </div>
