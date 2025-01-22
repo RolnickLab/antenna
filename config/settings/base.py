@@ -278,22 +278,22 @@ LOGGING = {
 # ------------------------------------------------------------------------------
 # Connection settings to match Redis timeout and keepalive
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    'visibility_timeout': 43200,      # 12 hours - default celery value
-    'socket_timeout': 120,            # Matches Redis timeout setting
-    'socket_connect_timeout': 30,     # Max time to establish connection
-    'socket_keepalive': True,         # Enable TCP keepalive
+    "visibility_timeout": 43200,  # 12 hours - default celery value
+    "socket_timeout": 120,  # Matches Redis timeout setting
+    "socket_connect_timeout": 30,  # Max time to establish connection
+    "socket_keepalive": True,  # Enable TCP keepalive
     # 'socket_keepalive_options': {
     #     'TCP_KEEPIDLE': 60,           # Match Redis tcp-keepalive value
     #     'TCP_KEEPINTVL': 10,          # Interval between keepalive probes
     #     'TCP_KEEPCNT': 3              # Number of keepalive probes
     # },
-    'retry_on_timeout': True,         # Retry operations if Redis times out
-    'max_connections': 20             # Per process connection pool limit
+    "retry_on_timeout": True,  # Retry operations if Redis times out
+    "max_connections": 20,  # Per process connection pool limit
 }
 
 # Health checking and retries
-CELERY_REDIS_MAX_CONNECTIONS = 50     # Total connection pool limit for results backend
-CELERY_REDIS_SOCKET_TIMEOUT = 120     # Match Redis timeout
+CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
+CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
 CELERY_REDIS_SOCKET_KEEPALIVE = True
 CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 
@@ -305,7 +305,7 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
 # Task settings to help with reliability
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1        # Don't prefetch tasks
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Don't prefetch tasks
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
 
