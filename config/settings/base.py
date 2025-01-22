@@ -276,17 +276,24 @@ LOGGING = {
 
 # Celery
 # ------------------------------------------------------------------------------
+
+if USE_TZ:
+    # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-timezone
+    CELERY_TIMEZONE = TIME_ZONE
+
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
+CELERY_BROKER_URL = env("CELERY_BROKER_URL")
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
+CELERY_RESULT_EXTENDED = True
+
 # Connection settings to match Redis timeout and keepalive
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "visibility_timeout": 43200,  # 12 hours - default celery value
     "socket_timeout": 120,  # Matches Redis timeout setting
     "socket_connect_timeout": 30,  # Max time to establish connection
     "socket_keepalive": True,  # Enable TCP keepalive
-    # 'socket_keepalive_options': {
-    #     'TCP_KEEPIDLE': 60,           # Match Redis tcp-keepalive value
-    #     'TCP_KEEPINTVL': 10,          # Interval between keepalive probes
-    #     'TCP_KEEPCNT': 3              # Number of keepalive probes
-    # },
     "retry_on_timeout": True,  # Retry operations if Redis times out
     "max_connections": 20,  # Per process connection pool limit
 }
@@ -297,7 +304,8 @@ CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
 CELERY_REDIS_SOCKET_KEEPALIVE = True
 CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 
-# Already in your settings but important to keep with these values
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
+# https://github.com/celery/celery/pull/6122
 CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
 CELERY_RESULT_BACKEND_MAX_RETRIES = 10
 CELERY_BROKER_CONNECTION_RETRY = True
