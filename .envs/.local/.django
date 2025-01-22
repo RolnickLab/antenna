@@ -15,6 +15,12 @@ REDIS_URL=redis://redis:6379/0
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
 
+# Attempting to keep Flower from showing workers as offline
+# FLOWER_BROKER_API=http://redis:6379/0 
+FLOWER_PERSISTENT=True
+FLOWER_UPDATE_INTERVAL=10000  # 10 seconds in milliseconds
+FLOWER_HEARTBEAT_INTERVAL=5000  # Default
+
 # This is the hostname for the frontend server
 EXTERNAL_HOSTNAME=localhost:4000
 DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:4000
