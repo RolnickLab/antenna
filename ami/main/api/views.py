@@ -10,7 +10,8 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -121,6 +122,15 @@ class ProjectViewSet(DefaultViewSet):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
 
+    def get_queryset(self):
+        qs: QuerySet = super().get_queryset()
+        # Filter projects for the current user if `public` query parameter is `False`
+        is_public = self.request.query_params.get("public")
+        if is_public and is_public.lower() == "false":
+            current_user = self.request.user
+            qs = qs.filter(owner=current_user).union(qs.filter(users=current_user))
+        return qs
+
     def get_serializer_class(self):
         """
         Return different serializers for list and detail views.
@@ -137,6 +147,22 @@ class ProjectViewSet(DefaultViewSet):
 
         # Add current user as project owner
         serializer.save(owner=self.request.user)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="public",
+                description=(
+                    'If "False", filters projects to show only those the current user owns or has access to. '
+                    "Defaults to showing all projects if omitted."
+                ),
+                required=False,
+                type=OpenApiTypes.BOOL,
+            ),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class DeploymentViewSet(DefaultViewSet):
