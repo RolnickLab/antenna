@@ -4,12 +4,12 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
-import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
+import { useSelectedView } from 'utils/useSelectedView'
 import { ProjectGallery } from './project-gallery'
 
 export const TABS = {
@@ -20,9 +20,8 @@ export const TABS = {
 export const Projects = () => {
   const { user } = useUser()
   const { userInfo } = useUserInfo()
-  const [selectedTab, setSelectedTab] = useState(
-    user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS
-  )
+  const { selectedView: selectedTab, setSelectedView: setSelectedTab } =
+    useSelectedView(user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS)
   const { pagination, setPage } = usePagination()
   const filters =
     user.loggedIn && selectedTab === TABS.MY_PROJECTS
