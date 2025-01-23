@@ -164,6 +164,9 @@ class Project(BaseModel):
     def save(self, *args, **kwargs):
         new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
+        # Add owner to members if not already a member
+        if self.owner and not self.members.filter(id=self.owner.id).exists():
+            self.members.add(self.owner)
         if new_project:
             logger.info(f"Created new project {self}")
             self.create_related_defaults()
