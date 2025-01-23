@@ -56,14 +56,15 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
 
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        if form.instance.owner and not form.instance.members.filter(id=form.instance.owner.id).exists():
+            form.instance.members.add(form.instance.owner)
+
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")
     search_fields = ("name", "owner__username", "members__username")
     filter_horizontal = ("members",)
-
-    @admin.display(description="Project Members")
-    def get_users(self, obj):
-        return ", ".join([user.email for user in obj.members.all() if user])
 
     fieldsets = (
         (None, {"fields": ("name", "description", "priority", "active")}),
