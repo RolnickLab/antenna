@@ -131,6 +131,11 @@ class Project(BaseModel):
     sites: models.QuerySet["Site"]
     objects = ProjectManager()
 
+    def add_member(self, user):
+        """Add user to members if they are not already a member"""
+        if user and not self.members.filter(id=user.id).exists():
+            self.members.add(user)
+
     def deployments_count(self) -> int:
         return self.deployments.count()
 
@@ -164,9 +169,8 @@ class Project(BaseModel):
     def save(self, *args, **kwargs):
         new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
-        # Add owner to members if not already a member
-        if self.owner and not self.members.filter(id=self.owner.id).exists():
-            self.members.add(self.owner)
+        # Add owner to members
+        self.add_member(self.owner)
         if new_project:
             logger.info(f"Created new project {self}")
             self.create_related_defaults()

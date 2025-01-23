@@ -58,8 +58,7 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
-        if form.instance.owner and not form.instance.members.filter(id=form.instance.owner.id).exists():
-            form.instance.members.add(form.instance.owner)
+        form.instance.add_member(form.instance.owner)
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")
