@@ -24,7 +24,7 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, is_active_staff
+from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
@@ -129,7 +129,7 @@ class ProjectViewSet(DefaultViewSet):
         user_id = self.request.query_params.get("user_id")
         if user_id:
             user = User.objects.filter(pk=user_id).first()
-            if not (user == self.request.user or is_active_staff(self.request.user)):
+            if not user == self.request.user:
                 raise PermissionDenied("You can only view your projects")
             if user:
                 qs = qs.filter_by_user(user)
@@ -150,14 +150,7 @@ class ProjectViewSet(DefaultViewSet):
             raise PermissionDenied("You must be authenticated to create a project.")
 
         # Add current user as project owner
-        project = serializer.save(owner=self.request.user)
-
-        # Add owner to project members if not already a member
-        if not project.members.filter(id=self.request.user.id).exists():
-            project.members.add(self.request.user)
-
-        project.save()
-        return project
+        serializer.save(owner=self.request.user)
 
     @extend_schema(
         parameters=[
