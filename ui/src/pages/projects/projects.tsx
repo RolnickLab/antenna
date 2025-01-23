@@ -1,4 +1,3 @@
-import { useUserInfo } from 'data-services/hooks/auth/useUserInfo'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
@@ -10,24 +9,24 @@ import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
+import { useUserInfo } from 'utils/user/userInfoContext'
 import { ProjectGallery } from './project-gallery'
 
 export const TABS = {
-  USER_PROJECTS: 'user-projects',
+  MY_PROJECTS: 'my-projects',
   ALL_PROJECTS: 'all-projects',
 }
 
 export const Projects = () => {
   const { user } = useUser()
-  const { userInfo} = useUserInfo()
-
+  const { userInfo } = useUserInfo()
   const [selectedTab, setSelectedTab] = useState(
-    user.loggedIn ? TABS.USER_PROJECTS : TABS.ALL_PROJECTS
+    user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS
   )
   const { pagination, setPage } = usePagination()
   const filters =
-    user.loggedIn && selectedTab === TABS.USER_PROJECTS
-      ? [{ field: 'user_id', value: userInfo?.id}]
+    user.loggedIn && selectedTab === TABS.MY_PROJECTS
+      ? [{ field: 'user_id', value: userInfo?.id }]
       : []
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({ pagination, filters })
@@ -45,8 +44,8 @@ export const Projects = () => {
           <Tabs.Root onValueChange={setSelectedTab} value={selectedTab}>
             <Tabs.List>
               <Tabs.Trigger
-                label={translate(STRING.TAB_ITEM_USER_PROJECTS)}
-                value={TABS.USER_PROJECTS}
+                label={translate(STRING.TAB_ITEM_MY_PROJECTS)}
+                value={TABS.MY_PROJECTS}
               />
               <Tabs.Trigger
                 label={translate(STRING.TAB_ITEM_ALL_PROJECTS)}
