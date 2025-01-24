@@ -7,7 +7,12 @@ export const Summary = ({ project }: { project: Project }) => (
   <PlotGrid>
     {project.summaryData.map((summary, index) => (
       <Box key={index}>
-        <Plot title={summary.title} data={summary.data} type={summary.type} />
+        <Plot
+          title={summary.title}
+          data={summary.data}
+          orientation={summary.orientation}
+          type={summary.type}
+        />
       </Box>
     ))}
   </PlotGrid>
