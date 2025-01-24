@@ -37,6 +37,8 @@ django-filter==23.2  # https://github.com/carltongibson/django-filter
 django-storages[boto3]==1.14.2  # https://github.com/jschneier/django-storages
 # Authentication API
 djoser==2.2.0
+# Object Level Permissions
+django-guardian==2.4.0
 # Email sending
 django-sendgrid-v5==1.2.2
 django-anymail[sendgrid]==10.0  # https://github.com/anymail/django-anymail
