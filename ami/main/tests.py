@@ -62,7 +62,7 @@ class TestImageGrouping(TestCase):
         for event in events:
             event.captures.all().delete()
 
-        delete_empty_events()
+        delete_empty_events(deployment=self.deployment)
 
         remaining_events = Event.objects.filter(pk__in=[event.pk for event in events])
 

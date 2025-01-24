@@ -53,6 +53,7 @@ export const Checkbox = ({
           [styles.success]: theme === CheckboxTheme.Success,
           [styles.alert]: theme === CheckboxTheme.Alert,
           [styles.neutral]: theme === CheckboxTheme.Neutral,
+          [styles.disabled]: disabled,
         })}
       >
         {label}

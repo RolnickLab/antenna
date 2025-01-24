@@ -11,6 +11,7 @@ import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
+import { useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -55,6 +56,7 @@ const config: FormConfig = {
 }
 
 export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
+  const formRef = useRef<HTMLFormElement>(null)
   const {
     control,
     handleSubmit,
@@ -68,29 +70,29 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
-    <form onSubmit={handleSubmit((values) => updateUserInfo(values))}>
-      {errorMessage && (
-        <FormError
-          inDialog
-          intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
-          message={errorMessage}
-        />
-      )}
+    <>
       <FormSection>
+        {errorMessage && (
+          <FormError
+            inDialog
+            intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
+            message={errorMessage}
+          />
+        )}
         <FormRow>
           <UserEmailField value={userInfo.email} />
           <UserPasswordField value="************" />
-        </FormRow>
-        <>
-          <FormRow>
+          <form
+            ref={formRef}
+            onSubmit={handleSubmit((values) => updateUserInfo(values))}
+            className="grid gap-8"
+          >
             <FormField
               name="name"
               type="text"
               config={config}
               control={control}
             />
-          </FormRow>
-          <FormRow>
             <FormController
               name="image"
               control={control}
@@ -109,18 +111,22 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
                 </InputContent>
               )}
             />
-          </FormRow>
-        </>
+          </form>
+        </FormRow>
       </FormSection>
       <FormActions>
         <Button
           label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
           icon={isSuccess ? IconType.RadixCheck : undefined}
-          type="submit"
+          onClick={() => {
+            formRef.current?.dispatchEvent(
+              new Event('submit', { cancelable: true, bubbles: true })
+            )
+          }}
           theme={ButtonTheme.Success}
           loading={isLoading}
         />
       </FormActions>
-    </form>
+    </>
   )
 }

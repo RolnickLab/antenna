@@ -292,7 +292,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DESCRIPTION]: 'Description',
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
-  [STRING.FIELD_LABEL_EMAIL_NEW]: 'Email new',
+  [STRING.FIELD_LABEL_EMAIL_NEW]: 'New email',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_GENERAL]: 'General configuration',
