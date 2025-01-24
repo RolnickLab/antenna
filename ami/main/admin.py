@@ -58,7 +58,7 @@ class ProjectAdmin(admin.ModelAdmin[Project]):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
-        form.instance.add_member(form.instance.owner)
+        form.instance.ensure_owner_membership()
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")

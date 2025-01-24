@@ -132,7 +132,7 @@ class Project(BaseModel):
     jobs: models.QuerySet["Job"]
     objects = ProjectManager()
 
-    def ensure_owner_is_member(self):
+    def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
             self.members.add(self.owner)
@@ -171,7 +171,7 @@ class Project(BaseModel):
         new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
         # Add owner to members
-        self.ensure_owner_is_member()
+        self.ensure_owner_membership()
         if new_project:
             logger.info(f"Created new project {self}")
             self.create_related_defaults()
