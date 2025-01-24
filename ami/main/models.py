@@ -95,6 +95,19 @@ def create_default_research_site(project: "Project") -> "Site":
     return site
 
 
+class ProjectQuerySet(models.QuerySet):
+    def filter_by_user(self, user):
+        """
+        Filters projects to include only those where the given user is a member.
+        """
+        return self.filter(members=user)
+
+
+class ProjectManager(models.Manager):
+    def get_queryset(self) -> ProjectQuerySet:
+        return ProjectQuerySet(self.model, using=self._db)
+
+
 @final
 class Project(BaseModel):
     """ """
@@ -102,7 +115,8 @@ class Project(BaseModel):
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField()
     image = models.ImageField(upload_to="projects", blank=True, null=True)
-
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
+    members = models.ManyToManyField(User, related_name="user_projects", blank=True)
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
     events: models.QuerySet["Event"]
@@ -116,6 +130,12 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    objects = ProjectManager()
+
+    def ensure_owner_membership(self):
+        """Add owner to members if they are not already a member"""
+        if self.owner and not self.members.filter(id=self.owner.pk).exists():
+            self.members.add(self.owner)
 
     def deployments_count(self) -> int:
         return self.deployments.count()
@@ -150,6 +170,8 @@ class Project(BaseModel):
     def save(self, *args, **kwargs):
         new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
+        # Add owner to members
+        self.ensure_owner_membership()
         if new_project:
             logger.info(f"Created new project {self}")
             self.create_related_defaults()
