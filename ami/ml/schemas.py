@@ -106,8 +106,8 @@ class ProcessingServiceStatusResponse(pydantic.BaseModel):
     request_successful: bool
     pipeline_configs: list[PipelineConfig] = []
     error: str | None = None
-    server_live: bool
-    pipelines_online: list[str] | str
+    server_live: bool | None = None
+    pipelines_online: list[str] | str = "pipelines unavailable"
     endpoint_url: str
     latency: float
 

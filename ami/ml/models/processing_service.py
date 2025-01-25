@@ -102,7 +102,13 @@ class ProcessingService(BaseModel):
             first_response_time = time.time()
             latency = first_response_time - start_time
 
-            return ProcessingServiceStatusResponse(error=error)
+            return ProcessingServiceStatusResponse(
+                timestamp=timestamp,
+                request_successful=False,
+                endpoint_url=self.endpoint_url,
+                error=error,
+                latency=latency,
+            )
 
         pipeline_configs = resp.json()
         server_live = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status")
