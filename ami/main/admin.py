@@ -57,7 +57,25 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
 
-    list_display = ("name", "priority", "active", "created_at", "updated_at")
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.ensure_owner_membership()
+
+    list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
+    list_filter = ("active", "owner")
+    search_fields = ("name", "owner__username", "members__username")
+    filter_horizontal = ("members",)
+
+    fieldsets = (
+        (None, {"fields": ("name", "description", "priority", "active")}),
+        (
+            "Ownership & Access",
+            {
+                "fields": ("owner", "members"),
+                "classes": ("wide",),
+            },
+        ),
+    )
 
     @admin.action(description="Remove duplicate classifications from all detections")
     def _remove_duplicate_classifications(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:

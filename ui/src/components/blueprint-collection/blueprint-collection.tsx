@@ -1,9 +1,11 @@
 import classNames from 'classnames'
+import { LicenseInfo } from 'components/license-info/license-info'
 import { Icon, IconType } from 'design-system/components/icon/icon'
+import { EyeIcon } from 'lucide-react'
+import { buttonVariants, Tooltip } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './blueprint-collection.module.scss'
-import { LicenseInfo } from 'components/license-info/license-info'
 
 export interface BlueprintItem {
   id: string
@@ -24,17 +26,9 @@ export const BlueprintCollection = ({ items }: { items: BlueprintItem[] }) => (
       <LicenseInfo />
     </div>
     <div className={styles.blueprintContent}>
-      {items.map((item) =>
-        item.to ? (
-          <Link key={item.id} to={item.to} className={styles.blueprintItem}>
-            <BlueprintItem item={item} />
-          </Link>
-        ) : (
-          <div key={item.id} className={styles.blueprintItem}>
-            <BlueprintItem item={item} />
-          </div>
-        )
-      )}
+      {items.map((item) => (
+        <BlueprintItem key={item.id} item={item} />
+      ))}
     </div>
   </div>
 )
@@ -46,7 +40,7 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
   })
 
   return (
-    <>
+    <div className={classNames(styles.blueprintItem, 'group')}>
       <div className={styles.blueprintInfo} style={{ width: size.width }}>
         <span className={styles.count}>
           {item.countLabel?.length ? (
@@ -72,8 +66,28 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
             })
           }}
         />
+        {item.to ? (
+          <Tooltip.Provider delayDuration={0}>
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Link
+                  to={item.to}
+                  className={classNames(
+                    buttonVariants({ size: 'icon', variant: 'outline' }),
+                    'hidden w-8 h-8 absolute right-2 bottom-2 group-hover:flex'
+                  )}
+                >
+                  <EyeIcon className="w-4 h-4" />
+                </Link>
+              </Tooltip.Trigger>
+              <Tooltip.Content side="bottom">
+                <span>Show in session capture</span>
+              </Tooltip.Content>
+            </Tooltip.Root>
+          </Tooltip.Provider>
+        ) : null}
       </div>
       <span className={styles.blueprintLabel}>{item.label}</span>
-    </>
+    </div>
   )
 }

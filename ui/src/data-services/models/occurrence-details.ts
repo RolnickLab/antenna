@@ -96,6 +96,10 @@ export class OccurrenceDetails extends Occurrence {
       })
   }
 
+  get endpointURL(): string {
+    return this._occurrence.details
+  }
+
   get detections(): string[] {
     return this._detections
   }
@@ -106,6 +110,10 @@ export class OccurrenceDetails extends Occurrence {
 
   get machinePredictions(): MachinePrediction[] {
     return this._machinePredictions
+  }
+
+  get rawData(): string {
+    return JSON.stringify(this._occurrence, null, 4)
   }
 
   getDetectionInfo(id: string) {
