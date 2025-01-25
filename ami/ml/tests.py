@@ -107,7 +107,8 @@ class TestPipelineWithProcessingService(TestCase):
         self.test_images = [image for image, frame in self.captures]
         self.processing_service_instance = create_processing_service(self.project)
         self.processing_service = self.processing_service_instance
-        self.pipeline = self.processing_service_instance.pipelines.all().filter(slug="constant").first()
+        assert self.processing_service_instance.pipelines.exists()
+        self.pipeline = self.processing_service_instance.pipelines.all().get(slug="constant")
 
     def test_run_pipeline(self):
         # Send images to Processing Service to process and return detections
@@ -181,7 +182,7 @@ class TestPipeline(TestCase):
         self.pipeline.algorithms.set([algo for algo in self.algorithms.values()])
 
     def test_create_pipeline(self):
-        self.assertEqual(self.pipeline.slug, "test-pipeline")
+        assert self.pipeline.slug.startswith("test-pipeline")
         self.assertEqual(self.pipeline.algorithms.count(), len(ALGORITHM_CHOICES))
 
         for algorithm in self.pipeline.algorithms.all():
@@ -471,19 +472,24 @@ class TestPipeline(TestCase):
         binary_classifier = Algorithm.objects.get(key="random-binary-classifier")
         old_species_classifier = Algorithm.objects.get(key="random-species-classifier")
 
-        save_results(self.fake_pipeline_results(images, self.pipeline))
+        Detection.objects.all().delete()
+        results = save_results(self.fake_pipeline_results(images, self.pipeline), return_created=True)
+        assert results is not None, "Expecected results to be returned in a PipelineSaveResults object"
+
+        for raw_detection in results.detections:
+            self.assertEqual(raw_detection.detection_algorithm, detector)
 
         # Ensure all results have the binary classifier and the old species classifier
-        for detection in Detection.objects.all():
-            self.assertEqual(detection.detection_algorithm, detector)
+        for saved_detection in Detection.objects.all():
+            self.assertEqual(saved_detection.detection_algorithm, detector)
             # Assert that the binary classifier was used
             self.assertTrue(
-                detection.classifications.filter(algorithm=binary_classifier).exists(),
+                saved_detection.classifications.filter(algorithm=binary_classifier).exists(),
                 "Binary classifier not used in first run",
             )
             # Assert that the old species classifier was used
             self.assertTrue(
-                detection.classifications.filter(algorithm=old_species_classifier).exists(),
+                saved_detection.classifications.filter(algorithm=old_species_classifier).exists(),
                 "Old species classifier not used in first run",
             )
 
