@@ -95,6 +95,19 @@ def create_default_research_site(project: "Project") -> "Site":
     return site
 
 
+class ProjectQuerySet(models.QuerySet):
+    def filter_by_user(self, user):
+        """
+        Filters projects to include only those where the given user is a member.
+        """
+        return self.filter(members=user)
+
+
+class ProjectManager(models.Manager):
+    def get_queryset(self) -> ProjectQuerySet:
+        return ProjectQuerySet(self.model, using=self._db)
+
+
 @final
 class Project(BaseModel):
     """ """
@@ -102,7 +115,8 @@ class Project(BaseModel):
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField()
     image = models.ImageField(upload_to="projects", blank=True, null=True)
-
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
+    members = models.ManyToManyField(User, related_name="user_projects", blank=True)
     # Backreferences for type hinting
     deployments: models.QuerySet["Deployment"]
     events: models.QuerySet["Event"]
@@ -116,6 +130,12 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    objects = ProjectManager()
+
+    def ensure_owner_membership(self):
+        """Add owner to members if they are not already a member"""
+        if self.owner and not self.members.filter(id=self.owner.pk).exists():
+            self.members.add(self.owner)
 
     def deployments_count(self) -> int:
         return self.deployments.count()
@@ -150,6 +170,8 @@ class Project(BaseModel):
     def save(self, *args, **kwargs):
         new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
+        # Add owner to members
+        self.ensure_owner_membership()
         if new_project:
             logger.info(f"Created new project {self}")
             self.create_related_defaults()
@@ -602,11 +624,21 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
-        last_updated = self.updated_at or timezone.now()
+        if self.pk:
+            events_last_updated = min(
+                [
+                    self.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
+                    or datetime.datetime.max,
+                    self.updated_at,
+                ]
+            )
+        else:
+            events_last_updated = datetime.datetime.min
+
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
             # @TODO Use "dirty" flag strategy to only update when needed
-            new_or_updated_captures = self.captures.filter(updated_at__gte=last_updated).count()
+            new_or_updated_captures = self.captures.filter(updated_at__gte=events_last_updated).count()
             deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
             if new_or_updated_captures or deleted_captures:
                 ami.tasks.regroup_events.delay(self.pk)
@@ -896,13 +928,20 @@ def group_images_into_events(
             f"Duration: {event.duration_label()}"
         )
 
+    logger.info(
+        f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
+    )
+
     if delete_empty:
-        delete_empty_events()
+        logger.info("Deleting empty events for deployment")
+        delete_empty_events(deployment=deployment)
 
     for event in events:
         # Set the width and height of all images in each event based on the first image
+        logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
+    logger.info("Checking for unusual statistics of events")
     events_over_24_hours = Event.objects.filter(
         deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
     )
@@ -916,10 +955,14 @@ def group_images_into_events(
             f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
         )
 
+    logger.info("Updating relevant cached fields on deployment")
+    deployment.events_count = len(events)
+    deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+
     return events
 
 
-def delete_empty_events(dry_run=False):
+def delete_empty_events(deployment: Deployment, dry_run=False):
     """
     Delete events that have no images, occurrences or other related records.
     """
@@ -931,8 +974,14 @@ def delete_empty_events(dry_run=False):
     #     if f.one_to_many or f.one_to_one or (f.many_to_many and f.auto_created)
     # ]
 
-    events = Event.objects.annotate(num_images=models.Count("captures")).filter(num_images=0)
-    events = events.annotate(num_occurrences=models.Count("occurrences")).filter(num_occurrences=0)
+    events = (
+        Event.objects.filter(deployment=deployment)
+        .annotate(
+            num_images=models.Count("captures"),
+            num_occurrences=models.Count("occurrences"),
+        )
+        .filter(num_images=0, num_occurrences=0)
+    )
 
     if dry_run:
         for event in events:

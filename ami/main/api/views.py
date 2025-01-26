@@ -10,11 +10,12 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.request import Request
@@ -44,6 +45,7 @@ from ..models import (
     SourceImageCollection,
     SourceImageUpload,
     Taxon,
+    User,
     update_detection_counts,
 )
 from .serializers import (
@@ -121,6 +123,18 @@ class ProjectViewSet(DefaultViewSet):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
 
+    def get_queryset(self):
+        qs: QuerySet = super().get_queryset()
+        # Filter projects by `user_id`
+        user_id = self.request.query_params.get("user_id")
+        if user_id:
+            user = User.objects.filter(pk=user_id).first()
+            if not user == self.request.user:
+                raise PermissionDenied("You can only view your projects")
+            if user:
+                qs = qs.filter_by_user(user)
+        return qs
+
     def get_serializer_class(self):
         """
         Return different serializers for list and detail views.
@@ -129,6 +143,30 @@ class ProjectViewSet(DefaultViewSet):
             return ProjectListSerializer
         else:
             return ProjectSerializer
+
+    def perform_create(self, serializer):
+        # Check if user is authenticated
+        if not self.request.user or not self.request.user.is_authenticated:
+            raise PermissionDenied("You must be authenticated to create a project.")
+
+        # Add current user as project owner
+        serializer.save(owner=self.request.user)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="user_id",
+                description=(
+                    "Filters projects to show only those associated with the specified user ID. "
+                    "If omitted, no user-specific filter is applied."
+                ),
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class DeploymentViewSet(DefaultViewSet):
@@ -1453,7 +1491,8 @@ class StorageSourceViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
         project = get_active_project(self.request)
-        query_set = query_set.filter(project=project)
+        if project:
+            query_set = query_set.filter(project=project)
         return query_set
 
     @extend_schema(parameters=[project_id_doc_param])

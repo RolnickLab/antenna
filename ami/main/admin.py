@@ -56,7 +56,25 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
 
-    list_display = ("name", "priority", "active", "created_at", "updated_at")
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.ensure_owner_membership()
+
+    list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
+    list_filter = ("active", "owner")
+    search_fields = ("name", "owner__username", "members__username")
+    filter_horizontal = ("members",)
+
+    fieldsets = (
+        (None, {"fields": ("name", "description", "priority", "active")}),
+        (
+            "Ownership & Access",
+            {
+                "fields": ("owner", "members"),
+                "classes": ("wide",),
+            },
+        ),
+    )
 
     @admin.action(description="Remove duplicate classifications from all detections")
     def _remove_duplicate_classifications(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:
@@ -115,13 +133,11 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         self.message_user(request, msg)
 
     # Action that regroups all captures in the deployment into events
-    @admin.action(description="Regroup captures into events")
+    @admin.action(description="Regroup captures into events (async)")
     def regroup_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        from ami.main.models import group_images_into_events
-
-        for deployment in queryset:
-            group_images_into_events(deployment)
-        self.message_user(request, f"Regrouped {queryset.count()} deployments.")
+        queued_tasks = [tasks.regroup_events.delay(deployment.pk) for deployment in queryset]
+        msg = f"Regrouping captures into events for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        self.message_user(request, msg)
 
     list_filter = ("project",)
     actions = [sync_captures, regroup_events]

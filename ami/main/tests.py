@@ -62,7 +62,7 @@ class TestImageGrouping(TestCase):
         for event in events:
             event.captures.all().delete()
 
-        delete_empty_events()
+        delete_empty_events(deployment=self.deployment)
 
         remaining_events = Event.objects.filter(pk__in=[event.pk for event in events])
 
@@ -882,3 +882,25 @@ class TestProjectSettingsFiltering(APITestCase):
         exepcted_device_ids = {device.id for device in Device.objects.filter(project=project)}
         response_device_ids = {device.get("id") for device in response_data["results"]}
         self.assertEqual(response_device_ids, exepcted_device_ids)
+
+
+class TestProjectOwnerAutoAssignment(APITestCase):
+    def setUp(self) -> None:
+        self.user_1 = User.objects.create_user(
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.user_2 = User.objects.create_user(
+            email="testuser2@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+        self.client.force_authenticate(user=self.user_1)
+        return super().setUp()
+
+    def test_can_auto_assign_project_owner(self):
+        project_endpoint = "/api/v2/projects/"
+        request = {"name": "Test Project1234", "description": "Test Description"}
+        self.client.post(project_endpoint, request)
+        project = Project.objects.filter(name=request["name"]).first()
+        self.assertEqual(self.user_1.id, project.owner.id)
