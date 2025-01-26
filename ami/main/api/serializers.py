@@ -740,9 +740,16 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
         ]
 
 
+class ClassificationPredictionItemSerializer(serializers.Serializer):
+    taxon = TaxonNestedSerializer(read_only=True)
+    score = serializers.FloatField(read_only=True)
+    logit = serializers.FloatField(read_only=True)
+
+
 class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
+    top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = Classification
@@ -754,12 +761,20 @@ class ClassificationSerializer(DefaultSerializer):
             "algorithm",
             "scores",
             "logits",
+            "top_n",
             "created_at",
             "updated_at",
         ]
 
 
 class ClassificationWithTaxaSerializer(ClassificationSerializer):
+    """
+    Return all possible taxa objects in the category map with the classification.
+
+    This is slow for large category maps.
+    It's recommended to retrieve and cache the category map with taxa ahead of time.
+    """
+
     taxa = TaxonNestedSerializer(many=True, read_only=True)
 
     class Meta(ClassificationSerializer.Meta):

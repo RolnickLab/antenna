@@ -1804,6 +1804,7 @@ class Classification(BaseModel):
         "ml.Algorithm",
         on_delete=models.SET_NULL,
         null=True,
+        related_name="classifications",
     )
     # job = models.CharField(max_length=255, null=True)
 
@@ -1824,6 +1825,16 @@ class Classification(BaseModel):
         return (
             f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id} ({terminal})"
         )
+
+    def top_scores_with_index(self, n: int | None = None) -> typing.Iterable[tuple[int, float]]:
+        """
+        Return the scores with their index, but sorted by score.
+        """
+        if self.scores:
+            top_scores_by_index = sorted(enumerate(self.scores), key=lambda x: x[1], reverse=True)[:n]
+            return top_scores_by_index
+        else:
+            return []
 
     def predictions(self, sort=True) -> typing.Iterable[tuple[str, float]]:
         """
@@ -1865,6 +1876,25 @@ class Classification(BaseModel):
         category_data_with_taxa = self.category_map.with_taxa()
         taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
         return taxa_sorted_by_index
+
+    def top_n(self, n: int = 3) -> list[dict[str, "Taxon | float | None"]]:
+        """Return top N taxa and scores for this classification."""
+        if not self.category_map:
+            raise ValueError("Classification must have a category map to get top N.")
+
+        top_scored = self.top_scores_with_index(n)  # (index, score) pairs
+        indexes = [idx for idx, _ in top_scored]
+        category_data = self.category_map.with_taxa(only_indexes=indexes)
+        index_to_taxon = {cat["index"]: cat["taxon"] for cat in category_data}
+
+        return [
+            {
+                "taxon": index_to_taxon[i],
+                "score": s,
+                "logit": self.logits[i] if self.logits else None,
+            }
+            for i, s in top_scored
+        ]
 
     def save(self, *args, **kwargs):
         """

@@ -58,7 +58,7 @@ class AlgorithmCategoryMap(BaseModel):
         # Can use JSON containment operators
         return self.data.index(next(category for category in self.data if category[label_field] == label))
 
-    def with_taxa(self, category_field="label"):
+    def with_taxa(self, category_field="label", only_indexes: list[int] | None = None):
         """
         Add Taxon objects to the category map, or None if no match
 
@@ -71,14 +71,21 @@ class AlgorithmCategoryMap(BaseModel):
 
         from ami.main.models import Taxon
 
-        taxa = Taxon.objects.filter(models.Q(name__in=self.labels) | models.Q(search_names__overlap=self.labels))
+        if only_indexes:
+            labels_data = [self.data[i] for i in only_indexes]
+            labels_label = [self.labels[i] for i in only_indexes]
+        else:
+            labels_data = self.data
+            labels_label = self.labels
+
+        taxa = Taxon.objects.filter(models.Q(name__in=labels_label) | models.Q(search_names__overlap=labels_label))
         taxon_map = {taxon.name: taxon for taxon in taxa}
 
-        for category in self.data:
+        for category in labels_data:
             taxon = taxon_map.get(category[category_field])
             category["taxon"] = taxon
 
-        return self.data
+        return labels_data
 
     def save(self, *args, **kwargs):
         if not self.labels_hash:

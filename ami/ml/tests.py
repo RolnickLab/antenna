@@ -156,6 +156,32 @@ class TestPipelineWithProcessingService(TestCase):
             assert detection.occurrence
             assert detection.occurrence.determination in classification_taxa
 
+    def test_alignment_of_predictions_and_category_map(self):
+        # Ensure that the scores and labels are aligned
+        pipeline = self.processing_service_instance.pipelines.all().get(slug="random")
+        pipeline_response = pipeline.process_images(self.test_images)
+        results = save_results(pipeline_response, return_created=True)
+        assert results is not None, "Expecected results to be returned in a PipelineSaveResults object"
+        assert results.classifications, "Expected classifications to be returned in the results"
+        for classification in results.classifications:
+            assert classification.scores
+            taxa_with_scores = list(classification.predictions_with_taxa(sort=True))
+            assert taxa_with_scores
+            assert classification.score == taxa_with_scores[0][1]
+            assert classification.taxon == taxa_with_scores[0][0]
+
+    def test_top_n_alignment(self):
+        # Ensure that the top_n parameter works
+        pipeline = self.processing_service_instance.pipelines.all().get(slug="random")
+        pipeline_response = pipeline.process_images(self.test_images)
+        results = save_results(pipeline_response, return_created=True)
+        assert results is not None, "Expecected results to be returned in a PipelineSaveResults object"
+        assert results.classifications, "Expected classifications to be returned in the results"
+        for classification in results.classifications:
+            top_n = classification.top_n(n=3)
+            assert classification.score == top_n[0]["score"]
+            assert classification.taxon == top_n[0]["taxon"]
+
 
 class TestPipeline(TestCase):
     def setUp(self):
