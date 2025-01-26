@@ -12,10 +12,15 @@ from ami.main.api.views import DefaultViewSet
 from ami.main.models import SourceImage
 from ami.utils.requests import get_active_project, project_id_doc_param
 
-from .models.algorithm import Algorithm
+from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
-from .serializers import AlgorithmSerializer, PipelineSerializer, ProcessingServiceSerializer
+from .serializers import (
+    AlgorithmCategoryMapSerializer,
+    AlgorithmSerializer,
+    PipelineSerializer,
+    ProcessingServiceSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +40,22 @@ class AlgorithmViewSet(DefaultViewSet):
         "version",
     ]
     search_fields = ["name"]
+
+
+class AlgorithmCategoryMapViewSet(DefaultViewSet):
+    """
+    API endpoint that allows algorithm category maps to be viewed or edited.
+    """
+
+    queryset = AlgorithmCategoryMap.objects.all()
+    serializer_class = AlgorithmCategoryMapSerializer
+    filterset_fields = ["algorithms"]
+    ordering_fields = [
+        "algorithms",
+        "created_at",
+        "updated_at",
+        "version",
+    ]
 
 
 class PipelineViewSet(DefaultViewSet):

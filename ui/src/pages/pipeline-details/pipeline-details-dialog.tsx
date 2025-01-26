@@ -64,8 +64,8 @@ const PipelineDetailsContent = ({
           <FormSection title={translate(STRING.SUMMARY)}>
             <FormRow>
               <InputValue
-                label={translate(STRING.FIELD_LABEL_ID)}
-                value={pipeline.id}
+                label={translate(STRING.FIELD_LABEL_SLUG)}
+                value={pipeline.slug}
               />
               <InputValue
                 label={translate(STRING.FIELD_LABEL_VERSION)}

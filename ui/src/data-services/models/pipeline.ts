@@ -96,6 +96,11 @@ export class Pipeline {
 
   get processingServicesOnlineLastChecked(): string | undefined {
     const processingServices = this._pipeline.processing_services
+
+    if (!processingServices.length) {
+      return undefined
+    }
+
     const last_checked_times = []
     for (const processingService of processingServices) {
       last_checked_times.push(
