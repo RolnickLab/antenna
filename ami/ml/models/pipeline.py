@@ -278,15 +278,30 @@ def get_or_create_algorithm_and_category_map(
 
     algo, _created = Algorithm.objects.get_or_create(
         key=algorithm_config.key,
+        version=algorithm_config.version,
         defaults={
             "name": algorithm_config.name,
             "task_type": algorithm_config.task_type,
-            "version": algorithm_config.version,
             "version_name": algorithm_config.version_name,
             "uri": algorithm_config.uri,
             "category_map": category_map or None,
         },
     )
+
+    # Update fields that may have changed in the processing service, with a warning
+    fields_to_update = {
+        "task_type": algorithm_config.task_type,
+        "uri": algorithm_config.uri,
+        "category_map": category_map,
+    }
+    fields_updated = []
+    for field in fields_to_update:
+        new_value = fields_to_update[field]
+        if getattr(algo, field) != new_value:
+            logger.warning(f"Field '{field}' changed for algorithm {algo} from {getattr(algo, field)} to {new_value}")
+            setattr(algo, field, new_value)
+            fields_updated.append(field)
+    algo.save(update_fields=fields_updated)
 
     if not algo.category_map or len(algo.category_map.data) == 0:
         # Update existing algorithm that is missing a category map
