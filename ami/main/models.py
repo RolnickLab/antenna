@@ -1868,7 +1868,7 @@ class Detection(BaseModel):
         null=True,
         blank=True,
     )
-    # Time that the detection was created by the algorithm in the ML backend
+    # Time that the detection was created by the algorithm in the processing service
     detection_time = models.DateTimeField(null=True, blank=True)
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)

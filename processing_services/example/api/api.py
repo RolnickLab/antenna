@@ -7,13 +7,12 @@ import time
 
 import fastapi
 
-from .pipeline import DummyPipeline
+from .pipeline import ConstantPipeline, DummyPipeline
 from .schemas import (
+    AlgorithmConfig,
     PipelineConfig,
     PipelineRequest,
     PipelineResponse,
-    PipelineStage,
-    PipelineStageParam,
     SourceImage,
     SourceImageResponse,
 )
@@ -22,19 +21,29 @@ logger = logging.getLogger(__name__)
 
 app = fastapi.FastAPI()
 
-pipeline = PipelineConfig(
-    name="Pipeline 1",
-    slug="pipeline1",
-    stages=[
-        PipelineStage(
-            name="Stage 1",
-            key="stage1",
-            params=[PipelineStageParam(name="Panama Moths", key="panama", category="Classifier")],
-        )
+pipeline1 = PipelineConfig(
+    name="ML Dummy Pipeline",
+    slug="dummy",
+    version=1,
+    algorithms=[
+        AlgorithmConfig(name="Dummy Detector", key="1"),
+        AlgorithmConfig(name="Random Detector", key="2"),
+        AlgorithmConfig(name="Always Moth Classifier", key="3"),
     ],
 )
 
-pipelines = [pipeline]
+pipeline2 = PipelineConfig(
+    name="ML Constant Pipeline",
+    slug="constant",
+    version=1,
+    algorithms=[
+        AlgorithmConfig(name="Dummy Detector", key="1"),
+        AlgorithmConfig(name="Random Detector", key="2"),
+        AlgorithmConfig(name="Always Moth Classifier", key="3"),
+    ],
+)
+
+pipelines = [pipeline1, pipeline2]
 
 
 @app.get("/")
@@ -50,26 +59,34 @@ async def info() -> list[PipelineConfig]:
 # Check if the server is online
 @app.get("/livez", tags=["health checks"])
 async def livez():
-    return fastapi.responses.JSONResponse(status_code=200, content={"status": "ok"})
+    return fastapi.responses.JSONResponse(status_code=200, content={"status": True})
 
 
-# Check if the server is ready to process data
+# Check if the pipelines are ready to process data
 @app.get("/readyz", tags=["health checks"])
 async def readyz():
     if pipelines:
-        return fastapi.responses.JSONResponse(status_code=200, content={"status": "ok"})
+        return fastapi.responses.JSONResponse(
+            status_code=200, content={"status": [pipeline.slug for pipeline in pipelines]}
+        )
     else:
         return fastapi.responses.JSONResponse(status_code=503, content={"status": "pipelines unavailable"})
 
 
-@app.post("/pipeline/process", tags=["services"])  # @TODO: Future change use @app.post("/{pipeline_name}/process/")
+@app.post("/process_images", tags=["services"])
 async def process(data: PipelineRequest) -> PipelineResponse:
+    pipeline_slug = data.pipeline
+
     source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
 
     start_time = time.time()
 
-    pipeline = DummyPipeline(source_images=source_images)
+    if pipeline_slug == "constant":
+        pipeline = ConstantPipeline(source_images=source_images)  # returns same detections
+    else:
+        pipeline = DummyPipeline(source_images=source_images)  # returns random detections
+
     try:
         results = pipeline.run()
     except Exception as e:

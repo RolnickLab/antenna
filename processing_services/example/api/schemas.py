@@ -102,7 +102,7 @@ class SourceImageResponse(pydantic.BaseModel):
     url: str
 
 
-PipelineChoice = typing.Literal["dummy"]
+PipelineChoice = typing.Literal["dummy", "constant"]
 
 
 class PipelineRequest(pydantic.BaseModel):
@@ -148,10 +148,17 @@ class PipelineStage(pydantic.BaseModel):
     description: str | None = None
 
 
+class AlgorithmConfig(pydantic.BaseModel):
+    name: str
+    key: str
+
+
 class PipelineConfig(pydantic.BaseModel):
     """A configurable pipeline."""
 
     name: str
     slug: str
+    version: int
     description: str | None = None
+    algorithms: list[AlgorithmConfig] = []
     stages: list[PipelineStage] = []

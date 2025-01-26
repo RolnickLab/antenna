@@ -1,10 +1,12 @@
 import datetime
 
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
+from ami.base.serializers import reverse_with_params
 from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
-from ami.ml.models import Algorithm, Pipeline
+from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, save_results
 from ami.ml.schemas import (
     BoundingBox,
@@ -13,19 +15,101 @@ from ami.ml.schemas import (
     PipelineResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_ml_pipeline, setup_test_project
+from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
+from ami.users.models import User
 
 
-class TestPipelineWithMLBackend(TestCase):
+class TestProcessingServiceAPI(APITestCase):
+    """
+    Test the Processing Services API endpoints.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Processing Service Test Project")
+
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+
+    def _create_processing_service(self, name: str, endpoint_url: str):
+        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        self.client.force_authenticate(user=self.user)
+        processing_service_data = {
+            "project": self.project.pk,
+            "name": name,
+            "endpoint_url": endpoint_url,
+        }
+        resp = self.client.post(processing_services_create_url, processing_service_data)
+        self.client.force_authenticate(user=None)
+        self.assertEqual(resp.status_code, 201)
+        return resp.json()
+
+    def _delete_processing_service(self, processing_service_id: int):
+        processing_services_delete_url = reverse_with_params(
+            "api:processing-service-detail", kwargs={"pk": processing_service_id}
+        )
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.delete(processing_services_delete_url)
+        self.client.force_authenticate(user=None)
+        self.assertEqual(resp.status_code, 204)
+        return resp
+
+    def _register_pipelines(self, processing_service_id):
+        processing_services_register_pipelines_url = reverse_with_params(
+            "api:processingservice-register-pipelines", args=[processing_service_id]
+        )
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post(processing_services_register_pipelines_url)
+        data = resp.json()
+        self.assertEqual(data["success"], True)
+        return data
+
+    def test_create_processing_service(self):
+        self._create_processing_service(
+            name="Processing Service Test",
+            endpoint_url="http://processing_service:2000",
+        )
+
+    def test_project_was_added(self):
+        response = self._create_processing_service(
+            name="Processing Service Test",
+            endpoint_url="http://processing_service:2000",
+        )
+        processing_service_id = response["id"]
+        processing_service = ProcessingService.objects.get(pk=processing_service_id)
+        self.assertIn(self.project, processing_service.projects.all())
+
+    def test_processing_service_pipeline_registration(self):
+        # register a processing service
+        response = self._create_processing_service(
+            name="Processing Service Test",
+            endpoint_url="http://processing_service:2000",
+        )
+        processing_service_id = response["id"]
+
+        # sync the processing service to create/add the associate pipelines
+        response = self._register_pipelines(processing_service_id)
+        processing_service = ProcessingService.objects.get(pk=processing_service_id)
+        pipelines_queryset = processing_service.pipelines.all()
+
+        self.assertEqual(pipelines_queryset.count(), len(response["pipelines"]))
+
+
+class TestPipelineWithProcessingService(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
         self.test_images = [image for image, frame in self.captures]
-        self.pipeline = create_ml_pipeline(self.project)
+        self.processing_service_instance = create_processing_service(self.project)
+        self.processing_service = self.processing_service_instance
+        self.pipeline = self.processing_service_instance.pipelines.all().filter(slug="constant").first()
 
     def test_run_pipeline(self):
-        # Send images to ML backend to process and return detections
-        pipeline_response = self.pipeline.process_images(self.test_images)
+        # Send images to Processing Service to process and return detections
+        assert self.pipeline
+        pipeline_response = self.pipeline.process_images(self.test_images, job_id=None)
         assert pipeline_response.detections
 
 
@@ -172,7 +256,7 @@ class TestPipeline(TestCase):
         # @TODO enable test when a pipeline is added to the CI environment in PR #576
         pass
 
-    def test_unknown_algorithm_returned_by_backend(self):
+    def test_unknown_algorithm_returned_by_processing_service(self):
         fake_results = self.fake_pipeline_results(self.test_images, self.pipeline)
 
         new_detector_name = "Unknown Detector 5.1b-mobile"
@@ -218,7 +302,7 @@ class TestPipeline(TestCase):
         # print(fake_results)
         # print("END FAKE RESULTS")
 
-        saved_objects = save_results(fake_results)
+        saved_objects = save_results(fake_results) or []
         saved_detections = [obj for obj in saved_objects if isinstance(obj, Detection)]
         saved_classifications = [obj for obj in saved_objects if isinstance(obj, Classification)]
 

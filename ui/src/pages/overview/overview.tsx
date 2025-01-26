@@ -13,6 +13,7 @@ import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
 import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
+import { ProcessingServices } from './processing-services/processing-services'
 import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
 
@@ -86,6 +87,10 @@ export const Overview = () => {
             value="devices"
             label={translate(STRING.TAB_ITEM_DEVICES)}
           />
+          <Tabs.Trigger
+            value="processingServices"
+            label={translate(STRING.TAB_ITEM_PROCESSING_SERVICES)}
+          />
         </Tabs.List>
         <Tabs.Content value="summary">
           <Summary project={project} />
@@ -114,6 +119,9 @@ export const Overview = () => {
             type="device"
             tooltip={translate(STRING.TOOLTIP_DEVICE_TYPE)}
           />
+        </Tabs.Content>
+        <Tabs.Content value="processingServices">
+          <ProcessingServices />
         </Tabs.Content>
       </Tabs.Root>
     </>

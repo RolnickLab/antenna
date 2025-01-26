@@ -21,6 +21,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.processing_service import ProcessingService
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
 
@@ -37,44 +38,35 @@ def update_site_settings(**kwargs):
     return site
 
 
-def create_ml_pipeline(project):
-    from ami.ml.models import Algorithm, Pipeline
+def create_processing_service(project):
+    processing_service_to_add = {
+        "name": "Test Processing Service",
+        "projects": [{"name": project.name}],
+        "endpoint_url": "http://processing_service:2000",
+    }
 
-    pipelines_to_add = [
-        {
-            "name": "ML Dummy Backend",
-            "slug": "dummy",
-            "version": 1,
-            "algorithms": [
-                {"name": "Dummy Detector", "key": 1},
-                {"name": "Random Detector", "key": 2},
-                {"name": "Always Moth Classifier", "key": 3},
-            ],
-            "projects": {"name": project.name},
-            "endpoint_url": "http://ml_backend:2000/pipeline/process",
-        },
-    ]
+    processing_service, created = ProcessingService.objects.get_or_create(
+        name=processing_service_to_add["name"],
+        endpoint_url=processing_service_to_add["endpoint_url"],
+    )
+    processing_service.save()
 
-    for pipeline_data in pipelines_to_add:
-        pipeline, created = Pipeline.objects.get_or_create(
-            name=pipeline_data["name"],
-            slug=pipeline_data["slug"],
-            version=pipeline_data["version"],
-            endpoint_url=pipeline_data["endpoint_url"],
-        )
+    if created:
+        logger.info(f'Successfully created processing service with {processing_service_to_add["endpoint_url"]}.')
+    else:
+        logger.info(f'Using existing processing service with {processing_service_to_add["endpoint_url"]}.')
 
-        if created:
-            logger.info(f'Successfully created {pipeline_data["name"]}.')
-        else:
-            logger.info(f'Using existing pipeline {pipeline_data["name"]}.')
+    for project_data in processing_service_to_add["projects"]:
+        try:
+            project = Project.objects.get(name=project_data["name"])
+            processing_service.projects.add(project)
+            processing_service.save()
+        except Exception:
+            logger.error(f'Could not find project {project_data["name"]}.')
 
-        for algorithm_data in pipeline_data["algorithms"]:
-            algorithm, _ = Algorithm.objects.get_or_create(name=algorithm_data["name"], key=algorithm_data["key"])
-            pipeline.algorithms.add(algorithm)
-        pipeline.projects.add(project)
-        pipeline.save()
+    processing_service.create_pipelines()
 
-    return pipeline
+    return processing_service
 
 
 def create_deployment(
@@ -108,7 +100,7 @@ def create_test_project(name: str | None) -> Project:
     project = Project.objects.create(name=name)
     data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
     create_deployment(project, data_source, f"Test Deployment {short_id}")
-    create_ml_pipeline(project)
+    create_processing_service(project)
     return project
 
 
@@ -273,6 +265,7 @@ def create_detections(
             timestamp=source_image.timestamp,
             bbox=bbox,
         )
+        assert source_image.deployment
         taxon = Taxon.objects.filter(projects=source_image.deployment.project).order_by("?").first()
         if taxon:
             detection.classifications.create(

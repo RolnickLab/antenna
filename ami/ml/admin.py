@@ -4,6 +4,7 @@ from ami.main.admin import AdminBase
 
 from .models.algorithm import Algorithm
 from .models.pipeline import Pipeline
+from .models.processing_service import ProcessingService
 
 
 @admin.register(Algorithm)
@@ -57,3 +58,13 @@ class PipelineAdmin(AdminBase):
         # See https://pypi.org/project/django-json-widget/
         # models.JSONField: {"widget": JSONInput},
     }
+
+
+@admin.register(ProcessingService)
+class ProcessingServiceAdmin(AdminBase):
+    list_display = [
+        "id",
+        "name",
+        "endpoint_url",
+        "created_at",
+    ]

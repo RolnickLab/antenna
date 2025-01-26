@@ -62,6 +62,60 @@ class PipelineRequest(pydantic.BaseModel):
 class PipelineResponse(pydantic.BaseModel):
     # pipeline: PipelineChoice
     pipeline: str
-    total_time: float
+    total_time: float | None
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
+    errors: list | str | None = None
+
+
+class PipelineStageParam(pydantic.BaseModel):
+    """A configurable parameter of a stage of a pipeline."""
+
+    name: str
+    key: str
+    category: str = "default"
+
+
+class PipelineStage(pydantic.BaseModel):
+    """A configurable stage of a pipeline."""
+
+    key: str
+    name: str
+    params: list[PipelineStageParam] = []
+    description: str | None = None
+
+
+class AlgorithmConfig(pydantic.BaseModel):
+    name: str
+    key: str
+
+
+class PipelineConfig(pydantic.BaseModel):
+    """A configurable pipeline."""
+
+    name: str
+    slug: str
+    version: int
+    description: str | None = None
+    algorithms: list[AlgorithmConfig] = []
+    stages: list[PipelineStage] = []
+
+
+class ProcessingServiceStatusResponse(pydantic.BaseModel):
+    timestamp: datetime.datetime
+    request_successful: bool
+    pipeline_configs: list[PipelineConfig] = []
+    error: str | None = None
+    server_live: bool | None = None
+    pipelines_online: list[str] | str = "pipelines unavailable"
+    endpoint_url: str
+    latency: float
+
+
+class PipelineRegistrationResponse(pydantic.BaseModel):
+    timestamp: datetime.datetime
+    success: bool
+    error: str | None = None
+    pipelines: list[PipelineConfig] = []
+    pipelines_created: list[str] = []
+    algorithms_created: list[str] = []
