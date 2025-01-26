@@ -482,10 +482,10 @@ def get_or_create_taxon_for_classification(
 
     :return: The Taxon object
     """
-    taxa_list, _created = TaxaList.objects.get_or_create(
+    taxa_list, created = TaxaList.objects.get_or_create(
         name=f"Taxa returned by {algorithm.name}",
     )
-    if _created:
+    if created:
         logger.info(f"Created new taxa list {taxa_list}")
     else:
         logger.debug(f"Using existing taxa list {taxa_list}")
@@ -493,14 +493,17 @@ def get_or_create_taxon_for_classification(
     # Get top label from classification scores
     assert algorithm.category_map, f"No category map found for algorithm {algorithm}"
     label_data: dict = algorithm.category_map.data[classification_resp.scores.index(max(classification_resp.scores))]
-    taxon, _created = Taxon.objects.get_or_create(
-        name=classification_resp.classification,
-        defaults={
-            "name": classification_resp.classification,
-            "rank": label_data.get("taxon_rank", TaxonRank.UNKNOWN),
-        },
-    )
-    if _created:
+    returned_taxon_name = classification_resp.classification
+    # @TOOD standardize the Taxon search / lookup. See similar query in ml.models.algorithm.AlgorithmCategoryMap
+    taxon = Taxon.objects.filter(
+        models.Q(name=returned_taxon_name) | models.Q(search_names__overlap=[returned_taxon_name]),
+        active=True,
+    ).first()
+    if not taxon:
+        taxon = Taxon.objects.create(
+            name=returned_taxon_name,
+            rank=label_data.get("taxon_rank", TaxonRank.UNKNOWN),
+        )
         logger.info(f"Registered new taxon {taxon}")
 
     taxa_list.taxa.add(taxon)

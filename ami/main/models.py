@@ -2573,6 +2573,7 @@ class Taxon(BaseModel):
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
     inat_taxon_id = models.BigIntegerField("iNaturalist taxon ID", blank=True, null=True)
+    # lepsai_id = models.BigIntegerField("LepsAI / Fieldguide ID", blank=True, null=True)
 
     notes = models.TextField(blank=True)
 

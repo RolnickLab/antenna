@@ -78,7 +78,12 @@ class AlgorithmCategoryMap(BaseModel):
             labels_data = self.data
             labels_label = self.labels
 
-        taxa = Taxon.objects.filter(models.Q(name__in=labels_label) | models.Q(search_names__overlap=labels_label))
+        # @TODO standardize species search / lookup.
+        # See similar query in ml.models.pipeline.get_or_create_taxon_for_classification()
+        taxa = Taxon.objects.filter(
+            models.Q(name__in=labels_label) | models.Q(search_names__overlap=labels_label),
+            active=True,
+        )
         taxon_map = {taxon.name: taxon for taxon in taxa}
 
         for category in labels_data:
