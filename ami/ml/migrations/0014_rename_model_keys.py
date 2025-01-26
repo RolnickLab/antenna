@@ -2,7 +2,10 @@
 
 import random
 import string
+import logging
 from django.db import migrations
+
+logger = logging.getLogger(__name__)
 
 
 def rename_algorithm_keys(apps, schema_editor):
@@ -15,11 +18,13 @@ def rename_algorithm_keys(apps, schema_editor):
     algorithms = Algorithm.objects.all()
     for algorithm in algorithms:
         new_key = algorithm.key.replace("-", "_")
-        if Algorithm.objects.filter(key=new_key).exists():
+        if Algorithm.objects.filter(key=new_key).exclude(id=algorithm.pk).exists():
             # Add random 6 char suffix to avoid clashes
             new_key += "_" + "".join(random.choices(string.ascii_lowercase, k=6))
-        algorithm.key = new_key
-        algorithm.save()
+        if algorithm.key != new_key:
+            logger.info(f"Renaming algorithm key {algorithm.key} to {new_key} for algorithm {algorithm}")
+            algorithm.key = new_key
+            algorithm.save()
 
 
 class Migration(migrations.Migration):
