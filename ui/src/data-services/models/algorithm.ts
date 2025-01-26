@@ -27,6 +27,10 @@ export class Algorithm {
     return this._algorithm.name
   }
 
+  get key(): string {
+    return this._algorithm.key
+  }
+
   get uri(): string {
     return this._algorithm.uri
   }
