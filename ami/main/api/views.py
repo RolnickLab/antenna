@@ -1080,6 +1080,7 @@ class TaxonViewSet(DefaultViewSet):
                 taxa = (
                     Taxon.objects.select_related("parent", "parent__parent")
                     .annotate(similarity=TrigramSimilarity("name", query))
+                    .filter(active=True)
                     .order_by("-similarity")[:limit]
                 )
                 return Response(TaxonNestedSerializer(taxa, many=True, context={"request": request}).data)
@@ -1088,6 +1089,7 @@ class TaxonViewSet(DefaultViewSet):
                     Taxon.objects.filter(name__icontains=query)
                     .annotate(similarity=TrigramSimilarity("name", query))
                     .order_by("-similarity")[:default_results_limit]
+                    .filter(active=True)
                     .values("id", "name", "rank")[:limit]
                 )
                 return Response(TaxonSearchResultSerializer(taxa, many=True, context={"request": request}).data)

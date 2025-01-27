@@ -348,6 +348,10 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
     )
     list_filter = ("lists", "rank", TaxonParentFilter)
     search_fields = ("name",)
+    autocomplete_fields = (
+        "parent",
+        "synonym_of",
+    )
 
     # annotate queryset with occurrence counts and allow sorting
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.list_display
