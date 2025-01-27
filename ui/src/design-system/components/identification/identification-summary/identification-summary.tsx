@@ -44,7 +44,10 @@ export const IdentificationSummary = ({
     )}
     {identification.score && (
       <div className={styles.details}>
-        <span>{`${identification.score.toPrecision(4)}`}</span>
+        <span>
+          {translate(STRING.FIELD_LABEL_SCORE)}{' '}
+          {`${identification.score.toPrecision(4)}`}
+        </span>
         {identification.terminal !== undefined && (
           <span>
             {' | '}
