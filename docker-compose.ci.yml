@@ -8,7 +8,7 @@ services:
       - postgres
       - redis
       - minio-init
-      - processing_service
+      - ml_backend
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -43,10 +43,8 @@ services:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
 
-  processing_service:
+  ml_backend:
     build:
       context: ./processing_services/example
     volumes:
-      - ./processing_services/example/:/app:processing_service
-    ports:
-      - "2000:2000"
+      - ./processing_services/example/:/app
