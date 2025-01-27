@@ -6,6 +6,7 @@ from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
 from django.utils.formats import number_format
+from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
@@ -53,8 +54,8 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 
 
 @admin.register(Project)
-class ProjectAdmin(admin.ModelAdmin[Project]):
-    """Admin panel example for ``Project`` model."""
+class ProjectAdmin(GuardedModelAdmin):
+    """Admin panel for ``Project`` model."""
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
