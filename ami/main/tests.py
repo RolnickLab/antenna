@@ -3,6 +3,7 @@ import logging
 
 from django.db import connection, models
 from django.test import TestCase
+from guardian.shortcuts import get_perms
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
@@ -904,3 +905,167 @@ class TestProjectOwnerAutoAssignment(APITestCase):
         self.client.post(project_endpoint, request)
         project = Project.objects.filter(name=request["name"]).first()
         self.assertEqual(self.user_1.id, project.owner.id)
+
+
+class TestProjectPermissions(APITestCase):
+    def _create_project(self, owner, member):
+        self.project = Project.objects.create(name="T Project", description="Test Description", owner=owner)
+        self.project.members.add(member)
+
+    def setUp(self) -> None:
+        # Create users
+        self.superuser = User.objects.create_superuser(
+            email="superuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+        self.owner = User.objects.create_user(email="owner@insectai.org", is_staff=True)
+        self.new_owner = User.objects.create_user(email="new_owner@insectai.org", is_staff=False)
+        self.member = User.objects.create_user(email="member@insectai.org", is_staff=False)
+        self.other_user = User.objects.create_user(email="other@insectai.org", is_staff=False)
+        # Create a staff user
+        self.staff_user = User.objects.create_user(
+            email="staffuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+        # Create a regular user
+        self.regular_user = User.objects.create_user(
+            email="regularuser@insectai.org",
+            password="password123",
+        )
+
+        # API endpoint for creating projects
+        self.project_create_endpoint = "/api/v2/projects/"
+        # Create a project
+        self._create_project(self.owner, self.member)
+        # Setup the request factory and authenticate as owner by default
+        self.factory = APIRequestFactory()
+
+    def test_owner_permissions(self):
+        # Owner has view, change, and delete permissions
+        self.assertTrue(self.owner.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.DELETE, self.project))
+        # test permissions from the API
+        self.client.force_authenticate(user=self.owner)
+
+        # Owner can view, update, and delete the project
+        response = self.client.get(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.patch(f"/api/v2/projects/{self.project.id}/", {"name": "Updated Project"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.delete(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_member_permissions(self):
+        # Member has view and change permissions, but not delete
+        self.assertTrue(self.member.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertTrue(self.member.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertFalse(self.member.has_perm(Project.Permissions.DELETE, self.project))
+
+        # test permissions from the API
+        # create the project
+        self._create_project(self.owner, self.member)
+
+        # Authenticate as member
+        self.client.force_authenticate(user=self.member)
+
+        # Member can view and update, but not delete
+        response = self.client.get(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.patch(f"/api/v2/projects/{self.project.id}/", {"name": "Updated Again"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.delete(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_other_user_permissions(self):
+        # Other users only have view permissions
+        self.assertTrue(self.other_user.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.DELETE, self.project))
+
+        # test permissions from the API
+        # Authenticate as other_user
+        self.client.force_authenticate(user=self.other_user)
+
+        # Other users can only view
+        response = self.client.get(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.put(f"/api/v2/projects/{self.project.id}/", {"name": "Should Fail"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        response = self.client.delete(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_permissions_on_owner_change(self):
+        """Test permissions update when the project owner is changed."""
+
+        self._create_project(self.owner, self.member)
+        # Change the owner
+        self.project.owner = self.new_owner
+        self.project.save()
+
+        # Check the new owner has the owner permissions
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.DELETE, self.project))
+        # Check the old owner no longer has owner permissions
+        self.assertFalse(self.owner.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertFalse(self.owner.has_perm(Project.Permissions.DELETE, self.project))
+
+    def test_permissions_on_member_removal(self):
+        """Test permissions are removed when a user is no longer a member of the project."""
+        # Remove the member from the project
+        self.project.members.remove(self.member)
+
+        # Check the removed member no longer has permissions
+        self.assertFalse(self.member.has_perm(Project.Permissions.CHANGE, self.project))
+
+    def test_superuser_has_all_permissions(self):
+        # Log in as the superuser
+        self.client.force_authenticate(user=self.superuser)
+
+        # Get all permissions for the superuser on the project
+        superuser_permissions = get_perms(self.superuser, self.project)
+
+        # Assert that the superuser has all object-level permissions
+        project_permissions = [
+            Project.Permissions.VIEW,
+            Project.Permissions.CHANGE,
+            Project.Permissions.DELETE,
+        ]
+        for perm in project_permissions:
+            self.assertIn(perm, superuser_permissions)
+
+    def test_superuser_can_create_project(self):
+        """Ensure a superuser can create a project."""
+        self.client.force_authenticate(user=self.superuser)
+        data = {"name": "Superuser Project", "description": "Created by superuser"}
+        response = self.client.post(self.project_create_endpoint, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_staff_user_can_create_project(self):
+        """Ensure a staff user can create a project."""
+        self.client.force_authenticate(user=self.staff_user)
+        data = {"name": "Staff User Project", "description": "Created by staff user"}
+        response = self.client.post(self.project_create_endpoint, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_regular_user_cannot_create_project(self):
+        """Ensure a regular user cannot create a project."""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {"name": "Regular User Project", "description": "Created by regular user"}
+        response = self.client.post(self.project_create_endpoint, data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_user_cannot_create_project(self):
+        """Ensure an anonymous user cannot create a project."""
+        data = {"name": "Anonymous User Project", "description": "Created by anonymous user"}
+        response = self.client.post(self.project_create_endpoint, data)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
