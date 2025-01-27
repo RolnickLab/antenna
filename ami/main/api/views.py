@@ -24,7 +24,7 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermissions
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
@@ -122,6 +122,7 @@ class ProjectViewSet(DefaultViewSet):
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
+    permission_classes = [ObjectPermissions]
 
     def get_queryset(self):
         qs: QuerySet = super().get_queryset()

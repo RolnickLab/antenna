@@ -176,6 +176,12 @@ class Project(BaseModel):
             logger.info(f"Created new project {self}")
             self.create_related_defaults()
 
+    class Permissions:
+        VIEW = "view_project"
+        CHANGE = "change_project"
+        DELETE = "delete_project"
+        ADD = "add_project"
+
     class Meta:
         ordering = ["-priority", "created_at"]
 
