@@ -40,7 +40,13 @@ export const Projects = () => {
         isFetching={isFetching}
       >
         {user.loggedIn ? (
-          <Tabs.Root onValueChange={setSelectedTab} value={selectedTab}>
+          <Tabs.Root
+            onValueChange={(value) => {
+              setSelectedTab(value)
+              setPage(0)
+            }}
+            value={selectedTab}
+          >
             <Tabs.List>
               <Tabs.Trigger
                 label={translate(STRING.TAB_ITEM_MY_PROJECTS)}
