@@ -40,7 +40,6 @@ def add_object_level_permissions(user: User | None, response_data: dict) -> dict
 
     @TODO @IMPORTANT At least check if they are the owner of the project.
     """
-    logger.info(f"add_object_level_permissions response data {response_data}")
     permissions = response_data.get("user_permissions", set())
 
     if user and is_active_staff(user):
