@@ -48,7 +48,7 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
             <span>{item.countLabel}</span>
           </span>
         ) : null}
-        <span style={{ flex: 1, textAlign: 'right' }}>{item.timeLabel}</span>
+        <span className={styles.time}>{item.timeLabel}</span>
       </div>
       <div className={styles.blueprintImage}>
         <img

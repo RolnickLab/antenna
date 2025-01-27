@@ -71,6 +71,12 @@
     gap: 6px;
   }
 
+  .time {
+    flex: 1;
+    color: $color-neutral-300;
+    text-align: right;
+  }
+
   .blueprintLabel {
     white-space: pre-wrap;
     text-align: center;
