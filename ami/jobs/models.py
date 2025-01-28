@@ -406,6 +406,7 @@ class MLJob(JobType):
                 results = job.pipeline.process_images(
                     images=chunk,
                     job_id=job.pk,
+                    project_id=job.project.pk,
                 )
                 job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
             except Exception as e:
