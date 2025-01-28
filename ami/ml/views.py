@@ -1,5 +1,6 @@
 import logging
 
+from django.db.models import Prefetch
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
@@ -75,8 +76,14 @@ class PipelineViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
         project = get_active_project(self.request)
+        # If pipelines are filtered by project, also filter processing services by project
         if project:
-            query_set = query_set.filter(projects=project)
+            query_set = query_set.filter(projects=project).prefetch_related(
+                Prefetch(
+                    "processing_services",
+                    queryset=ProcessingService.objects.filter(projects=project.id),
+                )
+            )
         return query_set
 
     @extend_schema(parameters=[project_id_doc_param])
