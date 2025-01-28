@@ -113,13 +113,13 @@ class TestPipelineWithProcessingService(TestCase):
     def test_run_pipeline(self):
         # Send images to Processing Service to process and return detections
         assert self.pipeline
-        pipeline_response = self.pipeline.process_images(self.test_images, job_id=None)
+        pipeline_response = self.pipeline.process_images(self.test_images, job_id=None, project_id=self.project.pk)
         assert pipeline_response.detections
 
     def test_created_category_maps(self):
         # Send images to ML backend to process and return detections
         assert self.pipeline
-        pipeline_response = self.pipeline.process_images(self.test_images)
+        pipeline_response = self.pipeline.process_images(self.test_images, project_id=self.project.pk)
         save_results(pipeline_response, return_created=True)
 
         source_images = SourceImage.objects.filter(pk__in=[image.id for image in pipeline_response.source_images])
@@ -173,7 +173,7 @@ class TestPipelineWithProcessingService(TestCase):
     def test_top_n_alignment(self):
         # Ensure that the top_n parameter works
         pipeline = self.processing_service_instance.pipelines.all().get(slug="random")
-        pipeline_response = pipeline.process_images(self.test_images)
+        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk)
         results = save_results(pipeline_response, return_created=True)
         assert results is not None, "Expecected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
