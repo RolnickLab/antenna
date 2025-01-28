@@ -125,3 +125,24 @@ def save_model_instances(app_label: str, model_name: str, pks: list[int | str], 
     result = all(results)
     if not result:
         logger.error(f"Failed to save all {len(instance_pks)} instances of {app_label}.{model_name}")
+
+
+@celery_app.task(soft_time_limit=10, time_limit=20)
+def check_processing_services_online():
+    """
+    Check the status of all processing services and update last checked.
+    """
+    from ami.ml.models import ProcessingService
+
+    logger.info("Checking if processing services are online.")
+
+    services = ProcessingService.objects.all()
+
+    for service in services:
+        logger.info(f"Checking service {service}")
+        try:
+            status_response = service.get_status()
+            logger.info(status_response)
+        except Exception as e:
+            logger.error(f"Error checking service {service}: {e}")
+            continue
