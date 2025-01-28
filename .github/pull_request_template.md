@@ -9,7 +9,9 @@ Brief description of what this PR does. (tl;dr).
 
 ### Related Issues
 If the PR closes or is related to an issue, reference it here.
-For example, "Closes #123", "Fixes #456" or "Relates to #741" .
+For example, "Closes #<ISSUE_NUMBER>", "Fixes #<ISSUE_NUMBER>" or "Relates to #<ISSUE_NUMBER>" .
+
+See [Github Keywords](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/using-keywords-in-issues-and-pull-requests) for more information on this
 
 ## Detailed Description
 A clear and detailed description of the changes, how they solve/fix the related issues.
