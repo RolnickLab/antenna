@@ -159,7 +159,7 @@ class TestPipelineWithProcessingService(TestCase):
     def test_alignment_of_predictions_and_category_map(self):
         # Ensure that the scores and labels are aligned
         pipeline = self.processing_service_instance.pipelines.all().get(slug="random")
-        pipeline_response = pipeline.process_images(self.test_images)
+        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk)
         results = save_results(pipeline_response, return_created=True)
         assert results is not None, "Expecected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
