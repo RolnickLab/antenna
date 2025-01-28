@@ -4,6 +4,7 @@ from django.db.models import Prefetch
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
+from rest_framework import exceptions as api_exceptions
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -105,7 +106,11 @@ class PipelineViewSet(DefaultViewSet):
         )  # TODO: Filter images by projects user has access to
         if not random_image:
             return Response({"error": "No image found to process."}, status=status.HTTP_404_NOT_FOUND)
-        results = pipeline.process_images(images=[random_image], job_id=None)
+
+        project = pipeline.projects.first()
+        if not project:
+            raise api_exceptions.ValidationError("Pipeline has no project associated with it.")
+        results = pipeline.process_images(images=[random_image], project_id=project.pk, job_id=None)
         return Response(results.dict())
 
 
