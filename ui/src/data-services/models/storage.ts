@@ -7,6 +7,10 @@ export class StorageSource extends Entity {
     super(entity)
   }
 
+  get accessKey(): string {
+    return this._data.access_key
+  }
+
   get bucket(): string {
     return this._data.bucket
   }
