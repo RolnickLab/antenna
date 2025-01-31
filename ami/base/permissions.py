@@ -31,7 +31,7 @@ class IsActiveStaffOrReadOnly(permissions.BasePermission):
         )
 
 
-def add_object_level_permissions(user: User | None, response_data: dict) -> dict:
+def add_object_level_permissions(user, project, response_data: dict) -> dict:
     """
     Add placeholder permissions to detail views and nested objects.
 
@@ -40,12 +40,17 @@ def add_object_level_permissions(user: User | None, response_data: dict) -> dict
 
     @TODO @IMPORTANT At least check if they are the owner of the project.
     """
+
     permissions = response_data.get("user_permissions", set())
 
     if user and is_active_staff(user):
         permissions.update(["update"])
         if user.is_superuser:
             permissions.update(["delete"])
+    if project:
+        user_permissions = get_generic_permissions(user, project)
+        permissions.update(set(user_permissions))
+
     response_data["user_permissions"] = permissions
     return response_data
 
@@ -73,7 +78,13 @@ def get_generic_permissions(user, obj):
     """
     permissions = get_perms(user, obj)
     mapping = {"view": "view", "change": "update", "add": "create", "delete": "delete"}
-    result = [mapping[perm.split("_")[0]] for perm in permissions]
+    result = []
+    for perm in permissions:
+        if perm.split("_")[0] in mapping:
+            result.append(mapping[perm.split("_")[0]])
+        else:
+            result.append(perm)
+
     # allow view for all users
     if "view" not in result:
         result.append("view")
@@ -95,6 +106,7 @@ class ObjectPermissions(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         user = request.user
         permissions = get_generic_permissions(user, obj)
+
         # Map ViewSet actions to permissions
         view_action_map = {
             "retrieve": "view",

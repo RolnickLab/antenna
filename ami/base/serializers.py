@@ -1,3 +1,4 @@
+import logging
 import typing
 import urllib.parse
 
@@ -7,7 +8,11 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
 
+from ami.base.views import ProjectMixin
+
 from .permissions import add_object_level_permissions
+
+logger = logging.getLogger(__name__)
 
 
 def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
@@ -40,14 +45,16 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     url_field_name = "details"
     id = serializers.IntegerField(read_only=True)
 
-    def get_permissions(self, instance_data):
+    def get_permissions(self, instance, instance_data):
         request = self.context.get("request")
+        view = self.context.get("view")
+        project = view.get_active_project() if isinstance(view, ProjectMixin) else None
         user = request.user if request else None
-        return add_object_level_permissions(user, instance_data)
+        return add_object_level_permissions(user, project, instance_data)
 
     def to_representation(self, instance):
         instance_data = super().to_representation(instance)
-        instance_data = self.get_permissions(instance_data)
+        instance_data = self.get_permissions(instance, instance_data)
         return instance_data
 
 

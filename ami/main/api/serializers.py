@@ -2,9 +2,7 @@ import datetime
 
 from django.db.models import QuerySet
 from rest_framework import serializers
-from rest_framework.serializers import SerializerMethodField
 
-from ami.base.permissions import get_generic_permissions
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
 from ami.main.models import create_source_image_from_upload
@@ -254,7 +252,6 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
 
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
-    user_permissions = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Project
@@ -267,23 +264,13 @@ class ProjectListSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "image",
-            "user_permissions",
         ]
-
-    def to_representation(self, instance):
-        return serializers.HyperlinkedModelSerializer.to_representation(self, instance)
-
-    def get_user_permissions(self, obj):
-        """Calculate object-level permissions for the current user."""
-        user = self.context["request"].user
-
-        return get_generic_permissions(user, obj)
 
 
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
     owner = UserNestedSerializer(read_only=True)
-    user_permissions = SerializerMethodField(read_only=True)
+    # user_permissions = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Project
@@ -291,17 +278,7 @@ class ProjectSerializer(DefaultSerializer):
             "deployments",
             "summary_data",  # @TODO move to a 2nd request, it's too slow
             "owner",
-            "user_permissions",
         ]
-
-    def to_representation(self, instance):
-        return serializers.HyperlinkedModelSerializer.to_representation(self, instance)
-
-    def get_user_permissions(self, obj):
-        """Calculate object-level permissions for the current user."""
-        user = self.context["request"].user
-
-        return get_generic_permissions(user, obj)
 
 
 class SourceImageQuickListSerializer(DefaultSerializer):

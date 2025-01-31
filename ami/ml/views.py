@@ -1,15 +1,16 @@
 from django.db.models.query import QuerySet
 from drf_spectacular.utils import extend_schema
 
+from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
-from ami.utils.requests import get_active_project, project_id_doc_param
+from ami.utils.requests import project_id_doc_param
 
 from .models.algorithm import Algorithm
 from .models.pipeline import Pipeline
 from .serializers import AlgorithmSerializer, PipelineSerializer
 
 
-class AlgorithmViewSet(DefaultViewSet):
+class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows algorithm (ML models) to be viewed or edited.
     """
@@ -26,11 +27,12 @@ class AlgorithmViewSet(DefaultViewSet):
     search_fields = ["name"]
 
 
-class PipelineViewSet(DefaultViewSet):
+class PipelineViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows pipelines to be viewed or edited.
     """
 
+    require_project = False
     queryset = Pipeline.objects.prefetch_related("algorithms").all()
     serializer_class = PipelineSerializer
     ordering_fields = [
@@ -42,7 +44,7 @@ class PipelineViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(projects=project)
         return query_set

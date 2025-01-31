@@ -7,9 +7,10 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
-from ami.utils.requests import get_active_project, project_id_doc_param
+from ami.utils.requests import project_id_doc_param
 
 from .models import Job, JobState, MLJob
 from .serializers import JobListSerializer, JobSerializer
@@ -17,7 +18,7 @@ from .serializers import JobListSerializer, JobSerializer
 logger = logging.getLogger(__name__)
 
 
-class JobViewSet(DefaultViewSet):
+class JobViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows jobs to be viewed or edited.
 
@@ -64,6 +65,7 @@ class JobViewSet(DefaultViewSet):
         "source_image_collection",
         "pipeline",
     ]
+    require_project = False
 
     def get_serializer_class(self):
         """
@@ -129,7 +131,7 @@ class JobViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             jobs = jobs.filter(project=project)
         cutoff_hours = IntegerField(required=False, min_value=0).clean(

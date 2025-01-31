@@ -26,7 +26,8 @@ from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermissions
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
-from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
+from ami.base.views import ProjectMixin
+from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -114,7 +115,7 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
 
-class ProjectViewSet(DefaultViewSet):
+class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows projects to be viewed or edited.
     """
@@ -123,6 +124,7 @@ class ProjectViewSet(DefaultViewSet):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermissions]
+    require_project = False
 
     def get_queryset(self):
         qs: QuerySet = super().get_queryset()
@@ -170,7 +172,7 @@ class ProjectViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class DeploymentViewSet(DefaultViewSet):
+class DeploymentViewSet(DefaultViewSet, ProjectMixin):
     """
     A model viewset that uses different serializers
     for the list and detail views.
@@ -199,7 +201,7 @@ class DeploymentViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             qs = qs.filter(project=project)
         num_example_captures = 10
@@ -250,7 +252,7 @@ class DeploymentViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class EventViewSet(DefaultViewSet):
+class EventViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows events to be viewed or edited.
     """
@@ -270,6 +272,7 @@ class EventViewSet(DefaultViewSet):
         "taxa_count",
         "duration",
     ]
+    require_project = False
 
     def get_serializer_class(self):
         """
@@ -282,7 +285,7 @@ class EventViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             qs = qs.filter(project=project)
         qs = qs.filter(deployment__isnull=False)
@@ -588,7 +591,7 @@ class SourceImageViewSet(DefaultViewSet):
             raise api_exceptions.ValidationError(detail="Source image must be associated with a project")
 
 
-class SourceImageCollectionViewSet(DefaultViewSet):
+class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for viewing collections or samples of source images.
     """
@@ -615,7 +618,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         classification_threshold = get_active_classification_threshold(self.request)
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(
@@ -728,7 +731,7 @@ class SourceImageUploadViewSet(DefaultViewSet):
     pagination_class.default_limit = 20
 
 
-class DetectionViewSet(DefaultViewSet):
+class DetectionViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows detections to be viewed or edited.
     """
@@ -942,7 +945,7 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
-class OccurrenceViewSet(DefaultViewSet):
+class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
     """
@@ -980,6 +983,7 @@ class OccurrenceViewSet(DefaultViewSet):
         "detections_count",
         "created_at",
     ]
+    require_project = False
 
     def get_serializer_class(self):
         """
@@ -991,7 +995,7 @@ class OccurrenceViewSet(DefaultViewSet):
             return OccurrenceSerializer
 
     def get_queryset(self) -> QuerySet:
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         qs = super().get_queryset()
         if project:
             qs = qs.filter(project=project)
@@ -1027,7 +1031,7 @@ class OccurrenceViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class TaxonViewSet(DefaultViewSet):
+class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
     """
@@ -1054,6 +1058,7 @@ class TaxonViewSet(DefaultViewSet):
         "name",
     ]
     search_fields = ["name", "parent__name"]
+    require_project = False
 
     @action(detail=False, methods=["get"], name="suggest")
     def suggest(self, request):
@@ -1107,7 +1112,7 @@ class TaxonViewSet(DefaultViewSet):
         """
 
         occurrence_id = self.request.query_params.get("occurrence")
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
             "occurrences__deployment"
         )
@@ -1273,7 +1278,7 @@ class ClassificationViewSet(DefaultViewSet):
     ]
 
 
-class SummaryView(GenericAPIView):
+class SummaryView(GenericAPIView, ProjectMixin):
     permission_classes = [IsActiveStaffOrReadOnly]
 
     @extend_schema(parameters=[project_id_doc_param])
@@ -1281,7 +1286,7 @@ class SummaryView(GenericAPIView):
         """
         Return counts of all models.
         """
-        project = get_active_project(request)
+        project = self.get_active_project()
         confidence_threshold = get_active_classification_threshold(request)
         if project:
             data = {
@@ -1418,7 +1423,7 @@ class IdentificationViewSet(DefaultViewSet):
         serializer.save(user=self.request.user)
 
 
-class SiteViewSet(DefaultViewSet):
+class SiteViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows sites to be viewed or edited.
     """
@@ -1434,7 +1439,7 @@ class SiteViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         return query_set
@@ -1444,7 +1449,7 @@ class SiteViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class DeviceViewSet(DefaultViewSet):
+class DeviceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows devices to be viewed or edited.
     """
@@ -1460,7 +1465,7 @@ class DeviceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         return query_set
@@ -1475,7 +1480,7 @@ class StorageSourceConnectionTestSerializer(serializers.Serializer):
     regex_filter = serializers.CharField(required=False, allow_null=True)
 
 
-class StorageSourceViewSet(DefaultViewSet):
+class StorageSourceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows storage sources to be viewed or edited.
     """
@@ -1491,7 +1496,7 @@ class StorageSourceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         return query_set
