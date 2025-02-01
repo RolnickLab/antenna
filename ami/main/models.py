@@ -41,6 +41,9 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 
 
 class TaxonRank(OrderedEnum):
+    KINGDOM = "KINGDOM"
+    PHYLUM = "PHYLUM"
+    CLASS = "CLASS"
     ORDER = "ORDER"
     SUPERFAMILY = "SUPERFAMILY"
     FAMILY = "FAMILY"
@@ -54,6 +57,9 @@ class TaxonRank(OrderedEnum):
 
 DEFAULT_RANKS = sorted(
     [
+        TaxonRank.KINGDOM,
+        TaxonRank.PHYLUM,
+        TaxonRank.CLASS,
         TaxonRank.ORDER,
         TaxonRank.FAMILY,
         TaxonRank.SUBFAMILY,
@@ -2569,6 +2575,8 @@ class Taxon(BaseModel):
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
+    common_name_en = models.CharField(max_length=255, blank=True, null=True)
+
     search_names = ArrayField(models.CharField(max_length=255), null=True, blank=True)
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
@@ -2711,10 +2719,15 @@ class Taxon(BaseModel):
 
         current_taxon = self
         parents = []
+        logger.debug(f"Updating parents for {current_taxon} (#{current_taxon.pk})")
         while current_taxon.parent is not None:
-            parents.append(
-                TaxonParent(id=current_taxon.parent.id, name=current_taxon.parent.name, rank=current_taxon.parent.rank)
+            taxon_parent = TaxonParent(
+                id=current_taxon.parent.id,
+                name=current_taxon.parent.name,
+                rank=current_taxon.parent.rank,
             )
+            logger.debug(f"Adding parent {taxon_parent} to {current_taxon} (#{current_taxon.pk}) in parents_json")
+            parents.append(taxon_parent)
             current_taxon = current_taxon.parent
         # Sort parents by rank using ordered enum
         parents = sorted(parents, key=lambda t: t.rank)
@@ -2723,6 +2736,22 @@ class Taxon(BaseModel):
             self.save()
 
         return parents
+
+    def update_search_names(self, save=False):
+        """
+        Add common names to the search names list.
+
+        @TODO add synonyms and other names to the search names list.
+        """
+        search_names = self.search_names or []
+        common_name_field_names = [field.name for field in self._meta.fields if field.name.startswith("common_name_")]
+        for field_name in common_name_field_names:
+            common_name = getattr(self, field_name)
+            if common_name:
+                search_names.append(common_name)
+        self.search_names = list(set(search_names))
+        if save:
+            self.save(update_fields=["search_names"])
 
     class Meta:
         ordering = [
@@ -2743,6 +2772,7 @@ class Taxon(BaseModel):
     def update_calculated_fields(self, save=False):
         self.display_name = self.get_display_name()
         self.update_parents(save=False)
+        self.update_search_names(save=False)
         if save:
             self.save(update_calculated_fields=False)
 
@@ -2765,6 +2795,39 @@ class TaxaList(BaseModel):
     class Meta:
         ordering = ["-created_at"]
         verbose_name_plural = "Taxa Lists"
+
+
+# @final
+# class TaxonCommonName(BaseModel):
+#     """
+#     A common name for a taxon.
+#
+#     The default common name will have no region/country code and no language code, or the most common language code.
+#     A common name with a region/country code or language code will take priority when available and applicable.
+#
+#     @TODO add tests for this model
+#     """
+#
+#     taxon = models.ForeignKey(Taxon, on_delete=models.CASCADE, related_name="common_names")
+#     name = models.CharField(max_length=255)
+#     lang_code = models.CharField(max_length=255, blank=True, default="en", help_text="ISO 639-1 language code")
+#     iso_country_code = models.CharField(max_length=255, blank=True, help_text="ISO 3166-1 alpha-2 country code")
+#     usage_notes = models.TextField(blank=True)
+#     source = models.CharField(max_length=255, blank=True)
+#
+#     # @TODO consider adding GADM fields for more specific regional common names (west vs. east USA)
+#     # gadm_level = models.IntegerField(
+#     #     blank=True,
+#     #     null=True,
+#     #     help_text="GADM administrative level (0 = country, 1 = state, 2 = county, etc.)",
+#     # )
+#     # gadm_code = models.CharField(max_length=255, blank=True, help_text="GADM administrative code")
+#
+#     class Meta:
+#         ordering = ["name"]
+#         verbose_name_plural = "Taxon Common Names"
+#
+#         unique_together = ["taxon", "lang_code", "iso_country_code"]
 
 
 @final
