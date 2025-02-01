@@ -332,7 +332,7 @@ class TaxonParentFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         # return Taxon.objects.exclude(rank="SPECIES").values_list("id", "name")
-        choices = [(taxon.pk, str(taxon)) for taxon in Taxon.objects.exclude(rank__in=["SPECIES", "GENUS"])]
+        choices = [(taxon.pk, str(taxon)) for taxon in Taxon.objects.exclude(rank__in=["SPECIES", "GENUS", "UNKNOWN"])]
         return choices
 
     def queryset(self, request, queryset):
