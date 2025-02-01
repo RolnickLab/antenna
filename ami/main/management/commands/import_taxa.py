@@ -25,7 +25,11 @@ logger.setLevel(logging.INFO)
 # url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQLlxfuzZHrHEeHFXmhjtngy0JFqhdOju-wJGNOCWSAbtsIpoZ8OoQFvW6IsqUaUA/pub?gid=1847011020&single=true&output=csv" # noqa
 
 # Panama genera
-# https://docs.google.com/spreadsheets/d/e/2PACX-1vQFY_FmkjS1GYpNccRQaRMt4I7yIXmErieu5LMK23HZLsBUbfBXtOr749vMfD9qJfpmTJSnAPrp3hGp/pub?gid=409403959&single=true&output=csv
+# https://docs.google.com/spreadsheets/d/e/2PACX-1vQFY_FmkjS1GYpNccRQaRMt4I7yIXmErieu5LMK23HZLsBUbfBXtOr749vMfD9qJfpmTJSnAPrp3hGp/pub?gid=409403959&single=true&output=csv # noqa
+
+# Arthropod upper ranks
+# https://docs.google.com/spreadsheets/d/e/2PACX-1vRzHE3kjjIc8iWV1Be4hlTUBU4M1oD7R5h3imEZcsO5C2MWLlk40FolNfkAZiQetyhxm7ya6DDPd9Ye/pub?gid=0&single=true&output=csv # noqa
+# docker compose  run --rm django python manage.py import_taxa --format csv https://docs.google.com/spreadsheets/d/e/2PACX-1vRzHE3kjjIc8iWV1Be4hlTUBU4M1oD7R5h3imEZcsO5C2MWLlk40FolNfkAZiQetyhxm7ya6DDPd9Ye/pub\?gid\=0\&single\=true\&output\=csv --list upper-ranks  # noqa
 
 
 def read_csv(fname: str) -> list[dict]:
@@ -136,14 +140,22 @@ def fix_values(taxon_data: dict) -> dict:
     return taxon_data
 
 
-def create_root_taxon() -> Taxon:
+def get_or_create_root_taxon() -> Taxon:
+    """
+    Important! This is where the root taxon is configured.
+    """
     root_taxon_parent, created = Taxon.objects.get_or_create(
-        name="Lepidoptera", rank="ORDER", defaults={"ordering": 0}
+        name="Arthropoda", rank=TaxonRank.PHYLUM.name, defaults={"ordering": 0}
     )
     if created:
         logger.info(f"Created root taxon {root_taxon_parent}")
     else:
         logger.info(f"Found existing root taxon {root_taxon_parent}")
+    if root_taxon_parent.parent:
+        # If the root taxon has a parent, remove it
+        # Otherwise, the root taxon will not be the root and there will be recursion issues
+        root_taxon_parent.parent = None
+        root_taxon_parent.save()
     return root_taxon_parent
 
 
@@ -235,20 +247,27 @@ class Command(BaseCommand):
             with tqdm():
                 taxalist.taxa.all().delete()
 
-        root_taxon_parent = create_root_taxon()
+        root_taxon_parent = get_or_create_root_taxon()
 
         total_created_taxa = 0
         total_updated_taxa = 0
+        taxa_to_refresh: set[Taxon] = set()
 
         for i, taxon_data in enumerate(tqdm(incoming_taxa)):
             num_keys_with_values = len([key for key, value in taxon_data.items() if value])
             logger.debug(f"Importing row {i} of {len(incoming_taxa)} with {num_keys_with_values} keys")
+            # Skip rows with no data
+            if num_keys_with_values == 0:
+                logger.debug(f"Skipping row {i} with no data")
+                continue
             # Add all entries to taxalist
             taxon_data = fix_columns(taxon_data)
             taxon_data = fix_values(taxon_data)
             logger.debug(f"Parsed taxon data: {taxon_data}")
             if taxon_data:
                 created_taxa, updated_taxa = self.create_taxon(taxon_data, root_taxon_parent)
+                taxa_to_refresh.update(created_taxa)
+                taxa_to_refresh.update(updated_taxa)
                 if created_taxa:
                     logger.debug(f"Created {len(created_taxa)} taxa from incoming row {i}")
                     taxalist.taxa.add(*created_taxa)
@@ -264,15 +283,15 @@ class Command(BaseCommand):
         logger.info(f"Created {total_created_taxa} total taxa")
         logger.info(f"Updated {total_updated_taxa} total taxa")
 
-        logger.info("Updating display names for all taxa in list")
-        with tqdm():
-            Taxon.objects.update_display_names(Taxon.objects.filter(lists=taxalist))
-
         # Ensure the root taxon still exists and has no parent
         root = Taxon.objects.root()
         if not root:
             root_taxon_parent.parent = None
             root_taxon_parent.save()
+
+        logger.info("Updating cached values for all new or updated taxa")
+        for taxon in tqdm(taxa_to_refresh):
+            taxon.save(update_calculated_fields=True)
 
     def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon]]:
         taxa_in_row = []
@@ -309,7 +328,7 @@ class Command(BaseCommand):
                     if not created:
                         logger.warn(f"Rank of existing {taxon} is {taxon.rank}, changing to {rank}")
                     taxon.rank = rank
-                    taxon.save()
+                    taxon.save(update_calculated_fields=False)
                     if not created:
                         updated_taxa.add(taxon)
 
@@ -325,7 +344,7 @@ class Command(BaseCommand):
                         if not created:
                             logger.warn(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
                         taxon.parent = parent
-                        taxon.save()
+                        taxon.save(update_calculated_fields=False)
                         if not created:
                             updated_taxa.add(taxon)
 
@@ -355,6 +374,7 @@ class Command(BaseCommand):
             "gbif_taxon_key",
             "bold_taxon_bin",
             "inat_taxon_id",
+            "common_name_en",
             "notes",
             "sort_phylogeny",
         ]
@@ -373,7 +393,7 @@ class Command(BaseCommand):
                     setattr(specific_taxon, column, taxon_data[column])
                     needs_update = True
         if needs_update:
-            specific_taxon.save()
+            specific_taxon.save(update_calculated_fields=False)
             if not is_new:
                 # raise ValueError(f"TAXON DATA CHANGED for {specific_taxon}")
                 logger.warn(f"TAXON DATA CHANGED for existing {specific_taxon} ({specific_taxon.id})")
@@ -394,5 +414,7 @@ class Command(BaseCommand):
                 specific_taxon.synonym_of = accepted_taxon
                 specific_taxon.save()
                 updated_taxa.add(specific_taxon)
+
+        #
 
         return created_taxa, updated_taxa
