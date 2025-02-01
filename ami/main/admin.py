@@ -248,6 +248,15 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "updated_at",
     )
 
+    list_filter = (
+        "project",
+        "deployment",
+        "determination__rank",
+        "created_at",
+    )
+    search_fields = ("determination__name", "determination__search_names")
+    autocomplete_fields = ("determination",)
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
         qs = qs.select_related("determination", "project", "deployment", "event")
