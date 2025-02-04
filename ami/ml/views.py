@@ -129,7 +129,12 @@ class ProcessingServiceViewSet(DefaultViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # immediately get status after creating a processing service
+        instance = serializer.instance
+        status_response = instance.get_status()
+        return Response(
+            {"instance": serializer.data, "status": status_response.dict()}, status=status.HTTP_201_CREATED
+        )
 
     @action(detail=True, methods=["get"])
     def status(self, request: Request, pk=None) -> Response:
