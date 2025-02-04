@@ -28,7 +28,7 @@ from ami.base.permissions import (
     CanDeleteOccurrence,
     CanUpdateIdentification,
     IsActiveStaffOrReadOnly,
-    ObjectPermissions,
+    ProjectCRUDPermissions,
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
@@ -128,7 +128,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
-    permission_classes = [ObjectPermissions]
+    permission_classes = [ProjectCRUDPermissions]
     require_project = False
 
     def get_queryset(self):
@@ -1405,7 +1405,7 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
-class IdentificationViewSet(DefaultViewSet, ProjectMixin):
+class IdentificationViewSet(DefaultViewSet):
     """
     API endpoint that allows identifications to be viewed or edited.
     """

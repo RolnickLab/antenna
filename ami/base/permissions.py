@@ -93,78 +93,38 @@ def get_generic_permissions(user, obj):
     return result
 
 
-class CanCreateProject(permissions.BasePermission):
-    """Custom permission to check if the user can create a project."""
+class ProjectCRUDPermissions(permissions.BasePermission):
+    """A single permission class to handle Create, Retrieve, Update, and Delete permissions for Projects."""
 
     def has_permission(self, request, view):
+        """Handles permissions at the global level (before accessing an object)."""
+
+        # Allow all users to retrieve projects
+        if view.action == "retrieve":
+            return True
+
+        # Create permission (only staff, superusers, or users with ADD permission)
         if view.action == "create":
             return request.user.is_staff or request.user.is_superuser or request.user.has_perm(Project.Permissions.ADD)
 
-
-class CanRetrieveProject(permissions.BasePermission):
-    """Custom permission to check if the user can retrieve a project."""
-
-    def has_permission(self, request, view):
-        return True
+        return True  # Allow other actions (handled at object level)
 
     def has_object_permission(self, request, view, obj):
+        """Handles permissions at the object level (for retrieve, update and delete)."""
+
+        # Allow all users to retrieve projects
         if view.action == "retrieve":
-            return True  # allow all users to view projects
+            return True
 
-
-class CanUpdateProject(permissions.BasePermission):
-    """Custom permission to check if the user can update a project."""
-
-    def has_permission(self, request, view):
-        return True
-
-    def has_object_permission(self, request, view, obj):
-        if view.action == "update":
+        # Update permission (check CHANGE permission on the object)
+        if view.action in ["update", "partial_update"]:
             return request.user.has_perm(Project.Permissions.CHANGE, obj)
-        return True
 
-
-class CanDeleteProject(permissions.BasePermission):
-    """Custom permission to check if the user can delete a project."""
-
-    def has_permission(self, request, view):
-        return True
-
-    def has_object_permission(self, request, view, obj):
+        # Delete permission (check DELETE permission on the object)
         if view.action == "destroy":
             return request.user.has_perm(Project.Permissions.DELETE, obj)
-        return True
 
-
-class ObjectPermissions(permissions.BasePermission):
-    """
-    Object-level permission checking with django-guardian.
-    Maps DRF actions ('create', 'retrieve', etc.) to guardian permissions.
-    """
-
-    def has_permission(self, request, view):
-        # Only allow active staff users to create a project
-        if view.action == "create":
-            return is_active_staff(request.user)
-        return True  # Fallback to object-level checks
-
-    def has_object_permission(self, request, view, obj):
-        user = request.user
-        permissions = get_generic_permissions(user, obj)
-
-        # Map ViewSet actions to permissions
-        view_action_map = {
-            "retrieve": "view",
-            "update": "update",
-            "partial_update": "update",
-            "destroy": "delete",
-        }
-        # Get the required permission for the current action
-        perm = view_action_map.get(view.action)
-        if not perm:
-            return False  # Deny by default for unmapped actions
-        # Check if the user has the permission for this object
-        return perm in permissions
+        return False  # Default deny
 
 
 class ProjectPermission(permissions.BasePermission):
@@ -172,7 +132,7 @@ class ProjectPermission(permissions.BasePermission):
 
     def has_permission(self, request, view):
         if view.action == "create":
-            project = view.get_active_project()
+            project = view.get_active_project() if hasattr(view, "get_active_project") else None
             if project:
                 return request.user.has_perm(self.permission, project)
         return True

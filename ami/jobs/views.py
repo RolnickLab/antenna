@@ -67,6 +67,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "pipeline",
     ]
     permission_classes = [CanCreateJob, CanRunJob]
+    require_project = False
 
     def get_serializer_class(self):
         """
@@ -122,6 +123,12 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         # All jobs created from the Jobs UI are ML jobs.
         # @TODO Remove this when the UI is updated pass a job type
+        # Get an instance for the model without saving
+        obj = serializer.Meta.model(**serializer.validated_data)
+
+        # Check permissions before saving
+        self.check_object_permissions(self.request, obj)
+
         if not serializer.validated_data.get("job_type_key"):
             serializer.validated_data["job_type_key"] = MLJob.key
 

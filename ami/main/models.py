@@ -132,6 +132,9 @@ class Project(BaseModel):
     jobs: models.QuerySet["Job"]
     objects = ProjectManager()
 
+    def get_project(self):
+        return self
+
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
