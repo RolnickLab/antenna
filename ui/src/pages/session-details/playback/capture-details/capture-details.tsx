@@ -8,8 +8,8 @@ import {
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
-import { Select, SelectTheme } from 'design-system/components/select/select'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { Select } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -178,22 +178,35 @@ const PipelinesPicker = ({
   onValueChange: (value?: string) => void
 }) => {
   const { projectId } = useParams()
-  const { pipelines = [], isLoading } = usePipelines({
+  const { pipelines = [] } = usePipelines({
     projectId: projectId as string,
   })
 
   return (
-    <Select
-      loading={isLoading}
-      options={pipelines.map((p) => ({
-        value: String(p.id),
-        label: p.name,
-      }))}
-      placeholder="Pipeline"
-      showClear={false}
-      theme={SelectTheme.NeutralCompact}
-      value={value}
-      onValueChange={onValueChange}
-    />
+    <Select.Root value={value ?? ''} onValueChange={onValueChange}>
+      <Select.Trigger>
+        <Select.Value placeholder="Select a value" />
+      </Select.Trigger>
+      <Select.Content>
+        {pipelines.map((p) => (
+          <Select.Item
+            key={p.name}
+            value={String(p.id)}
+            disabled={!p.hasOnlineProcessingService.online}
+          >
+            <span className="flex items-center gap-2">
+              <span
+                className="w-3 h-3 rounded-full mb-0.5"
+                style={{
+                  backgroundColor:
+                    p.hasOnlineProcessingService.service.status.color,
+                }}
+              />
+              <span>{p.name}</span>
+            </span>
+          </Select.Item>
+        ))}
+      </Select.Content>
+    </Select.Root>
   )
 }
