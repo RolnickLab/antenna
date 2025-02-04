@@ -181,6 +181,14 @@ class Project(BaseModel):
         CHANGE = "change_project"
         DELETE = "delete_project"
         ADD = "add_project"
+        UPDATE_IDENTIFICATIONS = "update_identifications"
+        CREATE_JOB = "create_job"
+        RUN_JOB = "run_job"
+        VIEW_PRIVATE_DATA = "view_private_data"
+        TRIGGER_EXPORT = "trigger_export"
+        DELETE_OCCURRENCES = "delete_occurrences"
+        IMPORT_DATA = "import_data"
+        MANAGE_MEMBERS = "manage_members"
 
     class Meta:
         ordering = ["-priority", "created_at"]
@@ -1693,6 +1701,9 @@ class Identification(BaseModel):
         ordering = [
             "-created_at",
         ]
+
+    def get_project(self):
+        return self.occurrence.get_project()
 
     def save(self, *args, **kwargs):
         """

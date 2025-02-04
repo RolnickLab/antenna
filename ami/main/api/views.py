@@ -24,7 +24,12 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermissions
+from ami.base.permissions import (
+    CanDeleteOccurrence,
+    CanUpdateIdentification,
+    IsActiveStaffOrReadOnly,
+    ObjectPermissions,
+)
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
@@ -189,6 +194,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "first_date",
         "last_date",
     ]
+    require_project = False
 
     def get_serializer_class(self):
         """
@@ -984,6 +990,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
     ]
     require_project = False
+    permission_classes = [CanDeleteOccurrence]
 
     def get_serializer_class(self):
         """
@@ -1398,7 +1405,7 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
-class IdentificationViewSet(DefaultViewSet):
+class IdentificationViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows identifications to be viewed or edited.
     """
@@ -1415,11 +1422,18 @@ class IdentificationViewSet(DefaultViewSet):
         "updated_at",
         "user",
     ]
+    permission_classes = [CanUpdateIdentification]
 
     def perform_create(self, serializer):
         """
         Set the user to the current user.
         """
+        # Get an instance for the model without saving
+        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)
+
+        # Check permissions before saving
+        self.check_object_permissions(self.request, obj)
+
         serializer.save(user=self.request.user)
 
 

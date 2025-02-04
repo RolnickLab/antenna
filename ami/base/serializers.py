@@ -45,7 +45,7 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     url_field_name = "details"
     id = serializers.IntegerField(read_only=True)
 
-    def get_permissions(self, instance, instance_data):
+    def get_permissions(self, instance_data):
         request = self.context.get("request")
         view = self.context.get("view")
         project = view.get_active_project() if isinstance(view, ProjectMixin) else None
@@ -54,7 +54,7 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
 
     def to_representation(self, instance):
         instance_data = super().to_representation(instance)
-        instance_data = self.get_permissions(instance, instance_data)
+        instance_data = self.get_permissions(instance_data)
         return instance_data
 
 

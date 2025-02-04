@@ -7,6 +7,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ami.base.permissions import CanCreateJob, CanRunJob
 from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
@@ -65,7 +66,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "source_image_collection",
         "pipeline",
     ]
-    require_project = False
+    permission_classes = [CanCreateJob, CanRunJob]
 
     def get_serializer_class(self):
         """

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
+from ami.main.models import Project
+
 logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from django.contrib.auth.models import User
@@ -91,6 +93,49 @@ def get_generic_permissions(user, obj):
     return result
 
 
+class CanCreateProject(permissions.BasePermission):
+    """Custom permission to check if the user can create a project."""
+
+    def has_permission(self, request, view):
+        if view.action == "create":
+            return request.user.is_staff or request.user.is_superuser or request.user.has_perm(Project.Permissions.ADD)
+
+
+class CanRetrieveProject(permissions.BasePermission):
+    """Custom permission to check if the user can retrieve a project."""
+
+    def has_permission(self, request, view):
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "retrieve":
+            return True  # allow all users to view projects
+
+
+class CanUpdateProject(permissions.BasePermission):
+    """Custom permission to check if the user can update a project."""
+
+    def has_permission(self, request, view):
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "update":
+            return request.user.has_perm(Project.Permissions.CHANGE, obj)
+        return True
+
+
+class CanDeleteProject(permissions.BasePermission):
+    """Custom permission to check if the user can delete a project."""
+
+    def has_permission(self, request, view):
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "destroy":
+            return request.user.has_perm(Project.Permissions.DELETE, obj)
+        return True
+
+
 class ObjectPermissions(permissions.BasePermission):
     """
     Object-level permission checking with django-guardian.
@@ -120,3 +165,49 @@ class ObjectPermissions(permissions.BasePermission):
             return False  # Deny by default for unmapped actions
         # Check if the user has the permission for this object
         return perm in permissions
+
+
+class ProjectPermission(permissions.BasePermission):
+    permission = Project.Permissions.VIEW
+
+    def has_permission(self, request, view):
+        if view.action == "create":
+            project = view.get_active_project()
+            if project:
+                return request.user.has_perm(self.permission, project)
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        # Get object's project
+        project = obj.get_project()
+
+        if not project:
+            # If the object does have a project, try get from url or query params
+            project = view.get_active_project()
+        if project:
+            return request.user.has_perm(self.permission, project)
+        return True
+
+
+class CanUpdateIdentification(ProjectPermission):
+    """Custom permission to check if the user can update an identification."""
+
+    permission = Project.Permissions.UPDATE_IDENTIFICATIONS
+
+
+class CanDeleteOccurrence(ProjectPermission):
+    """Custom permission to check if the user can delete an occurrence."""
+
+    permission = Project.Permissions.DELETE_OCCURRENCES
+
+
+class CanCreateJob(ProjectPermission):
+    """Custom permission to check if the user can create a job."""
+
+    permission = Project.Permissions.CREATE_JOB
+
+
+class CanRunJob(ProjectPermission):
+    """Custom permission to check if the user can run a job."""
+
+    permission = Project.Permissions.RUN_JOB

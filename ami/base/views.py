@@ -20,8 +20,8 @@ class ProjectMixin:
         from ami.base.serializers import SingleParamSerializer
 
         project_id = None
-        # Extract from URL only if the path starts with `/projects/`
-        if self.request.path.startswith("/projects/"):
+        # Extract from URL `/projects/` is in the url path
+        if "/projects/" in self.request.path:
             project_id = self.kwargs.get("pk")
 
         # If not in URL, try query parameters
