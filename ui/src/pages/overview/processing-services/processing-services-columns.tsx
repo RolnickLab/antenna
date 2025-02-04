@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
 import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
@@ -43,6 +44,15 @@ export const columns: (
     renderCell: (item: ProcessingService) => (
       <BasicTableCell value={item.createdAt} />
     ),
+  },
+  {
+    id: 'status',
+    name: 'Status',
+    renderCell: (item: ProcessingService) => {
+      return (
+        <StatusTableCell color={item.status.color} label={item.status.label} />
+      )
+    },
   },
   {
     id: 'last-checked',
