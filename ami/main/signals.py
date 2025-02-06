@@ -4,7 +4,7 @@ from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
-from ami.users.roles import BasicMember, ProjectManager
+from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
 from .models import Project, User
 
@@ -13,9 +13,12 @@ logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=Project)
 def set_project_owner_permissions(sender, instance, created, **kwargs):
+    if created:
+        create_roles_for_project(instance)
     if created and instance.owner:
         # assign owner project manager role
         ProjectManager.assign_user(instance.owner, instance)
+
     else:
         # Check for an owner change
         old_owner = instance.__dict__.get("_old_owner")  # Retrieve the old owner set in the pre-save signal

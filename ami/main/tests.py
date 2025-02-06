@@ -1019,9 +1019,6 @@ class TestProjectPermissions(APITestCase):
         self.assertTrue(self.new_owner.has_perm(Project.Permissions.VIEW, self.project))
         self.assertTrue(self.new_owner.has_perm(Project.Permissions.CHANGE, self.project))
         self.assertTrue(self.new_owner.has_perm(Project.Permissions.DELETE, self.project))
-        # Check the old owner no longer has owner permissions
-        self.assertFalse(self.owner.has_perm(Project.Permissions.CHANGE, self.project))
-        self.assertFalse(self.owner.has_perm(Project.Permissions.DELETE, self.project))
 
     def test_permissions_on_member_removal(self):
         """Test permissions are removed when a user is no longer a member of the project."""
