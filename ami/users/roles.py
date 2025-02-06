@@ -75,10 +75,8 @@ class ProjectManager(Role):
         | Identifier.permissions
         | MLDataManager.permissions
         | {
-            Project.Permissions.ADD,
             Project.Permissions.CHANGE,
             Project.Permissions.DELETE,
-            Project.Permissions.ADD,
             Project.Permissions.IMPORT_DATA,
             Project.Permissions.MANAGE_MEMBERS,
             Project.Permissions.POPULATE_COLLECTION,
