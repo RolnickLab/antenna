@@ -26,6 +26,7 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
+from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
 from ami.users.models import User
@@ -2967,22 +2968,22 @@ class SourceImageCollection(BaseModel):
         max_num: int | None = 100,
         hour_start: int | None = None,
         hour_end: int | None = None,
-        month_start: datetime.date | None = None,
-        month_end: datetime.date | None = None,
-        day_start: datetime.date | None = None,
-        day_end: datetime.date | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
+
+        if date_start is not None:
+            qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
+        if date_end is not None:
+            qs = qs.filter(timestamp__date__lte=DateStringField.to_date(date_end))
 
         if month_start is not None:
             qs = qs.filter(timestamp__month__gte=month_start)
         if month_end is not None:
             qs = qs.filter(timestamp__month__lte=month_end)
-
-        if day_start is not None:
-            qs = qs.filter(timestamp__day__gte=day_start)
-        if day_end is not None:
-            qs = qs.filter(timestamp__day__lte=day_end)
 
         if hour_start is not None and hour_end is not None:
             if hour_start < hour_end:
@@ -2996,14 +2997,15 @@ class SourceImageCollection(BaseModel):
         elif hour_end is not None:
             qs = qs.filter(timestamp__hour__lte=hour_end)
 
-        if minute_interval is None and max_num is not None:
-            qs = qs[:max_num]
         if minute_interval is not None:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
             # Ensure the queryset is limited to the project
             qs = qs.filter(project=self.project)
             qs = sample_captures_by_interval(minute_interval=minute_interval, qs=qs, max_num=max_num)
+        else:
+            if max_num is not None:
+                qs = qs[:max_num]
 
         return qs
 
