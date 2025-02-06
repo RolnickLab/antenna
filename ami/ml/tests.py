@@ -161,7 +161,7 @@ class TestPipelineWithProcessingService(TestCase):
         pipeline = self.processing_service_instance.pipelines.all().get(slug="random")
         pipeline_response = pipeline.process_images(self.test_images)
         results = save_results(pipeline_response, return_created=True)
-        assert results is not None, "Expecected results to be returned in a PipelineSaveResults object"
+        assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
             assert classification.scores
@@ -199,13 +199,29 @@ class TestPipeline(TestCase):
 
         # Create test pipeline and algorithms
         self.pipeline = Pipeline.objects.create(
-            name="Test Pipeline",
+            name="Test Pipeline (Random)",
+        )
+        self.pipeline_two = Pipeline.objects.create(
+            name="Test Pipeline (Constant)",
         )
 
         self.algorithms = {
             key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
         }
-        self.pipeline.algorithms.set([algo for algo in self.algorithms.values()])
+        self.pipeline.algorithms.set(
+            [
+                self.algorithms["random-detector"],
+                self.algorithms["random-binary-classifier"],
+                self.algorithms["random-species-classifier"],
+            ]
+        )
+        self.pipeline_two.algorithms.set(
+            [
+                self.algorithms["random-detector"],
+                self.algorithms["random-binary-classifier"],
+                self.algorithms["constant-species-classifier"],
+            ]
+        )
 
     def test_create_pipeline(self):
         assert self.pipeline.slug.startswith("test-pipeline")
@@ -250,7 +266,7 @@ class TestPipeline(TestCase):
                 classifications=[
                     ClassificationResponse(
                         classification=binary_classifier.category_map.labels[0],
-                        labels=None,
+                        labels=binary_classifier.category_map.labels,
                         scores=[0.9213],
                         algorithm=AlgorithmReference(
                             name=binary_classifier.name,
@@ -261,7 +277,7 @@ class TestPipeline(TestCase):
                     ),
                     ClassificationResponse(
                         classification=species_classifier.category_map.labels[0],
-                        labels=None,
+                        labels=species_classifier.category_map.labels,
                         scores=[0.64333],
                         algorithm=AlgorithmReference(
                             name=species_classifier.name,
@@ -297,31 +313,45 @@ class TestPipeline(TestCase):
 
         # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
 
-    def no_test_skip_existing_results(self):
-        # @TODO fix issue with "None" algorithm on some detections
+    def test_skip_existing_when_all_matching(self):
+        """
+        When processing images, skip images that have already been processed by the same set of algorithms.
+        (must be the same detection algorithm and all classification algorithms)
+        """
 
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         total_images = len(images)
         self.assertEqual(total_images, self.image_collection.images.count())
 
-        save_results(self.fake_pipeline_results(images, self.pipeline), return_created=True)
+        created = save_results(self.fake_pipeline_results(images, self.pipeline), return_created=True)
+        assert created, "Expected created objects to be returned in a PipelineSaveResults object"
 
-        images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
+        # Collect all detection algorithms used on the detections
+        detections = created.detections
+        detection_algos_used = {
+            detection.detection_algorithm.name for detection in detections if detection.detection_algorithm
+        }
+        # detection_algos_used = set(Detection.objects.all().values_list("detection_algorithm__name", flat=True))
 
-        # Collect all detection algroithms used on the detections
-        detection_algos_used = set(Detection.objects.all().values_list("detection_algorithm__name", flat=True))
         # Assert it was only one algorithm, and it was the one we used
-        self.assertEqual(detection_algos_used, {self.algorithms["detector"].name}, "Wrong detection algorithm used.")
+        self.assertEqual(
+            detection_algos_used, {self.algorithms["random-detector"].name}, "Wrong detection algorithm used."
+        )
 
         # Collect all classification algorithms used on the classifications
-        classification_algos_used = set(Classification.objects.all().values_list("algorithm__name", flat=True))
+        classifications = created.classifications
+        classification_algos_used = {
+            classification.algorithm.name for classification in classifications if classification.algorithm
+        }
+        # classification_algos_used = set(Classification.objects.all().values_list("algorithm__name", flat=True))
         # Assert it was only one algorithm, and it was the one we used
         self.assertEqual(
             classification_algos_used,
-            {self.algorithms["species_classifier"].name},
-            "Wrong classification algorithm used.",
+            {self.algorithms["random-species-classifier"].name, self.algorithms["random-binary-classifier"].name},
+            "Wrong classification algorithms used.",
         )
 
+        images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, 0)
 
