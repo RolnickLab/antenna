@@ -25,10 +25,15 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import (
-    CanDeleteOccurrence,
+    CanPopulateCollection,
     CanUpdateIdentification,
+    DeploymentCRUDPermission,
+    DeviceCRUDPermission,
     IsActiveStaffOrReadOnly,
-    ProjectCRUDPermissions,
+    ProjectCRUDPermission,
+    S3StorageSourceCRUDPermission,
+    SiteCRUDPermission,
+    SourceImageCollectionCRUDPermission,
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
@@ -109,7 +114,11 @@ class DefaultViewSetMixin:
 
 
 class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
-    pass
+    def perform_create(self, serializer):
+        obj = serializer.Meta.model(**serializer.validated_data)
+        # Check permissions before saving
+        self.check_object_permissions(self.request, obj)
+        serializer.save()
 
 
 class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
@@ -128,8 +137,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
-    permission_classes = [ProjectCRUDPermissions]
-    require_project = False
+    permission_classes = [ProjectCRUDPermission]
 
     def get_queryset(self):
         qs: QuerySet = super().get_queryset()
@@ -153,6 +161,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             return ProjectSerializer
 
     def perform_create(self, serializer):
+        super().perform_create(serializer)
         # Check if user is authenticated
         if not self.request.user or not self.request.user.is_authenticated:
             raise PermissionDenied("You must be authenticated to create a project.")
@@ -194,7 +203,8 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "first_date",
         "last_date",
     ]
-    require_project = False
+
+    permission_classes = [DeploymentCRUDPermission]
 
     def get_serializer_class(self):
         """
@@ -278,7 +288,6 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         "taxa_count",
         "duration",
     ]
-    require_project = False
 
     def get_serializer_class(self):
         """
@@ -609,7 +618,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         .prefetch_related("jobs")
     )
     serializer_class = SourceImageCollectionSerializer
-
+    permission_classes = [CanPopulateCollection, SourceImageCollectionCRUDPermission]
     filterset_fields = ["method"]
     ordering_fields = [
         "created_at",
@@ -755,6 +764,10 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
             return DetectionListSerializer
         else:
             return DetectionSerializer
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     # def get_queryset(self):
     #     """
@@ -989,8 +1002,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "detections_count",
         "created_at",
     ]
-    require_project = False
-    permission_classes = [CanDeleteOccurrence]
 
     def get_serializer_class(self):
         """
@@ -1065,7 +1076,6 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "name",
     ]
     search_fields = ["name", "parent__name"]
-    require_project = False
 
     @action(detail=False, methods=["get"], name="suggest")
     def suggest(self, request):
@@ -1256,10 +1266,6 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
-    @extend_schema(parameters=[project_id_doc_param])
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
     # def retrieve(self, request: Request, *args, **kwargs) -> Response:
     #     """
     #     Override the serializer to include the recursive occurrences count
@@ -1268,6 +1274,9 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
     #     taxon.occurrences_count = taxon.occurrences_count_recursive()  # type: ignore
     #     response = Response(TaxonSerializer(taxon, context={"request": request}).data)
     #     return response
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class ClassificationViewSet(DefaultViewSet):
@@ -1450,6 +1459,7 @@ class SiteViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
+    permission_classes = [SiteCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
@@ -1476,6 +1486,7 @@ class DeviceViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
+    permission_classes = [DeviceCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
@@ -1507,6 +1518,7 @@ class StorageSourceViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
+    permission_classes = [S3StorageSourceCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
@@ -1514,10 +1526,6 @@ class StorageSourceViewSet(DefaultViewSet, ProjectMixin):
         if project:
             query_set = query_set.filter(project=project)
         return query_set
-
-    @extend_schema(parameters=[project_id_doc_param])
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], name="test", serializer_class=StorageSourceConnectionTestSerializer)
     def test(self, request: Request, pk=None) -> Response:
@@ -1548,3 +1556,7 @@ class StorageSourceViewSet(DefaultViewSet, ProjectMixin):
                     "code": result.error_code,
                 },
             )
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)

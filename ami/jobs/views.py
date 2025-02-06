@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ami.base.permissions import CanCreateJob, CanRunJob
+from ami.base.permissions import CanCancelJob, CanRetryJob, CanRunJob, JobCRUDPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
@@ -66,8 +66,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "source_image_collection",
         "pipeline",
     ]
-    permission_classes = [CanCreateJob, CanRunJob]
-    require_project = False
+    permission_classes = [CanRunJob, CanRetryJob, CanCancelJob, JobCRUDPermission]
 
     def get_serializer_class(self):
         """
@@ -84,6 +83,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         Run a job (add it to the queue).
         """
         job: Job = self.get_object()
+
         no_async = url_boolean_param(request, "no_async", default=False)
         if no_async:
             job.run()
@@ -125,7 +125,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # @TODO Remove this when the UI is updated pass a job type
         # Get an instance for the model without saving
         obj = serializer.Meta.model(**serializer.validated_data)
-
         # Check permissions before saving
         self.check_object_permissions(self.request, obj)
 

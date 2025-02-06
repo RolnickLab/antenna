@@ -32,7 +32,6 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows pipelines to be viewed or edited.
     """
 
-    require_project = False
     queryset = Pipeline.objects.prefetch_related("algorithms").all()
     serializer_class = PipelineSerializer
     ordering_fields = [

@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
-from ami.main.models import Project
+from ami.jobs.models import Job
+from ami.main.models import Deployment, Device, Identification, Project, S3StorageSource, Site, SourceImageCollection
 
 logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
@@ -72,20 +73,14 @@ def add_collection_level_permissions(user: User | None, response_data: dict) -> 
 
 def get_generic_permissions(user, obj):
     """
-    Maps django default permissions to generic permissions
+    Maps django default permissions to generic permissions compatible with the frontend.
     view_modelname -> view
-    add_modelname -> create
-    change_modelname -> update
+    create_modelname -> create
+    update_modelname -> update
     delete_modelname -> delete
     """
     permissions = get_perms(user, obj)
-    mapping = {"view": "view", "change": "update", "add": "create", "delete": "delete"}
-    result = []
-    for perm in permissions:
-        if perm.split("_")[0] in mapping:
-            result.append(mapping[perm.split("_")[0]])
-        else:
-            result.append(perm)
+    result = [perm.split("_")[0] for perm in permissions]
 
     # allow view for all users
     if "view" not in result:
@@ -93,81 +88,157 @@ def get_generic_permissions(user, obj):
     return result
 
 
-class ProjectCRUDPermissions(permissions.BasePermission):
-    """A single permission class to handle Create, Retrieve, Update, and Delete permissions for Projects."""
+class CRUDPermission(permissions.BasePermission):
+    """
+    Generic CRUD permission class that dynamically checks user permissions on an object.
+    Permission names follow the convention: `create_<model>`, `update_<model>`, `delete_<model>`.
+    """
+
+    model = None
 
     def has_permission(self, request, view):
-        """Handles permissions at the global level (before accessing an object)."""
+        """Handles general permission checks"""
 
-        # Allow all users to retrieve projects
-        if view.action == "retrieve":
-            return True
-
-        # Create permission (only staff, superusers, or users with ADD permission)
+        model_name = self.model._meta.model_name
+        # Permission name for creation
         if view.action == "create":
-            return request.user.is_staff or request.user.is_superuser or request.user.has_perm(Project.Permissions.ADD)
+            return request.user.is_staff or request.user.is_superuser or request.user.has_perm(f"create_{model_name}")
 
-        return True  # Allow other actions (handled at object level)
-
-    def has_object_permission(self, request, view, obj):
-        """Handles permissions at the object level (for retrieve, update and delete)."""
-
-        # Allow all users to retrieve projects
-        if view.action == "retrieve":
-            return True
-
-        # Update permission (check CHANGE permission on the object)
-        if view.action in ["update", "partial_update"]:
-            return request.user.has_perm(Project.Permissions.CHANGE, obj)
-
-        # Delete permission (check DELETE permission on the object)
-        if view.action == "destroy":
-            return request.user.has_perm(Project.Permissions.DELETE, obj)
-
-        return False  # Default deny
-
-
-class ProjectPermission(permissions.BasePermission):
-    permission = Project.Permissions.VIEW
-
-    def has_permission(self, request, view):
-        if view.action == "create":
-            project = view.get_active_project() if hasattr(view, "get_active_project") else None
-            if project:
-                return request.user.has_perm(self.permission, project)
         return True
 
     def has_object_permission(self, request, view, obj):
-        # Get object's project
-        project = obj.get_project()
+        """Handles object-level permission checks."""
+        model_name = self.model._meta.model_name
+        project = obj.get_project() if hasattr(obj, "get_project") else None
 
-        if not project:
-            # If the object does have a project, try get from url or query params
-            project = view.get_active_project()
-        if project:
+        # check for create action
+        if view.action == "create":
+            return (
+                request.user.is_staff
+                or request.user.is_superuser
+                or request.user.has_perm(f"create_{model_name}", project)
+            )
+
+        if view.action == "retrieve":
+            return True  # Allow all users to view objects
+
+        # Map ViewSet actions to permission names
+        action_perms = {
+            "retrieve": f"view_{model_name}",
+            "update": f"update_{model_name}",
+            "partial_update": f"update_{model_name}",
+            "destroy": f"delete_{model_name}",
+        }
+
+        required_perm = action_perms.get(view.action)
+        if not required_perm:
+            return True
+        return request.user.has_perm(required_perm, project)
+
+
+class ProjectCRUDPermission(CRUDPermission):
+    model = Project
+
+
+class JobCRUDPermission(CRUDPermission):
+    model = Job
+
+
+class DeploymentCRUDPermission(CRUDPermission):
+    model = Deployment
+
+
+class SourceImageCollectionCRUDPermission(CRUDPermission):
+    model = SourceImageCollection
+
+
+class S3StorageSourceCRUDPermission(CRUDPermission):
+    model = S3StorageSource
+
+
+class SiteCRUDPermission(CRUDPermission):
+    model = Site
+
+
+class DeviceCRUDPermission(CRUDPermission):
+    model = Device
+
+
+class IdentificationCRUDPermission(CRUDPermission):
+    model = Identification
+
+
+# Identification permission checks
+class CanUpdateIdentification(permissions.BasePermission):
+    """Custom permission to check if the user can update/create an identification."""
+
+    permission = Project.Permissions.UPDATE_IDENTIFICATIONS
+
+    def has_object_permission(self, request, view, obj):
+        if view.action in ["create", "update", "partial_update"]:
+            project = obj.get_project() if hasattr(obj, "get_project") else None
             return request.user.has_perm(self.permission, project)
         return True
 
 
-class CanUpdateIdentification(ProjectPermission):
-    """Custom permission to check if the user can update an identification."""
+class CanDeleteIdentification(permissions.BasePermission):
+    """Custom permission to check if the user can delete an identification."""
 
-    permission = Project.Permissions.UPDATE_IDENTIFICATIONS
+    permission = Project.Permissions.DELETE_IDENTIFICATIONS
 
-
-class CanDeleteOccurrence(ProjectPermission):
-    """Custom permission to check if the user can delete an occurrence."""
-
-    permission = Project.Permissions.DELETE_OCCURRENCES
-
-
-class CanCreateJob(ProjectPermission):
-    """Custom permission to check if the user can create a job."""
-
-    permission = Project.Permissions.CREATE_JOB
+    def has_object_permission(self, request, view, obj):
+        project = obj.get_project() if hasattr(obj, "get_project") else None
+        if view.action == "destroy":
+            if request.user.is_superuser or request.user.is_staff:
+                return True
+            # Check if the user has the required permission and is the owner of the object
+            return obj.user == request.user and request.user.has_perm(self.permission, project)
 
 
-class CanRunJob(ProjectPermission):
+# Job run permission check
+class CanRunJob(permissions.BasePermission):
     """Custom permission to check if the user can run a job."""
 
     permission = Project.Permissions.RUN_JOB
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "run":
+            project = obj.get_project() if hasattr(obj, "get_project") else None
+            return request.user.has_perm(self.permission, project)
+        return True
+
+
+class CanRetryJob(permissions.BasePermission):
+    """Custom permission to check if the user can retry a job."""
+
+    permission = Project.Permissions.RETRY_JOB
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "retry":
+            project = obj.get_project() if hasattr(obj, "get_project") else None
+            return request.user.has_perm(self.permission, project)
+        return True
+
+
+class CanCancelJob(permissions.BasePermission):
+    """Custom permission to check if the user can cancel a job."""
+
+    permission = Project.Permissions.CANCEL_JOB
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "cancel":
+            project = obj.get_project() if hasattr(obj, "get_project") else None
+            return request.user.has_perm(self.permission, project)
+        return True
+
+
+class CanPopulateCollection(permissions.BasePermission):
+    """Custom permission to check if the user can populate a collection."""
+
+    permission = Project.Permissions.POPULATE_COLLECTION
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "populate":
+            project = obj.get_project() if hasattr(obj, "get_project") else None
+            return request.user.has_perm(self.permission, project)
+        return True

@@ -180,13 +180,53 @@ class Project(BaseModel):
             self.create_related_defaults()
 
     class Permissions:
+        """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
+        `delete_<model>`, `view_<model>`"""
+
+        # Project permissions
         VIEW = "view_project"
-        CHANGE = "change_project"
+        CHANGE = "update_project"
         DELETE = "delete_project"
-        ADD = "add_project"
+        ADD = "create_project"
+
+        # Identification permissions
         UPDATE_IDENTIFICATIONS = "update_identifications"
+        DELETE_IDENTIFICATIONS = "delete_identifications"
+
+        # Job permissions
         CREATE_JOB = "create_job"
         RUN_JOB = "run_job"
+        DELETE_JOB = "delete_job"
+        RETRY_JOB = "retry_job"
+        CANCEL_JOB = "cancel_job"
+
+        # Deployment permissions
+        CREATE_DEPLOYMENT = "create_deployment"
+        DELETE_DEPLOYMENT = "delete_deployment"
+        UPDATE_DEPLOYMENT = "update_deployment"
+
+        # Collection permissions
+        CREATE_COLLECTION = "create_sourceimagecollection"
+        UPDATE_COLLECTION = "update_sourceimagecollection"
+        DELETE_COLLECTION = "delete_sourceimagecollection"
+        POPULATE_COLLECTION = "populate_sourceimagecollection"
+
+        # Storage permissions
+        CREATE_STORAGE = "create_storage"
+        DELETE_STORAGE = "delete_storage"
+        UPDATE_STORAGE = "update_storage"
+
+        # Site permissions
+        CREATE_SITE = "create_site"
+        DELETE_SITE = "delete_site"
+        UPDATE_SITE = "update_site"
+
+        # Device permissions
+        CREATE_DEVICE = "create_device"
+        DELETE_DEVICE = "delete_device"
+        UPDATE_DEVICE = "update_device"
+
+        # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
         TRIGGER_EXPORT = "trigger_export"
         DELETE_OCCURRENCES = "delete_occurrences"
@@ -195,6 +235,41 @@ class Project(BaseModel):
 
     class Meta:
         ordering = ["-priority", "created_at"]
+        permissions = [
+            # Identification permissions
+            ("update_identifications", "Can update identifications"),
+            ("delete_identifications", "Can delete identifications"),
+            # Job permissions
+            ("create_job", "Can create a job"),
+            ("run_job", "Can run a job"),
+            ("delete_job", "Can delete a job"),
+            ("retry_job", "Can retry a job"),
+            ("cancel_job", "Can cancel a job"),
+            # Deployment permissions
+            ("create_deployment", "Can create a deployment"),
+            ("delete_deployment", "Can delete a deployment"),
+            ("update_deployment", "Can update a deployment"),
+            # Collection permissions
+            ("create_sourceimagecollection", "Can create a collection"),
+            ("update_sourceimagecollection", "Can update a collection"),
+            ("delete_sourceimagecollection", "Can delete a collection"),
+            ("populate_sourceimagecollection", "Can populate a collection"),
+            # Storage permissions
+            ("create_s3storagesource", "Can create storage"),
+            ("delete_s3storagesource", "Can delete storage"),
+            ("update_s3storagesource", "Can update storage"),
+            # Site permissions
+            ("create_site", "Can create a site"),
+            ("delete_site", "Can delete a site"),
+            ("update_site", "Can update a site"),
+            # Device permissions
+            ("create_device", "Can create a device"),
+            ("delete_device", "Can delete a device"),
+            ("update_device", "Can update a device"),
+            # Other permissions
+            ("view_private_data", "Can view private data"),
+            ("trigger_exports", "Can trigger data exports"),
+        ]
 
 
 @final
