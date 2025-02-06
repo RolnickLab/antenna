@@ -1521,8 +1521,8 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
+    qs: models.QuerySet[SourceImage],
     minute_interval: int = 10,
-    qs: models.QuerySet[SourceImage] | None = None,
     max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
@@ -1531,9 +1531,6 @@ def sample_captures_by_interval(
 
     last_capture = None
     total = 0
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -3001,7 +2998,7 @@ class SourceImageCollection(BaseModel):
             # this currently returns a list of source images
             # Ensure the queryset is limited to the project
             qs = qs.filter(project=self.project)
-            qs = sample_captures_by_interval(minute_interval, qs=qs, max_num=max_num)
+            qs = sample_captures_by_interval(minute_interval=minute_interval, qs=qs, max_num=max_num)
         return qs
 
     def sample_interval(
@@ -3016,7 +3013,7 @@ class SourceImageCollection(BaseModel):
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
         qs = qs.filter(project=self.project)
-        return sample_captures_by_interval(minute_interval, qs=qs)
+        return sample_captures_by_interval(minute_interval=minute_interval, qs=qs)
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
