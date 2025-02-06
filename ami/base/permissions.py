@@ -192,7 +192,7 @@ class CanDeleteIdentification(permissions.BasePermission):
             if request.user.is_superuser or request.user.is_staff:
                 return True
             # Check if the user has the required permission and is the owner of the object
-            return request.user.has_perm(self.permission, project)
+            return obj.user == request.user and request.user.has_perm(self.permission, project)
         return True
 
 
