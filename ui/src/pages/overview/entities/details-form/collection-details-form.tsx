@@ -73,6 +73,7 @@ const config: FormConfig = {
   },
   'kwargs.max_num': {
     label: 'Max number of images',
+    description: 'When set, the collection will be a random sample',
   },
   'kwargs.minute_interval': {
     label: 'Minutes between captures',
