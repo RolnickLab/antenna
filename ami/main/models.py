@@ -2973,26 +2973,38 @@ class SourceImageCollection(BaseModel):
         day_end: datetime.date | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
-        if month_start:
+
+        if month_start is not None:
             qs = qs.filter(timestamp__month__gte=month_start)
-        if month_end:
+        if month_end is not None:
             qs = qs.filter(timestamp__month__lte=month_end)
-        if day_start:
+
+        if day_start is not None:
             qs = qs.filter(timestamp__day__gte=day_start)
-        if day_end:
+        if day_end is not None:
             qs = qs.filter(timestamp__day__lte=day_end)
-        if hour_start:
+
+        if hour_start is not None and hour_end is not None:
+            if hour_start < hour_end:
+                # Hour range within the same day (e.g., 08:00 to 15:00)
+                qs = qs.filter(timestamp__hour__gte=hour_start, timestamp__hour__lte=hour_end)
+            else:
+                # Hour range has Midnight crossover: (e.g., 17:00 to 06:00)
+                qs = qs.filter(models.Q(timestamp__hour__gte=hour_start) | models.Q(timestamp__hour__lte=hour_end))
+        elif hour_start is not None:
             qs = qs.filter(timestamp__hour__gte=hour_start)
-        if hour_end:
+        elif hour_end is not None:
             qs = qs.filter(timestamp__hour__lte=hour_end)
-        if not minute_interval and max_num:
+
+        if minute_interval is None and max_num is not None:
             qs = qs[:max_num]
-        if minute_interval:
+        if minute_interval is not None:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
             # Ensure the queryset is limited to the project
             qs = qs.filter(project=self.project)
             qs = sample_captures_by_interval(minute_interval=minute_interval, qs=qs, max_num=max_num)
+
         return qs
 
     def sample_interval(
