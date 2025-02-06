@@ -270,7 +270,6 @@ class ProjectListSerializer(DefaultSerializer):
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
     owner = UserNestedSerializer(read_only=True)
-    # user_permissions = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Project

@@ -8,7 +8,9 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
+from ami.jobs.models import Job
 from ami.main.models import (
+    Deployment,
     Device,
     Event,
     Occurrence,
@@ -24,6 +26,7 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
+from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, Researcher
 
 logger = logging.getLogger(__name__)
 
@@ -677,6 +680,7 @@ class TestIdentification(APITestCase):
         self.user = User.objects.create_user(  # type: ignore
             email="testuser@insectai.org",
             is_staff=True,
+            is_superuser=True,
         )
         self.factory = APIRequestFactory()
         self.client.force_authenticate(user=self.user)
@@ -689,7 +693,7 @@ class TestIdentification(APITestCase):
         Post a new identification suggestion and check that it changed the occurrence's determination.
         """
 
-        suggest_id_endpoint = "/api/v2/identifications/"
+        suggest_id_endpoint = f"/api/v2/identifications/?project_id={self.project.pk}"
         taxa = Taxon.objects.filter(projects=self.project)
         assert taxa.count() > 1
 
@@ -1069,3 +1073,172 @@ class TestProjectPermissions(APITestCase):
         data = {"name": "Anonymous User Project", "description": "Created by anonymous user"}
         response = self.client.post(self.project_create_endpoint, data)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class TestRolePermissions(APITestCase):
+    # Create users
+    def setUp(self) -> None:
+        self.project_manager = User.objects.create_user(email="project_manager@insectai.org", is_staff=False)
+        self._create_project(self.project_manager)
+        ProjectManager.assign_user(self.project_manager, self.project)
+
+        self.basic_member = User.objects.create_user(email="basic_member@insectai.org", is_staff=False)
+        BasicMember.assign_user(self.basic_member, self.project)
+        self.identifier = User.objects.create_user(email="identifier@insectai.org", is_staff=False)
+        Identifier.assign_user(self.identifier, self.project)
+        self.researcher = User.objects.create_user(email="researcher@insectai.org", is_staff=False)
+        Researcher.assign_user(self.researcher, self.project)
+
+        self.ml_data_manager = User.objects.create_user(email="ml_data_manager@insectai.org", is_staff=False)
+        MLDataManager.assign_user(self.ml_data_manager, self.project)
+        # Create a staff user
+        self.staff_user = User.objects.create_user(
+            email="staffuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+        # Create a regular with no role assigned in the project
+        self.other = User.objects.create_user(
+            email="other@insectai.org",
+            password="password123",
+        )
+        self._create_job()
+
+    def _create_project(self, owner):
+        self.project = Project.objects.create(name="Insect Project", description="Test Description", owner=owner)
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_taxa(project=self.project)
+        create_occurrences(deployment=self.deployment, num=1)
+        self._create_job()
+
+    def _create_job(self):
+        self.job = Job.objects.create(name="Test Job", project=self.project)
+
+    def _can_user_update_identification(self, user):
+        url = "/api/v2/identifications/"
+        self.client.force_authenticate(user=user)
+
+        response = self.client.post(
+            url,
+            {
+                "occurrence_id": self.project.occurrences.first().pk,
+                "taxon_id": Taxon.objects.first().pk,
+            },
+        )
+        return response.status_code
+
+    def _can_user_delete_identification(self, user):
+        pass
+
+    def _can_user_create_project(self, user):
+        self.client.force_authenticate(user=user)
+        payload = {"name": "Test Project", "description": "Test Description"}
+        # Create a project
+        response = self.client.post("/api/v2/projects/", payload)
+        project_id = response.json().get("id")
+        return response.status_code, project_id
+
+    def _can_user_update_project(self, user, project_id):
+        """Tests if the user can update a project."""
+        self.client.force_authenticate(user=user)
+
+        payload = {"name": "Updated Project Name"}
+
+        response = self.client.patch(f"/api/v2/projects/{project_id}/", payload)
+        return response.status_code
+
+    def _can_user_delete_project(self, user, project_id):
+        """Tests if the user can delete a project."""
+        self.client.force_authenticate(user=user)
+
+        response = self.client.delete(f"/api/v2/projects/{project_id}/")
+        print(f"Response: {response.content}")
+        return response.status_code
+
+    def _can_user_view_project(self, user, project_id):
+        # Get the project
+        self.client.force_authenticate(user=user)
+        response = self.client.get(f"/api/v2/projects/{project_id}/")
+        return response.status_code
+
+    def _user_can_create_job(self, user):
+        jobs_url = "/api/v2/jobs/"
+        self.client.force_authenticate(user=user)
+
+        payload = {"delay": "1", "name": "test", "project_id": self.project.pk, "source_image_collection_id": 1}
+        response = self.client.post(jobs_url, payload)
+        return response.status_code
+
+    def _can_user_run_job(self, user, job_id):
+        run_job_url = f"/api/v2/jobs/{job_id}/run/"
+
+        self.client.force_authenticate(user=user)
+        response = self.client.post(run_job_url)
+        return response.status_code
+
+    def _can_user_retry_job(self, user, job_id):
+        retry_job_url = f"/api/v2/jobs/{job_id}/run/"
+
+        self.client.force_authenticate(user=user)
+        response = self.client.post(retry_job_url)
+        return response.status_code
+
+    def test_basic_member_permissions(self):
+        """Test BasicMember role permissions."""
+
+        expected_permissions = BasicMember.permissions
+        assigned_permissions = set(get_perms(self.basic_member, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
+        # BasicMember can not update an identification
+        self.assertEqual(self._can_user_update_identification(self.basic_member), status.HTTP_403_FORBIDDEN)
+
+        self._create_job()
+
+        # BasicMember cannot delete a project
+        self.assertEqual(self._can_user_delete_project(self.basic_member, self.project.id), status.HTTP_403_FORBIDDEN)
+        # Basic Member can update a project
+        self.assertEqual(self._can_user_update_project(self.basic_member, self.project.id), status.HTTP_200_OK)
+
+        # basic member cannot run job
+        self.assertEqual(self._can_user_run_job(self.basic_member, self.job.pk), status.HTTP_403_FORBIDDEN)
+        # basic member cannot retry job
+        self.assertEqual(self._can_user_retry_job(self.basic_member, self.job.pk), status.HTTP_403_FORBIDDEN)
+
+    def test_researcher_permissions(self):
+        """Test Researcher role permissions."""
+
+        expected_permissions = Researcher.permissions
+        assigned_permissions = set(get_perms(self.researcher, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
+
+    def test_identifier_permissions(self):
+        """Test Identifier role permissions."""
+
+        expected_permissions = Identifier.permissions
+        assigned_permissions = set(get_perms(self.identifier, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
+
+        # Identifier can  update an identification
+        self.assertEqual(self._can_user_update_identification(self.identifier), status.HTTP_201_CREATED)
+
+    def test_ml_data_manager_permissions(self):
+        """Test MLDataManager role permissions."""
+
+        expected_permissions = MLDataManager.permissions
+        assigned_permissions = set(get_perms(self.ml_data_manager, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
+
+        # MLDataManager can run jobs
+        self.assertEqual(self._can_user_run_job(self.ml_data_manager, self.job.pk), status.HTTP_200_OK)
+        # MLDataManager can retry jobs
+        self.assertEqual(self._can_user_retry_job(self.ml_data_manager, self.job.pk), status.HTTP_200_OK)
+
+    def test_project_manager_permissions(self):
+        """Test ProjectManager role comprehensive permissions."""
+
+        expected_permissions = ProjectManager.permissions
+        assigned_permissions = set(get_perms(self.project_manager, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
