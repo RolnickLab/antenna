@@ -15,6 +15,7 @@ from .models import (
     BlogPost,
     Classification,
     Deployment,
+    Detection,
     Device,
     Event,
     Occurrence,
@@ -103,6 +104,11 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "end_date",
     )
 
+    search_fields = (
+        "id",
+        "name",
+    )
+
     def start_date(self, obj) -> str | None:
         result = SourceImage.objects.filter(event__deployment=obj).aggregate(
             models.Min("timestamp"),
@@ -175,6 +181,11 @@ class EventAdmin(admin.ModelAdmin[Event]):
         "calculated_fields_updated_at",
     )
 
+    search_fields = (
+        "id",
+        "name",
+    )
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
         from django.db.models import ExpressionWrapper, F
@@ -229,8 +240,89 @@ class SourceImageAdmin(AdminBase):
         "collections",
     )
 
+    search_fields = (
+        "id",
+        "path",
+    )
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
+
+
+class ClassificationInline(admin.TabularInline):
+    model = Classification
+    extra = 0
+    fields = (
+        "taxon",
+        "algorithm",
+        "timestamp",
+        "terminal",
+        "created_at",
+    )
+    readonly_fields = (
+        "taxon",
+        "algorithm",
+        "timestamp",
+        "terminal",
+        "created_at",
+    )
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        return qs.select_related("taxon", "algorithm", "detection")
+
+
+class DetectionInline(admin.TabularInline):
+    model = Detection
+    extra = 0
+    fields = (
+        "detection_algorithm",
+        "source_image",
+        "timestamp",
+        "created_at",
+        "occurrence",
+    )
+    readonly_fields = (
+        "detection_algorithm",
+        "source_image",
+        "timestamp",
+        "created_at",
+        "occurrence",
+    )
+
+
+@admin.register(Detection)
+class DetectionAdmin(admin.ModelAdmin[Detection]):
+    """Admin panel example for ``Detection`` model."""
+
+    list_display = (
+        "id",
+        "source_image",
+        "timestamp",
+        "occurrence",
+        "classifications_count",
+        "created_at",
+        "updated_at",
+    )
+
+    autocomplete_fields = ("source_image", "occurrence")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        return qs.select_related("source_image", "occurrence").annotate(
+            classifications_count=models.Count("classifications"),
+        )
+
+    @admin.display(
+        description="Classifications",
+        ordering="classifications_count",
+    )
+    def classifications_count(self, obj) -> int:
+        return obj.classifications_count
+
+    ordering = ("-created_at",)
+
+    inlines = [ClassificationInline]
 
 
 @admin.register(Occurrence)
@@ -247,6 +339,9 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "created_at",
         "updated_at",
     )
+
+    autocomplete_fields = ("determination", "project", "deployment", "event")
+    search_fields = ("determination__taxon__name",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -269,6 +364,9 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         return obj.detections_count
 
     ordering = ("-created_at",)
+
+    # Add classifications as inline
+    inlines = [DetectionInline]
 
 
 @admin.register(Classification)

@@ -110,6 +110,7 @@ class Algorithm(BaseModel):
         null=True,
         choices=[
             ("detection", "Detection"),
+            ("localization", "Localization"),
             ("segmentation", "Segmentation"),
             ("classification", "Classification"),
             ("embedding", "Embedding"),
@@ -128,6 +129,7 @@ class Algorithm(BaseModel):
             ("unknown", "Unknown"),
         ],
     )
+    detection_algorithm_task_types = ["detection", "localization", "segmentation"]
     description = models.TextField(blank=True)
     version = models.IntegerField(
         default=1,

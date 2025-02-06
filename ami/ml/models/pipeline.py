@@ -53,12 +53,23 @@ logger = logging.getLogger(__name__)
 def filter_processed_images(
     images: typing.Iterable[SourceImage],
     pipeline: Pipeline,
+    logger: logging.Logger = logger,
 ) -> typing.Iterable[SourceImage]:
     """
-    Return only images that need to be processed by a given pipeline for the first time (have no detections)
-    or have detections that need to be classified by the given pipeline.
+    Return only images that need to be processed by a given pipeline.
+    An image needs processing if:
+    1. It has no detections from the pipeline's detection algorithm
+    2. It has detections but they don't have classifications from all the pipeline's classification algorithms
     """
     pipeline_algorithms = pipeline.algorithms.all()
+
+    detection_type_keys = Algorithm.detection_algorithm_task_types
+    detection_algorithms = pipeline_algorithms.filter(task_type__in=detection_type_keys)
+    if not detection_algorithms.exists():
+        logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
+    classification_algorithms = pipeline_algorithms.exclude(task_type__in=detection_type_keys)
+    if not classification_algorithms.exists():
+        logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
 
     for image in images:
         existing_detections = image.detections.filter(detection_algorithm__in=pipeline_algorithms)
@@ -76,16 +87,14 @@ def filter_processed_images(
         else:
             # If there are existing detections with classifications,
             # Compare their classification algorithms to the current pipeline's algorithms
-            pipeline_algorithm_ids = pipeline_algorithms.values_list("id", flat=True)
+            pipeline_algorithm_ids = classification_algorithms.values_list("id", flat=True)
             detection_algorithm_ids = existing_detections.values_list("classifications__algorithm_id", flat=True)
 
             if not set(pipeline_algorithm_ids).issubset(set(detection_algorithm_ids)):
                 logger.debug(
-                    f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}"
-                )
-                logger.warn(
-                    f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline} "
-                    f"however we do yet have a mechanism to reclassify detections. Processing the image from scratch."
+                    f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}:"
+                    f" {detection_algorithm_ids} vs {pipeline_algorithm_ids}"
+                    f"Since we do yet have a mechanism to reclassify detections, processing the image from scratch."
                 )
                 yield image
             else:
@@ -130,7 +139,7 @@ def collect_images(
         logger.info(msg)
         if job:
             job.logger.info(msg)
-        images = list(filter_processed_images(images, pipeline))
+        images = list(filter_processed_images(images, pipeline, logger=logger))
     else:
         msg = "NOT filtering images that have already been processed"
         logger.info(msg)
@@ -167,7 +176,7 @@ def process_images(
         task_logger = job.logger
 
     prefiltered_images = list(images)
-    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline))
+    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, logger=task_logger))
     if len(images) < len(prefiltered_images):
         # Log how many images were filtered out because they have already been processed
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
@@ -494,7 +503,7 @@ def get_or_create_taxon_for_classification(
     assert algorithm.category_map, f"No category map found for algorithm {algorithm}"
     label_data: dict = algorithm.category_map.data[classification_resp.scores.index(max(classification_resp.scores))]
     returned_taxon_name = classification_resp.classification
-    # @TOOD standardize the Taxon search / lookup. See similar query in ml.models.algorithm.AlgorithmCategoryMap
+    # @TODO standardize the Taxon search / lookup. See similar query in ml.models.algorithm.AlgorithmCategoryMap
     taxon = Taxon.objects.filter(
         models.Q(name=returned_taxon_name) | models.Q(search_names__overlap=[returned_taxon_name]),
         active=True,
@@ -769,9 +778,6 @@ def save_results(
         job = Job.objects.get(pk=job_id)
         job_logger = job.logger
 
-    # @TODO set this level back to INFO
-    # job_logger.setLevel(logging.DEBUG)
-
     if results_json:
         results = PipelineResultsResponse.parse_raw(results_json)
     assert results, "No results data passed to save_results task"
@@ -794,6 +800,12 @@ def save_results(
         algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
         for algo_key, algo_config in results.algorithms.items()
     }
+    # Add all algorithms initially reported in the pipeline response to the pipeline
+    for algo in algorithms_used.values():
+        pipeline.algorithms.add(algo)
+
+    algos_reported = [f"    {algo.task_type}: {algo_key} ({algo})\n" for algo_key, algo in algorithms_used.items()]
+    job_logger.info(f"Algorithms reported in pipeline response: \n{''.join(algos_reported)}")
 
     detections = create_detections(
         detections=results.detections,
@@ -830,9 +842,10 @@ def save_results(
     update_calculated_fields_for_events(pks=event_ids)
 
     registered_algos = pipeline.algorithms.all()
+    # Add any algorithms that were reported in a detection response that were not reported in the pipeline response
+    # This is important for tracking what objects were processed by which algorithms
+    # to avoid reprocessing, and for tracking provenance.
     for algo in algorithms_used.values():
-        # This is important for tracking what objects were processed by which algorithms
-        # to avoid reprocessing, and for tracking provenance.
         if algo not in registered_algos:
             pipeline.algorithms.add(algo)
             job_logger.debug(f"Added algorithm {algo} to pipeline {pipeline}")
