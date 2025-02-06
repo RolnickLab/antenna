@@ -25,6 +25,7 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import (
+    CanDeleteIdentification,
     CanPopulateCollection,
     CanUpdateIdentification,
     DeploymentCRUDPermission,
@@ -1431,7 +1432,7 @@ class IdentificationViewSet(DefaultViewSet):
         "updated_at",
         "user",
     ]
-    permission_classes = [CanUpdateIdentification]
+    permission_classes = [CanUpdateIdentification, CanDeleteIdentification]
 
     def perform_create(self, serializer):
         """

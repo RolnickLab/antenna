@@ -40,7 +40,10 @@ class Researcher(Role):
 
 
 class Identifier(Role):
-    permissions = BasicMember.permissions | {Project.Permissions.UPDATE_IDENTIFICATIONS}
+    permissions = BasicMember.permissions | {
+        Project.Permissions.UPDATE_IDENTIFICATIONS,
+        Project.Permissions.DELETE_IDENTIFICATIONS,
+    }
 
 
 class MLDataManager(Role):
