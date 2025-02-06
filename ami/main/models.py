@@ -2965,7 +2965,8 @@ class SourceImageCollection(BaseModel):
     def sample_common_combined(
         self,
         minute_interval: int | None = None,
-        max_num: int | None = 100,
+        max_num: int | None = None,
+        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
         hour_start: int | None = None,
         hour_end: int | None = None,
         month_start: int | None = None,
@@ -3005,6 +3006,8 @@ class SourceImageCollection(BaseModel):
             qs = sample_captures_by_interval(minute_interval=minute_interval, qs=qs, max_num=max_num)
         else:
             if max_num is not None:
+                if shuffle:
+                    qs = qs.order_by("?")
                 qs = qs[:max_num]
 
         return qs

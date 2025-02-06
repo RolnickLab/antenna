@@ -1026,6 +1026,7 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     # use for the "common_combined" method
     minute_interval = serializers.IntegerField(required=False, allow_null=True)
     max_num = serializers.IntegerField(required=False, allow_null=True)
+    shuffle = serializers.BooleanField(required=False, allow_null=True)
 
     month_start = serializers.IntegerField(required=False, allow_null=True)
     month_end = serializers.IntegerField(required=False, allow_null=True)
