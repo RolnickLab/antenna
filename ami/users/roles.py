@@ -1,4 +1,5 @@
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
 from guardian.shortcuts import assign_perm, remove_perm
 
 from ami.main.models import Project
@@ -29,6 +30,16 @@ class Role:
         # remove permissions
         for perm in cls.permissions:
             remove_perm(perm, user, project)
+
+    @classmethod
+    def has_role(cls, user, project):
+        """Checks if the user has the role permissions on the given project."""
+        group_name = f"{project.pk}_{project.name}_{cls.__name__}"
+
+        return (
+            all(user.has_perm(perm, project) for perm in cls.permissions)
+            or user.groups.filter(name=group_name).exists()
+        )
 
 
 class BasicMember(Role):
@@ -88,3 +99,25 @@ class ProjectManager(Role):
             Project.Permissions.DELETE_DEVICE,
         }
     )
+
+
+def create_roles_for_project(project):
+    """Creates role-based permission groups for a given project."""
+    project_ct = ContentType.objects.get_for_model(Project)
+
+    for role_class in Role.__subclasses__():
+        role_name = f"{project.pk}_{project.name}_{role_class.__name__}"
+        permissions = role_class.permissions
+
+        group, created = Group.objects.get_or_create(name=role_name)
+
+        for perm_codename in permissions:
+            permission, _ = Permission.objects.get_or_create(
+                codename=perm_codename,
+                content_type=project_ct,
+                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+            )
+            group.permissions.add(permission)
+
+            # Assign the permission group to the project
+            assign_perm(perm_codename, group, project)

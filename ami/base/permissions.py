@@ -8,6 +8,7 @@ from rest_framework import permissions
 
 from ami.jobs.models import Job
 from ami.main.models import Deployment, Device, Identification, Project, S3StorageSource, Site, SourceImageCollection
+from ami.users.roles import ProjectManager
 
 logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
@@ -188,8 +189,9 @@ class CanDeleteIdentification(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         project = obj.get_project() if hasattr(obj, "get_project") else None
+        # Check if user is superuser or staff or project manager
         if view.action == "destroy":
-            if request.user.is_superuser or request.user.is_staff:
+            if request.user.is_superuser or request.user.is_staff or ProjectManager.has_role(request.user, project):
                 return True
             # Check if the user has the required permission and is the owner of the object
             return obj.user == request.user and request.user.has_perm(self.permission, project)
