@@ -1521,8 +1521,8 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
+    minute_interval: int,
     qs: models.QuerySet[SourceImage],
-    minute_interval: int = 10,
     max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
@@ -1552,7 +1552,7 @@ def sample_captures_by_interval(
 
 def sample_captures_by_position(
     position: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage | None, None, None]:
     """
     Return the n-th position capture from each event.
@@ -1560,9 +1560,6 @@ def sample_captures_by_position(
     For example if position = 0, the first capture from each event will be returned.
     If position = -1, the last capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1590,7 +1587,7 @@ def sample_captures_by_position(
 
 def sample_captures_by_nth(
     nth: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return every nth capture from each event.
@@ -1598,9 +1595,6 @@ def sample_captures_by_nth(
     For example if nth = 1, every capture from each event will be returned.
     If nth = 5, every 5th capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -3019,13 +3013,13 @@ class SourceImageCollection(BaseModel):
         """Sample the single nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_position(position, qs=qs)
+        return sample_captures_by_position(position=position, qs=qs)
 
     def sample_nth(self, nth: int):
         """Sample every nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_nth(nth, qs=qs)
+        return sample_captures_by_nth(nth=nth, qs=qs)
 
     def sample_random_from_each_event(self, num_each: int = 10):
         """Sample n random source images from each event in the project."""
