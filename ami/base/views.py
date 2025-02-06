@@ -14,7 +14,7 @@ class ProjectMixin:
     By default, project_id is required, but this can be overridden.
     """
 
-    require_project = True  # Project is required by default
+    require_project = False  # Project is optional
 
     def get_active_project(self):
         from ami.base.serializers import SingleParamSerializer
