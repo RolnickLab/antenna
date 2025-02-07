@@ -85,14 +85,10 @@ class JobProgressSummary(pydantic.BaseModel):
 
     status: JobState = JobState.CREATED
     progress: float = 0
-    status_label: str = ""
 
-    @pydantic.validator("status_label", always=True)
-    def serialize_status_label(cls, value, values) -> str:
-        if "status" not in values or "progress" not in values:
-            # Does this happen if status label gets initialized before status and progress?
-            return ""
-        return get_status_label(values["status"], values["progress"])
+    @property
+    def status_label(self) -> str:
+        return get_status_label(self.status, self.progress)
 
     class Config:
         use_enum_values = True
@@ -112,15 +108,15 @@ class JobProgress(pydantic.BaseModel):
 
     summary: JobProgressSummary
     stages: list[JobProgressStageDetail]
-    errors: list[str] = []
-    logs: list[str] = []
+    errors: list[str] = []  # Deprecated, @TODO remove in favor of logs.stderr
+    logs: list[str] = []  # Deprecated, @TODO remove in favor of logs.stdout
 
-    def get_stage_key(self, name: str) -> str:
+    def make_key(self, name: str) -> str:
         """Generate a key for a stage or param based on its name"""
         return python_slugify(name)
 
     def add_stage(self, name: str, key: str | None = None) -> JobProgressStageDetail:
-        key = key or self.get_stage_key(name)
+        key = key or self.make_key(name)
         try:
             return self.get_stage(key)
         except ValueError:
@@ -146,26 +142,28 @@ class JobProgress(pydantic.BaseModel):
                 return param
         raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
 
-    def add_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+    def add_stage_param(self, stage_key: str, param_name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         try:
-            return self.get_stage_param(stage_key, self.get_stage_key(name))
+            return self.get_stage_param(stage_key, self.make_key(param_name))
         except ValueError:
             param = ConfigurableStageParam(
-                name=name,
-                key=self.get_stage_key(name),
+                name=param_name,
+                key=self.make_key(param_name),
                 value=value,
             )
             stage.params.append(param)
             return param
 
-    def add_or_update_stage_param(self, stage_key: str, name: str, value: typing.Any = None) -> ConfigurableStageParam:
+    def add_or_update_stage_param(
+        self, stage_key: str, param_name: str, value: typing.Any = None
+    ) -> ConfigurableStageParam:
         try:
-            param = self.get_stage_param(stage_key, self.get_stage_key(name))
+            param = self.get_stage_param(stage_key, self.make_key(param_name))
             param.value = value
             return param
         except ValueError:
-            return self.add_stage_param(stage_key, name, value)
+            return self.add_stage_param(stage_key, param_name, value)
 
     def update_stage(self, stage_key_or_name: str, **stage_parameters) -> JobProgressStageDetail | None:
         """ "
@@ -176,7 +174,7 @@ class JobProgress(pydantic.BaseModel):
 
         This is the preferred method to update a stage's parameters.
         """
-        stage_key = self.get_stage_key(stage_key_or_name)  # Allow both title or key to be used for lookup
+        stage_key = self.make_key(stage_key_or_name)  # Allow both title or key to be used for lookup
         stage = self.get_stage(stage_key)
 
         if stage.key == stage_key:
@@ -243,6 +241,11 @@ def default_ml_job_progress() -> JobProgress:
     )
 
 
+class JobLogs(pydantic.BaseModel):
+    stdout: list[str] = pydantic.Field(default_factory=list, alias="stdout", title="All messages")
+    stderr: list[str] = pydantic.Field(default_factory=list, alias="stderr", title="Error messages")
+
+
 class JobLogHandler(logging.Handler):
     """
     Class for handling logs from a job and writing them to the job instance.
@@ -254,24 +257,26 @@ class JobLogHandler(logging.Handler):
         self.job = job
         super().__init__(*args, **kwargs)
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord):
         # Log to the current app logger
         logger.log(record.levelno, self.format(record))
 
         # Write to the logs field on the job instance
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.progress.logs:
-            self.job.progress.logs.insert(0, msg)
+        if msg not in self.job.logs.stdout:
+            self.job.logs.stdout.insert(0, msg)
 
         # Write a simpler copy of any errors to the errors field
         if record.levelno >= logging.ERROR:
-            if record.message not in self.job.progress.errors:
-                self.job.progress.errors.insert(0, record.message)
+            if record.message not in self.job.logs.stderr:
+                self.job.logs.stderr.insert(0, record.message)
 
-        if len(self.job.progress.logs) > self.max_log_length:
-            self.job.progress.logs = self.job.progress.logs[: self.max_log_length]
-        self.job.save()
+        if len(self.job.logs.stdout) > self.max_log_length:
+            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
+
+        # @TODO consider saving logs to the database periodically rather than on every log
+        self.job.save(update_fields=["logs"], update_progress=False)
 
 
 @dataclass
@@ -312,6 +317,10 @@ class MLJob(JobType):
         job.finished_at = None
         job.save()
 
+        # Keep track of sub-tasks for saving results, pair with batch number
+        save_tasks: list[tuple[int, AsyncResult]] = []
+        save_tasks_completed: list[tuple[int, AsyncResult]] = []
+
         if job.delay:
             update_interval_seconds = 2
             last_update = time.time()
@@ -337,91 +346,155 @@ class MLJob(JobType):
             )
             job.save()
 
-        if job.pipeline:
-            job.progress.update_stage(
-                "collect",
-                status=JobState.STARTED,
-                progress=0,
-            )
+        if not job.pipeline:
+            raise ValueError("No pipeline specified to process images in ML job")
 
-            images = list(
-                # @TODO return generator plus image count
-                # @TODO pass to celery group chain?
-                job.pipeline.collect_images(
-                    collection=job.source_image_collection,
-                    deployment=job.deployment,
-                    source_images=[job.source_image_single] if job.source_image_single else None,
+        job.progress.update_stage(
+            "collect",
+            status=JobState.STARTED,
+            progress=0,
+        )
+
+        images = list(
+            # @TODO return generator plus image count
+            # @TODO pass to celery group chain?
+            job.pipeline.collect_images(
+                collection=job.source_image_collection,
+                deployment=job.deployment,
+                source_images=[job.source_image_single] if job.source_image_single else None,
+                job_id=job.pk,
+                skip_processed=True,
+                # shuffle=job.shuffle,
+            )
+        )
+        source_image_count = len(images)
+        job.progress.update_stage("collect", total_images=source_image_count)
+
+        if job.shuffle and source_image_count > 1:
+            job.logger.info("Shuffling images")
+            random.shuffle(images)
+
+        if job.limit and source_image_count > job.limit:
+            job.logger.warn(f"Limiting number of images to {job.limit} (out of {source_image_count})")
+            images = images[: job.limit]
+            image_count = len(images)
+            job.progress.add_stage_param("collect", "Limit", image_count)
+        else:
+            image_count = source_image_count
+
+        job.progress.update_stage(
+            "collect",
+            status=JobState.SUCCESS,
+            progress=1,
+        )
+
+        # End image collection stage
+        job.save()
+
+        total_captures = 0
+        total_detections = 0
+        total_classifications = 0
+
+        CHUNK_SIZE = 4  # Keep it low to see more progress updates
+        chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
+        request_failed_images = []
+
+        for i, chunk in enumerate(chunks):
+            request_sent = time.time()
+            job.logger.info(f"Processing image batch {i+1} of {len(chunks)}")
+            try:
+                results = job.pipeline.process_images(
+                    images=chunk,
                     job_id=job.pk,
-                    skip_processed=True,
-                    # shuffle=job.shuffle,
                 )
-            )
-            source_image_count = len(images)
-            job.progress.update_stage("collect", total_images=source_image_count)
-
-            if job.shuffle and source_image_count > 1:
-                job.logger.info("Shuffling images")
-                random.shuffle(images)
-
-            if job.limit and source_image_count > job.limit:
-                job.logger.warn(f"Limiting number of images to {job.limit} (out of {source_image_count})")
-                images = images[: job.limit]
-                image_count = len(images)
-                job.progress.add_stage_param("collect", "Limit", image_count)
+                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
+            except Exception as e:
+                # Log error about image batch and continue
+                job.logger.error(f"Failed to process image batch {i+1}: {e}")
+                request_failed_images.extend([img.pk for img in chunk])
             else:
-                image_count = source_image_count
-
-            job.progress.update_stage(
-                "collect",
-                status=JobState.SUCCESS,
-                progress=1,
-            )
-
-            total_detections = 0
-            total_classifications = 0
-
-            CHUNK_SIZE = 2  # Keep it low to see more progress updates
-            chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
-
-            for i, chunk in enumerate(chunks):
-                try:
-                    results = job.pipeline.process_images(
-                        images=chunk,
-                        job_id=job.pk,
-                    )
-                except Exception as e:
-                    # Log error about image batch and continue
-                    job.logger.error(f"Failed to process image batch {i} of {len(chunks)}: {e}")
-                    continue
-
+                total_captures += len(results.source_images)
                 total_detections += len(results.detections)
                 total_classifications += len([c for d in results.detections for c in d.classifications])
-                job.progress.update_stage(
-                    "process",
-                    status=JobState.STARTED,
-                    progress=(i + 1) / len(chunks),
-                    processed=(i + 1) * CHUNK_SIZE,
-                    remaining=image_count - (i + 1) * CHUNK_SIZE,
-                    detections=total_detections,
-                    classifications=total_classifications,
-                )
-                job.save()
 
                 if results.source_images or results.detections:
-                    save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
-                    job.logger.info(f"Saving results in sub-task {save_results_task.id}")
+                    # @TODO add callback to report errors while saving results marking the job as failed
+                    save_results_task: AsyncResult = job.pipeline.save_results_async(results=results, job_id=job.pk)
+                    save_tasks.append((i + 1, save_results_task))
+                    job.logger.info(f"Saving results for batch {i+1} in sub-task {save_results_task.id}")
 
             job.progress.update_stage(
                 "process",
-                status=JobState.SUCCESS,
-            )
-            job.progress.update_stage(
-                "results",
-                status=JobState.SUCCESS,
+                status=JobState.STARTED,
+                progress=(i + 1) / len(chunks),
+                processed=min((i + 1) * CHUNK_SIZE, image_count),
+                failed=len(request_failed_images),
+                remaining=max(image_count - ((i + 1) * CHUNK_SIZE), 0),
             )
 
-        job.update_status(JobState.SUCCESS)
-        job.update_progress()
+            # count the completed, successful, and failed save_tasks:
+            save_tasks_completed = [t for t in save_tasks if t[1].ready()]
+            failed_save_tasks = [t for t in save_tasks_completed if not t[1].successful()]
+
+            for failed_batch_num, failed_task in failed_save_tasks:
+                # First log all errors and update the job status. Then raise exception if any failed.
+                job.logger.error(f"Failed to save results from batch {failed_batch_num} (sub-task {failed_task.id})")
+
+            job.progress.update_stage(
+                "results",
+                status=JobState.FAILURE if failed_save_tasks else JobState.STARTED,
+                progress=len(save_tasks_completed) / len(chunks),
+                captures=total_captures,
+                detections=total_detections,
+                classifications=total_classifications,
+            )
+            job.save()
+
+            # Stop processing if any save tasks have failed
+            # Otherwise, calculate the percent of images that have failed to save
+            throw_on_save_error = True
+            for failed_batch_num, failed_task in failed_save_tasks:
+                if throw_on_save_error:
+                    failed_task.maybe_throw()
+
+        percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
+        job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
+
+        # Check all Celery sub-tasks if they have completed saving results
+        save_tasks_remaining = set(save_tasks) - set(save_tasks_completed)
+        job.logger.info(
+            f"Checking the status of {len(save_tasks_remaining)} remaining sub-tasks that are still saving results."
+        )
+        for batch_num, sub_task in save_tasks:
+            if not sub_task.ready():
+                job.logger.info(f"Waiting for batch {batch_num} to finish saving results (sub-task {sub_task.id})")
+                # @TODO this is not recommended! Use a group or chain. But we need to refactor.
+                # https://docs.celeryq.dev/en/latest/userguide/tasks.html#avoid-launching-synchronous-subtasks
+                sub_task.wait(disable_sync_subtasks=False, timeout=60)
+            if not sub_task.successful():
+                error: Exception = sub_task.result
+                job.logger.error(f"Failed to save results from batch {batch_num}! (sub-task {sub_task.id}): {error}")
+                sub_task.maybe_throw()
+
+        job.logger.info(f"All tasks completed for job {job.pk}")
+
+        FAILURE_THRESHOLD = 0.5
+        if image_count and (percent_successful < FAILURE_THRESHOLD):
+            job.progress.update_stage("process", status=JobState.FAILURE)
+            job.save()
+            raise Exception(f"Failed to process more than {int(FAILURE_THRESHOLD * 100)}% of images")
+
+        job.progress.update_stage(
+            "process",
+            status=JobState.SUCCESS,
+            progress=1,
+        )
+        job.progress.update_stage(
+            "results",
+            status=JobState.SUCCESS,
+            progress=1,
+        )
+        job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
         job.save()
 
@@ -445,7 +518,9 @@ class DataStorageSyncJob(JobType):
         job.finished_at = None
         job.save()
 
-        if job.deployment:
+        if not job.deployment:
+            raise ValueError("No deployment provided for data storage sync job")
+        else:
             job.logger.info(f"Syncing captures for deployment {job.deployment}")
             job.progress.update_stage(
                 cls.key,
@@ -465,10 +540,7 @@ class DataStorageSyncJob(JobType):
             )
             job.update_status(JobState.SUCCESS)
             job.save()
-        else:
-            job.update_status(JobState.FAILURE)
 
-        job.update_progress()
         job.finished_at = datetime.datetime.now()
         job.save()
 
@@ -492,11 +564,7 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
         if not job.source_image_collection:
-            job.logger.error("No source image collection provided")
-            job.update_status(JobState.FAILURE)
-            job.finished_at = datetime.datetime.now()
-            job.save()
-            return
+            raise ValueError("No source image collection provided")
 
         job.logger.info(f"Populating source image collection {job.source_image_collection}")
         job.update_status(JobState.STARTED)
@@ -508,7 +576,7 @@ class SourceImageCollectionPopulateJob(JobType):
             progress=0.10,
             captures_added=0,
         )
-        job.update_progress(save=True)
+        job.save()
 
         job.source_image_collection.populate_sample(job=job)
         job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
@@ -525,7 +593,6 @@ class SourceImageCollectionPopulateJob(JobType):
         )
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS, save=False)
-        job.update_progress(save=False)
         job.save()
 
 
@@ -535,9 +602,7 @@ class UnknownJobType(JobType):
 
     @classmethod
     def run(cls, job: "Job"):
-        job.logger.error(f"Unknown job type '{job.job_type()}'")
-        job.update_status(JobState.UNKNOWN)
-        job.save()
+        raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
 VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType]
@@ -580,6 +645,7 @@ class Job(BaseModel):
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
+    logs: JobLogs = SchemaField(JobLogs, default=JobLogs())
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
@@ -676,11 +742,12 @@ class Job(BaseModel):
             pipeline_stage = self.progress.add_stage("Process")
             self.progress.add_stage_param(pipeline_stage.key, "Processed", "")
             self.progress.add_stage_param(pipeline_stage.key, "Remaining", "")
-            self.progress.add_stage_param(pipeline_stage.key, "Detections", "")
-            self.progress.add_stage_param(pipeline_stage.key, "Classifications", "")
+            self.progress.add_stage_param(pipeline_stage.key, "Failed", "")
 
             saving_stage = self.progress.add_stage("Results")
-            self.progress.add_stage_param(saving_stage.key, "Objects created", "")
+            self.progress.add_stage_param(saving_stage.key, "Captures", "")
+            self.progress.add_stage_param(saving_stage.key, "Detections", "")
+            self.progress.add_stage_param(saving_stage.key, "Classifications", "")
 
         if save:
             self.save()
@@ -700,6 +767,7 @@ class Job(BaseModel):
         Retry the job.
         """
         self.logger.info(f"Re-running job {self}")
+        self.finished_at = None
         self.progress.reset()
         self.status = JobState.RETRY
         self.save()
@@ -733,11 +801,11 @@ class Job(BaseModel):
             status = task.status
 
         if not status:
-            self.logger.warn(f"Could not determine status of job {self.pk}")
+            self.logger.warning(f"Could not determine status of job {self.pk}")
             return
 
         if status != self.status:
-            self.logger.info(f"Changing status of job {self.pk} to {status}")
+            self.logger.info(f"Changing status of job {self.pk} from {self.status} to {status}")
             self.status = status
 
         self.progress.summary.status = status
@@ -757,10 +825,10 @@ class Job(BaseModel):
                 if stage.progress > 0 and stage.status == JobState.CREATED:
                     # Update any stages that have started but are still in the CREATED state
                     stage.status = JobState.STARTED
-                elif stage.status == JobState.SUCCESS and stage.progress < 1:
+                elif stage.status in JobState.final_states() and stage.progress < 1:
                     # Update any stages that are complete but have a progress less than 1
                     stage.progress = 1
-                elif stage.progress == 1 and stage.status == JobState.STARTED:
+                elif stage.progress == 1 and stage.status not in JobState.final_states():
                     # Update any stages that are complete but are still in the STARTED state
                     stage.status = JobState.SUCCESS
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
@@ -768,18 +836,18 @@ class Job(BaseModel):
         self.progress.summary.progress = total_progress
 
         if save:
-            self.save()
+            self.save(update_progress=False)
 
     def duration(self) -> datetime.timedelta | None:
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at
         return None
 
-    def save(self, *args, **kwargs):
+    def save(self, update_progress=True, *args, **kwargs):
         """
         Create the job stages if they don't exist.
         """
-        if self.pk and self.progress.stages:
+        if self.pk and self.progress.stages and update_progress:
             self.update_progress(save=False)
         else:
             self.setup(save=False)

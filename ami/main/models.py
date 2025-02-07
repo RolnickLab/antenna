@@ -12,6 +12,7 @@ from typing import Final, final  # noqa: F401
 import pydantic
 from django.apps import apps
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
@@ -25,6 +26,7 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
+from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
 from ami.users.models import User
@@ -156,7 +158,7 @@ class Project(BaseModel):
         plots.append(charts.captures_per_hour(project_pk=self.pk))
         if self.occurrences.exists():
             plots.append(charts.detections_per_hour(project_pk=self.pk))
-            plots.append(charts.occurrences_accumulated(project_pk=self.pk))
+            # plots.append(charts.occurrences_accumulated(project_pk=self.pk))
         else:
             plots.append(charts.events_per_month(project_pk=self.pk))
             # plots.append(charts.captures_per_month(project_pk=self.pk))
@@ -1340,6 +1342,7 @@ class SourceImage(BaseModel):
         blank=True,
     )
 
+    event_id: int | None
     detections: models.QuerySet["Detection"]
     collections: models.QuerySet["SourceImageCollection"]
     jobs: models.QuerySet["Job"]
@@ -1611,8 +1614,8 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
-    minute_interval: int = 10,
-    qs: models.QuerySet[SourceImage] | None = None,
+    minute_interval: int,
+    qs: models.QuerySet[SourceImage],
     max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
@@ -1621,9 +1624,6 @@ def sample_captures_by_interval(
 
     last_capture = None
     total = 0
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1645,7 +1645,7 @@ def sample_captures_by_interval(
 
 def sample_captures_by_position(
     position: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage | None, None, None]:
     """
     Return the n-th position capture from each event.
@@ -1653,9 +1653,6 @@ def sample_captures_by_position(
     For example if position = 0, the first capture from each event will be returned.
     If position = -1, the last capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1683,7 +1680,7 @@ def sample_captures_by_position(
 
 def sample_captures_by_nth(
     nth: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return every nth capture from each event.
@@ -1691,9 +1688,6 @@ def sample_captures_by_nth(
     For example if nth = 1, every capture from each event will be returned.
     If nth = 5, every 5th capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1877,27 +1871,27 @@ class Classification(BaseModel):
         related_name="classifications",
     )
 
-    # occurrence = models.ForeignKey(
-    #     "Occurrence",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     related_name="predictions",
-    # )
-
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
     timestamp = models.DateTimeField()
-    # terminal = models.BooleanField(
-    #     default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
-    # )
-
-    softmax_output = models.JSONField(null=True)  # scores for all classes
-    raw_output = models.JSONField(null=True)  # raw output from the model
+    terminal = models.BooleanField(
+        default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
+    )
+    logits = ArrayField(
+        models.FloatField(), null=True, help_text="The raw output of the last fully connected layer of the model"
+    )
+    scores = ArrayField(
+        models.FloatField(),
+        null=True,
+        help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
+    )
+    category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
     algorithm = models.ForeignKey(
         "ml.Algorithm",
         on_delete=models.SET_NULL,
         null=True,
+        related_name="classifications",
     )
     # job = models.CharField(max_length=255, null=True)
 
@@ -1911,7 +1905,91 @@ class Classification(BaseModel):
         ordering = ["-created_at", "-score"]
 
     def __str__(self) -> str:
-        return f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id}"
+        terminal = "Terminal" if self.terminal else "Intermediate"
+        if logger.getEffectiveLevel() == logging.DEBUG:
+            # Query the related objects to get the names
+            return f"#{self.pk} to Taxon {self.taxon} ({self.score:.2f}) by Algorithm {self.algorithm} ({terminal})"
+        return (
+            f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id} ({terminal})"
+        )
+
+    def top_scores_with_index(self, n: int | None = None) -> typing.Iterable[tuple[int, float]]:
+        """
+        Return the scores with their index, but sorted by score.
+        """
+        if self.scores:
+            top_scores_by_index = sorted(enumerate(self.scores), key=lambda x: x[1], reverse=True)[:n]
+            return top_scores_by_index
+        else:
+            return []
+
+    def predictions(self, sort=True) -> typing.Iterable[tuple[str, float]]:
+        """
+        Return all label-score pairs for this classification using the category map.
+        """
+        if not self.category_map:
+            raise ValueError("Classification must have a category map to get predictions.")
+        scores = self.scores or []
+        preds = zip(self.category_map.labels, scores)
+        if sort:
+            return sorted(preds, key=lambda x: x[1], reverse=True)
+        else:
+            return preds
+
+    def predictions_with_taxa(self, sort=True) -> typing.Iterable[tuple["Taxon", float]]:
+        """
+        Return taxa objects and their scores for this classification using the category map.
+
+        @TODO make this more efficient with numpy and/or postgres array functions. especially when we only need
+        the top N out of thousands of taxa.
+        """
+        if not self.category_map:
+            raise ValueError("Classification must have a category map to get predictions.")
+        scores = self.scores or []
+        category_data_with_taxa = self.category_map.with_taxa()
+        taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
+        preds = zip(taxa_sorted_by_index, scores)
+        if sort:
+            return sorted(preds, key=lambda x: x[1], reverse=True)
+        else:
+            return preds
+
+    def taxa(self) -> typing.Iterable["Taxon"]:
+        """
+        Return the taxa objects for this classification using the category map.
+        """
+        if not self.category_map:
+            return []
+        category_data_with_taxa = self.category_map.with_taxa()
+        taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
+        return taxa_sorted_by_index
+
+    def top_n(self, n: int = 3) -> list[dict[str, "Taxon | float | None"]]:
+        """Return top N taxa and scores for this classification."""
+        if not self.category_map:
+            raise ValueError("Classification must have a category map to get top N.")
+
+        top_scored = self.top_scores_with_index(n)  # (index, score) pairs
+        indexes = [idx for idx, _ in top_scored]
+        category_data = self.category_map.with_taxa(only_indexes=indexes)
+        index_to_taxon = {cat["index"]: cat["taxon"] for cat in category_data}
+
+        return [
+            {
+                "taxon": index_to_taxon[i],
+                "score": s,
+                "logit": self.logits[i] if self.logits else None,
+            }
+            for i, s in top_scored
+        ]
+
+    def save(self, *args, **kwargs):
+        """
+        Set the category map based on the algorithm.
+        """
+        if self.algorithm and not self.category_map:
+            self.category_map = self.algorithm.category_map
+        super().save(*args, **kwargs)
 
 
 @final
@@ -1963,7 +2041,7 @@ class Detection(BaseModel):
         null=True,
         blank=True,
     )
-    # Time that the detection was created by the algorithm in the ML backend
+    # Time that the detection was created by the algorithm in the processing service
     detection_time = models.DateTimeField(null=True, blank=True)
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
@@ -2202,10 +2280,22 @@ class Occurrence(BaseModel):
 
     @functools.cached_property
     def best_prediction(self):
-        return self.predictions().first()
+        """
+        Use the best prediction as the best identification if there are no human identifications.
+
+        Uses the highest scoring classification (from any algorithm) as the best prediction.
+        Considers terminal classifications first, then non-terminal ones.
+        (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
+        """
+        return self.predictions().order_by("-terminal", "-score").first()
 
     @functools.cached_property
     def best_identification(self):
+        """
+        The most recent human identification is used as the best identification.
+
+        @TODO this could use a confidence level chosen manually by the users/experts.
+        """
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
     def get_determination_score(self) -> float | None:
@@ -2258,6 +2348,7 @@ class Occurrence(BaseModel):
         if self.determination and not self.determination_score:
             # This may happen for legacy occurrences that were created
             # before the determination_score field was added
+            # @TODO remove
             self.determination_score = self.get_determination_score()
             if not self.determination_score:
                 logger.warning(f"Could not determine score for {self}")
@@ -2270,16 +2361,16 @@ class Occurrence(BaseModel):
 
 def update_occurrence_determination(
     occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
-):
+) -> bool:
     """
     Update the determination of the occurrence based on the identifications & predictions.
 
     If there are identifications, set the determination to the latest identification.
     If there are no identifications, set the determination to the top prediction.
 
-    The `current_determination` is the determination curently saved in the database.
+    The `current_determination` is the determination currently saved in the database.
     The `occurrence` object may already have a different un-saved determination set
-    so it is neccessary to retrieve the current determination from the database, but
+    so it is necessary to retrieve the current determination from the database, but
     this can also be passed in as an argument to avoid an extra database query.
 
     @TODO Add tests for this important method!
@@ -2291,6 +2382,8 @@ def update_occurrence_determination(
         del occurrence.best_identification
     if hasattr(occurrence, "best_prediction"):
         del occurrence.best_prediction
+    if hasattr(occurrence, "best_identification"):
+        del occurrence.best_identification
 
     current_determination = (
         current_determination
@@ -2312,17 +2405,28 @@ def update_occurrence_determination(
             new_score = top_prediction.score
 
     if new_determination and new_determination != current_determination:
-        logger.info(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
+        logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
         occurrence.determination = new_determination
         needs_update = True
 
     if new_score and new_score != occurrence.determination_score:
-        logger.info(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
+        logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
         needs_update = True
 
+    if not needs_update:
+        if logger.getEffectiveLevel() <= logging.DEBUG:
+            all_predictions = occurrence.predictions()
+            all_preds_print = ", ".join([str(p) for p in all_predictions])
+            logger.debug(
+                f"No update needed for determination of {occurrence}. Best prediction: {occurrence.best_prediction}. "
+                f"All preds: {all_preds_print}"
+            )
+
     if save and needs_update:
         occurrence.save(update_determination=False)
+
+    return needs_update
 
 
 @final
@@ -2552,9 +2656,11 @@ class Taxon(BaseModel):
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
+    search_names = ArrayField(models.CharField(max_length=255), null=True, blank=True)
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
     inat_taxon_id = models.BigIntegerField("iNaturalist taxon ID", blank=True, null=True)
+    # lepsai_id = models.BigIntegerField("LepsAI / Fieldguide ID", blank=True, null=True)
 
     notes = models.TextField(blank=True)
 
@@ -2970,35 +3076,51 @@ class SourceImageCollection(BaseModel):
     def sample_common_combined(
         self,
         minute_interval: int | None = None,
-        max_num: int | None = 100,
+        max_num: int | None = None,
+        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
         hour_start: int | None = None,
         hour_end: int | None = None,
-        month_start: datetime.date | None = None,
-        month_end: datetime.date | None = None,
-        day_start: datetime.date | None = None,
-        day_end: datetime.date | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
-        if month_start:
+
+        if date_start is not None:
+            qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
+        if date_end is not None:
+            qs = qs.filter(timestamp__date__lte=DateStringField.to_date(date_end))
+
+        if month_start is not None:
             qs = qs.filter(timestamp__month__gte=month_start)
-        if month_end:
+        if month_end is not None:
             qs = qs.filter(timestamp__month__lte=month_end)
-        if day_start:
-            qs = qs.filter(timestamp__day__gte=day_start)
-        if day_end:
-            qs = qs.filter(timestamp__day__lte=day_end)
-        if hour_start:
+
+        if hour_start is not None and hour_end is not None:
+            if hour_start < hour_end:
+                # Hour range within the same day (e.g., 08:00 to 15:00)
+                qs = qs.filter(timestamp__hour__gte=hour_start, timestamp__hour__lte=hour_end)
+            else:
+                # Hour range has Midnight crossover: (e.g., 17:00 to 06:00)
+                qs = qs.filter(models.Q(timestamp__hour__gte=hour_start) | models.Q(timestamp__hour__lte=hour_end))
+        elif hour_start is not None:
             qs = qs.filter(timestamp__hour__gte=hour_start)
-        if hour_end:
+        elif hour_end is not None:
             qs = qs.filter(timestamp__hour__lte=hour_end)
-        if not minute_interval and max_num:
-            qs = qs[:max_num]
-        if minute_interval:
+
+        if minute_interval is not None:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
             # Ensure the queryset is limited to the project
             qs = qs.filter(project=self.project)
-            qs = sample_captures_by_interval(minute_interval, qs=qs, max_num=max_num)
+            qs = sample_captures_by_interval(minute_interval=minute_interval, qs=qs, max_num=max_num)
+        else:
+            if max_num is not None:
+                if shuffle:
+                    qs = qs.order_by("?")
+                qs = qs[:max_num]
+
         return qs
 
     def sample_interval(
@@ -3013,19 +3135,19 @@ class SourceImageCollection(BaseModel):
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
         qs = qs.filter(project=self.project)
-        return sample_captures_by_interval(minute_interval, qs=qs)
+        return sample_captures_by_interval(minute_interval=minute_interval, qs=qs)
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_position(position, qs=qs)
+        return sample_captures_by_position(position=position, qs=qs)
 
     def sample_nth(self, nth: int):
         """Sample every nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_nth(nth, qs=qs)
+        return sample_captures_by_nth(nth=nth, qs=qs)
 
     def sample_random_from_each_event(self, num_each: int = 10):
         """Sample n random source images from each event in the project."""

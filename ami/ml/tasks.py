@@ -1,4 +1,5 @@
 import logging
+import time
 
 from ami.ml.media import create_detection_images_from_source_image
 from ami.tasks import default_soft_time_limit, default_time_limit
@@ -42,6 +43,8 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
 def create_detection_images(source_image_ids: list[int]):
     from ami.main.models import SourceImage
 
+    start_time = time.time()
+
     logger.debug(f"Creating detection images for {len(source_image_ids)} capture(s)")
 
     for source_image in SourceImage.objects.filter(pk__in=source_image_ids):
@@ -50,6 +53,9 @@ def create_detection_images(source_image_ids: list[int]):
             logger.debug(f"Created {len(processed_paths)} detection images for SourceImage #{source_image.pk}")
         except Exception as e:
             logger.error(f"Error creating detection images for SourceImage {source_image.pk}: {str(e)}")
+
+    total_time = time.time() - start_time
+    logger.info(f"Created detection images for {len(source_image_ids)} capture(s) in {total_time:.2f} seconds")
 
 
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)

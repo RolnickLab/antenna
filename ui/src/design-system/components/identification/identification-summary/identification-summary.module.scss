@@ -41,3 +41,9 @@
     color: $color-primary-1-600;
   }
 }
+
+.details {
+  display: block;
+  @include mono();
+  color: $color-neutral-600;
+}

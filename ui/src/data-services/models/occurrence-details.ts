@@ -14,6 +14,8 @@ export interface Identification {
   taxon: Taxon
   comment?: string
   algorithm?: Algorithm
+  score?: number
+  terminal?: boolean
   userPermissions: UserPermission[]
   createdAt: string
 }
@@ -30,6 +32,7 @@ export interface HumanIdentification extends Identification {
 export interface MachinePrediction extends Identification {
   algorithm: Algorithm
   score: number
+  terminal: boolean
 }
 
 export class OccurrenceDetails extends Occurrence {
@@ -83,6 +86,7 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           score: p.score,
+          terminal: p.terminal,
           algorithm: p.algorithm,
           userPermissions: p.user_permissions,
           createdAt: p.created_at,

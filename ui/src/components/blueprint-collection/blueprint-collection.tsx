@@ -42,16 +42,13 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
       <div className={styles.blueprintInfo} style={{ width: size.width }}>
-        <span className={styles.count}>
-          {item.countLabel?.length ? (
-            <>
-              <Icon type={IconType.Detections} size={12} />
-              <span>{item.countLabel}</span>
-            </>
-          ) : null}
-        </span>
-        <span style={{ flex: 1 }} />
-        <span>{item.timeLabel}</span>
+        {item.countLabel?.length ? (
+          <span className={styles.count}>
+            <Icon type={IconType.Detections} size={12} />
+            <span>{item.countLabel}</span>
+          </span>
+        ) : null}
+        <span className={styles.time}>{item.timeLabel}</span>
       </div>
       <div className={styles.blueprintImage}>
         <img

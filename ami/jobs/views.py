@@ -13,7 +13,7 @@ from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 from ami.utils.requests import project_id_doc_param
 
-from .models import Job, JobState, MLJob
+from .models import Job, JobState
 from .serializers import JobListSerializer, JobSerializer
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
-
         # All jobs created from the Jobs UI are ML jobs.
         # @TODO Remove this when the UI is updated pass a job type
         # Get an instance for the model without saving

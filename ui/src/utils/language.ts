@@ -1,5 +1,6 @@
 export enum STRING {
   /* BUTTON */
+  REGISTER_PIPELINES,
   AGREE,
   AGREED,
   BACK,
@@ -35,7 +36,6 @@ export enum STRING {
   SUBMIT,
   SUGGEST_ID,
   SUGGEST_ID_SHORT,
-  SYNC,
   TEST,
   TEST_CONNECTION,
   VIEW_PUBLIC_PROJECTS,
@@ -45,6 +45,7 @@ export enum STRING {
   ENTITY_DELETE,
   ENTITY_DETAILS,
   ENTITY_EDIT,
+  ENTITY_TYPE_PROCESSING_SERVICE,
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_IDENTIFICATION,
@@ -71,12 +72,14 @@ export enum STRING {
   FIELD_LABEL_DURATION,
   FIELD_LABEL_EMAIL,
   FIELD_LABEL_EMAIL_NEW,
+  FIELD_LABEL_ENDPOINT,
   FIELD_LABEL_ERRORS,
   FIELD_LABEL_FINISHED_AT,
   FIELD_LABEL_GENERAL,
   FIELD_LABEL_ID,
   FIELD_LABEL_IMAGE,
   FIELD_LABEL_ICON,
+  FIELD_LABEL_LAST_CHECKED,
   FIELD_LABEL_JOBS,
   FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
@@ -86,6 +89,7 @@ export enum STRING {
   FIELD_LABEL_MOST_RECENT,
   FIELD_LABEL_NAME,
   FIELD_LABEL_NEW_PASSWORD,
+  FIELD_LABEL_NUM_PIPELINES_REGISTERED,
   FIELD_LABEL_OCCURRENCES,
   FIELD_LABEL_PASSWORD,
   FIELD_LABEL_PASSWORD_CURRENT,
@@ -99,6 +103,7 @@ export enum STRING {
   FIELD_LABEL_SESSIONS,
   FIELD_LABEL_SITE,
   FIELD_LABEL_SIZE,
+  FIELD_LABEL_SLUG,
   FIELD_LABEL_SOURCE_IMAGE,
   FIELD_LABEL_SOURCE_IMAGES,
   FIELD_LABEL_DATA_SOURCE,
@@ -163,6 +168,7 @@ export enum STRING {
   NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
+  TAB_ITEM_PROCESSING_SERVICES,
   TAB_ITEM_ALL_PROJECTS,
   TAB_ITEM_COLLECTIONS,
   TAB_ITEM_DEVICES,
@@ -186,6 +192,7 @@ export enum STRING {
   DONE,
 
   /* TOOLTIPS */
+  TOOLTIP_PROCESSING_SERVICE,
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE_TYPE,
@@ -213,9 +220,12 @@ export enum STRING {
   LOADING_DATA,
   MACHINE_PREDICTION_SCORE,
   MACHINE_SUGGESTION,
+  TERMINAL_CLASSIFICATION,
+  INTERMEDIATE_CLASSIFICATION,
   NEW_ID,
   NOT_CONNECTED,
   OR,
+  PIPELINES,
   RECENT,
   REJECT_ID,
   REJECT_ID_SHORT,
@@ -235,6 +245,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.REGISTER_PIPELINES]: 'Register pipelines',
   [STRING.AGREE]: 'Agree',
   [STRING.AGREED]: 'Agreed',
   [STRING.BACK]: 'Back',
@@ -270,7 +281,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
-  [STRING.SYNC]: 'Sync',
   [STRING.TEST]: 'Test',
   [STRING.TEST_CONNECTION]: 'Test Connection',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
@@ -293,12 +303,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_EMAIL_NEW]: 'New email',
+  [STRING.FIELD_LABEL_ENDPOINT]: 'Endpoint URL',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_GENERAL]: 'General configuration',
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
+  [STRING.FIELD_LABEL_LAST_CHECKED]: 'Last seen online',
   [STRING.FIELD_LABEL_JOBS]: 'Jobs',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
@@ -308,6 +320,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_MOST_RECENT]: 'Most recent',
   [STRING.FIELD_LABEL_NAME]: 'Name',
   [STRING.FIELD_LABEL_NEW_PASSWORD]: 'New password',
+  [STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED]: 'Pipelines registered',
   [STRING.FIELD_LABEL_OCCURRENCES]: 'Occurrences',
   [STRING.FIELD_LABEL_PASSWORD]: 'Password',
   [STRING.FIELD_LABEL_PASSWORD_CURRENT]: 'Current password',
@@ -321,6 +334,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SESSIONS]: 'Sessions',
   [STRING.FIELD_LABEL_SITE]: 'Site',
   [STRING.FIELD_LABEL_SIZE]: 'Size',
+  [STRING.FIELD_LABEL_SLUG]: 'Slug',
   [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source image collection',
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
@@ -345,13 +359,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload images',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
   [STRING.FIELD_LABEL_VERSION]: 'Version',
-  [STRING.FIELD_LABEL_VERSION_NAME]: 'Version',
+  [STRING.FIELD_LABEL_VERSION_NAME]: 'Version Name',
 
   /* ENTITY */
   [STRING.ENTITY_CREATE]: 'Register new {{type}}',
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
+  [STRING.ENTITY_TYPE_PROCESSING_SERVICE]: 'processing service',
   [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_IDENTIFICATION]: 'identification',
@@ -413,6 +428,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
+  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing Services',
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
@@ -436,6 +452,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DONE]: 'Done',
 
   /* TOOLTIPS */
+  [STRING.TOOLTIP_PROCESSING_SERVICE]:
+    'A processing service is a group of pipelines used for processing images/collections.',
   [STRING.TOOLTIP_COLLECTION]:
     'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
@@ -473,9 +491,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.LOADING_DATA]: 'Loading data',
   [STRING.MACHINE_PREDICTION_SCORE]: 'Machine prediction\nscore {{score}}',
   [STRING.MACHINE_SUGGESTION]: 'Machine suggestion',
+  [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
+  [STRING.INTERMEDIATE_CLASSIFICATION]: 'Intermediate classification',
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.OR]: 'Or',
+  [STRING.PIPELINES]: 'Pipelines',
   [STRING.RECENT]: 'Recent',
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REJECT_ID_SHORT]: 'Reject',
