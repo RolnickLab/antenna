@@ -11,8 +11,7 @@ from rest_framework.response import Response
 from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import SourceImage
-from ami.utils.requests import get_active_project, project_id_doc_param
-
+from ami.utils.requests import project_id_doc_param
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
@@ -42,7 +41,6 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
         "version",
     ]
     search_fields = ["name"]
-
 
 
 class AlgorithmCategoryMapViewSet(DefaultViewSet):
@@ -105,7 +103,7 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
         return Response(results.dict())
 
 
-class ProcessingServiceViewSet(DefaultViewSet):
+class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows processing services to be viewed or edited.
     """
@@ -117,7 +115,7 @@ class ProcessingServiceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project(self.request)
         if project:
             query_set = query_set.filter(projects=project)
         return query_set
