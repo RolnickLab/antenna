@@ -2870,10 +2870,16 @@ class SourceImageCollection(BaseModel):
 
 
     Collections are saved so that they can be reviewed or re-used later.
+
+    @TODO consider a "populate_collection" permission for non-curated collection types
     """
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    # dataset_type = models.CharField(
+    #     max_length=255,
+    #     choices=as_choices(["Curated", "Dynamic", "Sampling"]),
+    # )
     images = models.ManyToManyField("SourceImage", related_name="collections", blank=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
     method = models.CharField(
@@ -2893,6 +2899,16 @@ class SourceImageCollection(BaseModel):
     objects = SourceImageCollectionManager()
 
     jobs: models.QuerySet["Job"]
+
+    def infer_dataset_type(self):
+        if "starred" in self.name.lower():
+            return "curated"
+        else:
+            return "sampling"
+
+    @property
+    def dataset_type(self):
+        return self.infer_dataset_type()
 
     def source_images_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
