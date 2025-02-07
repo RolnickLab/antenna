@@ -127,9 +127,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # Check permissions before saving
         self.check_object_permissions(self.request, obj)
 
-        if not serializer.validated_data.get("job_type_key"):
-            serializer.validated_data["job_type_key"] = MLJob.key
-
         job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):
             # job.run()
