@@ -117,11 +117,15 @@ class DefaultViewSetMixin:
 
 
 class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
-    def perform_create(self, serializer):
-        obj = serializer.Meta.model(**serializer.validated_data)
-        # Check permissions before saving
-        self.check_object_permissions(self.request, obj)
-        serializer.save()
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Create instance but do not save
+        instance = serializer.Meta.model(**serializer.validated_data)
+        self.check_object_permissions(request, instance)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
