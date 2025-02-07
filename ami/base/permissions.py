@@ -3,16 +3,25 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser, User
 from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
 from ami.jobs.models import Job
-from ami.main.models import Deployment, Device, Identification, Project, S3StorageSource, Site, SourceImageCollection
+from ami.main.models import (
+    BaseModel,
+    Deployment,
+    Device,
+    Identification,
+    Project,
+    S3StorageSource,
+    Site,
+    SourceImageCollection,
+)
+from ami.users.models import User
 from ami.users.roles import ProjectManager
 
 logger = logging.getLogger(__name__)
-if TYPE_CHECKING:
-    from django.contrib.auth.models import User
 
 
 def is_active_staff(user: User) -> bool:
@@ -35,25 +44,24 @@ class IsActiveStaffOrReadOnly(permissions.BasePermission):
         )
 
 
-def add_object_level_permissions(user, project, response_data: dict) -> dict:
+def add_object_level_permissions(
+    user: AbstractBaseUser | AnonymousUser, instance: BaseModel, response_data: dict
+) -> dict:
     """
-    Add placeholder permissions to detail views and nested objects.
-
-    If the user is logged in, they can edit any object type.
-    If the user is a superuser, they can delete any object type.
-
-    @TODO @IMPORTANT At least check if they are the owner of the project.
+    @TODO Pass the actual object instance to get the
+    object level permissions (based on project it belongs to
+    and the user's role in that project).
     """
 
     permissions = response_data.get("user_permissions", set())
+    project = instance.get_project() if hasattr(instance, "get_project") else None
 
-    if user and is_active_staff(user):
-        permissions.update(["update"])
-        if user.is_superuser:
-            permissions.update(["delete"])
     if project:
         user_permissions = get_generic_permissions(user, project)
         permissions.update(set(user_permissions))
+
+    # @TODO filter out permissions unlreated to this object
+    # and remove the model name, e.g. view_project -> view
 
     response_data["user_permissions"] = permissions
     return response_data
@@ -68,6 +76,7 @@ def add_collection_level_permissions(user: User | None, response_data: dict) -> 
     permissions = response_data.get("user_permissions", set())
     if user and is_active_staff(user):
         permissions.add("create")
+
     response_data["user_permissions"] = permissions
     return response_data
 
@@ -81,7 +90,7 @@ def get_generic_permissions(user, obj):
     delete_modelname -> delete
     """
     permissions = get_perms(user, obj)
-    result = [perm.split("_")[0] for perm in permissions]
+    result = [perm for perm in permissions]
 
     # allow view for all users
     if "view" not in result:

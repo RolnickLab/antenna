@@ -46,16 +46,14 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     id = serializers.IntegerField(read_only=True)
 
     def get_permissions(self, instance, instance_data):
-        request = self.context.get("request")
-        view = self.context.get("view")
-        project = instance.get_project() if hasattr(instance, "get_project") else None
+        request: Request = self.context["request"]
 
-        if not project:
-            if isinstance(view, ProjectMixin):
-                project = view.get_active_project()
-
-        user = request.user if request else None
-        return add_object_level_permissions(user, project, instance_data)
+        user = request.user
+        return add_object_level_permissions(
+            user=user,
+            instance=instance,
+            response_data=instance_data,
+        )
 
     def to_representation(self, instance):
         instance_data = super().to_representation(instance)

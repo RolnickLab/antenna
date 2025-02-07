@@ -104,12 +104,12 @@ def create_roles_for_project(project):
     project_ct = ContentType.objects.get_for_model(Project)
 
     for role_class in Role.__subclasses__():
-        print(f"role_created {role_class} for project {project}")
         role_name = f"{project.pk}_{project.name}_{role_class.__name__}"
         permissions = role_class.permissions
 
         group, created = Group.objects.get_or_create(name=role_name)
         if created:
+            print(f"Role created {role_class} for project {project}")
             for perm_codename in permissions:
                 permission, _ = Permission.objects.get_or_create(
                     codename=perm_codename,

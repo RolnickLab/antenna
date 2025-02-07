@@ -584,6 +584,8 @@ class SourceImageViewSet(DefaultViewSet):
     def star(self, _request, pk=None) -> Response:
         """
         Add a source image to the project's starred images collection.
+
+        @TODO add permission check here
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -597,6 +599,8 @@ class SourceImageViewSet(DefaultViewSet):
     def unstar(self, _request, pk=None) -> Response:
         """
         Remove a source image from the project's starred images collection.
+
+        @TODO add permission check here
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
