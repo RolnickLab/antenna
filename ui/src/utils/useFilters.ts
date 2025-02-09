@@ -1,6 +1,14 @@
+import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
 
-export const AVAILABLE_FILTERS = [
+export const AVAILABLE_FILTERS: {
+  label: string
+  field: string
+  validate?: (
+    value?: string,
+    filters?: { field: string; value?: string }[]
+  ) => string | undefined
+}[] = [
   {
     label: 'Include algorithm',
     field: 'algorithm',
@@ -11,7 +19,11 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Collection',
-    field: 'source_image_collection', // TODO: Can we update this key to "collection" to streamline?
+    field: 'collection', // This is for viewing Occurrences by collection
+  },
+  {
+    label: 'Collection',
+    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
   },
   {
     label: 'Station',
@@ -20,14 +32,44 @@ export const AVAILABLE_FILTERS = [
   {
     label: 'End date',
     field: 'date_end',
+    validate: (value) => {
+      if (!value) {
+        return undefined
+      }
+
+      if (!isValid(new Date(value))) {
+        return 'Date is not valid'
+      }
+
+      return undefined
+    },
   },
   {
     label: 'Start date',
     field: 'date_start',
+    validate: (value, filters) => {
+      if (!value) {
+        return undefined
+      }
+
+      if (!isValid(new Date(value))) {
+        return 'Date is not valid'
+      }
+
+      const dateEnd = filters?.find(
+        (filter) => filter.field === 'date_end'
+      )?.value
+
+      if (dateEnd && !isBefore(new Date(value), new Date(dateEnd))) {
+        return 'Start date must be before end date'
+      }
+
+      return undefined
+    },
   },
   {
-    label: 'Image',
-    field: 'detections__source_image', // TODO: Can we update this key to "source_image" to streamline?
+    label: 'Source image',
+    field: 'detections__source_image', // This is for viewing Occurrences by source image. @TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Session',
@@ -47,11 +89,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Source image',
-    field: 'source_image_single', // TODO: Can we update this key to "source_image" to streamline?
-  },
-  {
-    label: 'Source image collection',
-    field: 'source_image_collection',
+    field: 'source_image_single', // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
   },
   {
     label: 'Status',
@@ -59,7 +97,7 @@ export const AVAILABLE_FILTERS = [
   },
   {
     label: 'Type',
-    field: 'type',
+    field: 'job_type_key',
   },
   {
     label: 'Verification status',
@@ -74,16 +112,27 @@ export const AVAILABLE_FILTERS = [
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const filters = AVAILABLE_FILTERS.map((filter) => {
-    const value = searchParams.getAll(filter.field)[0]
+  const _filters = AVAILABLE_FILTERS.map(({ field, ...rest }) => {
+    const value = searchParams.get(field) ?? defaultFilters?.[field]
 
     return {
-      ...filter,
-      value: value ?? defaultFilters?.[filter.field],
+      ...rest,
+      field,
+      value,
     }
   })
 
-  const isActive = filters.some((filter) => filter.value?.length)
+  const filters = _filters.map(({ validate, value, ...rest }) => {
+    const error = validate ? validate(value, _filters) : undefined
+
+    return {
+      ...rest,
+      value,
+      error,
+    }
+  })
+
+  const activeFilters = filters.filter((filter) => !!filter.value?.length)
 
   const addFilter = (field: string, value: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
@@ -100,9 +149,9 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 
   return {
-    filters,
-    isActive,
+    activeFilters,
     addFilter,
     clearFilter,
+    filters,
   }
 }

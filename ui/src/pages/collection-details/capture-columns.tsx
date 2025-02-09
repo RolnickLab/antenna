@@ -82,24 +82,6 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       ),
   },
   {
-    id: 'detections',
-    name: 'Detections',
-    sortField: 'detections_count',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Capture) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { capture: item.id},
-        })}
-      >
-      <BasicTableCell value={item.numDetections} theme={CellTheme.Bubble} />
-      </Link>
-    ),
-  },
-  {
     id: 'occurrences',
     name: 'Occurrences',
     sortField: 'occurrences_count',

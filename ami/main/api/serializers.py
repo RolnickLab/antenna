@@ -3,6 +3,7 @@ import datetime
 from django.db.models import QuerySet
 from rest_framework import serializers
 
+from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
 from ami.main.models import create_source_image_from_upload
@@ -127,12 +128,40 @@ class StorageSourceNestedSerializer(DefaultSerializer):
         ]
 
 
+class JobTypeSerializer(serializers.Serializer):
+    """
+    Serializer for the JobType json field in the Job model.
+
+    This is duplicated from ami.jobs.serializers to avoid circular imports.
+    but it is extremely simple.
+    """
+
+    name = serializers.CharField(read_only=True)
+    key = serializers.SlugField(read_only=True)
+
+
+class JobStatusSerializer(DefaultSerializer):
+    job_type = JobTypeSerializer(read_only=True)
+
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "details",
+            "status",
+            "job_type",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
     project = ProjectNestedSerializer(read_only=True)
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
+    jobs = JobStatusSerializer(many=True, read_only=True)
 
     class Meta:
         model = Deployment
@@ -156,6 +185,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "last_date",
             "device",
             "research_site",
+            "jobs",
         ]
 
     def get_events(self, obj):
@@ -240,12 +270,14 @@ class ProjectListSerializer(DefaultSerializer):
 
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
+    owner = UserNestedSerializer(read_only=True)
 
     class Meta:
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
             "summary_data",  # @TODO move to a 2nd request, it's too slow
+            "owner",
         ]
 
 
@@ -420,6 +452,7 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
             "name",
             "rank",
             "details",
+            "gbif_taxon_key",
         ]
 
 
@@ -503,7 +536,7 @@ class TaxonListSerializer(DefaultSerializer):
 
         # request = self.context.get("request")
         # project_id = request.query_params.get("project") if request else None
-        project_id = self.context["request"].query_params["project"]
+        project_id = self.context["request"].query_params["project_id"]
         classification_threshold = get_active_classification_threshold(self.context["request"])
 
         return obj.occurrence_images(
@@ -689,6 +722,7 @@ class TaxonSerializer(DefaultSerializer):
             "detections_count",
             "events_count",
             "occurrences",
+            "gbif_taxon_key",
         ]
 
 
@@ -707,9 +741,16 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
         ]
 
 
+class ClassificationPredictionItemSerializer(serializers.Serializer):
+    taxon = TaxonNestedSerializer(read_only=True)
+    score = serializers.FloatField(read_only=True)
+    logit = serializers.FloatField(read_only=True)
+
+
 class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
+    top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = Classification
@@ -719,12 +760,56 @@ class ClassificationSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
+            "scores",
+            "logits",
+            "top_n",
             "created_at",
+            "updated_at",
         ]
 
 
-class OccurrenceClassificationSerializer(ClassificationSerializer):
-    pass
+class ClassificationWithTaxaSerializer(ClassificationSerializer):
+    """
+    Return all possible taxa objects in the category map with the classification.
+
+    This is slow for large category maps.
+    It's recommended to retrieve and cache the category map with taxa ahead of time.
+    """
+
+    taxa = TaxonNestedSerializer(many=True, read_only=True)
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = ClassificationSerializer.Meta.fields + [
+            "taxa",
+        ]
+
+
+class ClassificationListSerializer(DefaultSerializer):
+    class Meta:
+        model = Classification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "score",
+            "algorithm",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ClassificationNestedSerializer(ClassificationSerializer):
+    class Meta:
+        model = Classification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "score",
+            "terminal",
+            "algorithm",
+            "created_at",
+        ]
 
 
 class CaptureDetectionsSerializer(DefaultSerializer):
@@ -736,6 +821,7 @@ class CaptureDetectionsSerializer(DefaultSerializer):
         # queryset = Detection.objects.prefetch_related("classifications")
         fields = [
             "id",
+            "details",
             "url",
             "width",
             "height",
@@ -769,7 +855,7 @@ class DetectionCaptureNestedSerializer(DefaultSerializer):
 
 
 class DetectionNestedSerializer(DefaultSerializer):
-    classifications = ClassificationSerializer(many=True, read_only=True)
+    classifications = ClassificationNestedSerializer(many=True, read_only=True)
     capture = DetectionCaptureNestedSerializer(read_only=True, source="source_image")
 
     class Meta:
@@ -777,6 +863,7 @@ class DetectionNestedSerializer(DefaultSerializer):
         # queryset = Detection.objects.prefetch_related("classifications")
         fields = [
             "id",
+            "details",
             "timestamp",
             "url",
             "capture",
@@ -811,6 +898,7 @@ class DetectionSerializer(DefaultSerializer):
     detection_algorithm_id = serializers.PrimaryKeyRelatedField(
         queryset=Algorithm.objects.all(), source="detection_algorithm", write_only=True
     )
+    classifications = ClassificationNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = Detection
@@ -818,6 +906,7 @@ class DetectionSerializer(DefaultSerializer):
             "source_image",
             "detection_algorithm",
             "detection_algorithm_id",
+            "classifications",
         ]
 
 
@@ -846,18 +935,6 @@ class SourceImageListSerializer(DefaultSerializer):
             "occurrences_count",
             "taxa_count",
             "detections",
-        ]
-
-
-class JobStatusSerializer(DefaultSerializer):
-    class Meta:
-        model = Job
-        fields = [
-            "id",
-            "details",
-            "status",
-            "created_at",
-            "updated_at",
         ]
 
 
@@ -949,8 +1026,13 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     # use for the "common_combined" method
     minute_interval = serializers.IntegerField(required=False, allow_null=True)
     max_num = serializers.IntegerField(required=False, allow_null=True)
+    shuffle = serializers.BooleanField(required=False, allow_null=True)
+
     month_start = serializers.IntegerField(required=False, allow_null=True)
     month_end = serializers.IntegerField(required=False, allow_null=True)
+
+    date_start = DateStringField(required=False, allow_null=True)
+    date_end = DateStringField(required=False, allow_null=True)
 
     hour_start = serializers.IntegerField(required=False, allow_null=True)
     hour_end = serializers.IntegerField(required=False, allow_null=True)
@@ -963,9 +1045,9 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     deployment_id = serializers.IntegerField(required=False, allow_null=True)
     position = serializers.IntegerField(required=False, allow_null=True)
 
-    # Don't return the kwargs if they are empty
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        # Don't return the kwargs if they are empty
         return {key: value for key, value in data.items() if value is not None}
 
 
@@ -1031,6 +1113,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Occurrence
@@ -1055,11 +1138,15 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "identifications",
             "created_at",
+            "updated_at",
         ]
 
     def get_determination_details(self, obj: Occurrence):
-        # @TODO add an equivalent method to the Occurrence model
+        # @TODO convert this to query methods to avoid N+1 queries.
+        # Currently at 100+ queries per page of 10 occurrences.
+        # Add a reusable method to the OccurrenceQuerySet class and call it from the ViewSet.
 
         context = self.context
 
@@ -1076,7 +1163,7 @@ class OccurrenceListSerializer(DefaultSerializer):
         if identification or not obj.best_prediction:
             prediction = None
         else:
-            prediction = OccurrenceClassificationSerializer(obj.best_prediction, context=context).data
+            prediction = ClassificationNestedSerializer(obj.best_prediction, context=context).data
 
         return dict(
             taxon=taxon,
@@ -1090,7 +1177,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
-    predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
+    predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
@@ -1100,7 +1187,6 @@ class OccurrenceSerializer(OccurrenceListSerializer):
         fields = OccurrenceListSerializer.Meta.fields + [
             "determination_id",
             "detections",
-            "identifications",
             "predictions",
         ]
         read_only_fields = [

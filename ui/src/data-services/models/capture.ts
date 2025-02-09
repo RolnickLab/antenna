@@ -20,21 +20,21 @@ export type CaptureDetection = {
   occurrence?: DetectionOccurrence
 }
 
-const makeDetectionLabel = (detection: CaptureDetection) => {
-  const occurrence: DetectionOccurrence | undefined = detection.occurrence
-  if (occurrence && occurrence.determination) {
-    if (occurrence.determination_score) {
-      const scorePercentage = Math.round(
-        occurrence.determination_score * 100
-      ).toString()
-      return `${occurrence.determination.name} (${scorePercentage}%)`
+const getDetectionLabel = (detection: CaptureDetection) => {
+  if (detection.occurrence?.determination) {
+    const score = getDetectionScore(detection)
+
+    if (score) {
+      return `${detection.occurrence.determination.name} (${score.toFixed(2)})`
     }
-    return occurrence.determination.name
+
+    return detection.occurrence.determination.name
   }
+
   return detection.id
 }
 
-const makeDetectionScoreLabel = (detection: CaptureDetection) => {
+const getDetectionScore = (detection: CaptureDetection) => {
   // This score label is the confidence of the best & most recent classification of the detection's occurrence
   // There will also be a score for the localization of the detection as well.
   const occurrence: DetectionOccurrence | undefined = detection.occurrence
@@ -57,8 +57,8 @@ export class Capture {
           return {
             bbox: detection.bbox,
             id: `${detection.id}`,
-            label: makeDetectionLabel(detection),
-            score: makeDetectionScoreLabel(detection),
+            label: getDetectionLabel(detection),
+            score: getDetectionScore(detection),
             occurrenceId: detection.occurrence
               ? `${detection.occurrence.id}`
               : undefined,
@@ -99,6 +99,10 @@ export class Capture {
 
   get numDetections(): number {
     return this._capture.detections_count ?? 0
+  }
+
+  get numJobs(): number {
+    return this._capture.jobs?.length ?? 0
   }
 
   get numOccurrences(): number {

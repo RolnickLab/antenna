@@ -1,9 +1,10 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { API_ROUTES } from 'data-services/constants'
 import { Project } from 'data-services/models/project'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { Error } from 'pages/error/error'
+import { Helmet } from 'react-helmet-async'
 import { useOutletContext } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useSelectedView } from 'utils/useSelectedView'
@@ -12,12 +13,12 @@ import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
 import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
+import { ProcessingServices } from './processing-services/processing-services'
 import { StorageSources } from './storage/storage'
 import { Summary } from './summary/summary'
-import { Helmet } from 'react-helmet-async'
 
 export const Overview = () => {
-  const { selectedView, setSelectedView } = useSelectedView('summary')
+  const { selectedView, setSelectedView } = useSelectedView('summary', 'tab')
   const { project, isLoading, error } = useOutletContext<{
     project?: Project
     isLoading: boolean
@@ -26,7 +27,7 @@ export const Overview = () => {
   }>()
 
   if (!isLoading && error) {
-    return <Error error={error} />
+    return <ErrorState error={error} />
   }
 
   if (isLoading || !project) {
@@ -86,6 +87,10 @@ export const Overview = () => {
             value="devices"
             label={translate(STRING.TAB_ITEM_DEVICES)}
           />
+          <Tabs.Trigger
+            value="processingServices"
+            label={translate(STRING.TAB_ITEM_PROCESSING_SERVICES)}
+          />
         </Tabs.List>
         <Tabs.Content value="summary">
           <Summary project={project} />
@@ -114,6 +119,9 @@ export const Overview = () => {
             type="device"
             tooltip={translate(STRING.TOOLTIP_DEVICE_TYPE)}
           />
+        </Tabs.Content>
+        <Tabs.Content value="processingServices">
+          <ProcessingServices />
         </Tabs.Content>
       </Tabs.Root>
     </>

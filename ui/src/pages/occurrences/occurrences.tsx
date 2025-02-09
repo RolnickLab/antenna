@@ -1,8 +1,9 @@
-import { AdvancedFiltering } from 'components/filtering/advanced-filtering'
 import { FilterControl } from 'components/filtering/filter-control'
-import { Filtering } from 'components/filtering/filtering'
+import { FilterSection } from 'components/filtering/filter-section'
+import { someActive } from 'components/filtering/utils'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
+import { Occurrence } from 'data-services/models/occurrence'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
@@ -12,10 +13,12 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { Error } from 'pages/error/error'
-import { OccurrenceDetails } from 'pages/occurrence-details/occurrence-details'
+import {
+  OccurrenceDetails,
+  TABS,
+} from 'pages/occurrence-details/occurrence-details'
 import { useContext, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -30,7 +33,7 @@ import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
-import styles from './occurrences.module.scss'
+import { OccurrenceNavigation } from './occurrence-navigation'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -55,7 +58,7 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters({
+  const { activeFilters, filters } = useFilters({
     classification_threshold: `${userPreferences.scoreThreshold}`,
   })
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
@@ -70,15 +73,23 @@ export const Occurrences = () => {
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
 
-  if (!isLoading && error) {
-    return <Error error={error} />
-  }
+  useEffect(() => {
+    document.getElementById('app')?.scrollTo({ top: 0 })
+  }, [pagination.page])
+
+  useEffect(() => {
+    if (id) {
+      document
+        .getElementById(id)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [id])
 
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
         <div className="space-y-6">
-          <Filtering>
+          <FilterSection defaultOpen>
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
             <FilterControl field="date_start" />
@@ -86,15 +97,20 @@ export const Occurrences = () => {
             <FilterControl field="taxon" />
             <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />
-          </Filtering>
-          <AdvancedFiltering
-            config={{
-              algorithm: true,
-              collection: true,
-              station: true,
-              not_algorithm: true,
-            }}
-          />
+            {user.loggedIn && <FilterControl field="verified_by_me" />}
+          </FilterSection>
+          <FilterSection
+            title="More filters"
+            defaultOpen={someActive(
+              ['collection', 'deployment', 'algorithm', 'not_algorithm'],
+              activeFilters
+            )}
+          >
+            <FilterControl field="collection" />
+            <FilterControl field="deployment" />
+            <FilterControl field="algorithm" />
+            <FilterControl field="not_algorithm" />
+          </FilterSection>
         </div>
         <div className="w-full overflow-hidden">
           <PageHeader
@@ -130,27 +146,27 @@ export const Occurrences = () => {
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              items={occurrences}
-              isLoading={!id && isLoading}
               columns={columns(
                 projectId as string,
                 selectedItems.length === 0
               ).filter((column) => !!columnSettings[column.id])}
-              sortable
-              sortSettings={sort}
-              selectable={user.loggedIn}
-              selectedItems={selectedItems}
+              error={error}
+              isLoading={!id && isLoading}
+              items={occurrences}
               onSelectedItemsChange={setSelectedItems}
               onSortSettingsChange={setSort}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
+              sortable
+              sortSettings={sort}
             />
           )}
           {selectedView === 'gallery' && (
-            <div className={styles.galleryContent}>
-              <OccurrenceGallery
-                occurrences={occurrences}
-                isLoading={!id && isLoading}
-              />
-            </div>
+            <OccurrenceGallery
+              error={error}
+              isLoading={!id && isLoading}
+              occurrences={occurrences}
+            />
           )}
         </div>
       </div>
@@ -182,16 +198,33 @@ export const Occurrences = () => {
           />
         ) : null}
       </PageFooter>
-      {id ? <OccurrenceDetailsDialog id={id} /> : null}
+      {id ? (
+        <OccurrenceDetailsDialog id={id} occurrences={occurrences} />
+      ) : null}
     </>
   )
 }
 
-const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
+const OccurrenceDetailsDialog = ({
+  id,
+  occurrences,
+}: {
+  id: string
+  occurrences?: Occurrence[]
+}) => {
   const navigate = useNavigate()
+  const { state } = useLocation()
+  const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+
+  useEffect(() => {
+    // If a default tab is set from router state, set this as active
+    if (state?.defaultTab) {
+      setSelectedView(state.defaultTab)
+    }
+  }, [state?.defaultTab])
 
   useEffect(() => {
     setDetailBreadcrumb(
@@ -206,21 +239,32 @@ const OccurrenceDetailsDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root
       open={!!id}
-      onOpenChange={() =>
+      onOpenChange={(open) => {
+        if (!open) {
+          setSelectedView(undefined)
+        }
+
         navigate(
           getAppRoute({
             to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )
-      }
+      }}
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
         error={error}
       >
-        {occurrence ? <OccurrenceDetails occurrence={occurrence} /> : null}
+        {occurrence ? (
+          <OccurrenceDetails
+            occurrence={occurrence}
+            selectedTab={selectedView}
+            setSelectedTab={setSelectedView}
+          />
+        ) : null}
+        <OccurrenceNavigation occurrences={occurrences} />
       </Dialog.Content>
     </Dialog.Root>
   )

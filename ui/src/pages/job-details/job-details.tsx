@@ -2,10 +2,6 @@ import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
-import {
-  CodeBlock,
-  CodeBlockTheme,
-} from 'design-system/components/code-block/code-block'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
@@ -15,6 +11,7 @@ import {
   StatusBulletTheme,
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
+import { CodeBlock } from 'nova-ui-kit'
 import { DeleteJobsDialog } from 'pages/jobs/delete-jobs-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -153,7 +150,7 @@ const JobSummary = ({ job }: { job: Job }) => {
             label={translate(STRING.FIELD_LABEL_LOGS)}
             style={{ gridColumn: 'span 2' }}
           >
-            <CodeBlock lines={job.logs} />
+            <CodeBlock collapsible snippet={job.logs.join('\n')} />
           </InputContent>
         </FormRow>
       )}
@@ -163,7 +160,11 @@ const JobSummary = ({ job }: { job: Job }) => {
             label={translate(STRING.FIELD_LABEL_ERRORS)}
             style={{ gridColumn: 'span 2' }}
           >
-            <CodeBlock lines={job.errors} theme={CodeBlockTheme.Error} />
+            <CodeBlock
+              collapsible
+              snippet={job.errors.join('\n')}
+              theme="error"
+            />
           </InputContent>
         </FormRow>
       )}

@@ -48,7 +48,7 @@ describe('useLogout', () => {
     expect(removeQueriesSpy).toHaveBeenCalledTimes(1)
   })
 
-  test('will keep the user logged in on error !== 403', async () => {
+  test('will logout the user on error !== 403', async () => {
     // Prep
     axios.post.mockImplementation(() =>
       Promise.reject({ response: { status: 500 } })
@@ -62,9 +62,7 @@ describe('useLogout', () => {
     await waitFor(() => expect(result.current.error).not.toBeNull())
 
     // Check
-    expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toEqual(
-      'example-token'
-    )
-    expect(removeQueriesSpy).toHaveBeenCalledTimes(0)
+    expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull()
+    expect(removeQueriesSpy).toHaveBeenCalledTimes(1)
   })
 })

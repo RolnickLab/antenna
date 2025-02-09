@@ -13,6 +13,7 @@ import { IdentificationStatus } from 'design-system/components/identification/id
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { CodeBlock } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -23,7 +24,6 @@ import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
-import { userAgreed } from './agree/userAgreed'
 import { IdentificationCard } from './identification-card/identification-card'
 import styles from './occurrence-details.module.scss'
 import { IdQuickActions } from './reject-id/id-quick-actions'
@@ -32,12 +32,17 @@ import { SuggestId } from './suggest-id/suggest-id'
 export const TABS = {
   FIELDS: 'fields',
   IDENTIFICATION: 'identification',
+  RAW: 'raw',
 }
 
 export const OccurrenceDetails = ({
   occurrence,
+  selectedTab,
+  setSelectedTab,
 }: {
   occurrence: Occurrence
+  selectedTab?: string
+  setSelectedTab: (selectedTab?: string) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const suggestIdInputRef = useRef<HTMLInputElement>(null)
@@ -45,13 +50,10 @@ export const OccurrenceDetails = ({
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { state } = useLocation()
+  const { state, pathname } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const [selectedTab, setSelectedTab] = useState<string | undefined>(
-    state?.defaultTab ?? TABS.FIELDS
-  )
   const [suggestIdOpen, setSuggestIdOpen] = useState<boolean>(
     state?.suggestIdOpen ?? false
   )
@@ -67,16 +69,20 @@ export const OccurrenceDetails = ({
             )
             .map((item) => ({
               ...item,
-              to: getAppRoute({
-                to: APP_ROUTES.SESSION_DETAILS({
-                  projectId: projectId as string,
-                  sessionId: occurrence.sessionId,
-                }),
-                filters: {
-                  occurrence: occurrence.id,
-                  capture: item.captureId,
-                },
-              }),
+              to: pathname.includes(
+                APP_ROUTES.SESSIONS({ projectId: projectId as string })
+              )
+                ? undefined
+                : getAppRoute({
+                    to: APP_ROUTES.SESSION_DETAILS({
+                      projectId: projectId as string,
+                      sessionId: occurrence.sessionId,
+                    }),
+                    filters: {
+                      occurrence: occurrence.id,
+                      capture: item.captureId,
+                    },
+                  }),
             }))
         : [],
     [occurrence]
@@ -91,13 +97,17 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_SESSION),
       value: occurrence.sessionLabel,
-      to: getAppRoute({
-        to: APP_ROUTES.SESSION_DETAILS({
-          projectId: projectId as string,
-          sessionId: occurrence.sessionId,
-        }),
-        filters: { occurrence: occurrence.id },
-      }),
+      to: pathname.includes(
+        APP_ROUTES.SESSIONS({ projectId: projectId as string })
+      )
+        ? undefined
+        : getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId as string,
+              sessionId: occurrence.sessionId,
+            }),
+            filters: { occurrence: occurrence.id },
+          }),
     },
     {
       label: translate(STRING.FIELD_LABEL_DATE),
@@ -106,14 +116,6 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_TIME),
       value: occurrence.timeLabel,
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_DURATION),
-      value: occurrence.durationLabel,
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_DETECTIONS),
-      value: occurrence.numDetections,
     },
   ]
 
@@ -155,11 +157,7 @@ export const OccurrenceDetails = ({
           {canUpdate && (
             <>
               <Agree
-                agreed={userAgreed({
-                  identifications: occurrence.humanIdentifications,
-                  taxonId: occurrence.determinationTaxon.id,
-                  userId: userInfo?.id,
-                })}
+                agreed={userInfo ? occurrence.userAgreed(userInfo?.id) : false}
                 agreeWith={{
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,
@@ -214,6 +212,7 @@ export const OccurrenceDetails = ({
                     value={TABS.IDENTIFICATION}
                     label={translate(STRING.TAB_ITEM_IDENTIFICATION)}
                   />
+                  <Tabs.Trigger value={TABS.RAW} label="Raw" />
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
                   <InfoBlock fields={fields} />
@@ -247,6 +246,16 @@ export const OccurrenceDetails = ({
                         currentUser={userInfo}
                       />
                     ))}
+                  </div>
+                </Tabs.Content>
+                <Tabs.Content value={TABS.RAW}>
+                  <div className="flex flex-col gap-4">
+                    <CodeBlock
+                      className="flex items-center"
+                      externalLink={occurrence.endpointURL}
+                      snippet={`GET ${occurrence.endpointURL}`}
+                    />
+                    <CodeBlock snippet={occurrence.rawData} />
                   </div>
                 </Tabs.Content>
               </Tabs.Root>

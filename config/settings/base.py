@@ -90,7 +90,7 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "anymail",
-    "cachalot",
+    # "cachalot",
 ]
 
 LOCAL_APPS = [
@@ -243,6 +243,22 @@ ANYMAIL = {
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
 
+# CACHES
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#caches
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": env("REDIS_URL", default=None),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # Mimicing memcache behavior.
+            # https://github.com/jazzband/django-redis#memcached-exceptions-behavior
+            "IGNORE_EXCEPTIONS": True,
+        },
+    }
+}
+
 # ADMIN
 # ------------------------------------------------------------------------------
 # Django Admin URL.
@@ -299,16 +315,42 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_TIME_LIMIT = 5 * 60
+CELERY_TASK_TIME_LIMIT = 7 * 60 * 24
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_SOFT_TIME_LIMIT = 60
+CELERY_TASK_SOFT_TIME_LIMIT = 6 * 60 * 24
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
 CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
+
+# Health checking and retries, specific to Redis
+CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
+CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
+CELERY_REDIS_SOCKET_KEEPALIVE = True
+CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
+
+# Help distribute long-running tasks
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-prefetch-multiplier
+# @TODO Review and test this setting
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
+
+# Connection settings to match Redis timeout and keepalive
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "visibility_timeout": 43200,  # 12 hours - default celery value
+    "socket_timeout": 120,  # Matches Redis timeout setting
+    "socket_connect_timeout": 30,  # Max time to establish connection
+    "socket_keepalive": True,  # Enable TCP keepalive
+    "retry_on_timeout": True,  # Retry operations if Redis times out
+    "max_connections": 20,  # Per process connection pool limit
+}
+
+CELERY_BROKER_CONNECTION_RETRY = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
 
 # django-rest-framework
@@ -369,6 +411,8 @@ SPECTACULAR_SETTINGS = {
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+DEFAULT_CONFIDENCE_THRESHOLD = env.float("DEFAULT_CONFIDENCE_THRESHOLD", default=0.6)  # type: ignore[no-untyped-call]
 
 S3_TEST_ENDPOINT = env("MINIO_ENDPOINT", default="http://minio:9000")  # type: ignore[no-untyped-call]
 S3_TEST_KEY = env("MINIO_ROOT_USER", default=None)  # type: ignore[no-untyped-call]

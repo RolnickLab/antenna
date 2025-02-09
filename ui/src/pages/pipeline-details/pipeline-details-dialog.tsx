@@ -1,9 +1,9 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { usePipelineDetails } from 'data-services/hooks/pipelines/usePipelineDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
-import { Error } from 'pages/error/error'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { PipelineAlgorithms } from './pipeline-algorithms'
@@ -64,8 +64,8 @@ const PipelineDetailsContent = ({
           <FormSection title={translate(STRING.SUMMARY)}>
             <FormRow>
               <InputValue
-                label={translate(STRING.FIELD_LABEL_ID)}
-                value={pipeline.id}
+                label={translate(STRING.FIELD_LABEL_SLUG)}
+                value={pipeline.slug}
               />
               <InputValue
                 label={translate(STRING.FIELD_LABEL_VERSION)}
@@ -109,7 +109,7 @@ const PipelineDetailsContent = ({
         </>
       ) : error ? (
         <div className={styles.errorContent}>
-          <Error error={error} />
+          <ErrorState error={error} />
         </div>
       ) : null}
     </>

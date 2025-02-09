@@ -11,11 +11,11 @@ import { IdentificationSummary } from 'design-system/components/identification/i
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
-import { userAgreed } from '../agree/userAgreed'
 import { StatusLabel } from '../status-label/status-label'
 import styles from './identification-card.module.scss'
 
@@ -41,8 +41,11 @@ export const IdentificationCard = ({
   const canDelete = identification.userPermissions.includes(
     UserPermission.Update
   )
-  const showAgree = !byCurrentUser && canAgree && !identification.overridden
+  const showAgree = !byCurrentUser && canAgree
   const showDelete = byCurrentUser && canDelete
+  const formattedTime = getFormatedDateTimeString({
+    date: new Date(identification.createdAt),
+  })
 
   if (deleteIdOpen) {
     return (
@@ -54,52 +57,53 @@ export const IdentificationCard = ({
   }
 
   return (
-    <div className={styles.identificationCard}>
-      <div className={styles.header}>
-        {identification.applied && (
-          <StatusLabel label={translate(STRING.ID_APPLIED)} />
-        )}
-        <IdentificationSummary user={user} identification={identification} />
-      </div>
-      <div className={styles.content}>
-        <TaxonInfo
-          overridden={identification.overridden}
-          taxon={identification.taxon}
-          getLink={(id: string) =>
-            getAppRoute({
-              to: APP_ROUTES.TAXON_DETAILS({
-                projectId: projectId as string,
-                taxonId: id,
-              }),
-            })
-          }
-        />
-        {identification.comment && (
-          <div className={styles.comment}>"{identification.comment}"</div>
-        )}
-        <div className={styles.actions}>
-          {showAgree && (
-            <Agree
-              agreed={userAgreed({
-                identifications: occurrence.humanIdentifications,
-                taxonId: identification.taxon.id,
-                userId: currentUser?.id,
-              })}
-              agreeWith={
-                user
-                  ? { identificationId: identification.id }
-                  : { predictionId: identification.id }
-              }
-              occurrenceId={occurrence.id}
-              taxonId={identification.taxon.id}
-            />
+    <div>
+      <span className={styles.timestamp}>{formattedTime}</span>
+      <div className={styles.identificationCard}>
+        <div className={styles.header}>
+          {identification.applied && (
+            <StatusLabel label={translate(STRING.ID_APPLIED)} />
           )}
-          {showDelete && (
-            <IconButton
-              icon={IconType.RadixTrash}
-              onClick={() => setDeleteIdOpen(true)}
-            />
+          <IdentificationSummary user={user} identification={identification} />
+        </div>
+        <div className={styles.content}>
+          <TaxonInfo
+            overridden={identification.overridden}
+            taxon={identification.taxon}
+            getLink={(id: string) =>
+              getAppRoute({
+                to: APP_ROUTES.TAXON_DETAILS({
+                  projectId: projectId as string,
+                  taxonId: id,
+                }),
+              })
+            }
+          />
+          {identification.comment && (
+            <div className={styles.comment}>"{identification.comment}"</div>
           )}
+          <div className={styles.actions}>
+            {showAgree && (
+              <Agree
+                agreed={
+                  currentUser ? occurrence.userAgreed(currentUser?.id) : false
+                }
+                agreeWith={
+                  user
+                    ? { identificationId: identification.id }
+                    : { predictionId: identification.id }
+                }
+                occurrenceId={occurrence.id}
+                taxonId={identification.taxon.id}
+              />
+            )}
+            {showDelete && (
+              <IconButton
+                icon={IconType.RadixTrash}
+                onClick={() => setDeleteIdOpen(true)}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

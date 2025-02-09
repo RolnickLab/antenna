@@ -1,12 +1,26 @@
 import datetime
 import logging
 
-from django.db import connection
+from django.db import connection, models
 from django.test import TestCase
+from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
-from ami.main.models import Event, Occurrence, Project, Taxon, TaxonRank, group_images_into_events
+from ami.main.models import (
+    Device,
+    Event,
+    Occurrence,
+    Project,
+    S3StorageSource,
+    Site,
+    SourceImage,
+    SourceImageCollection,
+    Taxon,
+    TaxonRank,
+    group_images_into_events,
+)
+from ami.ml.models.pipeline import Pipeline
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
 
@@ -48,7 +62,7 @@ class TestImageGrouping(TestCase):
         for event in events:
             event.captures.all().delete()
 
-        delete_empty_events()
+        delete_empty_events(deployment=self.deployment)
 
         remaining_events = Event.objects.filter(pk__in=[event.pk for event in events])
 
@@ -535,7 +549,7 @@ class TestTaxonomyViews(TestCase):
     def test_occurrences_for_project(self):
         # Test that occurrences are specific to each project
         for project in [self.project_one, self.project_two]:
-            response = self.client.get(f"/api/v2/occurrences/?project={project.pk}")
+            response = self.client.get(f"/api/v2/occurrences/?project_id={project.pk}")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
@@ -578,7 +592,7 @@ class TestTaxonomyViews(TestCase):
         """
         from ami.main.models import Taxon
 
-        response = self.client.get(f"/api/v2/taxa/?project={project.pk}")
+        response = self.client.get(f"/api/v2/taxa/?project_id={project.pk}")
         self.assertEqual(response.status_code, 200)
         project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
         # project_any_taxa = Taxon.objects.filter(projects=project)
@@ -754,3 +768,139 @@ class TestMovingSourceImages(TestCase):
             self.other_subdir: self.images_per_dir,
         }
         self.assertDictEqual(dict(counts), expected_counts)
+
+
+class TestProjectSettingsFiltering(APITestCase):
+    """Test  Project Settings filter by project_id"""
+
+    def setUp(self) -> None:
+        for _ in range(3):
+            project, deployment = setup_test_project(reuse=False)
+            create_taxa(project=project)
+            create_captures(deployment=deployment)
+            group_images_into_events(deployment=deployment)
+            create_occurrences(deployment=deployment, num=5)
+        self.project_ids = [project.id for project in Project.objects.all()]
+
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_project_summary(self):
+        project_id = self.project_ids[1]
+        endpoint_url = f"/api/v2/status/summary/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        project = Project.objects.get(pk=project_id)
+
+        self.assertEqual(response_data["deployments_count"], project.deployments_count())
+        self.assertEqual(
+            response_data["taxa_count"],
+            Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
+            .filter(
+                occurrences_count__gt=0,
+                occurrences__determination_score__gte=0,
+                occurrences__project=project,
+            )
+            .distinct()
+            .count(),
+        )
+        self.assertEqual(
+            response_data["events_count"],
+            Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
+        )
+        self.assertEqual(
+            response_data["captures_count"], SourceImage.objects.filter(deployment__project=project).count()
+        )
+        self.assertEqual(
+            response_data["occurrences_count"],
+            Occurrence.objects.filter(
+                project=project,
+                determination_score__gte=0,
+                event__isnull=False,
+            ).count(),
+        )
+        self.assertEqual(
+            response_data["captures_count"], SourceImage.objects.filter(deployment__project=project).count()
+        )
+
+    def test_project_collections(self):
+        project_id = self.project_ids[1]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/captures/collections/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        expected_project_collection_ids = {
+            source_image_collection.id
+            for source_image_collection in SourceImageCollection.objects.filter(project=project)
+        }
+        response_source_image_collection_ids = {result.get("id") for result in response_data["results"]}
+        self.assertEqual(response_source_image_collection_ids, expected_project_collection_ids)
+
+    def test_project_pipelines(self):
+        project_id = self.project_ids[0]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/ml/pipelines/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+
+        expected_project_pipeline_ids = {pipeline.id for pipeline in Pipeline.objects.filter(projects=project)}
+        response_pipeline_ids = {pipeline.get("id") for pipeline in response_data["results"]}
+        self.assertEqual(response_pipeline_ids, expected_project_pipeline_ids)
+
+    def test_project_storage(self):
+        project_id = self.project_ids[0]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/storage/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        expected_storage_ids = {storage.id for storage in S3StorageSource.objects.filter(project=project)}
+        response_storage_ids = {storage.get("id") for storage in response_data["results"]}
+        self.assertEqual(response_storage_ids, expected_storage_ids)
+
+    def test_project_sites(self):
+        project_id = self.project_ids[1]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/deployments/sites/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        exepcted_site_ids = {site.id for site in Site.objects.filter(project=project)}
+        response_site_ids = {site.get("id") for site in response_data["results"]}
+        self.assertEqual(response_site_ids, exepcted_site_ids)
+
+    def test_project_devices(self):
+        project_id = self.project_ids[1]
+        project = Project.objects.get(pk=project_id)
+        endpoint_url = f"/api/v2/deployments/devices/?project_id={project_id}"
+        response = self.client.get(endpoint_url)
+        response_data = response.json()
+        exepcted_device_ids = {device.id for device in Device.objects.filter(project=project)}
+        response_device_ids = {device.get("id") for device in response_data["results"]}
+        self.assertEqual(response_device_ids, exepcted_device_ids)
+
+
+class TestProjectOwnerAutoAssignment(APITestCase):
+    def setUp(self) -> None:
+        self.user_1 = User.objects.create_user(
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
+        self.user_2 = User.objects.create_user(
+            email="testuser2@insectai.org",
+            is_staff=True,
+        )
+        self.factory = APIRequestFactory()
+        self.client.force_authenticate(user=self.user_1)
+        return super().setUp()
+
+    def test_can_auto_assign_project_owner(self):
+        project_endpoint = "/api/v2/projects/"
+        request = {"name": "Test Project1234", "description": "Test Description"}
+        self.client.post(project_endpoint, request)
+        project = Project.objects.filter(name=request["name"]).first()
+        self.assertEqual(self.user_1.id, project.owner.id)

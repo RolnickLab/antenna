@@ -8,6 +8,15 @@
   flex-direction: column;
   border-radius: 4px;
   border: 1px solid $color-neutral-100;
+  overflow: hidden;
+}
+
+.timestamp {
+  display: block;
+  color: $color-neutral-300;
+  padding: 4px 8px;
+  text-align: right;
+  @include paragraph-x-small();
 }
 
 .header {

@@ -81,4 +81,35 @@ export class Pipeline {
       date: new Date(this._pipeline.updated_at),
     })
   }
+
+  get processingServicesOnline(): string {
+    const processingServices = this._pipeline.processing_services
+    let total_online = 0
+    for (const processingService of processingServices) {
+      if (processingService.last_checked_live) {
+        total_online += 1
+      }
+    }
+
+    return total_online + '/' + processingServices.length
+  }
+
+  get processingServicesOnlineLastChecked(): string | undefined {
+    const processingServices = this._pipeline.processing_services
+
+    if (!processingServices.length) {
+      return undefined
+    }
+
+    const last_checked_times = []
+    for (const processingService of processingServices) {
+      last_checked_times.push(
+        new Date(processingService.last_checked).getTime()
+      )
+    }
+
+    return getFormatedDateTimeString({
+      date: new Date(Math.max(...last_checked_times)),
+    })
+  }
 }
