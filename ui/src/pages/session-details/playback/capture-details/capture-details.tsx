@@ -184,26 +184,29 @@ const PipelinesPicker = ({
 
   return (
     <Select.Root value={value ?? ''} onValueChange={onValueChange}>
-      <Select.Trigger>
-        <Select.Value placeholder="Select a value" />
+      <Select.Trigger className="h-8 !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0">
+        <Select.Value placeholder="Select a pipeline" />
       </Select.Trigger>
       <Select.Content>
         {pipelines.map((p) => (
           <Select.Item
+            className="h-8 body-small"
             key={p.name}
             value={String(p.id)}
             disabled={!p.hasOnlineProcessingService.online}
           >
-            <span className="flex items-center gap-2">
-              <span
-                className="w-3 h-3 rounded-full mb-0.5"
+            <div className="flex items-center gap-4">
+              <div
+                className="w-2 h-2 rounded-full mb-0.5 shrink-0"
                 style={{
                   backgroundColor:
                     p.hasOnlineProcessingService.service.status.color,
                 }}
               />
-              <span>{p.name}</span>
-            </span>
+              <span className="whitespace-nowrap text-ellipsis overflow-hidden">
+                {p.name}
+              </span>
+            </div>
           </Select.Item>
         ))}
       </Select.Content>
