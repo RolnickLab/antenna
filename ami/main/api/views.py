@@ -26,7 +26,8 @@ from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import (
     CanDeleteIdentification,
-    CanPopulateCollection,
+    CanPopulateSourceImageCollection,
+    CanStarSourceImage,
     CanUpdateIdentification,
     DeploymentCRUDPermission,
     DeviceCRUDPermission,
@@ -473,6 +474,7 @@ class SourceImageViewSet(DefaultViewSet):
         "deployment__name",
         "event__start",
     ]
+    permission_classes = [CanStarSourceImage]
 
     def get_serializer_class(self):
         """
@@ -631,7 +633,10 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         .prefetch_related("jobs")
     )
     serializer_class = SourceImageCollectionSerializer
-    permission_classes = [CanPopulateCollection, SourceImageCollectionCRUDPermission]
+    permission_classes = [
+        CanPopulateSourceImageCollection,
+        SourceImageCollectionCRUDPermission,
+    ]
     filterset_fields = ["method"]
     ordering_fields = [
         "created_at",

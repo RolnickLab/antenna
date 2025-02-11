@@ -1125,10 +1125,14 @@ class TestRolePermissions(APITestCase):
                 "taxon_id": Taxon.objects.first().pk,
             },
         )
-        return response.status_code
+        return response.status_code, response.json().get("id")
 
-    def _can_user_delete_identification(self, user):
-        pass
+    def _can_user_delete_identification(self, user, identification_id):
+        url = f"/api/v2/identifications/{identification_id}"
+        self.client.force_authenticate(user=user)
+
+        response = self.client.delete(url)
+        return response.status_code
 
     def _can_user_create_project(self, user):
         self.client.force_authenticate(user=user)
@@ -1219,7 +1223,24 @@ class TestRolePermissions(APITestCase):
         self.assertEqual(assigned_permissions, expected_permissions)
 
         # Identifier can  update an identification
-        self.assertEqual(self._can_user_update_identification(self.identifier), status.HTTP_201_CREATED)
+        response_status, identification_id = self._can_user_update_identification(self.identifier)
+        self.assertEqual(response_status, status.HTTP_201_CREATED)
+
+        # Identifier can only delete their own identifications
+        self.assertEqual(
+            self._can_user_delete_identification(self.identifier, identification_id), status.HTTP_201_CREATED
+        )
+
+        response_status, project_manager_identification_id = self._can_user_update_identification(self.project_manager)
+        # Identifier cannot delete identifications created by other users
+        self.assertEqual(
+            self._can_user_delete_identification(self.identifier, project_manager_identification_id),
+            status.HTTP_403_FORBIDDEN,
+        )
+        # Project manager can delete identifications created by other users
+        self.assertEqual(
+            self._can_user_delete_identification(self.identifier, identification_id), status.HTTP_204_NO_CONTENT
+        )
 
     def test_ml_data_manager_permissions(self):
         """Test MLDataManager role permissions."""

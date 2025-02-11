@@ -192,8 +192,9 @@ class Project(BaseModel):
         ADD = "create_project"
 
         # Identification permissions
-        UPDATE_IDENTIFICATIONS = "update_identifications"
-        DELETE_IDENTIFICATIONS = "delete_identifications"
+        CREATE_IDENTIFICATION = "create_identification"
+        UPDATE_IDENTIFICATION = "update_identification"
+        DELETE_IDENTIFICATION = "delete_identification"
 
         # Job permissions
         CREATE_JOB = "create_job"
@@ -212,6 +213,9 @@ class Project(BaseModel):
         UPDATE_COLLECTION = "update_sourceimagecollection"
         DELETE_COLLECTION = "delete_sourceimagecollection"
         POPULATE_COLLECTION = "populate_sourceimagecollection"
+
+        # Source Image permissions
+        STAR_SOURCE_IMAGE = "star_sourceimage"
 
         # Storage permissions
         CREATE_STORAGE = "create_storage"
@@ -239,8 +243,9 @@ class Project(BaseModel):
         ordering = ["-priority", "created_at"]
         permissions = [
             # Identification permissions
-            ("update_identifications", "Can update identifications"),
-            ("delete_identifications", "Can delete identifications"),
+            ("create_identification", "Can create identifications"),
+            ("update_identification", "Can update identifications"),
+            ("delete_identification", "Can delete identifications"),
             # Job permissions
             ("create_job", "Can create a job"),
             ("run_job", "Can run a job"),
@@ -256,6 +261,8 @@ class Project(BaseModel):
             ("update_sourceimagecollection", "Can update a collection"),
             ("delete_sourceimagecollection", "Can delete a collection"),
             ("populate_sourceimagecollection", "Can populate a collection"),
+            # Source Image permissions
+            ("star_sourceimage", "Can star a source image"),
             # Storage permissions
             ("create_s3storagesource", "Can create storage"),
             ("delete_s3storagesource", "Can delete storage"),
@@ -2977,7 +2984,6 @@ class SourceImageCollection(BaseModel):
 
     Collections are saved so that they can be reviewed or re-used later.
 
-    @TODO consider a "populate_collection" permission for non-curated collection types
     """
 
     name = models.CharField(max_length=255)

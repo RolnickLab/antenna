@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser, User
 from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
 from ami.jobs.models import Job
-from ami.main.models import Deployment, Device, Identification, Project, S3StorageSource, Site, SourceImageCollection
+from ami.main.models import BaseModel, Deployment, Device, Project, S3StorageSource, Site, SourceImageCollection
 from ami.users.roles import ProjectManager
 
 logger = logging.getLogger(__name__)
-if TYPE_CHECKING:
-    from django.contrib.auth.models import User
 
 
 def is_active_staff(user: User) -> bool:
@@ -35,26 +33,39 @@ class IsActiveStaffOrReadOnly(permissions.BasePermission):
         )
 
 
-def add_object_level_permissions(user, project, response_data: dict) -> dict:
+def filter_permissions(permissions, model_name):
+    """Filter and extract only the action part of `action_modelname`"""
+
+    filtered_permissions = {
+        perm.split("_")[0]  # Extract "action" from "action_modelname"
+        for perm in permissions
+        if perm.endswith(f"_{model_name}")  # Ensure it matches the model
+    }
+    return filtered_permissions
+
+
+def add_object_level_permissions(
+    user: AbstractBaseUser | AnonymousUser, instance: BaseModel, response_data: dict
+) -> dict:
     """
-    Add placeholder permissions to detail views and nested objects.
-
-    If the user is logged in, they can edit any object type.
-    If the user is a superuser, they can delete any object type.
-
-    @TODO @IMPORTANT At least check if they are the owner of the project.
+    Adds object-level permissions to the response data for a given user and instance.
+    This function updates the `response_data` dictionary with the permissions that the
+    specified `user` has on the given `instance`'s project.
     """
 
     permissions = response_data.get("user_permissions", set())
-
+    project = instance.get_project() if hasattr(instance, "get_project") else None
+    model_name = instance._meta.model_name  # Get model name
     if user and is_active_staff(user):
         permissions.update(["update"])
         if user.is_superuser:
             permissions.update(["delete"])
     if project:
-        user_permissions = get_generic_permissions(user, project)
-        permissions.update(set(user_permissions))
+        user_permissions = get_perms(user, project)
 
+        # Filter and extract only the action part of "action_modelname" based on instance type
+        filtered_permissions = filter_permissions(permissions=user_permissions, model_name=model_name)
+        permissions.update(filtered_permissions)
     response_data["user_permissions"] = permissions
     return response_data
 
@@ -170,6 +181,18 @@ class SourceImageCollectionCRUDPermission(CRUDPermission):
     model = SourceImageCollection
 
 
+class CanStarSourceImage(permissions.BasePermission):
+    """Custom permission to check if the user can star a Source image."""
+
+    permission = Project.Permissions.STAR_SOURCE_IMAGE
+
+    def has_object_permission(self, request, view, obj):
+        if view.action in ["unstar", "star"]:
+            project = obj.get_project() if hasattr(obj, "get_project") else None
+            return request.user.has_perm(self.permission, project)
+        return True
+
+
 class S3StorageSourceCRUDPermission(CRUDPermission):
     model = S3StorageSource
 
@@ -182,15 +205,11 @@ class DeviceCRUDPermission(CRUDPermission):
     model = Device
 
 
-class IdentificationCRUDPermission(CRUDPermission):
-    model = Identification
-
-
 # Identification permission checks
 class CanUpdateIdentification(permissions.BasePermission):
     """Custom permission to check if the user can update/create an identification."""
 
-    permission = Project.Permissions.UPDATE_IDENTIFICATIONS
+    permission = Project.Permissions.UPDATE_IDENTIFICATION
 
     def has_object_permission(self, request, view, obj):
         if view.action in ["create", "update", "partial_update"]:
@@ -202,7 +221,7 @@ class CanUpdateIdentification(permissions.BasePermission):
 class CanDeleteIdentification(permissions.BasePermission):
     """Custom permission to check if the user can delete an identification."""
 
-    permission = Project.Permissions.DELETE_IDENTIFICATIONS
+    permission = Project.Permissions.DELETE_IDENTIFICATION
 
     def has_object_permission(self, request, view, obj):
         project = obj.get_project() if hasattr(obj, "get_project") else None
@@ -210,8 +229,8 @@ class CanDeleteIdentification(permissions.BasePermission):
         if view.action == "destroy":
             if request.user.is_superuser or request.user.is_staff or ProjectManager.has_role(request.user, project):
                 return True
-            # Check if the user has the required permission and is the owner of the object
-            return obj.user == request.user and request.user.has_perm(self.permission, project)
+            # Check if the user is the owner of the object
+            return obj.user == request.user
         return True
 
 
@@ -252,7 +271,7 @@ class CanCancelJob(permissions.BasePermission):
         return True
 
 
-class CanPopulateCollection(permissions.BasePermission):
+class CanPopulateSourceImageCollection(permissions.BasePermission):
     """Custom permission to check if the user can populate a collection."""
 
     permission = Project.Permissions.POPULATE_COLLECTION

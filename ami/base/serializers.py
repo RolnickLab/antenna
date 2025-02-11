@@ -8,8 +8,6 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.reverse import reverse
 
-from ami.base.views import ProjectMixin
-
 from .permissions import add_object_level_permissions
 
 logger = logging.getLogger(__name__)
@@ -46,20 +44,18 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     id = serializers.IntegerField(read_only=True)
 
     def get_permissions(self, instance, instance_data):
-        request = self.context.get("request")
-        view = self.context.get("view")
-        project = instance.get_project() if hasattr(instance, "get_project") else None
+        request: Request = self.context["request"]
+        user = request.user
 
-        if not project:
-            if isinstance(view, ProjectMixin):
-                project = view.get_active_project()
-
-        user = request.user if request else None
-        return add_object_level_permissions(user, project, instance_data)
+        return add_object_level_permissions(
+            user=user,
+            instance=instance,
+            response_data=instance_data,
+        )
 
     def to_representation(self, instance):
         instance_data = super().to_representation(instance)
-        instance_data = self.get_permissions(instance, instance_data)
+        instance_data = self.get_permissions(instance=instance, instance_data=instance_data)
         return instance_data
 
 

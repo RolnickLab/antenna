@@ -115,7 +115,7 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = self.get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(projects=project)
         return query_set

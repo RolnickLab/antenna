@@ -1,8 +1,12 @@
+import logging
+
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from guardian.shortcuts import assign_perm, remove_perm
 
 from ami.main.models import Project
+
+logger = logging.getLogger(__name__)
 
 
 class Role:
@@ -43,7 +47,11 @@ class Role:
 
 
 class BasicMember(Role):
-    permissions = Role.permissions | {Project.Permissions.VIEW_PRIVATE_DATA, Project.Permissions.CHANGE}
+    permissions = Role.permissions | {
+        Project.Permissions.VIEW_PRIVATE_DATA,
+        Project.Permissions.CHANGE,
+        Project.Permissions.STAR_SOURCE_IMAGE,
+    }
 
 
 class Researcher(Role):
@@ -52,8 +60,9 @@ class Researcher(Role):
 
 class Identifier(Role):
     permissions = BasicMember.permissions | {
-        Project.Permissions.UPDATE_IDENTIFICATIONS,
-        Project.Permissions.DELETE_IDENTIFICATIONS,
+        Project.Permissions.CREATE_IDENTIFICATION,
+        Project.Permissions.UPDATE_IDENTIFICATION,
+        Project.Permissions.DELETE_IDENTIFICATION,
     }
 
 
@@ -104,19 +113,17 @@ def create_roles_for_project(project):
     project_ct = ContentType.objects.get_for_model(Project)
 
     for role_class in Role.__subclasses__():
-        print(f"role_created {role_class} for project {project}")
         role_name = f"{project.pk}_{project.name}_{role_class.__name__}"
         permissions = role_class.permissions
-
         group, created = Group.objects.get_or_create(name=role_name)
         if created:
-            for perm_codename in permissions:
-                permission, _ = Permission.objects.get_or_create(
-                    codename=perm_codename,
-                    content_type=project_ct,
-                    defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
-                )
-                group.permissions.add(permission)
+            logger.info(f"Role created {role_class} for project {project}")
+        for perm_codename in permissions:
+            permission, perm_created = Permission.objects.get_or_create(
+                codename=perm_codename,
+                content_type=project_ct,
+                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+            )
 
-                # Assign the permission group to the project
-                assign_perm(perm_codename, group, project)
+            group.permissions.add(permission)  # Assign the permission group to the project
+            assign_perm(perm_codename, group, project)
