@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
 import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
@@ -45,6 +46,15 @@ export const columns: (
     ),
   },
   {
+    id: 'status',
+    name: 'Status',
+    renderCell: (item: ProcessingService) => {
+      return (
+        <StatusTableCell color={item.status.color} label={item.status.label} />
+      )
+    },
+  },
+  {
     id: 'last-checked',
     name: translate(STRING.FIELD_LABEL_LAST_CHECKED),
     sortField: 'last_checked',
@@ -57,7 +67,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED),
     sortField: 'num_PIPELINES_REGISTERED',
     renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.num_piplines_added} />
+      <BasicTableCell value={item.numPiplinesAdded} />
     ),
   },
   {
