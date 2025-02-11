@@ -218,9 +218,9 @@ class Project(BaseModel):
         STAR_SOURCE_IMAGE = "star_sourceimage"
 
         # Storage permissions
-        CREATE_STORAGE = "create_storage"
-        DELETE_STORAGE = "delete_storage"
-        UPDATE_STORAGE = "update_storage"
+        CREATE_STORAGE = "create_s3storagesource"
+        DELETE_STORAGE = "delete_s3storagesource"
+        UPDATE_STORAGE = "update_s3storagesource"
 
         # Site permissions
         CREATE_SITE = "create_site"
