@@ -160,24 +160,7 @@ class DeploymentCRUDPermission(CRUDPermission):
     model = Deployment
 
 
-class SourceImageCRUDPermission(CRUDPermission):
-    """@TODO may need this one too"""
-
-    pass
-    # model = SourceImage
-
-
 class SourceImageCollectionCRUDPermission(CRUDPermission):
-    """
-    @TODO check if the collection type
-    all: "update_collection": ability to change the name or parameters (all fields on the model)
-    curated collections: "add_to_collection" abiliity to add a single image to a collection
-    sampling collections: "populate_collection" can populate a collection with images base on sampling parameters
-    dyanmic collections: "populate_collection" can populate a collection with images based on a query
-
-    collection_type = collection.dataset_type
-    """
-
     model = SourceImageCollection
 
 
