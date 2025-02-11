@@ -67,7 +67,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED),
     sortField: 'num_PIPELINES_REGISTERED',
     renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.num_piplines_added} />
+      <BasicTableCell value={item.numPiplinesAdded} />
     ),
   },
   {

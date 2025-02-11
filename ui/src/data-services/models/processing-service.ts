@@ -82,7 +82,7 @@ export class ProcessingService extends Entity {
     return this._processingService.last_checked_live
   }
 
-  get num_piplines_added(): number {
+  get numPiplinesAdded(): number {
     return this._pipelines.length
   }
 
