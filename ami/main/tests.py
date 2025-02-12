@@ -1128,7 +1128,7 @@ class TestRolePermissions(APITestCase):
         return response.status_code, response.json().get("id")
 
     def _can_user_delete_identification(self, user, identification_id):
-        url = f"/api/v2/identifications/{identification_id}"
+        url = f"/api/v2/identifications/{identification_id}/"
         self.client.force_authenticate(user=user)
 
         response = self.client.delete(url)
@@ -1194,7 +1194,8 @@ class TestRolePermissions(APITestCase):
         assigned_permissions = set(get_perms(self.basic_member, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
         # BasicMember can not update an identification
-        self.assertEqual(self._can_user_update_identification(self.basic_member), status.HTTP_403_FORBIDDEN)
+        response_status, _ = self._can_user_update_identification(self.basic_member)
+        self.assertEqual(response_status, status.HTTP_403_FORBIDDEN)
 
         self._create_job()
 
@@ -1228,7 +1229,7 @@ class TestRolePermissions(APITestCase):
 
         # Identifier can only delete their own identifications
         self.assertEqual(
-            self._can_user_delete_identification(self.identifier, identification_id), status.HTTP_201_CREATED
+            self._can_user_delete_identification(self.identifier, identification_id), status.HTTP_204_NO_CONTENT
         )
 
         response_status, project_manager_identification_id = self._can_user_update_identification(self.project_manager)
@@ -1238,6 +1239,7 @@ class TestRolePermissions(APITestCase):
             status.HTTP_403_FORBIDDEN,
         )
         # Project manager can delete identifications created by other users
+        response_status, identification_id = self._can_user_update_identification(self.identifier)
         self.assertEqual(
             self._can_user_delete_identification(self.identifier, identification_id), status.HTTP_204_NO_CONTENT
         )
