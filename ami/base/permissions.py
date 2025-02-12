@@ -70,14 +70,21 @@ def add_object_level_permissions(
     return response_data
 
 
-def add_collection_level_permissions(user: User | None, response_data: dict) -> dict:
-    """
-    Add placeholder permissions to list view responses.
+def add_collection_level_permissions(user: User | None, response_data: dict, model, project) -> dict:
+    """Add collection-level permissions to the response data for a list view.
 
-    If the user is logged in, they can create new objects of any type.
+    This function modifies the `response_data` dictionary to include user permissions
+    for creating new objects of the specified model type. If the user is logged in and
+    is an active staff member, or if the user has create_model permission, the
+    "create" permission is added to the `user_permissions` set in the `response_data`.
     """
+
+    logger.info(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
     permissions = response_data.get("user_permissions", set())
     if user and is_active_staff(user):
+        permissions.add("create")
+
+    if user and project and f"create_{model.__name__.lower()}" in get_perms(user, project):
         permissions.add("create")
     response_data["user_permissions"] = permissions
     return response_data
