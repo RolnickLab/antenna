@@ -554,6 +554,10 @@ class CaptureTaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True)
 
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
     class Meta:
         model = Taxon
         fields = [
@@ -802,6 +806,10 @@ class ClassificationListSerializer(DefaultSerializer):
 
 
 class ClassificationNestedSerializer(ClassificationSerializer):
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
     class Meta:
         model = Classification
         fields = [
