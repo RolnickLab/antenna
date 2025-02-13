@@ -8,6 +8,7 @@ class MainConfig(AppConfig):
     verbose_name = _("Main")
 
     def ready(self):
+        import ami.main.signals  # noqa: F401
         from ami.tests.fixtures.signals import initialize_demo_project
 
         post_migrate.connect(initialize_demo_project, sender=self)
