@@ -7,7 +7,6 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("ml", "0017_alter_algorithm_unique_together"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("main", "0044_merge_20250124_2333"),
     ]
