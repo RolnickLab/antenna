@@ -13,7 +13,7 @@ def create_periodic_task(apps, schema_editor):
 
     PeriodicTask.objects.get_or_create(
         name="celery.check_processing_services_online",
-        task="ami.tasks.check_processing_services_online",
+        task="ami.ml.tasks.check_processing_services_online",
         crontab=crontab_schedule,
     )
 
@@ -25,7 +25,7 @@ def delete_periodic_task(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0044_merge_20250124_2333"),
+        ("ml", "0017_alter_algorithm_unique_together"),
     ]
 
     operations = [

@@ -83,3 +83,26 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
         logger.info(f"Deleted {num_deleted} duplicate classifications")
 
     return num_deleted
+
+
+@celery_app.task(soft_time_limit=10, time_limit=20)
+def check_processing_services_online():
+    """
+    Check the status of all processing services and update last checked.
+
+    @TODO make this async to check all services in parallel
+    """
+    from ami.ml.models import ProcessingService
+
+    logger.info("Checking if processing services are online.")
+
+    services = ProcessingService.objects.all()
+
+    for service in services:
+        logger.info(f"Checking service {service}")
+        try:
+            status_response = service.get_status()
+            logger.info(status_response)
+        except Exception as e:
+            logger.error(f"Error checking service {service}: {e}")
+            continue
