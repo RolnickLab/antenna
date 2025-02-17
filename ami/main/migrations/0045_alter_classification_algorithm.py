@@ -6,7 +6,6 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("ml", "0017_alter_algorithm_unique_together"),
         ("main", "0044_merge_20250124_2333"),
     ]
 
