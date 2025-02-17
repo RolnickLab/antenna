@@ -26,6 +26,7 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
+from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
 from ami.users.models import User
@@ -1521,8 +1522,8 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
-    minute_interval: int = 10,
-    qs: models.QuerySet[SourceImage] | None = None,
+    minute_interval: int,
+    qs: models.QuerySet[SourceImage],
     max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
@@ -1531,9 +1532,6 @@ def sample_captures_by_interval(
 
     last_capture = None
     total = 0
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1555,7 +1553,7 @@ def sample_captures_by_interval(
 
 def sample_captures_by_position(
     position: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage | None, None, None]:
     """
     Return the n-th position capture from each event.
@@ -1563,9 +1561,6 @@ def sample_captures_by_position(
     For example if position = 0, the first capture from each event will be returned.
     If position = -1, the last capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1593,7 +1588,7 @@ def sample_captures_by_position(
 
 def sample_captures_by_nth(
     nth: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return every nth capture from each event.
@@ -1601,9 +1596,6 @@ def sample_captures_by_nth(
     For example if nth = 1, every capture from each event will be returned.
     If nth = 5, every 5th capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -2973,35 +2965,51 @@ class SourceImageCollection(BaseModel):
     def sample_common_combined(
         self,
         minute_interval: int | None = None,
-        max_num: int | None = 100,
+        max_num: int | None = None,
+        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
         hour_start: int | None = None,
         hour_end: int | None = None,
-        month_start: datetime.date | None = None,
-        month_end: datetime.date | None = None,
-        day_start: datetime.date | None = None,
-        day_end: datetime.date | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
-        if month_start:
+
+        if date_start is not None:
+            qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
+        if date_end is not None:
+            qs = qs.filter(timestamp__date__lte=DateStringField.to_date(date_end))
+
+        if month_start is not None:
             qs = qs.filter(timestamp__month__gte=month_start)
-        if month_end:
+        if month_end is not None:
             qs = qs.filter(timestamp__month__lte=month_end)
-        if day_start:
-            qs = qs.filter(timestamp__day__gte=day_start)
-        if day_end:
-            qs = qs.filter(timestamp__day__lte=day_end)
-        if hour_start:
+
+        if hour_start is not None and hour_end is not None:
+            if hour_start < hour_end:
+                # Hour range within the same day (e.g., 08:00 to 15:00)
+                qs = qs.filter(timestamp__hour__gte=hour_start, timestamp__hour__lte=hour_end)
+            else:
+                # Hour range has Midnight crossover: (e.g., 17:00 to 06:00)
+                qs = qs.filter(models.Q(timestamp__hour__gte=hour_start) | models.Q(timestamp__hour__lte=hour_end))
+        elif hour_start is not None:
             qs = qs.filter(timestamp__hour__gte=hour_start)
-        if hour_end:
+        elif hour_end is not None:
             qs = qs.filter(timestamp__hour__lte=hour_end)
-        if not minute_interval and max_num:
-            qs = qs[:max_num]
-        if minute_interval:
+
+        if minute_interval is not None:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
             # Ensure the queryset is limited to the project
             qs = qs.filter(project=self.project)
-            qs = sample_captures_by_interval(minute_interval, qs=qs, max_num=max_num)
+            qs = sample_captures_by_interval(minute_interval=minute_interval, qs=qs, max_num=max_num)
+        else:
+            if max_num is not None:
+                if shuffle:
+                    qs = qs.order_by("?")
+                qs = qs[:max_num]
+
         return qs
 
     def sample_interval(
@@ -3016,19 +3024,19 @@ class SourceImageCollection(BaseModel):
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
         qs = qs.filter(project=self.project)
-        return sample_captures_by_interval(minute_interval, qs=qs)
+        return sample_captures_by_interval(minute_interval=minute_interval, qs=qs)
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_position(position, qs=qs)
+        return sample_captures_by_position(position=position, qs=qs)
 
     def sample_nth(self, nth: int):
         """Sample every nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_nth(nth, qs=qs)
+        return sample_captures_by_nth(nth=nth, qs=qs)
 
     def sample_random_from_each_event(self, num_each: int = 10):
         """Sample n random source images from each event in the project."""

@@ -3,6 +3,7 @@ import datetime
 from django.db.models import QuerySet
 from rest_framework import serializers
 
+from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
 from ami.main.models import create_source_image_from_upload
@@ -1025,8 +1026,13 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     # use for the "common_combined" method
     minute_interval = serializers.IntegerField(required=False, allow_null=True)
     max_num = serializers.IntegerField(required=False, allow_null=True)
+    shuffle = serializers.BooleanField(required=False, allow_null=True)
+
     month_start = serializers.IntegerField(required=False, allow_null=True)
     month_end = serializers.IntegerField(required=False, allow_null=True)
+
+    date_start = DateStringField(required=False, allow_null=True)
+    date_end = DateStringField(required=False, allow_null=True)
 
     hour_start = serializers.IntegerField(required=False, allow_null=True)
     hour_end = serializers.IntegerField(required=False, allow_null=True)
@@ -1039,9 +1045,9 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     deployment_id = serializers.IntegerField(required=False, allow_null=True)
     position = serializers.IntegerField(required=False, allow_null=True)
 
-    # Don't return the kwargs if they are empty
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        # Don't return the kwargs if they are empty
         return {key: value for key, value in data.items() if value is not None}
 
 
