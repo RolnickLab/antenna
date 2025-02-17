@@ -3097,3 +3097,21 @@ class SourceImageCollection(BaseModel):
                 name="Starred Images",  # @TODO make this translatable
             )
         return collection
+
+
+class ExportHistory(BaseModel):
+    """A model to track Occurrence data exports"""
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exports")
+    task_id = models.CharField(max_length=255, unique=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    file_url = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return f"Export {self.task_id} - {self.status}"
