@@ -13,7 +13,7 @@ def create_and_assign_roles(sender, **kwargs):
     for project in Project.objects.all():
         create_roles_for_project(project)
         # Assign "Basic Member" role to all project members
-        for member in project.members:
+        for member in project.members.all():
             BasicMember.assign_user(user=member, project=project)
         # Assign "Project Manager" role to all project members
         if project.owner:
