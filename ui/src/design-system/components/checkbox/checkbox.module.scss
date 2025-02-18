@@ -64,4 +64,8 @@
   &.neutral {
     color: $color-generic-white;
   }
+
+  &.disabled {
+    opacity: 0.5;
+  }
 }

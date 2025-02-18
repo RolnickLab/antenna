@@ -1,4 +1,6 @@
 import { FormField } from 'components/form/form-field'
+import { isValid } from 'date-fns'
+
 import {
   FormActions,
   FormError,
@@ -24,7 +26,27 @@ type CollectionFormValues = FormValues & {
     month_end: string | undefined
     hour_start: number | undefined
     hour_end: number | undefined
+    date_start: string | undefined
+    date_end: string | undefined
   }
+}
+
+// simple date string config
+
+const kwargs_date_config = {
+  label: 'Date',
+  description: 'Format: YYYY-MM-DD',
+  rules: {
+    validate: (value: any): string | undefined => {
+      if (!value) return undefined
+
+      if (!isValid(new Date(value))) {
+        return 'Date must be in YYYY-MM-DD format'
+      }
+
+      return undefined
+    },
+  },
 }
 
 const config: FormConfig = {
@@ -51,6 +73,7 @@ const config: FormConfig = {
   },
   'kwargs.max_num': {
     label: 'Max number of images',
+    description: 'When set, the collection will be a random sample',
   },
   'kwargs.minute_interval': {
     label: 'Minutes between captures',
@@ -66,6 +89,14 @@ const config: FormConfig = {
   },
   'kwargs.hour_end': {
     label: 'Latest hour',
+  },
+  'kwargs.date_start': {
+    ...kwargs_date_config,
+    label: 'Earliest date',
+  },
+  'kwargs.date_end': {
+    ...kwargs_date_config,
+    label: 'Latest date',
   },
 }
 
@@ -175,6 +206,20 @@ export const CollectionDetailsForm = ({
           <FormField
             name="kwargs.hour_end"
             type="number"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
+            name="kwargs.date_start"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="kwargs.date_end"
+            type="text"
             config={config}
             control={control}
           />

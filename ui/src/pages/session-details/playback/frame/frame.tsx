@@ -1,10 +1,17 @@
 import classNames from 'classnames'
+import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { CaptureDetection } from 'data-services/models/capture'
+import * as Dialog from 'design-system/components/dialog/dialog'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { InfoIcon } from 'lucide-react'
+import { Button, Tooltip } from 'nova-ui-kit'
+import {
+  OccurrenceDetails,
+  TABS,
+} from 'pages/occurrence-details/occurrence-details'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { APP_ROUTES, SCORE_THRESHOLDS } from 'utils/constants'
+import { SCORE_THRESHOLDS } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
 import { BoxStyle } from './types'
@@ -173,8 +180,8 @@ const FrameDetections = ({
   detections: CaptureDetection[]
   showDetections?: boolean
 }) => {
-  const { projectId } = useParams()
   const containerRef = useRef(null)
+  const [activeOccurrence, setActiveOccurrence] = useState<string>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
 
   const toggleActiveState = (occurrenceId: string) => {
@@ -190,50 +197,110 @@ const FrameDetections = ({
   }
 
   return (
-    <div className={styles.detections} ref={containerRef}>
-      {Object.entries(boxStyles).map(([id, style]) => {
-        const detection = detections.find((d) => d.id === id)
+    <>
+      <div className={styles.detections} ref={containerRef}>
+        {Object.entries(boxStyles).map(([id, style]) => {
+          const detection = detections.find((d) => d.id === id)
 
-        const isActive = detection?.occurrenceId
-          ? activeOccurrences.includes(detection.occurrenceId)
-          : false
+          const isActive = detection?.occurrenceId
+            ? activeOccurrences.includes(detection.occurrenceId)
+            : false
 
-        if (!detection || (!showDetections && !isActive)) {
-          return null
+          if (!detection || (!showDetections && !isActive)) {
+            return null
+          }
+
+          return (
+            <Tooltip.Provider key={detection.id} delayDuration={0}>
+              <Tooltip.Root open={isActive ? isActive : undefined}>
+                <Tooltip.Trigger asChild>
+                  <div
+                    style={style}
+                    className={classNames(styles.detection, {
+                      [styles.active]: isActive,
+                      [styles.warning]:
+                        detection.score < SCORE_THRESHOLDS.WARNING,
+                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
+                      [styles.clickable]: !!detection.occurrenceId,
+                    })}
+                    onClick={() => {
+                      if (detection.occurrenceId) {
+                        toggleActiveState(detection?.occurrenceId)
+                      }
+                    }}
+                  />
+                </Tooltip.Trigger>
+                <Tooltip.Content
+                  className="p-1 z-[1]"
+                  collisionBoundary={containerRef?.current}
+                  side="bottom"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="pl-2 body-sm pt-0.5">
+                      {detection.label}
+                    </span>
+                    <Button
+                      className="h-8 w-8"
+                      disabled={!detection.occurrenceId}
+                      onClick={() =>
+                        setActiveOccurrence(detection.occurrenceId)
+                      }
+                      size="icon"
+                      variant="ghost"
+                    >
+                      <InfoIcon className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </Tooltip.Content>
+              </Tooltip.Root>
+            </Tooltip.Provider>
+          )
+        })}
+        {activeOccurrence ? (
+          <OccurrenceDetailsDialog
+            id={activeOccurrence}
+            onClose={() => setActiveOccurrence(undefined)}
+          />
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+export const OccurrenceDetailsDialog = ({
+  id,
+  onClose,
+}: {
+  id: string
+  onClose: () => void
+}) => {
+  const [selectedView, setSelectedView] = useState<string | undefined>(
+    TABS.FIELDS
+  )
+  const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+
+  return (
+    <Dialog.Root
+      open={!!id}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose()
         }
-
-        return (
-          <Tooltip
-            key={detection.id}
-            content={detection?.label ?? ''}
-            frame={containerRef.current}
-            open={isActive ? isActive : undefined}
-            to={
-              detection.occurrenceId
-                ? APP_ROUTES.OCCURRENCE_DETAILS({
-                    projectId: projectId as string,
-                    occurrenceId: detection.occurrenceId,
-                  })
-                : undefined
-            }
-          >
-            <div
-              style={style}
-              className={classNames(styles.detection, {
-                [styles.active]: isActive,
-                [styles.warning]: detection.score < SCORE_THRESHOLDS.WARNING,
-                [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
-                [styles.clickable]: !!detection.occurrenceId,
-              })}
-              onClick={() => {
-                if (detection.occurrenceId) {
-                  toggleActiveState(detection?.occurrenceId)
-                }
-              }}
-            />
-          </Tooltip>
-        )
-      })}
-    </div>
+      }}
+    >
+      <Dialog.Content
+        ariaCloselabel={translate(STRING.CLOSE)}
+        isLoading={isLoading}
+        error={error}
+      >
+        {occurrence ? (
+          <OccurrenceDetails
+            occurrence={occurrence}
+            selectedTab={selectedView}
+            setSelectedTab={setSelectedView}
+          />
+        ) : null}
+      </Dialog.Content>
+    </Dialog.Root>
   )
 }

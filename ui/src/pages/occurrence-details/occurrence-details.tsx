@@ -9,7 +9,7 @@ import { IdentificationStatus } from 'design-system/components/identification/id
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { TaxonDetails } from 'nova-ui-kit'
+import { CodeBlock, TaxonDetails } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -29,6 +29,7 @@ import { SuggestId } from './suggest-id/suggest-id'
 export const TABS = {
   FIELDS: 'fields',
   IDENTIFICATION: 'identification',
+  RAW: 'raw',
 }
 
 export const OccurrenceDetails = ({
@@ -46,7 +47,7 @@ export const OccurrenceDetails = ({
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { state } = useLocation()
+  const { state, pathname } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -65,16 +66,20 @@ export const OccurrenceDetails = ({
             )
             .map((item) => ({
               ...item,
-              to: getAppRoute({
-                to: APP_ROUTES.SESSION_DETAILS({
-                  projectId: projectId as string,
-                  sessionId: occurrence.sessionId,
-                }),
-                filters: {
-                  occurrence: occurrence.id,
-                  capture: item.captureId,
-                },
-              }),
+              to: pathname.includes(
+                APP_ROUTES.SESSIONS({ projectId: projectId as string })
+              )
+                ? undefined
+                : getAppRoute({
+                    to: APP_ROUTES.SESSION_DETAILS({
+                      projectId: projectId as string,
+                      sessionId: occurrence.sessionId,
+                    }),
+                    filters: {
+                      occurrence: occurrence.id,
+                      capture: item.captureId,
+                    },
+                  }),
             }))
         : [],
     [occurrence]
@@ -89,13 +94,17 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_SESSION),
       value: occurrence.sessionLabel,
-      to: getAppRoute({
-        to: APP_ROUTES.SESSION_DETAILS({
-          projectId: projectId as string,
-          sessionId: occurrence.sessionId,
-        }),
-        filters: { occurrence: occurrence.id },
-      }),
+      to: pathname.includes(
+        APP_ROUTES.SESSIONS({ projectId: projectId as string })
+      )
+        ? undefined
+        : getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId as string,
+              sessionId: occurrence.sessionId,
+            }),
+            filters: { occurrence: occurrence.id },
+          }),
     },
     {
       label: translate(STRING.FIELD_LABEL_DATE),
@@ -104,10 +113,6 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_TIME),
       value: occurrence.timeLabel,
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_DURATION),
-      value: occurrence.durationLabel,
     },
   ]
 
@@ -197,6 +202,7 @@ export const OccurrenceDetails = ({
                     value={TABS.IDENTIFICATION}
                     label={translate(STRING.TAB_ITEM_IDENTIFICATION)}
                   />
+                  <Tabs.Trigger value={TABS.RAW} label="Raw" />
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
                   <InfoBlock fields={fields} />
@@ -230,6 +236,16 @@ export const OccurrenceDetails = ({
                         currentUser={userInfo}
                       />
                     ))}
+                  </div>
+                </Tabs.Content>
+                <Tabs.Content value={TABS.RAW}>
+                  <div className="flex flex-col gap-4">
+                    <CodeBlock
+                      className="flex items-center"
+                      externalLink={occurrence.endpointURL}
+                      snippet={`GET ${occurrence.endpointURL}`}
+                    />
+                    <CodeBlock snippet={occurrence.rawData} />
                   </div>
                 </Tabs.Content>
               </Tabs.Root>

@@ -79,7 +79,6 @@ export const Gallery = ({
             />
           ))
       )}
-
       {!isLoading && items.length === 0 && <EmptyState />}
     </div>
   )

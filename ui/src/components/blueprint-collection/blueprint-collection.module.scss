@@ -37,6 +37,7 @@
   max-width: 100%;
 
   .blueprintImage {
+    position: relative;
     margin-bottom: 8px;
 
     img {
@@ -56,6 +57,10 @@
     padding: 4px 8px;
     box-sizing: border-box;
     @include paragraph-x-small();
+
+    span {
+      white-space: nowrap;
+    }
   }
 
   .count {
@@ -63,6 +68,12 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
+  }
+
+  .time {
+    flex: 1;
+    color: $color-neutral-300;
+    text-align: right;
   }
 
   .blueprintLabel {

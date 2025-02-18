@@ -39,6 +39,11 @@ export const columns: TableColumn<Algorithm>[] = [
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     renderCell: (item: Algorithm) => <BasicTableCell value={item.updatedAt} />,
   },
+  {
+    id: 'key',
+    name: translate(STRING.FIELD_LABEL_SLUG),
+    renderCell: (item: Algorithm) => <BasicTableCell value={item.key} />,
+  },
 ]
 
 export const PipelineAlgorithms = ({ pipeline }: { pipeline: Pipeline }) => (

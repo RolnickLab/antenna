@@ -13,6 +13,7 @@ from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
     BlogPost,
+    Classification,
     Deployment,
     Device,
     Event,
@@ -56,7 +57,25 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 class ProjectAdmin(admin.ModelAdmin[Project]):
     """Admin panel example for ``Project`` model."""
 
-    list_display = ("name", "priority", "active", "created_at", "updated_at")
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.ensure_owner_membership()
+
+    list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
+    list_filter = ("active", "owner")
+    search_fields = ("name", "owner__username", "members__username")
+    filter_horizontal = ("members",)
+
+    fieldsets = (
+        (None, {"fields": ("name", "description", "priority", "active")}),
+        (
+            "Ownership & Access",
+            {
+                "fields": ("owner", "members"),
+                "classes": ("wide",),
+            },
+        ),
+    )
 
     @admin.action(description="Remove duplicate classifications from all detections")
     def _remove_duplicate_classifications(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:
@@ -115,13 +134,11 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         self.message_user(request, msg)
 
     # Action that regroups all captures in the deployment into events
-    @admin.action(description="Regroup captures into events")
+    @admin.action(description="Regroup captures into events (async)")
     def regroup_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        from ami.main.models import group_images_into_events
-
-        for deployment in queryset:
-            group_images_into_events(deployment)
-        self.message_user(request, f"Regrouped {queryset.count()} deployments.")
+        queued_tasks = [tasks.regroup_events.delay(deployment.pk) for deployment in queryset]
+        msg = f"Regrouping captures into events for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        self.message_user(request, msg)
 
     list_filter = ("project",)
     actions = [sync_captures, regroup_events]
@@ -220,11 +237,80 @@ class SourceImageAdmin(AdminBase):
 class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     """Admin panel example for ``Occurrence`` model."""
 
-    list_display = ("id", "determination", "project", "deployment", "event")
+    list_display = (
+        "id",
+        "determination",
+        "project",
+        "deployment",
+        "event",
+        "detections_count",
+        "created_at",
+        "updated_at",
+    )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
-        return qs.select_related("determination", "project", "deployment", "event")
+        qs = qs.select_related("determination", "project", "deployment", "event")
+        # Add detections count to queryset
+        qs = qs.annotate(detections_count=models.Count("detections"))
+        # Add min, max and avg detection__classifications counts to queryset
+        # qs = qs.annotate(
+        #     min_detection_classifications=models.Min("detections__classifications"),
+        #     max_detection_classifications=models.Max("detections__classifications"),
+        #     avg_detection_classifications=models.Avg("detections__classifications"),
+        # )
+        return qs
+
+    @admin.display(
+        description="Detections",
+        ordering="detections_count",
+    )
+    def detections_count(self, obj) -> int:
+        return obj.detections_count
+
+    ordering = ("-created_at",)
+
+
+@admin.register(Classification)
+class ClassificationAdmin(admin.ModelAdmin[Classification]):
+    list_display = (
+        "__str__",
+        "taxon",
+        "algorithm",
+        "num_scores",
+        "num_logits",
+        "detection_date",
+        "timestamp",
+        "terminal",
+        "created_at",
+    )
+
+    list_filter = (
+        "algorithm",
+        "terminal",
+        "created_at",
+        "detection__source_image__project",
+        "taxon__rank",
+    )
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        return qs.select_related(
+            "taxon", "detection", "detection__source_image", "detection__source_image__project"
+        ).annotate(
+            detection_date=models.F("detection__timestamp"),
+        )
+
+    @admin.display()
+    def detection_date(self, obj: Classification) -> str:
+        # This property comes from the annotation in get_queryset, not the model
+        return obj.detection_date  # type: ignore
+
+    def num_scores(self, obj: Classification) -> int:
+        return len(obj.scores) if obj.scores else 0
+
+    def num_logits(self, obj: Classification) -> int:
+        return len(obj.logits) if obj.logits else 0
 
 
 class TaxonParentFilter(admin.SimpleListFilter):
@@ -262,6 +348,10 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
     )
     list_filter = ("lists", "rank", TaxonParentFilter)
     search_fields = ("name",)
+    autocomplete_fields = (
+        "parent",
+        "synonym_of",
+    )
 
     # annotate queryset with occurrence counts and allow sorting
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.list_display
