@@ -1040,6 +1040,16 @@ class OccurrenceViewSet(DefaultViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
+    def paginate_queryset(self, queryset):
+        """
+        Override pagination to skip pagination for 'export' action.
+        """
+
+        if self.action == "export":
+            return None  # Disable pagination, return full queryset
+
+        return super().paginate_queryset(queryset)  # Apply normal pagination
+
     @action(detail=False, methods=["post"])
     def export(self, request):
         """
