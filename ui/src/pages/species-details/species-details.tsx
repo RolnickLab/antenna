@@ -20,6 +20,17 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   const blueprintItems: BlueprintItem[] = []
 
   const fields = [
+    ...species.ranks.map(({ rank, name, id }) => ({
+      label: rank,
+      value: name,
+      to: getAppRoute({
+        to: APP_ROUTES.TAXON_DETAILS({
+          projectId: projectId as string,
+          taxonId: id,
+        }),
+        keepSearchParams: true,
+      }),
+    })),
     {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value: 'View all',
