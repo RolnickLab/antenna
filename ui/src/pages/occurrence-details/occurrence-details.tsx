@@ -3,12 +3,16 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Button } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { CodeBlock, IdentificationScore, TaxonDetails } from 'nova-ui-kit'
+import { SearchIcon } from 'lucide-react'
+import {
+  Button,
+  CodeBlock,
+  IdentificationScore,
+  TaxonDetails,
+} from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -155,14 +159,18 @@ export const OccurrenceDetails = ({
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
-                label={translate(STRING.SUGGEST_ID)}
-                icon={IconType.RadixSearch}
+                className="text-primary-600"
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
                   suggestIdInputRef?.current?.focus()
                 }}
-              />
+                size="small"
+                variant="outline"
+              >
+                <SearchIcon className="w-4 h-4" />
+                {translate(STRING.SUGGEST_ID)}
+              </Button>
               <IdQuickActions
                 containerRef={containerRef}
                 occurrenceIds={[occurrence.id]}
@@ -172,7 +180,7 @@ export const OccurrenceDetails = ({
           )}
           {!canUpdate && !loggedIn && (
             <Button
-              label="Login to suggest ID"
+              className="text-primary-600"
               onClick={() =>
                 navigate(APP_ROUTES.LOGIN, {
                   state: {
@@ -183,7 +191,11 @@ export const OccurrenceDetails = ({
                   },
                 })
               }
-            />
+              size="small"
+              variant="outline"
+            >
+              Login to suggest ID
+            </Button>
           )}
         </div>
       </div>
