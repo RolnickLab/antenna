@@ -146,7 +146,7 @@ export const OccurrenceDetails = ({
           {canUpdate && (
             <>
               <Agree
-                agreed={userInfo ? occurrence.userAgreed(userInfo?.id) : false}
+                agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
                 agreeWith={{
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,

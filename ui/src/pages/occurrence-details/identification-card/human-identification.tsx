@@ -34,13 +34,11 @@ export const HumanIdentification = ({
       </span>
       <IdentificationCard
         avatar={user.image?.length ? <img alt="" src={user.image} /> : null}
-        onOpenChange={() => {}}
-        open
         title={user.name.length ? user.name : 'Anonymous user'}
       >
         <IdentificationDetails
+          applied={identification.applied}
           className="border-border border-t"
-          status={identification.applied ? 'confirmed' : 'unconfirmed'}
         >
           <TaxonDetails compact taxon={identification.taxon} withTooltips />
         </IdentificationDetails>

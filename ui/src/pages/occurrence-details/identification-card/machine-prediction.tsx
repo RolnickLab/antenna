@@ -3,6 +3,7 @@ import {
   MachinePrediction as Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
+import { Taxon } from 'data-services/models/taxa'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import {
   Collapsible,
@@ -11,13 +12,15 @@ import {
   IdentificationScore,
   TaxonDetails,
 } from 'nova-ui-kit'
-import { useState } from 'react'
+import { ReactNode, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
+import { Agree } from '../agree/agree'
 import machineAvatar from './machine-avatar.svg'
 
 export const MachinePrediction = ({
+  currentUser,
   identification,
   occurrence,
 }: {
@@ -50,21 +53,19 @@ export const MachinePrediction = ({
           identification.algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)
         }
       >
-        <IdentificationDetails
-          className="border-border border-t"
-          status={identification.applied ? 'confirmed' : 'unconfirmed'}
+        <MachinePredictionDetails
+          applied={identification.applied}
+          score={identification.score}
+          taxon={identification.taxon}
         >
-          <BasicTooltip
-            content={translate(STRING.MACHINE_PREDICTION_SCORE, {
-              score: identification.score,
-            })}
-          >
-            <div className="px-1">
-              <IdentificationScore confidenceScore={identification.score} />
-            </div>
-          </BasicTooltip>
-          <TaxonDetails compact taxon={identification.taxon} withTooltips />
-        </IdentificationDetails>
+          {
+            <Agree
+              agreeWith={{ predictionId: identification.id }}
+              occurrenceId={occurrence.id}
+              taxonId={identification.taxon.id}
+            />
+          }
+        </MachinePredictionDetails>
         <Collapsible.Root open={open} onOpenChange={setOpen}>
           <Collapsible.Content>
             {classification?.topN
@@ -73,21 +74,22 @@ export const MachinePrediction = ({
                 const applied = taxon.id === occurrence.determinationTaxon.id
 
                 return (
-                  <IdentificationDetails
-                    className="border-border border-t"
-                    status={applied ? 'confirmed' : 'unconfirmed'}
+                  <MachinePredictionDetails
+                    applied={applied}
+                    score={score}
+                    taxon={taxon}
                   >
-                    <BasicTooltip
-                      content={translate(STRING.MACHINE_PREDICTION_SCORE, {
-                        score: score,
-                      })}
-                    >
-                      <div className="px-1">
-                        <IdentificationScore confidenceScore={score} />
-                      </div>
-                    </BasicTooltip>
-                    <TaxonDetails compact taxon={taxon} withTooltips />
-                  </IdentificationDetails>
+                    <Agree
+                      agreed={
+                        currentUser
+                          ? occurrence.userAgreed(currentUser.id, taxon.id)
+                          : false
+                      }
+                      agreeWith={{ predictionId: identification.id }}
+                      occurrenceId={occurrence.id}
+                      taxonId={taxon.id}
+                    />
+                  </MachinePredictionDetails>
                 )
               })}
           </Collapsible.Content>
@@ -96,3 +98,33 @@ export const MachinePrediction = ({
     </div>
   )
 }
+
+const MachinePredictionDetails = ({
+  applied,
+  children,
+  score,
+  taxon,
+}: {
+  applied?: boolean
+  children: ReactNode
+  score: number
+  taxon: Taxon
+}) => (
+  <IdentificationDetails applied={applied} className="border-border border-t">
+    <div className="w-full flex flex-col items-end gap-4">
+      <div className="w-full flex items-center gap-4">
+        <BasicTooltip
+          content={translate(STRING.MACHINE_PREDICTION_SCORE, {
+            score,
+          })}
+        >
+          <div className="px-1">
+            <IdentificationScore confidenceScore={score} />
+          </div>
+        </BasicTooltip>
+        <TaxonDetails compact taxon={taxon} withTooltips />
+      </div>
+      {children}
+    </div>
+  </IdentificationDetails>
+)

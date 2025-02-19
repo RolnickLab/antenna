@@ -1,7 +1,7 @@
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { STRING, translate } from 'utils/language'
 
@@ -11,7 +11,6 @@ interface AgreeProps {
     identificationId?: string
     predictionId?: string
   }
-  buttonTheme?: ButtonTheme
   occurrenceId: string
   taxonId: string
 }
@@ -19,7 +18,6 @@ interface AgreeProps {
 export const Agree = ({
   agreed,
   agreeWith,
-  buttonTheme,
   occurrenceId,
   taxonId,
 }: AgreeProps) => {
@@ -33,21 +31,24 @@ export const Agree = ({
   if (isSuccess || agreed) {
     return (
       <Button
-        label={translate(STRING.AGREED)}
-        icon={IconType.RadixCheck}
-        theme={buttonTheme}
+        className="text-primary-600"
         disabled
-      />
+        size="small"
+        variant="outline"
+      >
+        <CheckIcon className="w-4 h-4" />
+        {translate(STRING.AGREED)}
+      </Button>
     )
   }
 
   return (
-    <Tooltip content={error}>
+    <BasicTooltip asChild content={error}>
       <Button
-        icon={error ? IconType.Error : undefined}
-        label={translate(STRING.AGREE)}
+        className="text-primary-600"
         loading={isLoading}
-        theme={error ? ButtonTheme.Error : buttonTheme}
+        size="small"
+        variant="outline"
         onClick={() =>
           createIdentification({
             agreeWith,
@@ -55,7 +56,14 @@ export const Agree = ({
             taxonId,
           })
         }
-      />
-    </Tooltip>
+      >
+        {isLoading ? (
+          <Loader2Icon className="w-4 h-4 animate-spin" />
+        ) : error ? (
+          <AlertCircleIcon className="w-4 h-4 text-destructive" />
+        ) : null}
+        {translate(STRING.AGREE)}
+      </Button>
+    </BasicTooltip>
   )
 }

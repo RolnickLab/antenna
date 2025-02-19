@@ -139,7 +139,7 @@ export class Occurrence {
     return this._occurrence.user_permissions
   }
 
-  userAgreed(userId: string): boolean {
+  userAgreed(userId: string, taxonId?: string): boolean {
     return this._occurrence.identifications?.some((identification: any) => {
       if (identification.withdrawn) {
         return false
@@ -147,6 +147,10 @@ export class Occurrence {
 
       const identificationTaxonId = `${identification.taxon.id}`
       const identificationUserId = `${identification.user.id}`
+
+      if (taxonId && taxonId !== identificationTaxonId) {
+        return false
+      }
 
       return (
         identificationTaxonId === this.determinationTaxon.id &&
