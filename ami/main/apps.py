@@ -10,5 +10,7 @@ class MainConfig(AppConfig):
     def ready(self):
         import ami.main.signals  # noqa: F401
         from ami.tests.fixtures.signals import initialize_demo_project
+        from ami.users.signals import create_and_assign_roles
 
         post_migrate.connect(initialize_demo_project, sender=self)
+        post_migrate.connect(create_and_assign_roles, sender=self)
