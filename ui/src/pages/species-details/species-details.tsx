@@ -1,7 +1,4 @@
-import {
-  BlueprintCollection,
-  BlueprintItem,
-} from 'components/blueprint-collection/blueprint-collection'
+import { FieldguideImages } from 'components/blueprint-collection/fieldguide-images'
 import {
   TaxonInfo,
   TaxonInfoSize,
@@ -17,19 +14,17 @@ import styles from './species-details.module.scss'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
-  const { category } = useFieldguideCategory(species.name)
-
-  const blueprintItems: BlueprintItem[] = []
+  const { category, isLoading } = useFieldguideCategory(species.name)
 
   const fields = [
-    ...(category
-      ? [
-          {
-            label: 'Common name',
-            value: category.common_name,
-          },
-        ]
-      : []),
+    {
+      label: 'Common name',
+      value: isLoading ? 'Loading...' : category?.common_name,
+    },
+    {
+      label: 'Scientific name',
+      value: species.name,
+    },
     ...species.ranks.map(({ rank, name, id }) => ({
       label: rank,
       value: name,
@@ -82,7 +77,10 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection items={blueprintItems} />
+            <FieldguideImages
+              categoryId={category?.id}
+              images={category?.cover_image ? [category?.cover_image] : []}
+            />
           </div>
         </div>
       </div>

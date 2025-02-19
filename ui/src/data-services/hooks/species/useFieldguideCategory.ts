@@ -7,7 +7,6 @@ const API_URL = '/fieldguide/api2'
 const QUERY_KEY = 'fieldguide-category'
 
 interface FieldguideCategory {
-  id: string
   common_name: string
   cover_image: {
     photo_id: string
@@ -17,6 +16,8 @@ interface FieldguideCategory {
     height: number
     copyright: string
   }
+  id: string
+  scientific_name: string
 }
 
 export const useFieldguideCategory = (q: string) => {
