@@ -6,6 +6,7 @@ import {
   TaxonInfo,
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
+import { useFieldguideCategory } from 'data-services/hooks/species/useFieldguideCategory'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { useParams } from 'react-router-dom'
@@ -16,10 +17,19 @@ import styles from './species-details.module.scss'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
+  const { category } = useFieldguideCategory(species.name)
 
   const blueprintItems: BlueprintItem[] = []
 
   const fields = [
+    ...(category
+      ? [
+          {
+            label: 'Common name',
+            value: category.common_name,
+          },
+        ]
+      : []),
     ...species.ranks.map(({ rank, name, id }) => ({
       label: rank,
       value: name,

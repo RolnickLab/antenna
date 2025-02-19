@@ -15,6 +15,14 @@ force = true
 headers = { X-From = "Netlify" }
 
 [[redirects]]
+# Fielguide proxy
+from = "/fieldguide/*"
+to = "https://fieldguide.ai/:splat"
+status = 200
+force = true
+headers = { X-From = "Netlify" }
+
+[[redirects]]
 # Serve the external images from from /static/images/*
 from = "/static/captures/*"
 to = "API_BASE_URL_PLACEHOLDER/static/captures/:splat"
