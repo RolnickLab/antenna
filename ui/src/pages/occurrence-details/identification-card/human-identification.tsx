@@ -24,10 +24,10 @@ export const HumanIdentification = ({
   }
 }) => (
   <IdentificationCard
-    avatar={<img alt="" src={user.image} />}
+    avatar={user.image?.length ? <img alt="" src={user.image} /> : null}
     onOpenChange={() => {}}
     open
-    title={user.name}
+    title={user.name.length ? user.name : 'Anonymous user'}
   >
     <IdentificationDetails
       className="border-border border-t"
