@@ -59,7 +59,9 @@ export const MachinePrediction = ({
               score: identification.score,
             })}
           >
-            <IdentificationScore confidenceScore={identification.score} />
+            <div className="px-1">
+              <IdentificationScore confidenceScore={identification.score} />
+            </div>
           </BasicTooltip>
           <TaxonDetails compact taxon={identification.taxon} withTooltips />
         </IdentificationDetails>
@@ -80,7 +82,9 @@ export const MachinePrediction = ({
                         score: score,
                       })}
                     >
-                      <IdentificationScore confidenceScore={score} />
+                      <div className="px-1">
+                        <IdentificationScore confidenceScore={score} />
+                      </div>
                     </BasicTooltip>
                     <TaxonDetails compact taxon={taxon} withTooltips />
                   </IdentificationDetails>
