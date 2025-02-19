@@ -8,6 +8,7 @@ import {
   IdentificationStatus,
   TaxonDetails,
 } from 'nova-ui-kit'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserInfo } from 'utils/user/types'
 
 export const HumanIdentification = ({
@@ -22,22 +23,33 @@ export const HumanIdentification = ({
     image?: string
     name: string
   }
-}) => (
-  <IdentificationCard
-    avatar={user.image?.length ? <img alt="" src={user.image} /> : null}
-    onOpenChange={() => {}}
-    open
-    title={user.name.length ? user.name : 'Anonymous user'}
-  >
-    <IdentificationDetails
-      className="border-border border-t"
-      status={identification.applied ? 'confirmed' : 'unconfirmed'}
-    >
-      <IdentificationStatus
-        confidenceScore={1}
-        status={identification.applied ? 'confirmed' : 'unconfirmed'}
-      />
-      <TaxonDetails compact taxon={identification.taxon} withTooltips />
-    </IdentificationDetails>
-  </IdentificationCard>
-)
+}) => {
+  const formattedTime = getFormatedDateTimeString({
+    date: new Date(identification.createdAt),
+  })
+
+  return (
+    <div>
+      <span className="block p-2 text-right text-muted-foreground body-overline-small normal-case">
+        {formattedTime}
+      </span>
+      <IdentificationCard
+        avatar={user.image?.length ? <img alt="" src={user.image} /> : null}
+        onOpenChange={() => {}}
+        open
+        title={user.name.length ? user.name : 'Anonymous user'}
+      >
+        <IdentificationDetails
+          className="border-border border-t"
+          status={identification.applied ? 'confirmed' : 'unconfirmed'}
+        >
+          <IdentificationStatus
+            confidenceScore={1}
+            status={identification.applied ? 'confirmed' : 'unconfirmed'}
+          />
+          <TaxonDetails compact taxon={identification.taxon} withTooltips />
+        </IdentificationDetails>
+      </IdentificationCard>
+    </div>
+  )
+}
