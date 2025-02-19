@@ -44,6 +44,7 @@ export default defineConfig(({ mode }) => {
         '/fieldguide': {
           target: 'https://fieldguide.ai',
           changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/fieldguide/, ''),
         },
       },
     },
