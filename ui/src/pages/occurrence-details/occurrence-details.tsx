@@ -5,11 +5,10 @@ import {
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { Button } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
-import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { CodeBlock, TaxonDetails } from 'nova-ui-kit'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { CodeBlock, IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -128,7 +127,7 @@ export const OccurrenceDetails = ({
           withTooltips
         />
         <div className={styles.taxonActions}>
-          <Tooltip
+          <BasicTooltip
             content={
               occurrence.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
@@ -139,11 +138,11 @@ export const OccurrenceDetails = ({
                   })
             }
           >
-            <IdentificationStatus
-              isVerified={occurrence.determinationVerified}
-              score={occurrence.determinationScore}
+            <IdentificationScore
+              confirmed={occurrence.determinationVerified}
+              confidenceScore={occurrence.determinationScore}
             />
-          </Tooltip>
+          </BasicTooltip>
           {canUpdate && (
             <>
               <Agree

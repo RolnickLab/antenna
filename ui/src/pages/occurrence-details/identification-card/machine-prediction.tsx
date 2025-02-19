@@ -3,11 +3,12 @@ import {
   MachinePrediction as Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import {
   Collapsible,
   IdentificationCard,
   IdentificationDetails,
-  IdentificationStatus,
+  IdentificationScore,
   TaxonDetails,
 } from 'nova-ui-kit'
 import { useState } from 'react'
@@ -40,6 +41,11 @@ export const MachinePrediction = ({
         collapsible
         onOpenChange={setOpen}
         open={open}
+        subTitle={
+          identification.terminal
+            ? translate(STRING.TERMINAL_CLASSIFICATION)
+            : translate(STRING.INTERMEDIATE_CLASSIFICATION)
+        }
         title={
           identification.algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)
         }
@@ -48,10 +54,13 @@ export const MachinePrediction = ({
           className="border-border border-t"
           status={identification.applied ? 'confirmed' : 'unconfirmed'}
         >
-          <IdentificationStatus
-            confidenceScore={identification.score}
-            status={identification.applied ? 'confirmed' : 'unconfirmed'}
-          />
+          <BasicTooltip
+            content={translate(STRING.MACHINE_PREDICTION_SCORE, {
+              score: identification.score,
+            })}
+          >
+            <IdentificationScore confidenceScore={identification.score} />
+          </BasicTooltip>
           <TaxonDetails compact taxon={identification.taxon} withTooltips />
         </IdentificationDetails>
         <Collapsible.Root open={open} onOpenChange={setOpen}>
@@ -66,10 +75,13 @@ export const MachinePrediction = ({
                     className="border-border border-t"
                     status={applied ? 'confirmed' : 'unconfirmed'}
                   >
-                    <IdentificationStatus
-                      confidenceScore={score}
-                      status={applied ? 'confirmed' : 'unconfirmed'}
-                    />
+                    <BasicTooltip
+                      content={translate(STRING.MACHINE_PREDICTION_SCORE, {
+                        score: score,
+                      })}
+                    >
+                      <IdentificationScore confidenceScore={score} />
+                    </BasicTooltip>
                     <TaxonDetails compact taxon={taxon} withTooltips />
                   </IdentificationDetails>
                 )

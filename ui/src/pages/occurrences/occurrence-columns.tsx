@@ -1,7 +1,6 @@
 import { Occurrence } from 'data-services/models/occurrence'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
-import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
@@ -10,8 +9,8 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { TaxonDetails } from 'nova-ui-kit'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
@@ -209,7 +208,7 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <Tooltip content={translate(STRING.SUGGEST_ID)}>
+              <BasicTooltip asChild content={translate(STRING.SUGGEST_ID)}>
                 <IconButton
                   icon={IconType.RadixSearch}
                   onClick={() =>
@@ -221,7 +220,7 @@ const TaxonCell = ({
                     })
                   }
                 />
-              </Tooltip>
+              </BasicTooltip>
               <IdQuickActions
                 occurrenceIds={[item.id]}
                 occurrenceTaxons={[item.determinationTaxon]}
@@ -255,7 +254,7 @@ const ScoreCell = ({
     <div className={styles.scoreCell}>
       <BasicTableCell>
         <div className={styles.scoreCellContent}>
-          <Tooltip
+          <BasicTooltip
             content={
               item.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
@@ -265,19 +264,19 @@ const ScoreCell = ({
                     score: item.determinationScore,
                   })
             }
+            onTriggerClick={() =>
+              navigate(detailsRoute, {
+                state: {
+                  defaultTab: TABS.IDENTIFICATION,
+                },
+              })
+            }
           >
-            <IdentificationStatus
-              isVerified={item.determinationVerified}
-              score={item.determinationScore}
-              onStatusClick={() =>
-                navigate(detailsRoute, {
-                  state: {
-                    defaultTab: TABS.IDENTIFICATION,
-                  },
-                })
-              }
+            <IdentificationScore
+              confirmed={item.determinationVerified}
+              confidenceScore={item.determinationScore}
             />
-          </Tooltip>
+          </BasicTooltip>
           <span className={styles.scoreCellLabel}>
             {item.determinationScoreLabel}
           </span>

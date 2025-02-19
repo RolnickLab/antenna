@@ -5,7 +5,6 @@ import {
 import {
   IdentificationCard,
   IdentificationDetails,
-  IdentificationStatus,
   TaxonDetails,
 } from 'nova-ui-kit'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
@@ -43,10 +42,6 @@ export const HumanIdentification = ({
           className="border-border border-t"
           status={identification.applied ? 'confirmed' : 'unconfirmed'}
         >
-          <IdentificationStatus
-            confidenceScore={1}
-            status={identification.applied ? 'confirmed' : 'unconfirmed'}
-          />
           <TaxonDetails compact taxon={identification.taxon} withTooltips />
         </IdentificationDetails>
       </IdentificationCard>
