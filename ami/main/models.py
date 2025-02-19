@@ -2789,39 +2789,6 @@ class TaxaList(BaseModel):
         verbose_name_plural = "Taxa Lists"
 
 
-# @final
-# class TaxonCommonName(BaseModel):
-#     """
-#     A common name for a taxon.
-#
-#     The default common name will have no region/country code and no language code, or the most common language code.
-#     A common name with a region/country code or language code will take priority when available and applicable.
-#
-#     @TODO add tests for this model
-#     """
-#
-#     taxon = models.ForeignKey(Taxon, on_delete=models.CASCADE, related_name="common_names")
-#     name = models.CharField(max_length=255)
-#     lang_code = models.CharField(max_length=255, blank=True, default="en", help_text="ISO 639-1 language code")
-#     iso_country_code = models.CharField(max_length=255, blank=True, help_text="ISO 3166-1 alpha-2 country code")
-#     usage_notes = models.TextField(blank=True)
-#     source = models.CharField(max_length=255, blank=True)
-#
-#     # @TODO consider adding GADM fields for more specific regional common names (west vs. east USA)
-#     # gadm_level = models.IntegerField(
-#     #     blank=True,
-#     #     null=True,
-#     #     help_text="GADM administrative level (0 = country, 1 = state, 2 = county, etc.)",
-#     # )
-#     # gadm_code = models.CharField(max_length=255, blank=True, help_text="GADM administrative code")
-#
-#     class Meta:
-#         ordering = ["name"]
-#         verbose_name_plural = "Taxon Common Names"
-#
-#         unique_together = ["taxon", "lang_code", "iso_country_code"]
-
-
 @final
 class BlogPost(BaseModel):
     """
