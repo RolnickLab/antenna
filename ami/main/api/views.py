@@ -1284,6 +1284,7 @@ class SummaryView(GenericAPIView):
                     project=project,
                     event__isnull=False,
                 )
+                .order_by()
                 .values("determination_id")
                 .distinct("id")
                 .count(),
