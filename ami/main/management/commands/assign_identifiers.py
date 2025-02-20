@@ -19,7 +19,7 @@ class Command(BaseCommand):
 
     Expected CSV Format:
         Name,Email,Projects by ID,Projects by name,User type,Comments
-        Michael Bunsen,notbot@gmail.com,"18, 23, 24, 84, 85, 90, 91, 105",
+        John Doe,email@insectai.org,"1, 2, 3",
         "Vermont Atlas of Life, Insectarium de Montréal","Internal","Some comment"
 
     Usage:
