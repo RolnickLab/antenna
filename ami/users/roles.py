@@ -2,7 +2,7 @@ import logging
 
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from guardian.shortcuts import assign_perm, remove_perm
+from guardian.shortcuts import assign_perm
 
 from ami.main.models import Project
 
@@ -21,9 +21,6 @@ class Role:
         group, created = Group.objects.get_or_create(name=group_name)
         # Add user to group
         user.groups.add(group)
-        # Assign permissions
-        for perm in cls.permissions:
-            assign_perm(perm, user, project)
 
     @classmethod
     def unassign_user(cls, user, project):
@@ -31,9 +28,6 @@ class Role:
         group = Group.objects.get(name=group_name)
         # remove user from group
         user.groups.remove(group)
-        # remove permissions
-        for perm in cls.permissions:
-            remove_perm(perm, user, project)
 
     @classmethod
     def has_role(cls, user, project):
