@@ -1280,14 +1280,7 @@ class SummaryView(GenericAPIView):
                     # determination_score__gte=confidence_threshold,
                     event__isnull=False,
                 ).count(),
-                "taxa_count": Occurrence.objects.filter(
-                    project=project,
-                    event__isnull=False,
-                )
-                .order_by()
-                .values("determination_id")
-                .distinct("determination_id")
-                .count(),
+                "taxa_count": Occurrence.objects.all().unique_taxa(project=project).count(),  # type: ignore
             }
         else:
             data = {
@@ -1300,11 +1293,7 @@ class SummaryView(GenericAPIView):
                     # determination_score__gte=confidence_threshold,
                     event__isnull=False
                 ).count(),
-                "taxa_count": Occurrence.objects.filter()
-                .order_by()
-                .values("determination_id")
-                .distinct("determination_id")
-                .count(),
+                "taxa_count": Occurrence.objects.all().unique_taxa().count(),  # type: ignore
                 "last_updated": timezone.now(),
             }
 
