@@ -1054,9 +1054,8 @@ class TaxonViewSet(DefaultViewSet):
         "created_at",
         "updated_at",
         "occurrences_count",
-        "detections_count",
         "last_detected",
-        "best_determination_score",
+        # "best_determination_score",
         "name",
     ]
     search_fields = ["name", "parent__name"]
@@ -1076,7 +1075,7 @@ class TaxonViewSet(DefaultViewSet):
         if query and len(query) >= min_query_length:
             taxa = (
                 Taxon.objects.filter(active=True)
-                .select_related("parent")
+                # .select_related("parent")
                 .filter(models.Q(name__icontains=query) | models.Q(search_names__icontains=query))
                 .annotate(
                     # Calculate similarity for the name field
