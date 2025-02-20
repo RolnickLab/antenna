@@ -50,17 +50,13 @@ export const columns: (
     name: 'Status',
     renderCell: (item: ProcessingService) => {
       return (
-        <StatusTableCell color={item.status.color} label={item.status.label} />
+        <StatusTableCell
+          color={item.status.color}
+          label={item.status.label}
+          details={item.lastChecked}
+        />
       )
     },
-  },
-  {
-    id: 'last-checked',
-    name: translate(STRING.FIELD_LABEL_LAST_CHECKED),
-    sortField: 'last_checked',
-    renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.lastChecked} />
-    ),
   },
   {
     id: 'num-pipelines-added',
