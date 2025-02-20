@@ -1313,7 +1313,6 @@ class SummaryView(GenericAPIView):
         Return counts of all models.
         """
         project = get_active_project(request)
-        confidence_threshold = get_active_classification_threshold(request)
         if project:
             data = {
                 "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
@@ -1323,7 +1322,7 @@ class SummaryView(GenericAPIView):
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
                 "occurrences_count": Occurrence.objects.filter(
                     project=project,
-                    determination_score__gte=confidence_threshold,
+                    # determination_score__gte=confidence_threshold,
                     event__isnull=False,
                 ).count(),
                 "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
@@ -1343,11 +1342,10 @@ class SummaryView(GenericAPIView):
                 "captures_count": SourceImage.objects.count(),
                 # "detections_count": Detection.objects.count(),
                 "occurrences_count": Occurrence.objects.filter(
-                    determination_score__gte=confidence_threshold, event__isnull=False
+                    # determination_score__gte=confidence_threshold,
+                    event__isnull=False
                 ).count(),
-                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
-                .filter(occurrences_count__gt=0, occurrences__determination_score__gte=confidence_threshold)
-                .count(),
+                "taxa_count": 0,
                 "last_updated": timezone.now(),
             }
 
