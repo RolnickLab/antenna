@@ -2088,6 +2088,17 @@ class OccurrenceQuerySet(models.QuerySet):
             "identifications__user",
         )
 
+    def unique_taxa(self, project: Project | None = None) -> models.QuerySet:
+        qs = self
+        if project:
+            qs = self.filter(project=project)
+        qs = (
+            qs.filter(determination__isnull=False, event__isnull=False)
+            .order_by("determination_id")
+            .distinct("determination_id")
+        )
+        return qs
+
 
 class OccurrenceManager(models.Manager):
     def get_queryset(self) -> OccurrenceQuerySet:
@@ -2114,7 +2125,7 @@ class Occurrence(BaseModel):
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
-    objects = OccurrenceManager()
+    objects: OccurrenceManager = OccurrenceManager()
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
