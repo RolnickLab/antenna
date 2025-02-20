@@ -83,7 +83,7 @@ export class Pipeline {
     })
   }
 
-  get hasOnlineProcessingService(): {
+  get currentProcessingService(): {
     online: boolean
     service: ProcessingService
   } {

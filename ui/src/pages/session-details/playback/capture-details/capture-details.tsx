@@ -193,14 +193,14 @@ const PipelinesPicker = ({
             className="h-8 body-small"
             key={p.name}
             value={String(p.id)}
-            disabled={!p.hasOnlineProcessingService.online}
+            disabled={!p.currentProcessingService.online}
           >
             <div className="flex items-center gap-4">
               <div
                 className="w-2 h-2 rounded-full mb-0.5 shrink-0"
                 style={{
                   backgroundColor:
-                    p.hasOnlineProcessingService.service.status.color,
+                    p.currentProcessingService.service.status.color,
                 }}
               />
               <span className="whitespace-nowrap text-ellipsis overflow-hidden">
