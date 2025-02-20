@@ -6,6 +6,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
 from django.db.models import Prefetch
+from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.utils import timezone
@@ -1038,7 +1039,7 @@ class TaxonViewSet(DefaultViewSet):
     API endpoint that allows taxa to be viewed or edited.
     """
 
-    queryset = Taxon.objects.all()
+    queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
     filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter, TaxonCollectionFilter]
     filterset_fields = [
@@ -1109,109 +1110,63 @@ class TaxonViewSet(DefaultViewSet):
         else:
             return TaxonSerializer
 
-    def filter_taxa_by_observed(self, queryset: QuerySet) -> tuple[QuerySet, bool]:
+    def get_occurrence_filters(self) -> models.Q:
         """
         Filter taxa by when/where it has occurred.
 
         Supports querying by occurrence, project, deployment, or event.
 
         @TODO Consider using a custom filter class for this (see get_filter_name)
+        @TODO Move this to a custom QuerySet manager on the Taxon model
         """
 
-        occurrence_id = self.request.query_params.get("occurrence")
         project = get_active_project(self.request)
+        if not project:
+            # Raise a 400 if no project is specified
+            raise api_exceptions.ValidationError(detail="A project must be specified")
+
+        occurrence_id = self.request.query_params.get("occurrence")
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
             "occurrences__deployment"
         )
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
-        filter_active = any([occurrence_id, project, deployment_id, event_id, collection_id])
+        # filter_active = any([occurrence_id, project, deployment_id, event_id, collection_id])
 
-        if not project:
-            # Raise a 400 if no project is specified
-            raise api_exceptions.ValidationError(detail="A project must be specified")
-
-        queryset = super().get_queryset()
+        filters = models.Q(
+            project=project,
+            event__isnull=False,
+        )
         try:
-            if project:
-                queryset = queryset.filter(occurrences__project=project)
+            """
+            Ensure that the related objects exist before filtering by them.
+            This may be overkill!
+            """
             if occurrence_id:
-                occurrence = Occurrence.objects.get(id=occurrence_id)
+                Occurrence.objects.get(id=occurrence_id)
                 # This query does not need the same filtering as the others
-                queryset = queryset.filter(occurrences=occurrence)
+                filters &= models.Q(id=occurrence_id)
             if deployment_id:
-                deployment = Deployment.objects.get(id=deployment_id)
-                queryset = queryset.filter(occurrences__deployment=deployment)
+                Deployment.objects.get(id=deployment_id)
+                filters &= models.Q(deployment=deployment_id)
             if event_id:
-                event = Event.objects.get(id=event_id)
-                queryset = queryset.filter(occurrences__event=event)
+                Event.objects.get(id=event_id)
+                filters &= models.Q(event=event_id)
             if collection_id:
-                queryset = queryset.filter(occurrences__detections__source_image__collections=collection_id)
+                SourceImageCollection.objects.get(id=collection_id)
+                filters &= models.Q(detections__source_image__collections=collection_id)
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
             raise NotFound(detail=str(e))
 
-        # @TODO need to return the models.Q filter used, so we can use it for counts and related occurrences.
-        return queryset.distinct(), filter_active
+        return filters
 
-    def filter_by_classification_threshold(self, queryset: QuerySet) -> QuerySet:
+    def add_filtered_occurrences(self, queryset: QuerySet, occurrence_filters: models.Q) -> QuerySet:
         """
-        Filter taxa by their best determination score in occurrences.
-
-        This is only applicable to list queries that are not filtered by occurrence, project, deployment, or event.
+        Add list of actual occurrences to a Taxon detail response.
         """
-
-        queryset = (
-            queryset.annotate(best_determination_score=models.Max("occurrences__determination_score"))
-            .filter(best_determination_score__gte=get_active_classification_threshold(self.request))
-            .distinct()
-        )
-
-        # If ordering is not specified, order by best determination score
-        if not self.request.query_params.get("ordering"):
-            queryset = queryset.order_by("-best_determination_score")
-
-        return queryset
-
-    def get_occurrences_filters(self, queryset: QuerySet) -> tuple[QuerySet, models.Q]:
-        # @TODO this should check what the user has access to
-        project_id = self.request.query_params.get("project")
-        taxon_occurrences_query = (
-            Occurrence.objects.filter(
-                determination_score__gte=get_active_classification_threshold(self.request),
-                event__isnull=False,
-            )
-            .distinct()
-            .annotate(
-                first_appearance_timestamp=models.Min("detections__timestamp"),
-                last_appearance_timestamp=models.Max("detections__timestamp"),
-            )
-            .order_by("-first_appearance_timestamp")
-        )
-        taxon_occurrences_count_filter = models.Q(
-            occurrences__determination_score__gte=get_active_classification_threshold(self.request),
-            occurrences__event__isnull=False,
-        )
-        if project_id:
-            taxon_occurrences_query = taxon_occurrences_query.filter(project=project_id)
-            taxon_occurrences_count_filter &= models.Q(occurrences__project=project_id)
-
-        return taxon_occurrences_query, taxon_occurrences_count_filter
-
-    def add_occurrence_counts(self, queryset: QuerySet, occurrences_count_filter: models.Q) -> QuerySet:
-        qs = queryset.annotate(
-            occurrences_count=models.Count(
-                "occurrences",
-                filter=occurrences_count_filter,
-                distinct=True,
-            ),
-            last_detected=models.Max("classifications__detection__timestamp"),
-        )
-        return qs
-
-    def add_filtered_occurrences(self, queryset: QuerySet, occurrences_query: QuerySet) -> QuerySet:
-        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=occurrences_query))
+        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.filter(occurrence_filters)))
         return qs
 
     def zero_occurrences(self, queryset: QuerySet) -> QuerySet:
@@ -1227,47 +1182,47 @@ class TaxonViewSet(DefaultViewSet):
         return qs
 
     def get_queryset(self) -> QuerySet:
-        qs = super().get_queryset()
+        occurrence_filters = self.get_occurrence_filters()
 
-        # First filter out taxa that have no occurrences
-        # qs = qs.filter(occurrences__isnull=False).distinct()
+        # @TODO make this recursive into child taxa and cache
+        occurrences_count = models.Subquery(
+            Occurrence.objects.filter(
+                occurrence_filters,
+                determination_id=models.OuterRef("id"),
+            )
+            .values("determination_id")
+            .annotate(count=models.Count("id"))
+            .values("count"),
+            output_field=models.IntegerField(),
+        )
 
-        occurrences_filter, occurrences_count_filter = self.get_occurrences_filters(qs)
+        last_detected = models.Subquery(
+            Occurrence.objects.filter(
+                occurrence_filters,
+                determination_id=models.OuterRef("id"),
+                detections__timestamp__isnull=False,  # ensure we have a timestamp
+            )
+            .values("determination_id")
+            .annotate(last_detected=models.Max("detections__timestamp"))
+            .values("last_detected"),
+            output_field=models.DateTimeField(),
+        )
 
-        qs = qs.select_related("parent")
-
-        if self.action == "retrieve":
-            qs = self.add_filtered_occurrences(qs, occurrences_filter)
-            qs = self.add_occurrence_counts(qs, occurrences_count_filter)
-
-        if self.action == "list":
-            qs, filter_active = self.filter_taxa_by_observed(qs)
-            if filter_active:
-                qs = self.filter_by_classification_threshold(qs)
-                qs = self.add_occurrence_counts(qs, occurrences_count_filter)
-                # Filter out taxa that have no occurrences or occurrences count is null
-                qs = qs.filter(occurrences_count__gt=0).filter(occurrences_count__isnull=False)
-            else:
-                # If no filter don't return anything related to occurrences
-                # in a list view.
-                # @TODO event detail views should be filtered by project
-                # @TODO check permissions to show project occurrences
-                qs = self.zero_occurrences(qs)
-
-        return qs
+        return Taxon.objects.filter(
+            models.Exists(
+                Occurrence.objects.filter(
+                    occurrence_filters,
+                    determination_id=models.OuterRef("id"),
+                ),
+            ),
+        ).annotate(
+            occurrences_count=Coalesce(occurrences_count, 0),
+            last_detected=last_detected,
+        )
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
-
-    # def retrieve(self, request: Request, *args, **kwargs) -> Response:
-    #     """
-    #     Override the serializer to include the recursive occurrences count
-    #     """
-    #     taxon: Taxon = self.get_object()
-    #     taxon.occurrences_count = taxon.occurrences_count_recursive()  # type: ignore
-    #     response = Response(TaxonSerializer(taxon, context={"request": request}).data)
-    #     return response
 
 
 class ClassificationViewSet(DefaultViewSet):
@@ -1325,13 +1280,12 @@ class SummaryView(GenericAPIView):
                     # determination_score__gte=confidence_threshold,
                     event__isnull=False,
                 ).count(),
-                "taxa_count": Taxon.objects.annotate(occurrences_count=models.Count("occurrences"))
-                .filter(
-                    occurrences_count__gt=0,
-                    occurrences__determination_score__gte=confidence_threshold,
-                    occurrences__project=project,
+                "taxa_count": Occurrence.objects.filter(
+                    project=project,
+                    event__isnull=False,
                 )
-                .distinct()
+                .values("determination_id")
+                .distinct("id")
                 .count(),
             }
         else:
