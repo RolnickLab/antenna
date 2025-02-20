@@ -92,16 +92,15 @@ class ProcessingService(BaseModel):
         start_time = time.time()
         error = None
         timestamp = datetime.datetime.now()
-        self.last_checked = timestamp
+        ProcessingService.objects.filter(pk=self.pk).update(last_checked=timestamp)
 
         try:
             resp = requests.get(info_url)
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
             latency = time.time() - start_time
-            self.last_checked_live = False
-            self.last_checked_latency = latency
-            self.save()
+            ProcessingService.objects.filter(pk=self.pk).update(last_checked_live=False)
+            ProcessingService.objects.filter(pk=self.pk).update(last_checked_latency=latency)
             error = f"Error connecting to {info_url}: {e}"
             logger.error(error)
 
@@ -125,9 +124,8 @@ class ProcessingService(BaseModel):
         pipelines_online: list[str] = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status", [])
 
         latency = time.time() - start_time
-        self.last_checked_live = server_live
-        self.last_checked_latency = latency
-        self.save()
+        ProcessingService.objects.filter(pk=self.pk).update(last_checked_live=server_live)
+        ProcessingService.objects.filter(pk=self.pk).update(last_checked_latency=latency)
 
         response = ProcessingServiceStatusResponse(
             timestamp=timestamp,
