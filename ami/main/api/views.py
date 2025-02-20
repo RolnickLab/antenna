@@ -1286,7 +1286,7 @@ class SummaryView(GenericAPIView):
                 )
                 .order_by()
                 .values("determination_id")
-                .distinct("id")
+                .distinct("determination_id")
                 .count(),
             }
         else:
@@ -1300,7 +1300,11 @@ class SummaryView(GenericAPIView):
                     # determination_score__gte=confidence_threshold,
                     event__isnull=False
                 ).count(),
-                "taxa_count": 0,
+                "taxa_count": Occurrence.objects.filter()
+                .order_by()
+                .values("determination_id")
+                .distinct("determination_id")
+                .count(),
                 "last_updated": timezone.now(),
             }
 
