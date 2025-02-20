@@ -53,7 +53,7 @@ export const columns: (
         <StatusTableCell
           color={item.status.color}
           label={item.status.label}
-          details={item.lastChecked}
+          details={'Last Checked: ' + item.lastChecked}
         />
       )
     },
