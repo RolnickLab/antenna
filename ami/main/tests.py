@@ -1262,3 +1262,117 @@ class TestRolePermissions(APITestCase):
         expected_permissions = ProjectManager.permissions
         assigned_permissions = set(get_perms(self.project_manager, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
+        collections_url = "/api/v2/captures/collections/"
+
+        self.client.force_authenticate(user=self.project_manager)
+        response = self.client.post(
+            collections_url,
+            {
+                "description": "new collection description",
+                "name": "new collection",
+                "project": self.project.pk,
+                "method": "common_combined",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        collection_id = response.json().get("id")
+        # Collections
+        # Project Manager can update the collection
+        response = self.client.patch(f"/api/v2/captures/collections/{collection_id}/", {"name": "Updated Collection"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can populate the collection
+        populate_url = f"/api/v2/captures/collections/{collection_id}/populate/"
+        response = self.client.post(populate_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can delete the collection
+        response = self.client.delete(f"/api/v2/captures/collections/{collection_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        response = self.client.post(
+            collections_url,
+            {
+                "description": "new collection description",
+                "name": "new collection",
+                "project": self.project.pk,
+                "method": "common_combined",
+            },
+        )
+        collection_id = response.get("id")
+        # Storage
+        # Project Manager can create storage
+        storage_url = "/api/v2/storage/"
+        response = self.client.post(storage_url, {"name": "test", "project": self.project.pk, "bucket": "test"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        storage_id = response.json().get("id")
+
+        # Project Manager can update storage
+        response = self.client.patch(f"/api/v2/storage/{storage_id}/", {"name": "Updated Storage"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can delete storage
+        response = self.client.delete(f"/api/v2/storage/{storage_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Site
+        # Project Manager can create a site
+        sites_url = "/api/v2/deployments/sites/"
+        response = self.client.post(
+            sites_url, {"description": "new site description", "name": "new site", "project": self.project.pk}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        site_id = response.json().get("id")
+
+        # Project Manager can update site
+        response = self.client.patch(f"/api/v2/deployments/sites/{site_id}/", {"name": "Updated Site"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can delete site
+        response = self.client.delete(f"/api/v2/deployments/sites/{site_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Device
+        # Project Manager can create a device
+        devices_url = "/api/v2/deployments/devices/"
+        response = self.client.post(
+            devices_url, {"description": "device description", "name": "device", "project": self.project.pk}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        device_id = response.json().get("id")
+
+        # Project Manager can update device
+        response = self.client.patch(f"/api/v2/deployments/devices/{device_id}/", {"name": "Updated Device"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can delete device
+        response = self.client.delete(f"/api/v2/deployments/devices/{device_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Jobs
+        #  Project Manager can create a job
+        jobs_url = "/api/v2/jobs/"
+        response = self.client.post(jobs_url, {"delay": "1", "name": "new job ", "project_id": self.project.pk})
+        logger.info(f"Job create response {response.json()}")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        job_id = response.json().get("id")
+
+        # #  Project Manager can start a job
+        # start_job_url = f"/api/v2/jobs/{job_id}/start/"
+        # response = self.client.post(start_job_url)
+        # self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can retry a job
+        retry_job_url = f"/api/v2/jobs/{job_id}/retry/"
+        response = self.client.post(retry_job_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can cancel a job
+        cancel_job_url = f"/api/v2/jobs/{job_id}/cancel/"
+        response = self.client.post(cancel_job_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Project Manager can delete a job
+        delete_job_url = f"/api/v2/jobs/{job_id}/"
+        response = self.client.delete(delete_job_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
