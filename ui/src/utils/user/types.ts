@@ -14,6 +14,8 @@ export enum UserPermission {
   Update = 'update',
   Create = 'create',
   Delete = 'delete',
+  Populate = 'populate',
+  Star = 'star',
 }
 
 export interface UserContextValues {
