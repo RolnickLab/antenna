@@ -118,18 +118,12 @@ class CRUDPermission(permissions.BasePermission):
     def has_permission(self, request, view):
         """Handles general permission checks"""
 
-        model_name = self.model._meta.model_name
-        # Permission name for creation
-        if view.action == "create":
-            return request.user.is_staff or request.user.is_superuser or request.user.has_perm(f"create_{model_name}")
-
-        return True
+        return True  # Fallback to object level permissions
 
     def has_object_permission(self, request, view, obj):
         """Handles object-level permission checks."""
         model_name = self.model._meta.model_name
         project = obj.get_project() if hasattr(obj, "get_project") else None
-
         # check for create action
         if view.action == "create":
             return (
@@ -202,6 +196,8 @@ class CanUpdateIdentification(permissions.BasePermission):
     permission = Project.Permissions.UPDATE_IDENTIFICATION
 
     def has_object_permission(self, request, view, obj):
+        if is_active_staff(request.user):  # Allow staff users to perform all actions
+            return True
         if view.action in ["create", "update", "partial_update"]:
             project = obj.get_project() if hasattr(obj, "get_project") else None
             return request.user.has_perm(self.permission, project)
@@ -217,7 +213,11 @@ class CanDeleteIdentification(permissions.BasePermission):
         project = obj.get_project() if hasattr(obj, "get_project") else None
         # Check if user is superuser or staff or project manager
         if view.action == "destroy":
-            if request.user.is_superuser or request.user.is_staff or ProjectManager.has_role(request.user, project):
+            if (
+                request.user.is_superuser
+                or is_active_staff(request.user)
+                or ProjectManager.has_role(request.user, project)
+            ):
                 return True
             # Check if the user is the owner of the object
             return obj.user == request.user
