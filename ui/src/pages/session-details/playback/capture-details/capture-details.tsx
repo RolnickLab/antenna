@@ -37,7 +37,7 @@ export const CaptureDetails = ({
     <>
       <div className={styles.starButtonWrapper}>
         {user.loggedIn && (
-          <StarButton capture={capture} captureId={captureId} />
+          <StarButton capture={capture} captureId={captureId} canStar={capture.canStar} />
         )}
         <a
           href={capture.url}
@@ -126,10 +126,12 @@ const StarButton = ({
   capture,
   captureFetching,
   captureId,
+  canStar,
 }: {
   capture?: Capture
   captureFetching?: boolean
-  captureId: string
+    captureId: string
+  canStar: boolean
 }) => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
@@ -145,7 +147,7 @@ const StarButton = ({
     <Tooltip content={tooltipContent}>
       <IconButton
         icon={isStarred ? IconType.HeartFilled : IconType.Heart}
-        disabled={!project?.canUpdate}
+        disabled={!canStar}
         loading={isLoading || captureFetching}
         theme={IconButtonTheme.Neutral}
         onClick={() => starCapture()}
