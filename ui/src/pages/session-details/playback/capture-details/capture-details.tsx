@@ -1,7 +1,6 @@
 import classNames from 'classnames'
 import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
-import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
 import {
   IconButton,
@@ -37,7 +36,11 @@ export const CaptureDetails = ({
     <>
       <div className={styles.starButtonWrapper}>
         {user.loggedIn && (
-          <StarButton capture={capture} captureId={captureId} canStar={capture.canStar} />
+          <StarButton
+            capture={capture}
+            captureId={captureId}
+            canStar={capture.canStar}
+          />
         )}
         <a
           href={capture.url}
@@ -130,14 +133,12 @@ const StarButton = ({
 }: {
   capture?: Capture
   captureFetching?: boolean
-    captureId: string
+  captureId: string
   canStar: boolean
 }) => {
-  const { projectId } = useParams()
-  const { project } = useProjectDetails(projectId as string, true)
   const isStarred = capture?.isStarred ?? false
   const { starCapture, isLoading } = useStarCapture(captureId, isStarred)
-  const tooltipContent = project?.canUpdate
+  const tooltipContent = canStar
     ? isStarred
       ? translate(STRING.STARRED)
       : translate(STRING.STAR)
