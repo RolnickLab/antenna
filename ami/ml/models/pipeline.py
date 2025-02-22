@@ -877,6 +877,9 @@ class Pipeline(BaseModel):
         ),
     )
     projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
+    new_projects = models.ManyToManyField(
+        "main.Project", related_name="new_pipelines", blank=True, through="ml.ProjectPipelineConfig"
+    )
     processing_services: models.QuerySet[ProcessingService]
 
     class Meta:
