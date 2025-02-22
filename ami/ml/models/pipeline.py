@@ -876,9 +876,8 @@ class Pipeline(BaseModel):
             "The backend implementation of the pipeline may process data in any way."
         ),
     )
-    projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
-    new_projects = models.ManyToManyField(
-        "main.Project", related_name="new_pipelines", blank=True, through="ml.ProjectPipelineConfig"
+    projects = models.ManyToManyField(
+        "main.Project", related_name="pipelines", blank=True, through="ml.ProjectPipelineConfig"
     )
     processing_services: models.QuerySet[ProcessingService]
 
