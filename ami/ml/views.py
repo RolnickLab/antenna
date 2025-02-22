@@ -1,5 +1,6 @@
 import logging
 
+from django.db.models import Prefetch
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
@@ -15,6 +16,7 @@ from ami.utils.requests import get_active_project, project_id_doc_param
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
+from .models.project_pipeline_config import ProjectPipelineConfig
 from .serializers import (
     AlgorithmCategoryMapSerializer,
     AlgorithmSerializer,
@@ -75,8 +77,20 @@ class PipelineViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
         project = get_active_project(self.request)
+        # If pipelines are filtered by project, also filter processing services and project-pipeline configs by project
         if project:
-            query_set = query_set.filter(projects=project)
+            query_set = query_set.filter(projects=project).prefetch_related(
+                Prefetch(
+                    "processing_services",
+                    queryset=ProcessingService.objects.filter(projects=project.id),
+                )
+            )
+            query_set = query_set.prefetch_related(
+                Prefetch(
+                    "project_pipeline_configs",
+                    queryset=ProjectPipelineConfig.objects.filter(pipeline__in=query_set, project=project.id),
+                )
+            )
         return query_set
 
     @extend_schema(parameters=[project_id_doc_param])
