@@ -1,6 +1,7 @@
 import logging
 
-from django.db.models.signals import m2m_changed, post_save, pre_save
+from django.contrib.auth.models import Group
+from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
@@ -75,3 +76,26 @@ def track_old_owner(sender, instance, **kwargs):
         instance._old_owner = sender.objects.get(pk=instance.pk).owner
     else:
         instance._old_owner = None
+
+
+@receiver(post_save, sender=Project)
+def update_project_groups(sender, instance, **kwargs):
+    """Update all project-related permission groups when the project is renamed."""
+    prefix = f"{instance.pk}_"
+
+    # Find all groups that start with {project_id}_ and update their names
+    groups = Group.objects.filter(name__startswith=prefix)
+    for group in groups:
+        parts = group.name.split("_", 2)  # Splitting on `_` to keep role name intact
+        if len(parts) == 3:  # Ensuring correct structure like "{project_id}_{old_name}_{Role}"
+            new_group_name = f"{prefix}{instance.name}_{parts[2]}"  # Keep role name unchanged
+            group.name = new_group_name
+            group.save()
+
+
+@receiver(pre_delete, sender=Project)
+def delete_project_groups(sender, instance, **kwargs):
+    """Delete all project-related permission groups when the project is deleted."""
+    prefix = f"{instance.pk}_"
+    # Find and delete all groups that start with {project_id}_
+    Group.objects.filter(name__startswith=prefix).delete()

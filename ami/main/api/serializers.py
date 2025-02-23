@@ -1084,6 +1084,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "source_images_with_detections_count",
             "occurrences_count",
             "taxa_count",
+            "description",
             "jobs",
             "created_at",
             "updated_at",
@@ -1099,6 +1100,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
         source_image_collection_permissions = {
             perm.split("_")[0] for perm in permissions if perm.endswith("_sourceimagecollection")
         }
+        source_image_collection_permissions.discard("create")
         if instance.dataset_type == "curated":
             source_image_collection_permissions.discard("populate")
             if Project.Permissions.STAR_SOURCE_IMAGE in permissions:

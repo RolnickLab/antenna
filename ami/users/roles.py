@@ -2,7 +2,7 @@ import logging
 
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from guardian.shortcuts import assign_perm
+from guardian.shortcuts import assign_perm, get_perms, remove_perm
 
 from ami.main.models import Project
 
@@ -63,6 +63,7 @@ class Identifier(Role):
 class MLDataManager(Role):
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
+        Project.Permissions.UPDATE_JOB,
         Project.Permissions.RUN_JOB,
         Project.Permissions.RETRY_JOB,
         Project.Permissions.CANCEL_JOB,
@@ -112,6 +113,13 @@ def create_roles_for_project(project):
         group, created = Group.objects.get_or_create(name=role_name)
         if created:
             logger.info(f"Role created {role_class} for project {project}")
+        else:
+            # Reset permissions to make sure permissions are updated
+            # every time we call this function
+            group.permissions.clear()
+            assigned_perms = get_perms(group, project)
+            for perm_codename in assigned_perms:
+                remove_perm(perm_codename, group, project)
         for perm_codename in permissions:
             permission, perm_created = Permission.objects.get_or_create(
                 codename=perm_codename,

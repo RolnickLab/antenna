@@ -56,15 +56,15 @@ def add_object_level_permissions(
     permissions = response_data.get("user_permissions", set())
     project = instance.get_project() if hasattr(instance, "get_project") else None
     model_name = instance._meta.model_name  # Get model name
-    if user and is_active_staff(user):
-        permissions.update(["update"])
-        if user.is_superuser:
-            permissions.update(["delete"])
+    if user and user.is_superuser:
+        permissions.update(["update", "delete"])
+
     if project:
         user_permissions = get_perms(user, project)
-
         # Filter and extract only the action part of "action_modelname" based on instance type
         filtered_permissions = filter_permissions(permissions=user_permissions, model_name=model_name)
+        # Do not return create, view permissions at object-level
+        filtered_permissions -= {"create", "view"}
         permissions.update(filtered_permissions)
     response_data["user_permissions"] = permissions
     return response_data
@@ -81,30 +81,13 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
 
     logger.info(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
     permissions = response_data.get("user_permissions", set())
-    if user and is_active_staff(user):
+    if user and user.is_superuser:
         permissions.add("create")
 
     if user and project and f"create_{model.__name__.lower()}" in get_perms(user, project):
         permissions.add("create")
     response_data["user_permissions"] = permissions
     return response_data
-
-
-def get_generic_permissions(user, obj):
-    """
-    Maps django default permissions to generic permissions compatible with the frontend.
-    view_modelname -> view
-    create_modelname -> create
-    update_modelname -> update
-    delete_modelname -> delete
-    """
-    permissions = get_perms(user, obj)
-    result = [perm.split("_")[0] for perm in permissions]
-
-    # allow view for all users
-    if "view" not in result:
-        result.append("view")
-    return result
 
 
 class CRUDPermission(permissions.BasePermission):
@@ -126,11 +109,7 @@ class CRUDPermission(permissions.BasePermission):
         project = obj.get_project() if hasattr(obj, "get_project") else None
         # check for create action
         if view.action == "create":
-            return (
-                request.user.is_staff
-                or request.user.is_superuser
-                or request.user.has_perm(f"create_{model_name}", project)
-            )
+            return request.user.is_superuser or request.user.has_perm(f"create_{model_name}", project)
 
         if view.action == "retrieve":
             return True  # Allow all users to view objects
@@ -196,8 +175,6 @@ class CanUpdateIdentification(permissions.BasePermission):
     permission = Project.Permissions.UPDATE_IDENTIFICATION
 
     def has_object_permission(self, request, view, obj):
-        if is_active_staff(request.user):  # Allow staff users to perform all actions
-            return True
         if view.action in ["create", "update", "partial_update"]:
             project = obj.get_project() if hasattr(obj, "get_project") else None
             return request.user.has_perm(self.permission, project)
@@ -213,11 +190,7 @@ class CanDeleteIdentification(permissions.BasePermission):
         project = obj.get_project() if hasattr(obj, "get_project") else None
         # Check if user is superuser or staff or project manager
         if view.action == "destroy":
-            if (
-                request.user.is_superuser
-                or is_active_staff(request.user)
-                or ProjectManager.has_role(request.user, project)
-            ):
+            if request.user.is_superuser or ProjectManager.has_role(request.user, project):
                 return True
             # Check if the user is the owner of the object
             return obj.user == request.user

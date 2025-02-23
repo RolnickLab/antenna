@@ -41,5 +41,5 @@ class Command(BaseCommand):
                 model.objects.all().delete()
 
         self.stdout.write("Creating test project")
-        create_complete_test_project()
         create_local_admin_user()
+        create_complete_test_project()

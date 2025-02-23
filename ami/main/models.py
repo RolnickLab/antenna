@@ -204,6 +204,7 @@ class Project(BaseModel):
 
         # Job permissions
         CREATE_JOB = "create_job"
+        UPDATE_JOB = "update_job"
         RUN_JOB = "run_job"
         DELETE_JOB = "delete_job"
         RETRY_JOB = "retry_job"
@@ -254,6 +255,7 @@ class Project(BaseModel):
             ("delete_identification", "Can delete identifications"),
             # Job permissions
             ("create_job", "Can create a job"),
+            ("update_job", "Can update a job"),
             ("run_job", "Can run a job"),
             ("delete_job", "Can delete a job"),
             ("retry_job", "Can retry a job"),
