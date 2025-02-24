@@ -1,4 +1,5 @@
 import logging
+import re
 
 from django.contrib.auth.models import Group
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
@@ -81,14 +82,23 @@ def track_old_owner(sender, instance, **kwargs):
 @receiver(post_save, sender=Project)
 def update_project_groups(sender, instance, **kwargs):
     """Update all project-related permission groups when the project is renamed."""
-    prefix = f"{instance.pk}_"
 
-    # Find all groups that start with {project_id}_ and update their names
+    prefix = f"{instance.pk}_"
     groups = Group.objects.filter(name__startswith=prefix)
+
+    logger.info(f"Project name: {instance.name}")
+
     for group in groups:
-        parts = group.name.split("_", 2)  # Splitting on `_` to keep role name intact
-        if len(parts) == 3:  # Ensuring correct structure like "{project_id}_{old_name}_{Role}"
-            new_group_name = f"{prefix}{instance.name}_{parts[2]}"  # Keep role name unchanged
+        logger.info(f"Old permissions group name: {group.name}")
+
+        # Extract project role using regex to ensure underscores in names are handled correctly
+        match = re.match(rf"^{re.escape(prefix)}(.*?)_(\w+)$", group.name)
+
+        if match:
+            old_project_name, role = match.groups()
+            new_group_name = f"{prefix}{instance.name}_{role}"
+
+            logger.info(f"Changing permission group name to: {new_group_name}")
             group.name = new_group_name
             group.save()
 
