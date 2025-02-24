@@ -10,8 +10,12 @@ import { STRING, translate } from 'utils/language'
 import { PopulateProcessingService } from './processing-services-actions'
 
 export const columns: (
-  projectId: string
-) => TableColumn<ProcessingService>[] = () => [
+  projectId: string,
+  canCreate: boolean
+) => TableColumn<ProcessingService>[] = (
+  projectId: string,
+  canCreate?: boolean
+) => [
   {
     id: 'id',
     sortField: 'id',
@@ -69,7 +73,7 @@ export const columns: (
     },
     renderCell: (item: ProcessingService) => (
       <div className={styles.entityActions}>
-        {<PopulateProcessingService processingService={item} />}
+        {canCreate && <PopulateProcessingService processingService={item} />}
         {item.canUpdate && (
           <UpdateEntityDialog
             collection={API_ROUTES.PROCESSING_SERVICES}
