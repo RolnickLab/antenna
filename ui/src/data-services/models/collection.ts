@@ -17,7 +17,10 @@ export class Collection extends Entity {
   }
 
   get canPopulate(): boolean {
-    return this._data.user_permissions.includes(UserPermission.Populate) && this._data.method !== 'starred'
+    return (
+      this._data.user_permissions.includes(UserPermission.Populate) &&
+      this._data.method !== 'starred'
+    )
   }
 
   get currentJob(): Job | undefined {
