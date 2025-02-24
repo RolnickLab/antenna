@@ -91,10 +91,11 @@ def update_project_groups(sender, instance, **kwargs):
         logger.info(f"Old permissions group name: {group.name}")
 
         # Find the last underscore `_` to separate the project name and role
-        last_underscore_index = group.name.rfind("_") + 1
+        last_underscore_index = group.name.rfind("_")
 
         if last_underscore_index != -1:
-            role = group.name[last_underscore_index:]  # Extract role name after the last `_`
+            role_name_start_index = last_underscore_index + 1
+            role = group.name[role_name_start_index:]  # Extract role name after the last `_`
             new_group_name = f"{prefix}{instance.name}_{role}"
 
             # Check if a group with the new name already exists
