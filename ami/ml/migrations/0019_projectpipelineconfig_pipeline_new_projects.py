@@ -25,7 +25,7 @@ def transfer_m2m_data(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("main", "0045_alter_classification_algorithm"),
-        ("ml", "0017_alter_algorithm_unique_together"),
+        ("ml", "0018_add_processing_services_status_check_celery_beat_task"),
     ]
 
     operations = [
