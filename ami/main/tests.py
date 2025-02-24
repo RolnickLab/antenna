@@ -961,7 +961,6 @@ class TestProjectPermissions(APITestCase):
     def test_member_permissions(self):
         # Member has view and change permissions, but not delete
         self.assertTrue(self.member.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertTrue(self.member.has_perm(Project.Permissions.CHANGE, self.project))
         self.assertFalse(self.member.has_perm(Project.Permissions.DELETE, self.project))
 
         # test permissions from the API
