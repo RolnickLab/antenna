@@ -11,7 +11,7 @@ import { PopulateProcessingService } from './processing-services-actions'
 
 export const columns: (
   projectId: string,
-  canCreate: boolean
+  canCreate?: boolean
 ) => TableColumn<ProcessingService>[] = (
   projectId: string,
   canCreate?: boolean
