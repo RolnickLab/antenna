@@ -1102,7 +1102,7 @@ class TestRolePermissions(APITestCase):
                 "capture": {"star": True, "unstar": True},
             },
             "identifier": {
-                "project": {"create": False, "update": True, "delete": False},
+                "project": {"create": False, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
