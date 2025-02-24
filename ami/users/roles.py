@@ -43,7 +43,6 @@ class Role:
 class BasicMember(Role):
     permissions = Role.permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
-        Project.Permissions.CHANGE,
         Project.Permissions.STAR_SOURCE_IMAGE,
     }
 
@@ -79,6 +78,7 @@ class ProjectManager(Role):
         | Identifier.permissions
         | MLDataManager.permissions
         | {
+            Project.Permissions.CHANGE,
             Project.Permissions.CHANGE,
             Project.Permissions.DELETE,
             Project.Permissions.IMPORT_DATA,
