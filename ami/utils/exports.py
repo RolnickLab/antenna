@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import tempfile
@@ -154,3 +155,85 @@ def create_dwc_archive(occurrences: Iterable[Occurrence]):
 
     logger.info(f"create_dwc_archive: {archive_path}")
     return archive_path
+
+
+def export_occurrences_to_json(occurrences, file_path="exported_occurrences.json"):
+    occurrences_data = {
+        "0": {
+            "id": 33,
+            "event": {"id": 6, "name": "Wednesday, Aug 10 2022", "date_label": "Aug 10 2022"},
+            "deployment": {"id": 3, "name": "Test Deployment 7afa1fcf"},
+            "first_appearance_timestamp": "2022-08-10T22:02:00",
+            "first_appearance_time": "22:02:00",
+            "duration": "5700.0",
+            "duration_label": "1 hours 35 min",
+            "determination": {
+                "id": 3,
+                "name": "Vanessa",
+                "parent": {"id": 2, "name": "Nymphalidae", "rank": "FAMILY"},
+                "rank": "GENUS",
+            },
+            "detections_count": 3,
+            "detection_images": [
+                "/media/detections/5/2022-08-10/session_2022-08-10_capture_20220810220200_detection_97.jpg",
+                "/media/detections/5/2022-08-10/session_2022-08-10_capture_20220810224600_detection_98.jpg",
+                "/media/detections/5/2022-08-10/session_2022-08-10_capture_20220810233700_detection_99.jpg",
+            ],
+            "determination_score": 1,
+            "determination_details": {
+                "taxon": {
+                    "id": 3,
+                    "name": "Vanessa",
+                    "rank": "GENUS",
+                    "parent": {"id": 2, "name": "Nymphalidae", "rank": "FAMILY"},
+                    "parents": [
+                        {"id": 1, "name": "Lepidoptera", "rank": "ORDER"},
+                        {"id": 2, "name": "Nymphalidae", "rank": "FAMILY"},
+                    ],
+                },
+                "identification": {
+                    "id": 5,
+                    "taxon": {
+                        "id": 3,
+                        "name": "Vanessa",
+                        "rank": "GENUS",
+                        "parent": {"id": 2, "name": "Nymphalidae", "rank": "FAMILY"},
+                        "parents": [
+                            {"id": 1, "name": "Lepidoptera", "rank": "ORDER"},
+                            {"id": 2, "name": "Nymphalidae", "rank": "FAMILY"},
+                        ],
+                    },
+                    "withdrawn": False,
+                    "comment": "",
+                    "created_at": "2025-02-23T00:47:30.004440",
+                },
+                "prediction": None,
+                "score": 1,
+            },
+            "identifications": [
+                {
+                    "id": 5,
+                    "taxon": {
+                        "id": 3,
+                        "name": "Vanessa",
+                        "rank": "GENUS",
+                        "parent": {"id": 2, "name": "Nymphalidae", "rank": "FAMILY"},
+                        "parents": [
+                            {"id": 1, "name": "Lepidoptera", "rank": "ORDER"},
+                            {"id": 2, "name": "Nymphalidae", "rank": "FAMILY"},
+                        ],
+                    },
+                    "withdrawn": False,
+                    "comment": "",
+                    "created_at": "2025-02-23T00:47:30.004440",
+                }
+            ],
+            "created_at": "2025-02-23T00:41:31.394085",
+            "updated_at": "2025-02-23T00:47:30.011478",
+        }
+    }
+
+    # Write to JSON file
+    with open(file_path, "w", encoding="utf-8") as json_file:
+        json.dump(occurrences_data, json_file, indent=4)
+    return file_path

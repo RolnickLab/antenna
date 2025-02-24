@@ -2,11 +2,8 @@ import datetime
 import logging
 from statistics import mode
 
-from celery.result import AsyncResult
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.db import models
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
@@ -29,8 +26,7 @@ from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
-from ami.main.api.tasks import export_occurrences_task
-from ami.utils.exports import create_dwc_archive
+from ami.jobs.models import DataExportJob, Job, JobState
 from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -40,7 +36,6 @@ from ..models import (
     Detection,
     Device,
     Event,
-    ExportHistory,
     Identification,
     Occurrence,
     Page,
@@ -1052,71 +1047,65 @@ class OccurrenceViewSet(DefaultViewSet):
     @action(detail=False, methods=["post"])
     def export(self, request):
         """
-        Trigger occurrence export via Celery, passing only filtered occurrence IDs.
+        Trigger occurrence export via a background job.
         """
-        query_set = self.get_queryset()
-        occurrence_ids = list(query_set.values_list("id", flat=True))  # Extract IDs only
 
-        logger.info(f"OccurrenceViewSet.export - Exporting {len(occurrence_ids)} occurrences")
-        base_url = request.build_absolute_uri("/").rstrip("/")  # Get the full domain name
-        # Trigger Celery task with occurrence IDs
-        task = export_occurrences_task.apply_async(
-            kwargs={"occurrence_ids": occurrence_ids, "user_email": request.user.email, "base_url": base_url}
+        # Get format and project_id from query parameters
+        format_type = request.query_params.get("file_format", "json").lower()  # Default to JSON
+        # Validate format
+        valid_formats = ["csv", "json", "darwin_core"]
+        if format_type not in valid_formats:
+            return Response({"error": f"Invalid format. Supported formats: {', '.join(valid_formats)}"}, status=400)
+
+        # Validate and retrieve the project
+        project = get_active_project(self.request)
+        if not project:
+            return Response({"error": "Project Id not provided or invalid"}, status=400)
+
+        # # Get filtered occurrences
+        # query_set = self.get_queryset()
+
+        # Create a job for export
+        job = Job.objects.create(
+            name=f"{project} Export Occurrences ({format_type.upper()})",
+            project=project,
+            job_type_key=DataExportJob.key,
+            result={"format": format_type},
         )
-        # Save export history
-        ExportHistory.objects.create(user=request.user, task_id=task.id, status="pending")
 
-        return Response({"task_id": task.id})
+        # Enqueue the job
+        job.enqueue()
+
+        return Response({"job_id": job.pk, "format": format_type, "project_id": project.pk})
 
     @action(detail=False, methods=["get"])
     def export_status(self, request):
         """
-        Check export task status.
+        Check the status of an export job
         """
-        task_id = request.query_params.get("task_id")
-        if not task_id:
-            return Response({"error": "task_id is required"}, status=400)
+        job_id = request.query_params.get("job_id")
+        if not job_id:
+            return Response({"error": "job_id is required"}, status=400)
 
-        task = AsyncResult(task_id)
-        # Handle case where task ID does not exist in Celery
-        if task.state is None or task.result is None:
-            return Response({"error": "Invalid or unknown task ID"}, status=404)
-        if task.state == "PENDING":
-            return Response({"status": "pending"})
-        elif task.state == "SUCCESS":
-            return Response({"status": "completed", "file_url": task.result.get("file_url")})
-        elif task.state == "FAILURE":
-            return Response({"status": "failed", "error": str(task.result)})
-        else:
-            return Response({"status": task.state})
+        try:
+            job = Job.objects.get(pk=job_id, job_type_key=DataExportJob.key)
+        except Job.DoesNotExist:
+            return Response({"error": "Invalid or unknown job ID"}, status=404)
 
-    @action(detail=False, methods=["post"])
-    def export_test(self, request):
-        """
-        Synchronous test endpoint to generate a DwC-A archive instantly.
-        """
-        query_set = self.get_queryset()
+        response_data = {
+            "job_id": job.pk,
+            "status": job.status,
+            "progress": job.progress.summary.progress,  # % completion
+            "created_at": job.scheduled_at,
+            "started_at": job.started_at,
+            "finished_at": job.finished_at,
+        }
 
-        if not query_set.exists():
-            return Response({"error": "No occurrences found to export."}, status=status.HTTP_400_BAD_REQUEST)
+        # Check if the job is complete and return the file URL
+        if job.status == JobState.SUCCESS and job.result:
+            response_data["file_url"] = job.result.get("file_url", None)
 
-        archive_path = create_dwc_archive(query_set)
-        logger.info(f"Test export created: {archive_path}")
-        # Generate a unique filename for MinIO (use task ID or timestamp)
-        import datetime
-
-        now = datetime.datetime.now()
-        now = str(now)
-        file_name = f"exports/dwca_{now}.zip"
-
-        # Upload to MinIO storage
-        with open(archive_path, "rb") as archive_file:
-            default_storage.save(file_name, ContentFile(archive_file.read()))
-
-        # Get MinIO file URL
-        file_url = default_storage.url(file_name)
-
-        return Response({"message": "Export completed successfully", "file_url": file_url})
+        return Response(response_data)
 
 
 class TaxonViewSet(DefaultViewSet):
