@@ -975,7 +975,7 @@ class TestProjectPermissions(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         response = self.client.patch(f"/api/v2/projects/{self.project.id}/", {"name": "Updated Again"})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         response = self.client.delete(f"/api/v2/projects/{self.project.id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
