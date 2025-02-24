@@ -1,5 +1,4 @@
 import logging
-import re
 
 from django.contrib.auth.models import Group
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
@@ -91,16 +90,18 @@ def update_project_groups(sender, instance, **kwargs):
     for group in groups:
         logger.info(f"Old permissions group name: {group.name}")
 
-        # Extract project role using regex to ensure underscores in names are handled correctly
-        match = re.match(rf"^{re.escape(prefix)}(.*?)_(\w+)$", group.name)
+        # Find the last underscore `_` to separate the project name and role
+        last_underscore_index = group.name.rfind("_") + 1
 
-        if match:
-            old_project_name, role = match.groups()
+        if last_underscore_index != -1:
+            role = group.name[last_underscore_index:]  # Extract role name after the last `_`
             new_group_name = f"{prefix}{instance.name}_{role}"
 
-            logger.info(f"Changing permission group name to: {new_group_name}")
-            group.name = new_group_name
-            group.save()
+            # Check if a group with the new name already exists
+            if not Group.objects.filter(name=new_group_name).exists():
+                logger.info(f"Changing permission group name to: {new_group_name}")
+                group.name = new_group_name
+                group.save()
 
 
 @receiver(pre_delete, sender=Project)
