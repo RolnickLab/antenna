@@ -67,10 +67,12 @@ export class Capture {
       )
     }
   }
-get canStar(): boolean {
-    const hasPermission = this._capture.user_permissions.includes(UserPermission.Star);
-    return hasPermission;
-}
+  get canStar(): boolean {
+    const hasPermission = this._capture.user_permissions.includes(
+      UserPermission.Star
+    )
+    return hasPermission
+  }
   get dateTimeLabel(): string {
     return getFormatedDateTimeString({
       date: new Date(this._capture.timestamp),
