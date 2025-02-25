@@ -31,7 +31,7 @@ export const DateFilter = ({ error, onAdd, onClear, value }: FilterProps) => {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between text-muted-foreground font-normal"
+          className="w-full justify-between px-4 text-muted-foreground font-normal"
         >
           <>
             <span>{triggerLabel}</span>
