@@ -17,6 +17,7 @@ class Role:
     @classmethod
     def assign_user(cls, user, project):
         # Get or create the Group
+        # @TODO Make the relationship between the group and the project more formal (use a many-to-many field)
         group_name = f"{project.pk}_{project.name}_{cls.__name__}"
         group, created = Group.objects.get_or_create(name=group_name)
         # Add user to group

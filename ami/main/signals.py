@@ -88,8 +88,6 @@ def update_project_groups(sender, instance, **kwargs):
     logger.info(f"Project name: {instance.name}")
 
     for group in groups:
-        logger.info(f"Old permissions group name: {group.name}")
-
         # Find the last underscore `_` to separate the project name and role
         last_underscore_index = group.name.rfind("_")
 
@@ -100,7 +98,7 @@ def update_project_groups(sender, instance, **kwargs):
 
             # Check if a group with the new name already exists
             if not Group.objects.filter(name=new_group_name).exists():
-                logger.info(f"Changing permission group name to: {new_group_name}")
+                logger.info(f"Changing permission group name from {group.name} to: {new_group_name}")
                 group.name = new_group_name
                 group.save()
 
