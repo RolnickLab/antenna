@@ -27,7 +27,7 @@ export const useTaxonSearch = (searchString: string) => {
   const [isLoading, setIsLoading] = useState<boolean>()
   const [error, setError] = useState<Error>()
   const fetchUrl = searchString.length
-    ? `${API_URL}/taxa/suggest?q=${searchString}&limit=${MAX_NUM_RESULTS}`
+    ? `${API_URL}/taxa/suggest/?q=${searchString}&limit=${MAX_NUM_RESULTS}`
     : undefined
 
   useEffect(() => {

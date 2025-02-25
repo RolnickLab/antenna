@@ -42,6 +42,9 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 
 
 class TaxonRank(OrderedEnum):
+    KINGDOM = "KINGDOM"
+    PHYLUM = "PHYLUM"
+    CLASS = "CLASS"
     ORDER = "ORDER"
     SUPERFAMILY = "SUPERFAMILY"
     FAMILY = "FAMILY"
@@ -55,6 +58,9 @@ class TaxonRank(OrderedEnum):
 
 DEFAULT_RANKS = sorted(
     [
+        TaxonRank.KINGDOM,
+        TaxonRank.PHYLUM,
+        TaxonRank.CLASS,
         TaxonRank.ORDER,
         TaxonRank.FAMILY,
         TaxonRank.SUBFAMILY,
@@ -2561,6 +2567,8 @@ class Taxon(BaseModel):
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
+    common_name_en = models.CharField(max_length=255, blank=True, null=True)
+
     search_names = ArrayField(models.CharField(max_length=255), null=True, blank=True)
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
@@ -2703,10 +2711,15 @@ class Taxon(BaseModel):
 
         current_taxon = self
         parents = []
+        logger.debug(f"Updating parents for {current_taxon} (#{current_taxon.pk})")
         while current_taxon.parent is not None:
-            parents.append(
-                TaxonParent(id=current_taxon.parent.id, name=current_taxon.parent.name, rank=current_taxon.parent.rank)
+            taxon_parent = TaxonParent(
+                id=current_taxon.parent.id,
+                name=current_taxon.parent.name,
+                rank=current_taxon.parent.rank,
             )
+            logger.debug(f"Adding parent {taxon_parent} to {current_taxon} (#{current_taxon.pk}) in parents_json")
+            parents.append(taxon_parent)
             current_taxon = current_taxon.parent
         # Sort parents by rank using ordered enum
         parents = sorted(parents, key=lambda t: t.rank)
@@ -2715,6 +2728,22 @@ class Taxon(BaseModel):
             self.save()
 
         return parents
+
+    def update_search_names(self, save=False):
+        """
+        Add common names to the search names list.
+
+        @TODO add synonyms and other names to the search names list.
+        """
+        search_names = self.search_names or []
+        common_name_field_names = [field.name for field in self._meta.fields if field.name.startswith("common_name_")]
+        for field_name in common_name_field_names:
+            common_name = getattr(self, field_name)
+            if common_name:
+                search_names.append(common_name)
+        self.search_names = list(set(search_names))
+        if save:
+            self.save(update_fields=["search_names"])
 
     class Meta:
         ordering = [
@@ -2735,6 +2764,7 @@ class Taxon(BaseModel):
     def update_calculated_fields(self, save=False):
         self.display_name = self.get_display_name()
         self.update_parents(save=False)
+        self.update_search_names(save=False)
         if save:
             self.save(update_calculated_fields=False)
 
@@ -2973,9 +3003,12 @@ class SourceImageCollection(BaseModel):
         month_end: int | None = None,
         date_start: str | None = None,
         date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
 
+        if deployment_ids is not None:
+            qs = qs.filter(deployment__in=deployment_ids)
         if date_start is not None:
             qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
         if date_end is not None:
