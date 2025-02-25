@@ -1037,6 +1037,13 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     hour_start = serializers.IntegerField(required=False, allow_null=True)
     hour_end = serializers.IntegerField(required=False, allow_null=True)
 
+    deployment_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
     # Kwargs for other sampling methods, this is not complete
     # see the SourceImageCollection model for all available kwargs.
     size = serializers.IntegerField(required=False, allow_null=True)
