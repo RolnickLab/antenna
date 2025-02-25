@@ -38,14 +38,6 @@ export const columns: (
     ),
   },
   {
-    id: 'created-at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    sortField: 'created_at',
-    renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.createdAt} />
-    ),
-  },
-  {
     id: 'status',
     name: 'Status',
     renderCell: (item: ProcessingService) => {
