@@ -21,4 +21,8 @@ export class Species extends Taxon {
   get trainingImagesUrl(): string {
     return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
   }
+
+  get numOccurrences(): number {
+    return this._species.occurrences_count || null
+  }
 }
