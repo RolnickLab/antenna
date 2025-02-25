@@ -4,6 +4,19 @@ import { Pipeline, ServerPipeline } from './pipeline'
 
 export type ServerProcessingService = any // TODO: Update this type
 
+export const SERVER_PROCESSING_SERVICE_STATUS_CODES = [
+  'OFFLINE',
+  'ONLINE',
+] as const
+
+export type ServerProcessingServiceStatusCode =
+  (typeof SERVER_PROCESSING_SERVICE_STATUS_CODES)[number]
+
+export enum ProcessingServiceStatusType {
+  Success,
+  Error,
+}
+
 export class ProcessingService extends Entity {
   protected readonly _processingService: ServerProcessingService
   protected readonly _pipelines: Pipeline[] = []
@@ -65,7 +78,43 @@ export class ProcessingService extends Entity {
     })
   }
 
-  get num_piplines_added(): number {
+  get lastCheckedLive(): boolean {
+    return this._processingService.last_checked_live
+  }
+
+  get numPiplinesAdded(): number {
     return this._pipelines.length
+  }
+
+  get status(): {
+    code: ServerProcessingServiceStatusCode
+    label: string
+    type: ProcessingServiceStatusType
+    color: string
+  } {
+    const status_code = this.lastCheckedLive ? 'ONLINE' : 'OFFLINE'
+    return ProcessingService.getStatusInfo(status_code)
+  }
+
+  static getStatusInfo(code: ServerProcessingServiceStatusCode) {
+    const label =
+      String(code).charAt(0).toUpperCase() + String(code).toLowerCase().slice(1)
+
+    const type = {
+      OFFLINE: ProcessingServiceStatusType.Error,
+      ONLINE: ProcessingServiceStatusType.Success,
+    }[code]
+
+    const color = {
+      [ProcessingServiceStatusType.Error]: '#ef4444', // color-destructive-500,
+      [ProcessingServiceStatusType.Success]: '#09af8a', // color-success-500
+    }[type]
+
+    return {
+      code,
+      label,
+      type,
+      color,
+    }
   }
 }
