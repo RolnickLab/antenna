@@ -106,9 +106,17 @@ def create_default_research_site(project: "Project") -> "Site":
 class ProjectQuerySet(models.QuerySet):
     def filter_by_user(self, user):
         """
-        Filters projects to include only those where the given user is a member.
+        Filters projects to include only those where the given user has any role.
         """
-        return self.filter(members=user)
+        # @TODO modify once we have the formal relationship between projects and groups
+        # To avoid circular import
+        from ami.users.roles import Role
+
+        return self.filter(
+            id__in=Project.objects.filter(
+                id__in=[project.id for project in Project.objects.all() if Role.user_has_any_role(user, project)]
+            )
+        )
 
 
 class ProjectManager(models.Manager):

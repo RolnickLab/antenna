@@ -34,11 +34,12 @@ class Role:
     def has_role(cls, user, project):
         """Checks if the user has the role permissions on the given project."""
         group_name = f"{project.pk}_{project.name}_{cls.__name__}"
+        return user.groups.filter(name=group_name).exists()
 
-        return (
-            all(user.has_perm(perm, project) for perm in cls.permissions)
-            or user.groups.filter(name=group_name).exists()
-        )
+    @staticmethod
+    def user_has_any_role(user, project):
+        """Checks if the user has any role assigned to a given project."""
+        return any(role_class.has_role(user, project) for role_class in Role.__subclasses__())
 
 
 class BasicMember(Role):
