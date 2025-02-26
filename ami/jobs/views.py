@@ -7,9 +7,11 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ami.base.permissions import CanCancelJob, CanRetryJob, CanRunJob, JobCRUDPermission
+from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
-from ami.utils.requests import get_active_project, project_id_doc_param
+from ami.utils.requests import project_id_doc_param
 
 from .models import Job, JobState
 from .serializers import JobListSerializer, JobSerializer
@@ -17,7 +19,7 @@ from .serializers import JobListSerializer, JobSerializer
 logger = logging.getLogger(__name__)
 
 
-class JobViewSet(DefaultViewSet):
+class JobViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows jobs to be viewed or edited.
 
@@ -64,6 +66,7 @@ class JobViewSet(DefaultViewSet):
         "source_image_collection",
         "pipeline",
     ]
+    permission_classes = [CanRunJob, CanRetryJob, CanCancelJob, JobCRUDPermission]
 
     def get_serializer_class(self):
         """
@@ -80,6 +83,7 @@ class JobViewSet(DefaultViewSet):
         Run a job (add it to the queue).
         """
         job: Job = self.get_object()
+
         no_async = url_boolean_param(request, "no_async", default=False)
         if no_async:
             job.run()
@@ -116,6 +120,12 @@ class JobViewSet(DefaultViewSet):
         """
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
+        # All jobs created from the Jobs UI are ML jobs.
+        # @TODO Remove this when the UI is updated pass a job type
+        # Get an instance for the model without saving
+        obj = serializer.Meta.model(**serializer.validated_data)
+        # Check permissions before saving
+        self.check_object_permissions(self.request, obj)
 
         job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):
@@ -124,7 +134,7 @@ class JobViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             jobs = jobs.filter(project=project)
         cutoff_hours = IntegerField(required=False, min_value=0).clean(

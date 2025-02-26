@@ -90,7 +90,8 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "anymail",
-    # "cachalot",
+    "cachalot",
+    "guardian",
 ]
 
 LOCAL_APPS = [
@@ -114,6 +115,7 @@ MIGRATION_MODULES = {"sites": "ami.contrib.sites.migrations"}
 # https://docs.djangoproject.com/en/dev/ref/settings/#authentication-backends
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
+    "guardian.backends.ObjectPermissionBackend",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
 AUTH_USER_MODEL = "users.User"
@@ -398,6 +400,8 @@ DJOSER = {
         "user_create": ["rest_framework.permissions.IsAdminUser"],
     },
 }
+# Django Guardian
+ANONYMOUS_USER_NAME = "anonymoususer"
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
 # See more configuration options at https://drf-spectacular.readthedocs.io/en/latest/settings.html#settings
