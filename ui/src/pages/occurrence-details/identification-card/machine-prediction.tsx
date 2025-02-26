@@ -15,7 +15,10 @@ import {
   TaxonDetails,
 } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
 import { Agree } from '../agree/agree'
@@ -121,25 +124,38 @@ const MachinePredictionDetails = ({
   children: ReactNode
   score: number
   taxon: Taxon
-}) => (
-  <IdentificationDetails applied={applied} className="border-border border-t">
-    <div className="w-full flex flex-col items-end gap-4">
-      <div className="w-full flex items-center gap-4">
-        <BasicTooltip
-          content={translate(STRING.MACHINE_PREDICTION_SCORE, {
-            score,
-          })}
-        >
-          <div className="px-1">
-            <IdentificationScore confidenceScore={score} />
-          </div>
-        </BasicTooltip>
-        <TaxonDetails compact taxon={taxon} />
+}) => {
+  const { projectId } = useParams()
+
+  return (
+    <IdentificationDetails applied={applied} className="border-border border-t">
+      <div className="w-full flex flex-col items-end gap-4">
+        <div className="w-full flex items-center gap-4">
+          <BasicTooltip
+            content={translate(STRING.MACHINE_PREDICTION_SCORE, {
+              score,
+            })}
+          >
+            <div className="px-1">
+              <IdentificationScore confidenceScore={score} />
+            </div>
+          </BasicTooltip>
+          <Link
+            to={getAppRoute({
+              to: APP_ROUTES.TAXON_DETAILS({
+                projectId: projectId as string,
+                taxonId: taxon.id,
+              }),
+            })}
+          >
+            <TaxonDetails compact taxon={taxon} />
+          </Link>
+        </div>
+        {children}
       </div>
-      {children}
-    </div>
-  </IdentificationDetails>
-)
+    </IdentificationDetails>
+  )
+}
 
 const FetchDetails = ({
   error,

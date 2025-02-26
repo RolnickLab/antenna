@@ -13,7 +13,10 @@ import {
   TaxonDetails,
 } from 'nova-ui-kit'
 import { useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
+import { getAppRoute } from 'utils/getAppRoute'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 
@@ -32,6 +35,7 @@ export const HumanIdentification = ({
     name: string
   }
 }) => {
+  const { projectId } = useParams()
   const [deleteIdOpen, setDeleteIdOpen] = useState(false)
   const formattedTime = getFormatedDateTimeString({
     date: new Date(identification.createdAt),
@@ -67,9 +71,17 @@ export const HumanIdentification = ({
             className="border-border border-t"
           >
             <div className="w-full flex flex-col items-end gap-4">
-              <div className="w-full">
+              <Link
+                className="w-full"
+                to={getAppRoute({
+                  to: APP_ROUTES.TAXON_DETAILS({
+                    projectId: projectId as string,
+                    taxonId: identification.taxon.id,
+                  }),
+                })}
+              >
                 <TaxonDetails compact taxon={identification.taxon} />
-              </div>
+              </Link>
               <div className="flex items-center gap-2">
                 <Agree
                   agreed={

@@ -125,7 +125,20 @@ export const OccurrenceDetails = ({
         <meta name="og:image" content={occurrence.images[0]?.src} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonDetails size="lg" taxon={occurrence.determinationTaxon} />
+        <TaxonDetails
+          onTaxonClick={(id) =>
+            navigate(
+              getAppRoute({
+                to: APP_ROUTES.TAXON_DETAILS({
+                  projectId: projectId as string,
+                  taxonId: id,
+                }),
+              })
+            )
+          }
+          size="lg"
+          taxon={occurrence.determinationTaxon}
+        />
         <div className={styles.taxonActions}>
           <BasicTooltip
             content={

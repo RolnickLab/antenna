@@ -7,7 +7,7 @@ import { InfoBlock } from 'design-system/components/info-block/info-block'
 import { TaxonDetails } from 'nova-ui-kit'
 import { useMemo } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -15,6 +15,7 @@ import styles from './species-details.module.scss'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
+  const navigate = useNavigate()
 
   const image = useMemo(() => {
     if (species.occurrences.length) {
@@ -65,7 +66,20 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         <meta name="og:image" content={image} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonDetails size="lg" taxon={species} />
+        <TaxonDetails
+          onTaxonClick={(id) =>
+            navigate(
+              getAppRoute({
+                to: APP_ROUTES.TAXON_DETAILS({
+                  projectId: projectId as string,
+                  taxonId: id,
+                }),
+              })
+            )
+          }
+          size="lg"
+          taxon={species}
+        />
       </div>
       <div className={styles.content}>
         <div className={styles.column}>
