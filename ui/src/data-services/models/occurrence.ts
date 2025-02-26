@@ -91,7 +91,7 @@ export class Occurrence {
     return verifiedBy
       ? {
           id: `${verifiedBy.id}`,
-          name: verifiedBy.name.length ? verifiedBy.name : 'Anonymous',
+          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous',
         }
       : undefined
   }

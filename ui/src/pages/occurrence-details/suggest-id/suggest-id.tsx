@@ -4,7 +4,7 @@ import { useCreateIdentification } from 'data-services/hooks/identifications/use
 import { Taxon } from 'data-services/models/taxa'
 import { Input, InputContent } from 'design-system/components/input/input'
 import { Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Box, Button } from 'nova-ui-kit'
 import { RefObject, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -14,7 +14,6 @@ import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { useRecentIdentifications } from '../reject-id/useRecentOptions'
 import { StatusLabel } from '../status-label/status-label'
 import { TaxonSearch } from '../taxon-search/taxon-search'
-import styles from './suggest-id.module.scss'
 
 interface SuggestIdProps {
   containerRef: RefObject<HTMLDivElement>
@@ -38,21 +37,19 @@ export const SuggestId = ({
   const formError = error ? parseServerError(error)?.message : undefined
 
   return (
-    <div className={styles.wrapper}>
+    <Box className="p-0 relative">
       {formError && (
         <FormError message={formError} style={{ padding: '8px 16px' }} />
       )}
-      <div className={styles.content}>
+      <div className="grid gap-4 px-4 py-6">
         <StatusLabel label={translate(STRING.NEW_ID)} />
         <InputContent label={translate(STRING.FIELD_LABEL_TAXON)}>
-          <div className={styles.taxonActions}>
-            <TaxonSearch
-              containerRef={containerRef}
-              inputRef={inputRef}
-              taxon={taxon}
-              onTaxonChange={setTaxon}
-            />
-          </div>
+          <TaxonSearch
+            containerRef={containerRef}
+            inputRef={inputRef}
+            taxon={taxon}
+            onTaxonChange={setTaxon}
+          />
           {taxon && (
             <TaxonRanks
               ranks={taxon.ranks}
@@ -73,7 +70,7 @@ export const SuggestId = ({
           value={comment}
           onChange={(e) => setComment(e.target.value)}
         />
-        <div className={styles.formActions}>
+        <div className="grid grid-cols-2 gap-4">
           <Button onClick={onCancel} size="small" variant="outline">
             <span> {translate(STRING.CANCEL)}</span>
           </Button>
@@ -102,6 +99,6 @@ export const SuggestId = ({
           </Button>
         </div>
       </div>
-    </div>
+    </Box>
   )
 }

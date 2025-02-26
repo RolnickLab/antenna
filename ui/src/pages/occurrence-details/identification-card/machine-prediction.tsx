@@ -58,22 +58,17 @@ export const MachinePrediction = ({
           score={identification.score}
           taxon={identification.taxon}
         >
-          {
-            <Agree
-              agreed={
-                currentUser
-                  ? occurrence.userAgreed(
-                      currentUser.id,
-                      identification.taxon.id
-                    )
-                  : false
-              }
-              agreeWith={{ predictionId: identification.id }}
-              applied={identification.applied}
-              occurrenceId={occurrence.id}
-              taxonId={identification.taxon.id}
-            />
-          }
+          <Agree
+            agreed={
+              currentUser
+                ? occurrence.userAgreed(currentUser.id, identification.taxon.id)
+                : false
+            }
+            agreeWith={{ predictionId: identification.id }}
+            applied={identification.applied}
+            occurrenceId={occurrence.id}
+            taxonId={identification.taxon.id}
+          />
         </MachinePredictionDetails>
         <Collapsible.Root open={open} onOpenChange={setOpen}>
           <Collapsible.Content>
