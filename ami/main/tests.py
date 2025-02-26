@@ -381,6 +381,51 @@ class TestSourceImageCollections(TestCase):
         for event in self.project_one.events.all():
             assert collection_images.filter(event=event).count() == 2
 
+    def test_common_combined_deployment_ids(self):
+        """Test that common_combined sampling method correctly filters by deployment_ids"""
+        from ami.main.models import Deployment, SourceImageCollection
+
+        # Create two additional deployments
+        deployment_two = Deployment.objects.create(name="Test Deployment Two", project=self.project_one)
+        deployment_three = Deployment.objects.create(name="Test Deployment Three", project=self.project_one)
+
+        # Create captures for each deployment
+        create_captures(deployment=deployment_two, num_nights=2, images_per_night=10, interval_minutes=1)
+        create_captures(deployment=deployment_three, num_nights=2, images_per_night=10, interval_minutes=1)
+        group_images_into_events(deployment=deployment_two)
+        group_images_into_events(deployment=deployment_three)
+
+        # Verify that we have images from the deployments
+        assert deployment_two.captures.count() > 0
+        assert deployment_three.captures.count() > 0
+
+        # Create collection using only deployment_two and deployment_three
+        collection = SourceImageCollection.objects.create(
+            name="Test Common Combined Deployment IDs",
+            project=self.project_one,
+            method="common_combined",
+            kwargs={
+                "deployment_ids": [deployment_two.pk, deployment_three.pk],
+                "shuffle": True,
+                "max_num": 100,
+            },
+        )
+        collection.save()
+        collection.populate_sample()
+
+        collection_images = collection.images.all()
+
+        # Verify images only come from specified deployments
+        self.assertEqual(
+            collection_images.filter(deployment__in=[deployment_two, deployment_three]).count(),
+            collection_images.count(),
+        )
+        self.assertEqual(collection_images.filter(deployment=self.deployment).count(), 0)
+
+        # Verify we got images from both specified deployments
+        self.assertGreater(collection_images.filter(deployment=deployment_two).count(), 0)
+        self.assertGreater(collection_images.filter(deployment=deployment_three).count(), 0)
+
 
 class TestTaxonomy(TestCase):
     def setUp(self) -> None:

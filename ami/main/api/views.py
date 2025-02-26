@@ -75,7 +75,6 @@ from .serializers import (
     StorageSourceSerializer,
     StorageStatusSerializer,
     TaxonListSerializer,
-    TaxonNestedSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
 )
@@ -1073,27 +1072,32 @@ class TaxonViewSet(DefaultViewSet):
         limit = IntegerField(required=False, min_value=0).clean(
             request.query_params.get("limit", default_results_limit)
         )
-        with_parents = BooleanField(required=False).clean(request.query_params.get("with_parents", True))
 
         if query and len(query) >= min_query_length:
-            if with_parents:
-                taxa = (
-                    Taxon.objects.select_related("parent", "parent__parent")
-                    .annotate(similarity=TrigramSimilarity("name", query))
-                    .filter(active=True)
-                    .order_by("-similarity")[:limit]
+            taxa = (
+                Taxon.objects.filter(active=True)
+                .select_related("parent")
+                .filter(models.Q(name__icontains=query) | models.Q(search_names__icontains=query))
+                .annotate(
+                    # Calculate similarity for the name field
+                    name_similarity=TrigramSimilarity("name", query),
+                    # Cast array to string before similarity calculation
+                    search_names_similarity=TrigramSimilarity(
+                        models.functions.Cast("search_names", models.TextField()), query
+                    ),
+                    # Take the maximum similarity between name and search_names
+                    similarity=models.functions.Greatest(
+                        models.F("name_similarity"), models.F("search_names_similarity")
+                    ),
                 )
-                return Response(TaxonNestedSerializer(taxa, many=True, context={"request": request}).data)
-            else:
-                taxa = (
-                    Taxon.objects.filter(name__icontains=query)
-                    .annotate(similarity=TrigramSimilarity("name", query))
-                    .order_by("-similarity")[:default_results_limit]
-                    .filter(active=True)
-                    .values("id", "name", "rank")[:limit]
-                )
-                return Response(TaxonSearchResultSerializer(taxa, many=True, context={"request": request}).data)
+                .order_by("-similarity")[:default_results_limit]
+                .defer(
+                    "notes",
+                    "parent__notes",
+                )[:limit]
+            )
 
+            return Response(TaxonSearchResultSerializer(taxa, many=True, context={"request": request}).data)
         else:
             return Response([])
 
