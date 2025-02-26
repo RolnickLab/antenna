@@ -1,3 +1,4 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { useClassificationDetails } from 'data-services/hooks/identifications/useClassificationDetails'
 import {
   MachinePrediction as Identification,
@@ -5,6 +6,7 @@ import {
 } from 'data-services/models/occurrence-details'
 import { Taxon } from 'data-services/models/taxa'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { Loader2 } from 'lucide-react'
 import {
   Collapsible,
   IdentificationCard,
@@ -29,7 +31,10 @@ export const MachinePrediction = ({
   occurrence: Occurrence
 }) => {
   const [open, setOpen] = useState(false)
-  const { classification } = useClassificationDetails(identification.id, open)
+  const { classification, error, isLoading } = useClassificationDetails(
+    identification.id,
+    open
+  )
   const formattedTime = getFormatedDateTimeString({
     date: new Date(identification.createdAt),
   })
@@ -72,6 +77,7 @@ export const MachinePrediction = ({
         </MachinePredictionDetails>
         <Collapsible.Root open={open} onOpenChange={setOpen}>
           <Collapsible.Content>
+            <FetchDetails error={error} isLoading={isLoading} />
             {classification?.topN
               .filter(({ taxon }) => taxon.id !== identification.taxon.id)
               .map(({ score, taxon }) => {
@@ -79,6 +85,7 @@ export const MachinePrediction = ({
 
                 return (
                   <MachinePredictionDetails
+                    key={taxon.id}
                     applied={applied}
                     score={score}
                     taxon={taxon}
@@ -133,3 +140,29 @@ const MachinePredictionDetails = ({
     </div>
   </IdentificationDetails>
 )
+
+const FetchDetails = ({
+  error,
+  isLoading,
+}: {
+  error: unknown
+  isLoading: boolean
+}) => {
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-6 px-4 border-border border-t text-center">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="py-6 px-4 border-border border-t">
+        <ErrorState compact error={error} />
+      </div>
+    )
+  }
+
+  return null
+}
