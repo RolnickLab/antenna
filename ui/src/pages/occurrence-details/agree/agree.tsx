@@ -42,7 +42,6 @@ export const Agree = ({
   return (
     <BasicTooltip asChild content={error}>
       <Button
-        loading={isLoading}
         size="small"
         variant="outline"
         onClick={() =>

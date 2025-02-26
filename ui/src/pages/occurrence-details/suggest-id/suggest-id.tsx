@@ -75,7 +75,6 @@ export const SuggestId = ({
             <span> {translate(STRING.CANCEL)}</span>
           </Button>
           <Button
-            loading={isLoading}
             disabled={!taxon}
             size="small"
             onClick={() => {
