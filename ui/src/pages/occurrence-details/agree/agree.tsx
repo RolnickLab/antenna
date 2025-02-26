@@ -11,6 +11,7 @@ interface AgreeProps {
     identificationId?: string
     predictionId?: string
   }
+  applied?: boolean
   occurrenceId: string
   taxonId: string
 }
@@ -18,6 +19,7 @@ interface AgreeProps {
 export const Agree = ({
   agreed,
   agreeWith,
+  applied,
   occurrenceId,
   taxonId,
 }: AgreeProps) => {
@@ -30,14 +32,9 @@ export const Agree = ({
 
   if (isSuccess || agreed) {
     return (
-      <Button
-        className="text-primary-600"
-        disabled
-        size="small"
-        variant="outline"
-      >
+      <Button disabled size="small" variant="outline">
         <CheckIcon className="w-4 h-4" />
-        {translate(STRING.AGREED)}
+        <span>{translate(STRING.CONFIRMED)}</span>
       </Button>
     )
   }
@@ -45,7 +42,6 @@ export const Agree = ({
   return (
     <BasicTooltip asChild content={error}>
       <Button
-        className="text-primary-600"
         loading={isLoading}
         size="small"
         variant="outline"
@@ -62,7 +58,9 @@ export const Agree = ({
         ) : error ? (
           <AlertCircleIcon className="w-4 h-4 text-destructive" />
         ) : null}
-        {translate(STRING.AGREE)}
+        <span>
+          {applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)}
+        </span>
       </Button>
     </BasicTooltip>
   )

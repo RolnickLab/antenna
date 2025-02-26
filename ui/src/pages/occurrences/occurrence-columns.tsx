@@ -1,6 +1,4 @@
 import { Occurrence } from 'data-services/models/occurrence'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
@@ -10,7 +8,8 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { IdentificationScore, TaxonDetails } from 'nova-ui-kit'
+import { SearchIcon } from 'lucide-react'
+import { Button, IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
@@ -205,12 +204,12 @@ const TaxonCell = ({
                   identificationId: item.determinationIdentificationId,
                   predictionId: item.determinationPredictionId,
                 }}
+                applied
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
               <BasicTooltip asChild content={translate(STRING.SUGGEST_ID)}>
-                <IconButton
-                  icon={IconType.RadixSearch}
+                <Button
                   onClick={() =>
                     navigate(detailsRoute, {
                       state: {
@@ -219,7 +218,11 @@ const TaxonCell = ({
                       },
                     })
                   }
-                />
+                  size="icon"
+                  variant="outline"
+                >
+                  <SearchIcon className="w-4 h-4" />
+                </Button>
               </BasicTooltip>
               <IdQuickActions
                 occurrenceIds={[item.id]}

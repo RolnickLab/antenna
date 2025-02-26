@@ -125,11 +125,7 @@ export const OccurrenceDetails = ({
         <meta name="og:image" content={occurrence.images[0]?.src} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonDetails
-          size="lg"
-          taxon={occurrence.determinationTaxon}
-          withTooltips
-        />
+        <TaxonDetails size="lg" taxon={occurrence.determinationTaxon} />
         <div className={styles.taxonActions}>
           <BasicTooltip
             content={
@@ -155,11 +151,11 @@ export const OccurrenceDetails = ({
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,
                 }}
+                applied
                 occurrenceId={occurrence.id}
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
-                className="text-primary-600"
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
@@ -169,7 +165,7 @@ export const OccurrenceDetails = ({
                 variant="outline"
               >
                 <SearchIcon className="w-4 h-4" />
-                {translate(STRING.SUGGEST_ID)}
+                <span>{translate(STRING.SUGGEST_ID)}</span>
               </Button>
               <IdQuickActions
                 containerRef={containerRef}
@@ -180,7 +176,6 @@ export const OccurrenceDetails = ({
           )}
           {!canUpdate && !loggedIn && (
             <Button
-              className="text-primary-600"
               onClick={() =>
                 navigate(APP_ROUTES.LOGIN, {
                   state: {

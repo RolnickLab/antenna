@@ -89,7 +89,10 @@ export class Occurrence {
       this._occurrence.determination_details.identification?.user
 
     return verifiedBy
-      ? { id: `${verifiedBy.id}`, name: verifiedBy.name }
+      ? {
+          id: `${verifiedBy.id}`,
+          name: verifiedBy.name.length ? verifiedBy.name : 'Anonymous',
+        }
       : undefined
   }
 

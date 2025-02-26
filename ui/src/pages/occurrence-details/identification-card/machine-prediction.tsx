@@ -60,7 +60,16 @@ export const MachinePrediction = ({
         >
           {
             <Agree
+              agreed={
+                currentUser
+                  ? occurrence.userAgreed(
+                      currentUser.id,
+                      identification.taxon.id
+                    )
+                  : false
+              }
               agreeWith={{ predictionId: identification.id }}
+              applied={identification.applied}
               occurrenceId={occurrence.id}
               taxonId={identification.taxon.id}
             />
@@ -86,6 +95,7 @@ export const MachinePrediction = ({
                           : false
                       }
                       agreeWith={{ predictionId: identification.id }}
+                      applied={applied}
                       occurrenceId={occurrence.id}
                       taxonId={taxon.id}
                     />
@@ -122,7 +132,7 @@ const MachinePredictionDetails = ({
             <IdentificationScore confidenceScore={score} />
           </div>
         </BasicTooltip>
-        <TaxonDetails compact taxon={taxon} withTooltips />
+        <TaxonDetails compact taxon={taxon} />
       </div>
       {children}
     </div>

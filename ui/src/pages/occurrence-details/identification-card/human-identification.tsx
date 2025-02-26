@@ -40,7 +40,7 @@ export const HumanIdentification = ({
           applied={identification.applied}
           className="border-border border-t"
         >
-          <TaxonDetails compact taxon={identification.taxon} withTooltips />
+          <TaxonDetails compact taxon={identification.taxon} />
         </IdentificationDetails>
       </IdentificationCard>
     </div>

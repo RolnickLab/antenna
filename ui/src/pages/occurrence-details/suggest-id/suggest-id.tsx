@@ -2,8 +2,9 @@ import { FormError } from 'components/form/layout/layout'
 import { TaxonRanks } from 'components/taxon/taxon-ranks/taxon-ranks'
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
 import { Taxon } from 'data-services/models/taxa'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Input, InputContent } from 'design-system/components/input/input'
+import { Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { RefObject, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -73,12 +74,13 @@ export const SuggestId = ({
           onChange={(e) => setComment(e.target.value)}
         />
         <div className={styles.formActions}>
-          <Button label={translate(STRING.CANCEL)} onClick={onCancel} />
+          <Button onClick={onCancel} size="small" variant="outline">
+            <span> {translate(STRING.CANCEL)}</span>
+          </Button>
           <Button
-            label={translate(STRING.SUBMIT)}
-            theme={ButtonTheme.Success}
             loading={isLoading}
             disabled={!taxon}
+            size="small"
             onClick={() => {
               if (!taxon) {
                 return
@@ -94,7 +96,10 @@ export const SuggestId = ({
                 comment: comment,
               })
             }}
-          />
+          >
+            <span>{translate(STRING.SUBMIT)}</span>
+            {isLoading ? <Loader2Icon className="w-4 h-4 ml-2" /> : null}
+          </Button>
         </div>
       </div>
     </div>

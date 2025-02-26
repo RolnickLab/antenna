@@ -65,7 +65,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         <meta name="og:image" content={image} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonDetails size="lg" taxon={species} withTooltips />
+        <TaxonDetails size="lg" taxon={species} />
       </div>
       <div className={styles.content}>
         <div className={styles.column}>
