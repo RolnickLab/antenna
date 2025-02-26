@@ -108,10 +108,11 @@ class ProjectQuerySet(models.QuerySet):
         """
         Filters projects to include only those where the given user has any role.
         """
-        # @TODO modify once we have the formal relationship between projects and groups
-        # To avoid circular import
-        from ami.users.roles import Role
 
+        # To avoid circular import
+        from ami.users.roles import Role  # noqa: F401
+
+        # @TODO modify once we have the formal relationship between projects and groups
         return self.filter(
             id__in=Project.objects.filter(
                 id__in=[project.id for project in Project.objects.all() if Role.user_has_any_role(user, project)]
