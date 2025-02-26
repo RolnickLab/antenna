@@ -20,7 +20,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { UserInfo } from 'utils/user/types'
+import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 import machineAvatar from './machine-avatar.svg'
 
@@ -41,6 +41,9 @@ export const MachinePrediction = ({
   const formattedTime = getFormatedDateTimeString({
     date: new Date(identification.createdAt),
   })
+  const showAgree = identification.userPermissions.includes(
+    UserPermission.Update
+  )
 
   return (
     <div>
@@ -66,17 +69,22 @@ export const MachinePrediction = ({
           score={identification.score}
           taxon={identification.taxon}
         >
-          <Agree
-            agreed={
-              currentUser
-                ? occurrence.userAgreed(currentUser.id, identification.taxon.id)
-                : false
-            }
-            agreeWith={{ predictionId: identification.id }}
-            applied={identification.applied}
-            occurrenceId={occurrence.id}
-            taxonId={identification.taxon.id}
-          />
+          {showAgree && (
+            <Agree
+              agreed={
+                currentUser
+                  ? occurrence.userAgreed(
+                      currentUser.id,
+                      identification.taxon.id
+                    )
+                  : false
+              }
+              agreeWith={{ predictionId: identification.id }}
+              applied={identification.applied}
+              occurrenceId={occurrence.id}
+              taxonId={identification.taxon.id}
+            />
+          )}
         </MachinePredictionDetails>
         <Collapsible.Root open={open} onOpenChange={setOpen}>
           <Collapsible.Content>
@@ -93,17 +101,19 @@ export const MachinePrediction = ({
                     score={score}
                     taxon={taxon}
                   >
-                    <Agree
-                      agreed={
-                        currentUser
-                          ? occurrence.userAgreed(currentUser.id, taxon.id)
-                          : false
-                      }
-                      agreeWith={{ predictionId: identification.id }}
-                      applied={applied}
-                      occurrenceId={occurrence.id}
-                      taxonId={taxon.id}
-                    />
+                    {showAgree && (
+                      <Agree
+                        agreed={
+                          currentUser
+                            ? occurrence.userAgreed(currentUser.id, taxon.id)
+                            : false
+                        }
+                        agreeWith={{ predictionId: identification.id }}
+                        applied={applied}
+                        occurrenceId={occurrence.id}
+                        taxonId={taxon.id}
+                      />
+                    )}
                   </MachinePredictionDetails>
                 )
               })}

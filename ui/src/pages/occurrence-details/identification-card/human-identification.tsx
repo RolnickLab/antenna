@@ -41,9 +41,14 @@ export const HumanIdentification = ({
     date: new Date(identification.createdAt),
   })
   const byCurrentUser = currentUser && user?.id === currentUser.id
-  const showDelete =
-    byCurrentUser &&
-    identification.userPermissions.includes(UserPermission.Update) // TODO: Update after permission PR is merged
+  const canAgree = identification.userPermissions.includes(
+    UserPermission.Update
+  )
+  const canDelete = identification.userPermissions.includes(
+    UserPermission.Update // TODO: Update after permission PR is merged
+  )
+  const showAgree = !byCurrentUser && canAgree
+  const showDelete = byCurrentUser && canDelete
 
   return (
     <div>
@@ -83,20 +88,22 @@ export const HumanIdentification = ({
                 <TaxonDetails compact taxon={identification.taxon} />
               </Link>
               <div className="flex items-center gap-2">
-                <Agree
-                  agreed={
-                    currentUser
-                      ? occurrence.userAgreed(
-                          currentUser.id,
-                          identification.taxon.id
-                        )
-                      : false
-                  }
-                  agreeWith={{ predictionId: identification.id }}
-                  applied={identification.applied}
-                  occurrenceId={occurrence.id}
-                  taxonId={identification.taxon.id}
-                />
+                {showAgree && (
+                  <Agree
+                    agreed={
+                      currentUser
+                        ? occurrence.userAgreed(
+                            currentUser.id,
+                            identification.taxon.id
+                          )
+                        : false
+                    }
+                    agreeWith={{ predictionId: identification.id }}
+                    applied={identification.applied}
+                    occurrenceId={occurrence.id}
+                    taxonId={identification.taxon.id}
+                  />
+                )}
                 {showDelete && (
                   <Button
                     onClick={() => setDeleteIdOpen(true)}
