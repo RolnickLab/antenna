@@ -50,7 +50,7 @@ coverage.xml
 *.mo
 *.pot
 
-# Django stuff:
+# Django stuff
 staticfiles/
 
 # Sphinx documentation
@@ -273,3 +273,6 @@ ami/media/
 backups/
 data/
 sandbox/
+
+# Other
+flower
