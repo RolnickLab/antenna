@@ -47,7 +47,7 @@ class TestProcessingServiceAPI(APITestCase):
         resp = self.client.post(processing_services_create_url, processing_service_data)
         self.client.force_authenticate(user=None)
         self.assertEqual(resp.status_code, 201)
-        return resp.json()
+        return resp.json()["instance"]
 
     def _delete_processing_service(self, processing_service_id: int):
         processing_services_delete_url = reverse_with_params(
