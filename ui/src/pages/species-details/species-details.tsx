@@ -1,15 +1,11 @@
-import {
-  BlueprintCollection,
-  BlueprintItem,
-} from 'components/blueprint-collection/blueprint-collection'
+import { FieldguideImages } from 'components/blueprint-collection/fieldguide-images'
 import {
   TaxonInfo,
   TaxonInfoSize,
 } from 'components/taxon/taxon-info/taxon-info'
+import { useFieldguideCategory } from 'data-services/hooks/species/useFieldguideCategory'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { InfoBlock } from 'design-system/components/info-block/info-block'
-import { useMemo } from 'react'
-import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -18,38 +14,33 @@ import styles from './species-details.module.scss'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
-
-  const image = useMemo(() => {
-    if (species.occurrences.length) {
-      const occurrenceInfo = species.getOccurrenceInfo(species.occurrences[0])
-      return occurrenceInfo?.image.src
-    }
-  }, [species])
-
-  const blueprintItems = useMemo(
-    () =>
-      species.occurrences.length
-        ? species.occurrences
-            .map((id) => species.getOccurrenceInfo(id))
-            .filter((item): item is BlueprintItem => !!item)
-            .map((item) => ({
-              ...item,
-              to: APP_ROUTES.OCCURRENCE_DETAILS({
-                projectId: projectId as string,
-                occurrenceId: item.id,
-              }),
-            }))
-        : [],
-    [species]
-  )
+  const { category, isLoading } = useFieldguideCategory(species.name)
 
   const fields = [
     {
+      label: 'Common name',
+      value: isLoading ? 'Loading...' : category?.common_name,
+    },
+    {
+      label: 'Scientific name',
+      value: species.name,
+    },
+    ...species.ranks
+      .map(({ rank, name, id }) => ({
+        label: rank,
+        value: name,
+        to: getAppRoute({
+          to: APP_ROUTES.TAXON_DETAILS({
+            projectId: projectId as string,
+            taxonId: id,
+          }),
+          keepSearchParams: true,
+        }),
+      }))
+      .reverse(),
+    {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
-      value:
-        species.numOccurrences !== undefined
-          ? species.numOccurrences
-          : 'View all',
+      value: 'View all',
       to: getAppRoute({
         to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
         filters: { taxon: species.id },
@@ -64,9 +55,6 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
 
   return (
     <div className={styles.wrapper}>
-      <Helmet>
-        <meta name="og:image" content={image} />
-      </Helmet>
       <div className={styles.header}>
         <TaxonInfo
           taxon={species}
@@ -91,7 +79,10 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection items={blueprintItems} />
+            <FieldguideImages
+              categoryId={category?.id}
+              images={category?.cover_image ? [category?.cover_image] : []}
+            />
           </div>
         </div>
       </div>

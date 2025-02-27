@@ -2088,6 +2088,17 @@ class OccurrenceQuerySet(models.QuerySet):
             "identifications__user",
         )
 
+    def unique_taxa(self, project: Project | None = None) -> models.QuerySet:
+        qs = self
+        if project:
+            qs = self.filter(project=project)
+        qs = (
+            qs.filter(determination__isnull=False, event__isnull=False)
+            .order_by("determination_id")
+            .distinct("determination_id")
+        )
+        return qs
+
 
 class OccurrenceManager(models.Manager):
     def get_queryset(self) -> OccurrenceQuerySet:
@@ -2114,7 +2125,7 @@ class Occurrence(BaseModel):
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
-    objects = OccurrenceManager()
+    objects: OccurrenceManager = OccurrenceManager()
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
@@ -2269,6 +2280,11 @@ class Occurrence(BaseModel):
     class Meta:
         ordering = ["-determination_score"]
 
+        indexes = [
+            # Composite index on the determination field, filtered by project
+            models.Index(fields=["project", "determination"])
+        ]
+
 
 def update_occurrence_determination(
     occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
@@ -2345,7 +2361,8 @@ class TaxaManager(models.Manager):
     def get_queryset(self):
         # Prefetch parent and parents
         # return super().get_queryset().select_related("parent").prefetch_related("parents")
-        return super().get_queryset().select_related("parent")
+        # @TODO Now using cached parents_json instead of parent, update everywhere
+        return super().get_queryset()
 
     def add_genus_parents(self):
         """Add direct genus parents to all species that don't have them, based on the scientific name.

@@ -20,6 +20,17 @@
 .licenseInfoContent {
   padding: 20px;
   text-align: center;
+
+  p {
+    @include paragraph-small();
+    color: $color-neutral-300;
+    margin: 0;
+
+    a {
+      font-weight: 600;
+      color: $color-primary-1-600;
+    }
+  }
 }
 
 .blueprintContent {
