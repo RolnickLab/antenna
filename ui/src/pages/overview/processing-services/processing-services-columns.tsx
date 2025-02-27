@@ -12,7 +12,7 @@ import { PopulateProcessingService } from './processing-services-actions'
 
 export const columns: (
   projectId: string
-) => TableColumn<ProcessingService>[] = () => [
+) => TableColumn<ProcessingService>[] = (projectId: string) => [
   {
     id: 'id',
     sortField: 'id',
@@ -25,7 +25,11 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: ProcessingService) => (
       <BasicTableCell>
-        <ProcessingServiceDetailsDialog id={item.id} name={item.name} />
+        <ProcessingServiceDetailsDialog
+          id={item.id}
+          projectId={projectId}
+          name={item.name}
+        />
       </BasicTableCell>
     ),
   },
