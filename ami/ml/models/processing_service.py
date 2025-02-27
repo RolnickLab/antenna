@@ -9,6 +9,7 @@ from django.db import models
 
 from ami.base.models import BaseModel
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
+from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,15 @@ class ProcessingService(BaseModel):
                 )
                 created = True
 
-            pipeline.projects.add(*self.projects.all())
+            for project in self.projects.all():
+                pipeline_project_config = ProjectPipelineConfig.objects.create(
+                    pipeline=pipeline,
+                    project=project,
+                    enabled=True,  # @TODO: How to get this value?
+                    default_parameters={},  # @TODO: How to get this value?
+                )
+                pipeline_project_config.save()
+
             self.pipelines.add(pipeline)
 
             if created:
