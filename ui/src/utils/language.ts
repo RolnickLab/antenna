@@ -428,7 +428,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
-  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing Services',
+  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing services',
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',
