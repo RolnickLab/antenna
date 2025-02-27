@@ -22,18 +22,6 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     ),
   },
   {
-    id: 'created-at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    sortField: 'created_at',
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.createdAt} />,
-  },
-  {
-    id: 'updated-at',
-    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
-    sortField: 'updated_at',
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
-  },
-  {
     id: 'processing-services-online',
     name: 'Processing services online',
     sortField: 'processing_services_online',
@@ -48,5 +36,17 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     renderCell: (item: Pipeline) => (
       <BasicTableCell value={item.processingServicesOnlineLastChecked} />
     ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Pipeline) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
   },
 ]
