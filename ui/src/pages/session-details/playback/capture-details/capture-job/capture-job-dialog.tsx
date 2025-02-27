@@ -9,16 +9,16 @@ import { STRING, translate } from 'utils/language'
 
 export const CaptureJobDialog = ({ id }: { id: string }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const { job, isLoading, isFetching, error } = useJobDetails(id)
+  const { job, isLoading, isFetching, error } = useJobDetails(id, isOpen)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Tooltip content={job?.description ?? `Job ${id}`}>
+      <Tooltip content="Job details">
         <div>
           <Dialog.Trigger>
             <Button
               size="icon"
-              className="w-8 h-8 !bg-neutral-700 text-neutral-200"
+              className="rounded-md !bg-neutral-700 text-neutral-200"
             >
               <EyeIcon className="w-4 h-4" />
             </Button>

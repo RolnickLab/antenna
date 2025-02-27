@@ -5,12 +5,9 @@ import { FilterProps } from './types'
 
 export const CollectionFilter = ({ value, onAdd }: FilterProps) => {
   const { projectId } = useParams()
-  const { collections = [], isLoading } = useCollections(
-    {
-      projectId: projectId as string,
-    },
-    0
-  )
+  const { collections = [], isLoading } = useCollections({
+    projectId: projectId as string,
+  })
 
   return (
     <Select.Root
