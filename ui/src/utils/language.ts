@@ -83,6 +83,7 @@ export enum STRING {
   FIELD_LABEL_JOBS,
   FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
+  FIELD_LABEL_LICENSE,
   FIELD_LABEL_LOCATION,
   FIELD_LABEL_LOGS,
   FIELD_LABEL_LONGITUDE,
@@ -144,6 +145,7 @@ export enum STRING {
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
   MESSAGE_IMAGE_TOO_BIG,
+  MESSAGE_LICENSE_REQUIRED,
   MESSAGE_NO_ACCOUNT_YET,
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS,
@@ -314,6 +316,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_JOBS]: 'Jobs',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
+  [STRING.FIELD_LABEL_LICENSE]: 'Data licensing',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
   [STRING.FIELD_LABEL_LOGS]: 'Logs',
   [STRING.FIELD_LABEL_LONGITUDE]: 'Longitude',
@@ -398,6 +401,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_IMAGE_SIZE]:
     'The image must smaller than {{value}} {{unit}}.',
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
+  [STRING.MESSAGE_LICENSE_REQUIRED]:
+    'Open source license required until the platform supports closed-access projects.',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
   [STRING.MESSAGE_NO_RESULTS]: 'No results to show.',
