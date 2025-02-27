@@ -1341,11 +1341,7 @@ class TestRolePermissions(APITestCase):
         # Step 5: Unassign Role and Verify Permissions are Revoked
         if role_class:
             role_class.unassign_user(user, self.project)
-
-            # if user is the project manager unassign the basic member role as well
-            if role_class == ProjectManager:
-                BasicMember.unassign_user(user, project=self.project)
-
+            BasicMember.unassign_user(user, project=self.project)
             self.client.force_authenticate(user=user)
 
             for entity, actions in permissions_map.items():
@@ -1369,6 +1365,7 @@ class TestRolePermissions(APITestCase):
             response = self.client.post(endpoints["capture_star"])
             logger.info(f"star capture response: {response.json()}")
             logger.info(f"Testing {role_class} for star capture permission after role unassignment")
+            logger.info(f"{role_class} {user} user permissions: {get_perms(user, self.project)}")
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
             response = self.client.post(endpoints["capture_unstar"])
