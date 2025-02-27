@@ -94,6 +94,7 @@ def update_project_groups(sender, instance, **kwargs):
         if last_underscore_index != -1:
             role_name_start_index = last_underscore_index + 1
             role = group.name[role_name_start_index:]  # Extract role name after the last `_`
+            # @TODO : Refactor after adding the project <-> Group formal relationship
             new_group_name = f"{prefix}{instance.name}_{role}"
 
             # Check if a group with the new name already exists

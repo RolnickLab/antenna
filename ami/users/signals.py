@@ -34,6 +34,7 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
     try:
         with transaction.atomic():  # Ensure DB consistency
             for group in Group.objects.filter(pk__in=pk_set):
+                # @TODO : Refactor after adding the project <-> Group formal relationship
                 parts = group.name.split("_")  # Expected format: {project_id}_{project_name}_{Role}
 
                 try:

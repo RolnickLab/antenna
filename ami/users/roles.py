@@ -14,6 +14,7 @@ class Role:
 
     permissions = {Project.Permissions.VIEW}
 
+    # @TODO : Refactor after adding the project <-> Group formal relationship
     @classmethod
     def get_group_name(cls, project):
         """
