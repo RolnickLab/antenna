@@ -35,7 +35,7 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
   },
   {
     id: 'processing-services-online',
-    name: 'Processing Services Online',
+    name: 'Processing services online',
     sortField: 'processing_services_online',
     renderCell: (item: Pipeline) => (
       <BasicTableCell value={item.processingServicesOnline} />
@@ -43,7 +43,7 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
   },
   {
     id: 'processing-services-online-last-checked',
-    name: 'Status Last Checked',
+    name: 'Status last checked',
     sortField: 'processing_services_online_last_checked',
     renderCell: (item: Pipeline) => (
       <BasicTableCell value={item.processingServicesOnlineLastChecked} />
