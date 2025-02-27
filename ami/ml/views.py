@@ -8,9 +8,10 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import SourceImage
-from ami.utils.requests import get_active_project, project_id_doc_param
+from ami.utils.requests import project_id_doc_param
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
@@ -25,7 +26,7 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
-class AlgorithmViewSet(DefaultViewSet):
+class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows algorithm (ML models) to be viewed or edited.
     """
@@ -58,7 +59,7 @@ class AlgorithmCategoryMapViewSet(DefaultViewSet):
     ]
 
 
-class PipelineViewSet(DefaultViewSet):
+class PipelineViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows pipelines to be viewed or edited.
     """
@@ -74,7 +75,7 @@ class PipelineViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(projects=project)
         return query_set
@@ -102,7 +103,7 @@ class PipelineViewSet(DefaultViewSet):
         return Response(results.dict())
 
 
-class ProcessingServiceViewSet(DefaultViewSet):
+class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows processing services to be viewed or edited.
     """
@@ -114,7 +115,7 @@ class ProcessingServiceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(projects=project)
         return query_set

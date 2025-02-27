@@ -24,9 +24,22 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly
+from ami.base.permissions import (
+    CanDeleteIdentification,
+    CanPopulateSourceImageCollection,
+    CanStarSourceImage,
+    CanUpdateIdentification,
+    DeploymentCRUDPermission,
+    DeviceCRUDPermission,
+    IsActiveStaffOrReadOnly,
+    ProjectCRUDPermission,
+    S3StorageSourceCRUDPermission,
+    SiteCRUDPermission,
+    SourceImageCollectionCRUDPermission,
+)
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
-from ami.utils.requests import get_active_classification_threshold, get_active_project, project_id_doc_param
+from ami.base.views import ProjectMixin
+from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -104,7 +117,15 @@ class DefaultViewSetMixin:
 
 
 class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
-    pass
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Create instance but do not save
+        instance = serializer.Meta.model(**serializer.validated_data)
+        self.check_object_permissions(request, instance)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
@@ -115,7 +136,7 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
 
-class ProjectViewSet(DefaultViewSet):
+class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows projects to be viewed or edited.
     """
@@ -123,6 +144,7 @@ class ProjectViewSet(DefaultViewSet):
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
+    permission_classes = [ProjectCRUDPermission]
 
     def get_queryset(self):
         qs: QuerySet = super().get_queryset()
@@ -146,6 +168,7 @@ class ProjectViewSet(DefaultViewSet):
             return ProjectSerializer
 
     def perform_create(self, serializer):
+        super().perform_create(serializer)
         # Check if user is authenticated
         if not self.request.user or not self.request.user.is_authenticated:
             raise PermissionDenied("You must be authenticated to create a project.")
@@ -170,7 +193,7 @@ class ProjectViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class DeploymentViewSet(DefaultViewSet):
+class DeploymentViewSet(DefaultViewSet, ProjectMixin):
     """
     A model viewset that uses different serializers
     for the list and detail views.
@@ -188,6 +211,8 @@ class DeploymentViewSet(DefaultViewSet):
         "last_date",
     ]
 
+    permission_classes = [DeploymentCRUDPermission]
+
     def get_serializer_class(self):
         """
         Return different serializers for list and detail views.
@@ -199,7 +224,7 @@ class DeploymentViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             qs = qs.filter(project=project)
         num_example_captures = 10
@@ -250,7 +275,7 @@ class DeploymentViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class EventViewSet(DefaultViewSet):
+class EventViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows events to be viewed or edited.
     """
@@ -282,7 +307,7 @@ class EventViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             qs = qs.filter(project=project)
         qs = qs.filter(deployment__isnull=False)
@@ -448,6 +473,7 @@ class SourceImageViewSet(DefaultViewSet):
         "deployment__name",
         "event__start",
     ]
+    permission_classes = [CanStarSourceImage]
 
     def get_serializer_class(self):
         """
@@ -594,7 +620,7 @@ class SourceImageViewSet(DefaultViewSet):
             raise api_exceptions.ValidationError(detail="Source image must be associated with a project")
 
 
-class SourceImageCollectionViewSet(DefaultViewSet):
+class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for viewing collections or samples of source images.
     """
@@ -606,7 +632,10 @@ class SourceImageCollectionViewSet(DefaultViewSet):
         .prefetch_related("jobs")
     )
     serializer_class = SourceImageCollectionSerializer
-
+    permission_classes = [
+        CanPopulateSourceImageCollection,
+        SourceImageCollectionCRUDPermission,
+    ]
     filterset_fields = ["method"]
     ordering_fields = [
         "created_at",
@@ -621,7 +650,7 @@ class SourceImageCollectionViewSet(DefaultViewSet):
     def get_queryset(self) -> QuerySet:
         classification_threshold = get_active_classification_threshold(self.request)
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(
@@ -734,7 +763,7 @@ class SourceImageUploadViewSet(DefaultViewSet):
     pagination_class.default_limit = 20
 
 
-class DetectionViewSet(DefaultViewSet):
+class DetectionViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows detections to be viewed or edited.
     """
@@ -752,6 +781,10 @@ class DetectionViewSet(DefaultViewSet):
             return DetectionListSerializer
         else:
             return DetectionSerializer
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     # def get_queryset(self):
     #     """
@@ -948,7 +981,7 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
-class OccurrenceViewSet(DefaultViewSet):
+class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
     """
@@ -997,7 +1030,7 @@ class OccurrenceViewSet(DefaultViewSet):
             return OccurrenceSerializer
 
     def get_queryset(self) -> QuerySet:
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         qs = super().get_queryset()
         if project:
             qs = qs.filter(project=project)
@@ -1033,7 +1066,7 @@ class OccurrenceViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class TaxonViewSet(DefaultViewSet):
+class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
     """
@@ -1120,7 +1153,7 @@ class TaxonViewSet(DefaultViewSet):
         """
 
         occurrence_id = self.request.query_params.get("occurrence")
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
             "occurrences__deployment"
         )
@@ -1257,10 +1290,6 @@ class TaxonViewSet(DefaultViewSet):
 
         return qs
 
-    @extend_schema(parameters=[project_id_doc_param])
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
     # def retrieve(self, request: Request, *args, **kwargs) -> Response:
     #     """
     #     Override the serializer to include the recursive occurrences count
@@ -1269,6 +1298,9 @@ class TaxonViewSet(DefaultViewSet):
     #     taxon.occurrences_count = taxon.occurrences_count_recursive()  # type: ignore
     #     response = Response(TaxonSerializer(taxon, context={"request": request}).data)
     #     return response
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class ClassificationViewSet(DefaultViewSet):
@@ -1305,7 +1337,7 @@ class ClassificationViewSet(DefaultViewSet):
             return ClassificationSerializer
 
 
-class SummaryView(GenericAPIView):
+class SummaryView(GenericAPIView, ProjectMixin):
     permission_classes = [IsActiveStaffOrReadOnly]
 
     @extend_schema(parameters=[project_id_doc_param])
@@ -1313,7 +1345,7 @@ class SummaryView(GenericAPIView):
         """
         Return counts of all models.
         """
-        project = get_active_project(request)
+        project = self.get_active_project()
         confidence_threshold = get_active_classification_threshold(request)
         if project:
             data = {
@@ -1442,15 +1474,22 @@ class IdentificationViewSet(DefaultViewSet):
         "updated_at",
         "user",
     ]
+    permission_classes = [CanUpdateIdentification, CanDeleteIdentification]
 
     def perform_create(self, serializer):
         """
         Set the user to the current user.
         """
+        # Get an instance for the model without saving
+        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)
+
+        # Check permissions before saving
+        self.check_object_permissions(self.request, obj)
+
         serializer.save(user=self.request.user)
 
 
-class SiteViewSet(DefaultViewSet):
+class SiteViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows sites to be viewed or edited.
     """
@@ -1463,10 +1502,11 @@ class SiteViewSet(DefaultViewSet):
         "updated_at",
         "name",
     ]
+    permission_classes = [SiteCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         return query_set
@@ -1476,7 +1516,7 @@ class SiteViewSet(DefaultViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class DeviceViewSet(DefaultViewSet):
+class DeviceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows devices to be viewed or edited.
     """
@@ -1489,10 +1529,11 @@ class DeviceViewSet(DefaultViewSet):
         "updated_at",
         "name",
     ]
+    permission_classes = [DeviceCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         return query_set
@@ -1507,7 +1548,7 @@ class StorageSourceConnectionTestSerializer(serializers.Serializer):
     regex_filter = serializers.CharField(required=False, allow_null=True)
 
 
-class StorageSourceViewSet(DefaultViewSet):
+class StorageSourceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows storage sources to be viewed or edited.
     """
@@ -1520,17 +1561,14 @@ class StorageSourceViewSet(DefaultViewSet):
         "updated_at",
         "name",
     ]
+    permission_classes = [S3StorageSourceCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
+        project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
         return query_set
-
-    @extend_schema(parameters=[project_id_doc_param])
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], name="test", serializer_class=StorageSourceConnectionTestSerializer)
     def test(self, request: Request, pk=None) -> Response:
@@ -1561,3 +1599,7 @@ class StorageSourceViewSet(DefaultViewSet):
                     "code": result.error_code,
                 },
             )
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
