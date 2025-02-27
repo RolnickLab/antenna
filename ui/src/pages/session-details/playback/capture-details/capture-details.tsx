@@ -4,13 +4,9 @@ import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
 import { Job } from 'data-services/models/job'
-import {
-  IconButton,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { Select } from 'nova-ui-kit'
+import { ExternalLinkIcon, HeartIcon, Loader2Icon } from 'lucide-react'
+import { Button, buttonVariants, Select } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -43,15 +39,14 @@ export const CaptureDetails = ({
         )}
         <a
           href={capture.url}
-          className={styles.link}
+          className={classNames(
+            buttonVariants({ size: 'icon' }),
+            'rounded-md !bg-neutral-700 text-neutral-200'
+          )}
           rel="noreferrer"
           target="_blank"
-          tabIndex={-1}
         >
-          <IconButton
-            icon={IconType.ExternalLink}
-            theme={IconButtonTheme.Neutral}
-          />
+          <ExternalLinkIcon className="w-4 h-4" />
         </a>
       </div>
       <div className={styles.infoWrapper}>
@@ -160,13 +155,21 @@ const StarButton = ({
 
   return (
     <Tooltip content={tooltipContent}>
-      <IconButton
-        icon={isStarred ? IconType.HeartFilled : IconType.Heart}
+      <Button
+        className="rounded-md !bg-neutral-700 text-neutral-200"
         disabled={!project?.canUpdate}
-        loading={isLoading || captureFetching}
-        theme={IconButtonTheme.Neutral}
+        size="icon"
         onClick={() => starCapture()}
-      />
+      >
+        {isLoading || captureFetching ? (
+          <Loader2Icon className="w-4 h-4 animate-spin" />
+        ) : (
+          <HeartIcon
+            className="w-4 h-4 transition-colors"
+            fill={isStarred ? 'currentColor' : 'transparent'}
+          />
+        )}
+      </Button>
     </Tooltip>
   )
 }

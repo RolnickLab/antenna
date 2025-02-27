@@ -18,7 +18,7 @@ export const CaptureJobDialog = ({ id }: { id: string }) => {
           <Dialog.Trigger>
             <Button
               size="icon"
-              className="w-8 h-8 !bg-neutral-700 text-neutral-200"
+              className="rounded-md !bg-neutral-700 text-neutral-200"
             >
               <EyeIcon className="w-4 h-4" />
             </Button>
