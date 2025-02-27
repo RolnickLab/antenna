@@ -15,17 +15,26 @@ class Role:
     permissions = {Project.Permissions.VIEW}
 
     @classmethod
+    def get_group_name(cls, project):
+        """
+        Construct the name of the group that manages a role for a given project.
+        """
+        return f"{project.pk}_{project.name}_{cls.__name__}"
+
+    @classmethod
     def assign_user(cls, user, project):
         # Get or create the Group
         # @TODO Make the relationship between the group and the project more formal (use a many-to-many field)
-        group_name = f"{project.pk}_{project.name}_{cls.__name__}"
+        group_name = cls.get_group_name(project)
         group, created = Group.objects.get_or_create(name=group_name)
+        if created:
+            logger.info(f"Created permission group {group_name} for project {project}")
         # Add user to group
         user.groups.add(group)
 
     @classmethod
     def unassign_user(cls, user, project):
-        group_name = f"{project.pk}_{project.name}_{cls.__name__}"
+        group_name = cls.get_group_name(project)
         group = Group.objects.get(name=group_name)
         # remove user from group
         user.groups.remove(group)
@@ -33,7 +42,7 @@ class Role:
     @classmethod
     def has_role(cls, user, project):
         """Checks if the user has the role permissions on the given project."""
-        group_name = f"{project.pk}_{project.name}_{cls.__name__}"
+        group_name = cls.get_group_name(project)
         return user.groups.filter(name=group_name).exists()
 
     @staticmethod
