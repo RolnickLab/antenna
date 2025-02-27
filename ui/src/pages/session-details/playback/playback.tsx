@@ -75,6 +75,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
               </span>
               <ThresholdSlider />
             </div>
+            <span className={styles.label}>Preferences</span>
             <Checkbox
               id="show-detections-below-threshold"
               label="Show detections below threshold"

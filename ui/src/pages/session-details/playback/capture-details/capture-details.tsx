@@ -3,6 +3,7 @@ import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
+import { Job } from 'data-services/models/job'
 import {
   IconButton,
   IconButtonTheme,
@@ -17,7 +18,8 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useUser } from 'utils/user/userContext'
 import styles from './capture-details.module.scss'
-import { CaptureJob } from './capture-job/capture-job'
+import { CaptureJobDialog } from './capture-job/capture-job-dialog'
+import { ProcessNow } from './capture-job/process-now'
 
 export const CaptureDetails = ({
   capture,
@@ -53,69 +55,84 @@ export const CaptureDetails = ({
         </a>
       </div>
       <div className={styles.infoWrapper}>
-        <div>
-          <span className={styles.label}>
-            {translate(STRING.FIELD_LABEL_TIMESTAMP)}
-          </span>
-          <span className={styles.value}>{capture.dateTimeLabel}</span>
+        <div className="flex items-start gap-8">
+          <div>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_TIMESTAMP)}
+            </span>
+            <span className={styles.value}>{capture.dateTimeLabel}</span>
+          </div>
+          <div>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_SIZE)}
+            </span>
+            <span className={styles.value}>{capture.sizeLabel}</span>
+          </div>
         </div>
-        <div>
-          <span className={styles.label}>
-            {translate(STRING.FIELD_LABEL_SIZE)}
-          </span>
-          <span className={styles.value}>{capture.sizeLabel}</span>
-        </div>
-        {user.loggedIn && (
+        {user.loggedIn ? (
           <div>
             <span className={styles.label}>
               {translate(STRING.FIELD_LABEL_PROCESS)}
             </span>
             <JobControls capture={capture} />
           </div>
-        )}
-        <div>
-          <span className={styles.label}>
-            {translate(STRING.FIELD_LABEL_JOBS)}
-          </span>
-          <Link
-            to={getAppRoute({
-              to: APP_ROUTES.JOBS({
-                projectId: projectId as string,
-              }),
-              filters: {
-                source_image_single: capture.id,
-              },
-            })}
-          >
-            <span className={classNames(styles.value, styles.bubble)}>
-              {capture.numJobs}
+        ) : null}
+        {user.loggedIn && capture.currentJob ? (
+          <div>
+            <span className={styles.label}>Latest job status</span>
+            <JobDetails job={capture.currentJob} />
+          </div>
+        ) : null}
+        <div className="flex items-start gap-8">
+          <div>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_JOBS)}
             </span>
-          </Link>
-        </div>
-        <div>
-          <span className={styles.label}>
-            {translate(STRING.FIELD_LABEL_OCCURRENCES)}
-          </span>
-          <Link
-            to={getAppRoute({
-              to: APP_ROUTES.OCCURRENCES({
-                projectId: projectId as string,
-              }),
-              filters: {
-                detections__source_image: capture.id,
-              },
-            })}
-          >
-            <span className={classNames(styles.value, styles.bubble)}>
-              {capture.numOccurrences}
+            <Link
+              to={getAppRoute({
+                to: APP_ROUTES.JOBS({
+                  projectId: projectId as string,
+                }),
+                filters: {
+                  source_image_single: capture.id,
+                },
+              })}
+            >
+              <span className={classNames(styles.value, styles.bubble)}>
+                {capture.numJobs}
+              </span>
+            </Link>
+          </div>
+          <div>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_OCCURRENCES)}
             </span>
-          </Link>
-        </div>
-        <div>
-          <span className={styles.label}>
-            {translate(STRING.FIELD_LABEL_TAXA)}
-          </span>
-          <span className={styles.value}>{capture.numTaxa}</span>
+            <Link
+              to={getAppRoute({
+                to: APP_ROUTES.OCCURRENCES({
+                  projectId: projectId as string,
+                }),
+                filters: {
+                  detections__source_image: capture.id,
+                },
+              })}
+            >
+              <span className={classNames(styles.value, styles.bubble)}>
+                {capture.numOccurrences}
+              </span>
+            </Link>
+          </div>
+          <div>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_TAXA)}
+            </span>
+            <span
+              className={classNames(styles.value, styles.bubble)}
+              style={{ backgroundColor: 'transparent', border: 'none' }}
+            >
+              {capture.numTaxa}
+            </span>
+          </div>
         </div>
       </div>
     </>
@@ -159,16 +176,29 @@ const JobControls = ({ capture }: { capture?: Capture }) => {
 
   return (
     <div className={styles.jobControls}>
-      <div className={styles.pipelinesPickerContainer}>
-        <PipelinesPicker
-          value={selectedPipelineId}
-          onValueChange={setSelectedPipelineId}
-        />
-      </div>
-      <CaptureJob capture={capture} pipelineId={selectedPipelineId} />
+      <PipelinesPicker
+        value={selectedPipelineId}
+        onValueChange={setSelectedPipelineId}
+      />
+      <ProcessNow capture={capture} pipelineId={selectedPipelineId} />
     </div>
   )
 }
+
+const JobDetails = ({ job }: { job: Job }) => (
+  <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center gap-2">
+      <div
+        className="w-2 h-2 rounded-full"
+        style={{ backgroundColor: job.status.color }}
+      />
+      <span className={classNames(styles.value, 'pt-0.5')}>
+        {job.status.label}
+      </span>
+    </div>
+    <CaptureJobDialog id={job.id} />
+  </div>
+)
 
 const PipelinesPicker = ({
   value,

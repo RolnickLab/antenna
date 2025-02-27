@@ -13,7 +13,7 @@ export const CaptureJobDialog = ({ id }: { id: string }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Tooltip content={job?.description ?? `Job ${id}`}>
+      <Tooltip content="Job details">
         <div>
           <Dialog.Trigger>
             <Button
