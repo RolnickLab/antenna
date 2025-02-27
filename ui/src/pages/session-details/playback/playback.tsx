@@ -6,7 +6,7 @@ import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
@@ -23,6 +23,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
     userPreferences: { scoreThreshold },
   } = useUserPreferences()
   const { timeline = [] } = useSessionTimeline(session.id)
+  const [poll, setPoll] = useState(false)
   const [showDetections, setShowDetections] = useState(true)
   const [showDetectionsBelowThreshold, setShowDetectionsBelowThreshold] =
     useState(false)
@@ -33,8 +34,18 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
     session.firstCapture?.id
   )
   const { capture: activeCapture } = useCaptureDetails(
-    activeCaptureId as string
+    activeCaptureId as string,
+    poll
   )
+
+  useEffect(() => {
+    // When the active capture has a job in progress, we want to poll the endpoint so we can show any updates from the job
+    if (activeCapture?.hasJobInProgress) {
+      setPoll(true)
+    } else {
+      setPoll(false)
+    }
+  }, [activeCapture])
 
   const detections = useMemo(() => {
     if (!activeCapture?.detections) {
