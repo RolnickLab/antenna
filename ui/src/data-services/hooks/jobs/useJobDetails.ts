@@ -9,7 +9,8 @@ const REFETCH_INTERVAL = 10000 // Refetch every 10 second
 const convertServerRecord = (record: ServerJob) => new JobDetails(record)
 
 export const useJobDetails = (
-  id: string
+  id: string,
+  enabled?: boolean
 ): {
   job?: JobDetails
   isLoading: boolean
@@ -18,9 +19,10 @@ export const useJobDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerJobDetails>({
+      enabled,
       queryKey: [API_ROUTES.JOBS, id],
-      url: `${API_URL}/${API_ROUTES.JOBS}/${id}/`,
       refetchInterval: REFETCH_INTERVAL,
+      url: `${API_URL}/${API_ROUTES.JOBS}/${id}/`,
     })
 
   const job = useMemo(

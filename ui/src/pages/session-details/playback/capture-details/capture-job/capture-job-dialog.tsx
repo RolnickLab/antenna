@@ -9,7 +9,7 @@ import { STRING, translate } from 'utils/language'
 
 export const CaptureJobDialog = ({ id }: { id: string }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const { job, isLoading, isFetching, error } = useJobDetails(id)
+  const { job, isLoading, isFetching, error } = useJobDetails(id, isOpen)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
