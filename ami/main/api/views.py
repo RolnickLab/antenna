@@ -1110,7 +1110,7 @@ class TaxonViewSet(DefaultViewSet):
         else:
             return TaxonSerializer
 
-    def get_occurrence_filters(self) -> models.Q:
+    def get_occurrence_filters(self, project: Project) -> models.Q:
         """
         Filter taxa by when/where it has occurred.
 
@@ -1119,11 +1119,6 @@ class TaxonViewSet(DefaultViewSet):
         @TODO Consider using a custom filter class for this (see get_filter_name)
         @TODO Move this to a custom QuerySet manager on the Taxon model
         """
-
-        project = get_active_project(self.request)
-        if not project:
-            # Raise a 400 if no project is specified
-            raise api_exceptions.ValidationError(detail="A project must be specified")
 
         occurrence_id = self.request.query_params.get("occurrence")
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
@@ -1182,7 +1177,24 @@ class TaxonViewSet(DefaultViewSet):
         return qs
 
     def get_queryset(self) -> QuerySet:
-        occurrence_filters = self.get_occurrence_filters()
+        """
+        If a project is passed, only return taxa that have been observed.
+        Otherwise return all taxa t
+        """
+        qs = super().get_queryset()
+        project = get_active_project(self.request)
+
+        if project:
+            return self.get_taxa_observed(qs, project)
+        else:
+            return qs
+
+    def get_taxa_observed(self, qs: QuerySet, project: Project) -> QuerySet:
+        """
+        If a project is passed, only return taxa that have been observed.
+        Also add the number of occurrences and the last time it was detected.
+        """
+        occurrence_filters = self.get_occurrence_filters(project)
 
         # @TODO make this recursive into child taxa and cache
         occurrences_count = models.Subquery(
@@ -1208,7 +1220,7 @@ class TaxonViewSet(DefaultViewSet):
             output_field=models.DateTimeField(),
         )
 
-        return Taxon.objects.filter(
+        return qs.filter(
             models.Exists(
                 Occurrence.objects.filter(
                     occurrence_filters,
