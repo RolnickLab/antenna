@@ -1157,29 +1157,10 @@ class TaxonViewSet(DefaultViewSet):
 
         return filters
 
-    def add_filtered_occurrences(self, queryset: QuerySet, occurrence_filters: models.Q) -> QuerySet:
-        """
-        Add list of actual occurrences to a Taxon detail response.
-        """
-        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.filter(occurrence_filters)))
-        return qs
-
-    def zero_occurrences(self, queryset: QuerySet) -> QuerySet:
-        """
-        Return a queryset with zero occurrences but compatible with the original queryset.
-        """
-        qs = queryset.prefetch_related(Prefetch("occurrences", queryset=Occurrence.objects.none()))
-        qs = qs.annotate(
-            occurrences_count=models.Value(0),
-            # events_count=models.Value(0),
-            last_detected=models.Value(None, output_field=models.DateTimeField()),
-        )
-        return qs
-
     def get_queryset(self) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
-        Otherwise return all taxa t
+        Otherwise return all taxa that are active.
         """
         qs = super().get_queryset()
         project = get_active_project(self.request)
