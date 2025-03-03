@@ -495,6 +495,7 @@ class TaxonListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     # occurrence_images = serializers.SerializerMethodField()
     parents = TaxonNestedSerializer(read_only=True)
+    parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
 
     class Meta:
         model = Taxon
@@ -503,6 +504,7 @@ class TaxonListSerializer(DefaultSerializer):
             "name",
             "rank",
             # "parent",
+            "parent_id",
             "parents",
             "details",
             "occurrences_count",
