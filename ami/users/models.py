@@ -1,4 +1,4 @@
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, Group
 from django.db import models
 from django.db.models import CharField, EmailField
 from django.urls import reverse
@@ -42,3 +42,15 @@ class User(AbstractUser):
         """
         # @TODO return frontend URL, not API URL
         return reverse("api:user-detail", kwargs={"id": self.pk})
+
+
+class ProjectPermissionsGroup(models.Model):
+    """
+    Sibling model for Groups to manage Guardian permissions for projects.
+    """
+
+    group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name="project_permissions_group")
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="project_permissions_group")
+
+    def __str__(self) -> str:
+        return f"{self.group} - {self.project}"
