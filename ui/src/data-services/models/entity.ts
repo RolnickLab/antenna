@@ -15,10 +15,7 @@ export class Entity {
   }
 
   get canDelete(): boolean {
-    return (
-      this._data.user_permissions.includes(UserPermission.Delete) ||
-      this.canUpdate // TODO: Skip when BE is returning correct permissions
-    )
+    return this._data.user_permissions.includes(UserPermission.Delete)
   }
 
   get createdAt(): string {

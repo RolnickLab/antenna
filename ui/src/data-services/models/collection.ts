@@ -1,4 +1,5 @@
 import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
+import { UserPermission } from 'utils/user/types'
 import { Entity } from './entity'
 import { Job } from './job'
 
@@ -16,7 +17,10 @@ export class Collection extends Entity {
   }
 
   get canPopulate(): boolean {
-    return this.canUpdate && this._data.method !== 'starred'
+    return (
+      this._data.user_permissions.includes(UserPermission.Populate) &&
+      this._data.method !== 'starred'
+    )
   }
 
   get currentJob(): Job | undefined {
