@@ -20,11 +20,14 @@ export const Collections = () => {
   })
   const { pagination, setPage } = usePagination()
   const { collections, userPermissions, total, isLoading, isFetching, error } =
-    useCollections({
-      projectId,
-      pagination,
-      sort,
-    })
+    useCollections(
+      {
+        projectId,
+        pagination,
+        sort,
+      },
+      true
+    )
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (

@@ -1,6 +1,7 @@
 import { Deployment } from 'data-services/models/deployment'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
+import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
   CellTheme,
   ImageCellTheme,
@@ -50,6 +51,40 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
         })}
       >
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
+    ),
+  },
+  {
+    id: 'status',
+    name: 'Latest job status',
+    renderCell: (item: Deployment) => {
+      if (!item.currentJob) {
+        return <></>
+      }
+
+      return (
+        <StatusTableCell
+          color={item.currentJob.status.color}
+          details={item.currentJob.type.label}
+          label={item.currentJob.status.label}
+        />
+      )
+    },
+  },
+  {
+    id: 'jobs',
+    name: translate(STRING.FIELD_LABEL_JOBS),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.JOBS({ projectId }),
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
       </Link>
     ),
   },

@@ -13,12 +13,12 @@
 .infoWrapper {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
 }
 
 .jobControls {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   gap: 16px;
   margin-top: 4px;
 }
@@ -34,11 +34,12 @@
   text-transform: uppercase;
   font-weight: 600;
   color: $color-neutral-300;
+  margin-bottom: 2px;
 }
 
 .value {
   display: block;
-  @include paragraph-x-small();
+  @include paragraph-small();
   color: $color-generic-white;
 
   &.bubble {

@@ -1,6 +1,6 @@
 import { TaxonSearch } from 'components/taxon-search/taxon-search'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
-import { ChevronDownIcon, Loader2 } from 'lucide-react'
+import { ChevronDownIcon, Loader2Icon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -33,7 +33,7 @@ export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
           <>
             <span>{triggerLabel}</span>
             {isLoading && value ? (
-              <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+              <Loader2Icon className="h-4 w-4 ml-2 animate-spin" />
             ) : (
               <ChevronDownIcon className="h-4 w-4 ml-2" />
             )}
