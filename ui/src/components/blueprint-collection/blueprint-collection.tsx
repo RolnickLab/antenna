@@ -48,7 +48,9 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
             <span>{item.countLabel}</span>
           </span>
         ) : null}
-        <span className={styles.time}>{item.timeLabel}</span>
+        <span className="grow text-muted-foreground text-right">
+          {item.timeLabel}
+        </span>
       </div>
       <div className={styles.blueprintImage}>
         <img
@@ -84,7 +86,14 @@ const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
           </Tooltip.Provider>
         ) : null}
       </div>
-      <span className={styles.blueprintLabel}>{item.label}</span>
+      <span
+        className={classNames(
+          styles.blueprintLabel,
+          'body-small text-foreground'
+        )}
+      >
+        {item.label}
+      </span>
     </div>
   )
 }

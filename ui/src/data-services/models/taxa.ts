@@ -49,4 +49,8 @@ export class Taxon {
       return value1 - value2
     })
   }
+
+  get parents() {
+    return this.ranks
+  }
 }
