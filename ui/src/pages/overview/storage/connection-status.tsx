@@ -30,7 +30,12 @@ export const ConnectionStatus = ({
   const [lastUpdated, setLastUpdated] = useState<Date>()
 
   const update = async () => {
-    await testStorageConnection({ id: storageId, subdir, regex })
+    try {
+      await testStorageConnection({ id: storageId, subdir, regex })
+    } catch {
+      // Error handled in hook
+    }
+
     setLastUpdated(new Date())
   }
 
