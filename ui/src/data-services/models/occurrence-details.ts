@@ -53,6 +53,7 @@ export class OccurrenceDetails extends Occurrence {
     }
 
     this._humanIdentifications = this._occurrence.identifications
+      .filter((i: any) => !!i.user) // Workaround to avoid crash when the backend is not returning any user
       .sort(sortByDate)
       .map((i: any) => {
         const taxon = new Taxon(i.taxon)
