@@ -15,11 +15,11 @@ from django_pydantic_field import SchemaField
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
+from ami.exports.base import export_occurrences_to_csv, export_occurrences_to_dwc, export_occurrences_to_json
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.users.models import User
-from ami.utils.exports import create_dwc_archive, export_occurrences_to_json
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -631,68 +631,43 @@ class DataExportJob(JobType):
         # Determine the export format (default to JSON)
         export_format = job.result.get("format", "json")  # Assume 'json' if not specified
         job.logger.info(f"Export format selected: {export_format}")
+        # Retrieve occurrences from project
+        occurrences = job.project.occurrences.all()
+        if not occurrences.exists():
+            raise ValueError("No occurrences found for export")
 
-        # Progress Update (10%)
-        job.progress.update_stage(cls.key, status=JobState.STARTED, progress=0.10)
+        # Select and Execute the Appropriate Export Function
+        if export_format == "json":
+            file_path = export_occurrences_to_json(occurrences, job=job)
+        elif export_format == "csv":
+            file_path = export_occurrences_to_csv(occurrences, job=job)
+        elif export_format == "darwin_core":
+            file_path = export_occurrences_to_dwc(occurrences)
+        else:
+            raise ValueError(f"Invalid export format: {export_format}")
+
+        job.logger.info(f"Export completed: {file_path}")
+
+        #  Upload File to MinIO Storage
+        file_name = f"exports/{job.task_id}.{export_format}"
+        with open(file_path, "rb") as f:
+            default_storage.save(file_name, f)
+
+        file_url = default_storage.url(file_name)
+        job.logger.info(f"File uploaded to MinIO: {file_url}")
+
+        # Finalize Job
+        job.progress.update_stage(
+            cls.key,
+            status=JobState.SUCCESS,
+            progress=1,
+            file_url=file_url,
+        )
+
+        job.finished_at = datetime.datetime.now()
+        job.result = {"file_url": file_url}
+        job.update_status(JobState.SUCCESS, save=False)
         job.save()
-
-        try:
-            # Retrieve occurrences from project
-            occurrences = job.project.occurrences.all()
-            if not occurrences.exists():
-                raise ValueError("No occurrences found for export")
-
-            # Progress Update (30%)
-            job.progress.update_stage(cls.key, progress=0.30)
-            job.save()
-
-            # Select and Execute the Appropriate Export Function
-            if export_format == "json":
-                file_path = export_occurrences_to_json(occurrences)
-            elif export_format == "csv":
-                # file_path = export_occurrences_to_csv(occurrences)
-                pass
-            elif export_format == "darwin_core":
-                file_path = create_dwc_archive(occurrences)
-            else:
-                raise ValueError(f"Invalid export format: {export_format}")
-
-            job.logger.info(f"Export completed: {file_path}")
-
-            # Progress Update (60%)
-            job.progress.update_stage(cls.key, progress=0.60)
-            job.save()
-
-            #  Upload File to MinIO Storage
-            file_name = f"exports/{job.task_id}.{export_format}"
-            with open(file_path, "rb") as f:
-                default_storage.save(file_name, f)
-
-            file_url = default_storage.url(file_name)
-            job.logger.info(f"File uploaded to MinIO: {file_url}")
-
-            job.progress.update_stage(cls.key, progress=0.90)
-            job.save()
-
-            # Step 7: Finalize Job
-            job.progress.update_stage(
-                cls.key,
-                status=JobState.SUCCESS,
-                progress=1,
-                file_url=file_url,
-            )
-
-            job.finished_at = datetime.datetime.now()
-            job.result = {"file_url": file_url}
-            job.update_status(JobState.SUCCESS, save=False)
-            job.save()
-
-        except Exception as e:
-            job.logger.error(f"Error exporting occurrences: {e}")
-            job.progress.update_stage(cls.key, status=JobState.FAILURE, progress=1)
-            job.update_status(JobState.FAILURE)
-            job.finished_at = datetime.datetime.now()
-            job.save()
 
 
 class UnknownJobType(JobType):

@@ -1062,7 +1062,6 @@ class OccurrenceViewSet(DefaultViewSet):
         if not project:
             return Response({"error": "Project Id not provided or invalid"}, status=400)
 
-        # # Get filtered occurrences
         # query_set = self.get_queryset()
 
         # Create a job for export
