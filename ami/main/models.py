@@ -3003,9 +3003,12 @@ class SourceImageCollection(BaseModel):
         month_end: int | None = None,
         date_start: str | None = None,
         date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
 
+        if deployment_ids is not None:
+            qs = qs.filter(deployment__in=deployment_ids)
         if date_start is not None:
             qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
         if date_end is not None:

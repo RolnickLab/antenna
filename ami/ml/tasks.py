@@ -102,7 +102,7 @@ def check_processing_services_online():
         logger.info(f"Checking service {service}")
         try:
             status_response = service.get_status()
-            logger.info(status_response)
+            logger.debug(status_response)
         except Exception as e:
             logger.error(f"Error checking service {service}: {e}")
             continue
