@@ -212,7 +212,34 @@ class OccurrenceExportSerializer(DefaultExportSerializer):
         )
 
 
-class OccurrenceTabularSerializer(serializers.Serializer):
+class OccurrenceTabularSerializer(DefaultExportSerializer):
     """Serializer to format occurrences for tabular data export."""
 
-    pass
+    event_id = serializers.IntegerField(source="event.id", allow_null=True)
+    event_name = serializers.CharField(source="event.name", allow_null=True)
+    deployment_id = serializers.IntegerField(source="deployment.id", allow_null=True)
+    deployment_name = serializers.CharField(source="deployment.name", allow_null=True)
+    determination_id = serializers.IntegerField(source="determination.id", allow_null=True)
+    determination_name = serializers.CharField(source="determination.name", allow_null=True)
+    detections_count = serializers.IntegerField()
+    first_appearance_timestamp = serializers.DateTimeField()
+    duration = serializers.SerializerMethodField()
+
+    def get_duration(self, obj):
+        return obj.duration().total_seconds() if obj.duration else None
+
+    class Meta:
+        model = Occurrence
+        fields = [
+            "id",
+            "event_id",
+            "event_name",
+            "deployment_id",
+            "deployment_name",
+            "determination_id",
+            "determination_name",
+            "determination_score",
+            "detections_count",
+            "first_appearance_timestamp",
+            "duration",
+        ]

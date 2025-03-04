@@ -1,3 +1,4 @@
+import csv
 import json
 import logging
 import os
@@ -7,11 +8,10 @@ from collections.abc import Iterable
 import pandas as pd
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import QuerySet
 from dwcawriter import Archive, Table
 from rest_framework import serializers
 
-from ami.exports.serializers import OccurrenceExportSerializer
+from ami.exports.serializers import OccurrenceExportSerializer, OccurrenceTabularSerializer
 from ami.main.models import Occurrence
 
 logger = logging.getLogger(__name__)
@@ -162,7 +162,7 @@ def export_occurrences_to_dwc(occurrences: Iterable[Occurrence]):
     return archive_path
 
 
-def export_occurrences_to_json(occurrences: QuerySet, job, batch_size=1000):
+def export_occurrences_to_json(occurrences: models.QuerySet, job):
     """
     Export occurrences to a JSON file
     """
@@ -174,27 +174,57 @@ def export_occurrences_to_json(occurrences: QuerySet, job, batch_size=1000):
         first = True
         i = 0
 
-        for i, batch in enumerate(
-            get_data_in_batches(QuerySet=occurrences, Serializer=OccurrenceExportSerializer, batch_size=batch_size)
-        ):
+        for i, batch in enumerate(get_data_in_batches(QuerySet=occurrences, Serializer=OccurrenceExportSerializer)):
             json_data = json.dumps(batch, cls=DjangoJSONEncoder)
 
             # Write JSON object with correct formatting
             f.write(",\n" if not first else "")  # Add comma except for the first item
             f.write(json_data)
             first = False  # Update flag after first iteration
-            i += batch_size
+            i += len(batch)
             job.progress.update_stage("occurrence_export", progress=round(i / total, 2))
             job.save()
 
     return temp_file.name  # Return file path
 
 
-def export_occurrences_to_csv(occurrences, job):
+def export_occurrences_to_csv(occurrences: models.QuerySet, job):
     """
-    Export occurrences to a CSV file.
+    Export occurrences to a CSV file
     """
-    pass
+    # Create a temporary file for CSV output
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="", encoding="utf-8")
+
+    # Define the CSV column headers
+    field_names = [
+        "id",
+        "event_id",
+        "event_name",
+        "deployment_id",
+        "deployment_name",
+        "determination_id",
+        "determination_name",
+        "determination_score",
+        "detections_count",
+        "first_appearance_timestamp",
+        "duration",
+    ]
+
+    total = occurrences.count()
+
+    with open(temp_file.name, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=field_names)
+        writer.writeheader()
+
+        # Process occurrences in batches to optimize memory usage
+        for i, batch in enumerate(get_data_in_batches(occurrences, OccurrenceTabularSerializer)):
+            # Write each occurrence in the batch to CSV
+            for occurrence in batch:
+                writer.writerow(occurrence)
+            job.progress.update_stage("occurrence_export", progress=round(i / total, 2))
+            job.save()
+            i += len(batch)
+    return temp_file.name  # Return the file path
 
 
 def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.Serializer], batch_size=1000):
