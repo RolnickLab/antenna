@@ -493,7 +493,6 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    # occurrence_images = serializers.SerializerMethodField()
     parents = TaxonNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
 
@@ -503,7 +502,6 @@ class TaxonListSerializer(DefaultSerializer):
             "id",
             "name",
             "rank",
-            # "parent",
             "parent_id",
             "parents",
             "details",
@@ -703,7 +701,6 @@ class TaxonSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
-            # "detections_count",
             "events_count",
             "occurrences",
             "gbif_taxon_key",
