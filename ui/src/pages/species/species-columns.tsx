@@ -32,17 +32,6 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     ),
   },
   {
-    id: 'score',
-    sortField: 'best_determination_score',
-    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.scoreLabel} style={{ textAlign: 'right' }} />
-    ),
-  },
-  {
     id: 'occurrences',
     sortField: 'occurrences_count',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
@@ -62,6 +51,26 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
         />
       </Link>
     ),
+  },
+  {
+    id: 'score',
+    sortField: 'best_determination_score',
+    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <BasicTableCell value={item.scoreLabel} style={{ textAlign: 'right' }} />
+    ),
+  },
+  {
+    id: 'rank',
+    sortField: 'rank',
+    name: 'Taxon rank',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
   },
   {
     id: 'training-images',
