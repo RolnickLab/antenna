@@ -81,7 +81,7 @@ export class Occurrence {
   }
 
   get determinationVerified(): boolean {
-    return !!this._occurrence.determination_details.identification?.user
+    return !!this._occurrence.determination_details.identification
   }
 
   get determinationVerifiedBy() {
@@ -90,7 +90,7 @@ export class Occurrence {
 
     return verifiedBy
       ? { id: `${verifiedBy.id}`, name: verifiedBy.name }
-      : undefined
+      : { name: 'Unknown user' }
   }
 
   get durationLabel(): string | undefined {
@@ -142,7 +142,6 @@ export class Occurrence {
   userAgreed(userId: string): boolean {
     return this._occurrence.identifications?.some((identification: any) => {
       if (!identification.user) {
-        // Workaround to avoid crash when the backend is not returning any user
         return false
       }
 
