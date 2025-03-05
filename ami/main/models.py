@@ -1878,7 +1878,11 @@ class Classification(BaseModel):
     def top_n(self, n: int = 3) -> list[dict[str, "Taxon | float | None"]]:
         """Return top N taxa and scores for this classification."""
         if not self.category_map:
-            raise ValueError("Classification must have a category map to get top N.")
+            logger.warning(
+                f"Classification {self.pk}'s algrorithm ({self.algorithm_id} has no catgory map, "
+                "can't get top N predictions."
+            )
+            return []
 
         top_scored = self.top_scores_with_index(n)  # (index, score) pairs
         indexes = [idx for idx, _ in top_scored]
