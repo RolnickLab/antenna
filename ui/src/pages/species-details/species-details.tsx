@@ -47,9 +47,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
     {
       label: translate(STRING.FIELD_LABEL_OCCURRENCES),
       value:
-        species.numOccurrences !== undefined
-          ? species.numOccurrences
-          : 'View all',
+        species.numOccurrences !== null ? species.numOccurrences : 'View all',
       to: getAppRoute({
         to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
         filters: { taxon: species.id },

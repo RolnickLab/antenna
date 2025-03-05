@@ -56,7 +56,10 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           filters: { taxon: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
+        <BasicTableCell
+          value={item.numOccurrences || 'View all'}
+          theme={CellTheme.Bubble}
+        />
       </Link>
     ),
   },
