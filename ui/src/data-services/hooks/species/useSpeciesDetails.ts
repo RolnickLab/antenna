@@ -23,7 +23,9 @@ export const useSpeciesDetails = (
     useAuthorizedQuery<SpeciesDetails>({
       enabled: !!id,
       queryKey: [API_ROUTES.SPECIES, id],
-      url: `${API_URL}/${API_ROUTES.SPECIES}/${id}/?project=${projectId || ''}`,
+      url: `${API_URL}/${API_ROUTES.SPECIES}/${id}/?project_id=${
+        projectId || ''
+      }`,
     })
 
   const species = useMemo(
