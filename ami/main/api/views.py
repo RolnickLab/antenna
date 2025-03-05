@@ -1159,7 +1159,8 @@ class TaxonViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         """
-        If a project is passed, only return taxa that have been observed.
+        If a project is passed, only return taxa that have been observed
+        and add extra data about the occurrences.
         Otherwise return all taxa that are active.
         """
         qs = super().get_queryset()
@@ -1170,10 +1171,22 @@ class TaxonViewSet(DefaultViewSet):
             include_unobserved = True
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
-            return self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
-
+            qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
+            if self.action == "retrieve":
+                qs = qs.prefetch_related(
+                    Prefetch(
+                        "occurrences",
+                        queryset=Occurrence.objects.filter(self.get_occurrence_filters(project))[:1],
+                        to_attr="example_occurrences",
+                    )
+                )
         else:
-            return qs
+            # Add empty occurrences list to make the response consistent
+            qs = qs.annotate(example_occurrences=models.Value([], output_field=models.JSONField()))
+            # Set count to null to make it clear that it's not the total count
+            qs = qs.annotate(occurrences_count=models.Value(None, output_field=models.IntegerField()))
+            qs = qs.annotate(events_count=models.Value(None, output_field=models.IntegerField()))
+        return qs
 
     def get_taxa_observed(self, qs: QuerySet, project: Project, include_unobserved=False) -> QuerySet:
         """
