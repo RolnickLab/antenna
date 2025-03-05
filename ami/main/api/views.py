@@ -1166,11 +1166,16 @@ class TaxonViewSet(DefaultViewSet):
         project = get_active_project(self.request)
 
         if project:
-            return self.get_taxa_observed(qs, project)
+            # Allow showing detail views for unobserved taxa
+            include_unobserved = True
+            if self.action == "list":
+                include_unobserved = self.request.query_params.get("include_unobserved", False)
+            return self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
+
         else:
             return qs
 
-    def get_taxa_observed(self, qs: QuerySet, project: Project) -> QuerySet:
+    def get_taxa_observed(self, qs: QuerySet, project: Project, include_unobserved=False) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
@@ -1213,18 +1218,22 @@ class TaxonViewSet(DefaultViewSet):
             output_field=models.FloatField(),
         )
 
-        return qs.filter(
-            models.Exists(
-                Occurrence.objects.filter(
-                    occurrence_filters,
-                    determination_id=models.OuterRef("id"),
-                ),
-            ),
-        ).annotate(
+        qs = qs.annotate(
             occurrences_count=Coalesce(occurrences_count, 0),
             last_detected=last_detected,
             best_determination_score=best_score,
         )
+
+        if not include_unobserved:
+            qs = qs.filter(
+                models.Exists(
+                    Occurrence.objects.filter(
+                        occurrence_filters,
+                        determination_id=models.OuterRef("id"),
+                    ),
+                )
+            )
+        return qs
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
