@@ -510,7 +510,7 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences_count",
             "occurrences",
             "last_detected",
-            # "best_determination_score",
+            "best_determination_score",
             "created_at",
             "updated_at",
         ]
@@ -687,6 +687,7 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     # occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+    occurrences = serializers.SerializerMethodField()
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
@@ -704,9 +705,17 @@ class TaxonSerializer(DefaultSerializer):
             "occurrences_count",
             # "detections_count",
             "events_count",
-            # "occurrences",
+            "occurrences",
             "gbif_taxon_key",
         ]
+
+    def get_occurrences(self, obj):
+        """
+        Disable this nested list until it's optimized or the taxon page is redesigned.
+        @TODO remove this when the taxon page is redesigned.
+        """
+
+        return []
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):

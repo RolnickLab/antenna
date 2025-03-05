@@ -1056,7 +1056,7 @@ class TaxonViewSet(DefaultViewSet):
         "updated_at",
         "occurrences_count",
         "last_detected",
-        # "best_determination_score",
+        "best_determination_score",
         "name",
     ]
     search_fields = ["name", "parent__name"]
@@ -1201,6 +1201,18 @@ class TaxonViewSet(DefaultViewSet):
             output_field=models.DateTimeField(),
         )
 
+        # Get the best score using the determination_score field directly
+        best_score = models.Subquery(
+            Occurrence.objects.filter(
+                occurrence_filters,
+                determination_id=models.OuterRef("id"),
+            )
+            .values("determination_id")
+            .annotate(best_score=models.Max("determination_score"))
+            .values("best_score")[:1],
+            output_field=models.FloatField(),
+        )
+
         return qs.filter(
             models.Exists(
                 Occurrence.objects.filter(
@@ -1211,6 +1223,7 @@ class TaxonViewSet(DefaultViewSet):
         ).annotate(
             occurrences_count=Coalesce(occurrences_count, 0),
             last_detected=last_detected,
+            best_determination_score=best_score,
         )
 
     @extend_schema(parameters=[project_id_doc_param])

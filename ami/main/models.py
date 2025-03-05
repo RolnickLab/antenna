@@ -2670,7 +2670,11 @@ class Taxon(BaseModel):
         # This is handled by an annotation if we are filtering by project, deployment or event
         return None
 
-    def occurrence_images(
+    def occurrence_images(self, limit: int | None = 10) -> list[str]:
+        # This is handled by an annotation if we are filtering by project, deployment or event
+        return []
+
+    def get_occurrence_images(
         self,
         limit: int | None = 10,
         project_id: int | None = None,
