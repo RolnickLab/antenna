@@ -22,9 +22,11 @@ export const BlueprintCollection = ({ items }: { items: BlueprintItem[] }) => (
       [styles.empty]: items.length === 0,
     })}
   >
-    <div className={styles.licenseInfoContent}>
-      <LicenseInfo />
-    </div>
+    {items.length > 0 && (
+      <div className={styles.licenseInfoContent}>
+        <LicenseInfo />
+      </div>
+    )}
     <div className={styles.blueprintContent}>
       {items.map((item) => (
         <BlueprintItem key={item.id} item={item} />

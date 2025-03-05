@@ -38,7 +38,7 @@ export class Species extends Taxon {
   }
 
   get score(): number {
-    return this._species.best_determination_score
+    return this._species.best_determination_score || 0
   }
 
   get scoreLabel(): string {
