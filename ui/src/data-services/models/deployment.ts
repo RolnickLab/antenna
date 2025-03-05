@@ -1,14 +1,21 @@
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
+import { Job } from './job'
 
 export type ServerDeployment = any // TODO: Update this type
 
 export class Deployment {
+  private readonly _jobs: Job[] = []
+
   protected readonly _deployment: ServerDeployment
 
   public constructor(deployment: ServerDeployment) {
     this._deployment = deployment
+
+    if (this._deployment.jobs) {
+      this._jobs = this._deployment.jobs.map((job: any) => new Job(job))
+    }
   }
 
   get createdAt(): Date | undefined {
@@ -23,6 +30,19 @@ export class Deployment {
 
   get canUpdate(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Update)
+  }
+
+  get currentJob(): Job | undefined {
+    if (!this._jobs.length) {
+      return
+    }
+
+    return this._jobs.sort((j1: Job, j2: Job) => {
+      const date1 = new Date(j1.updatedAt as string)
+      const date2 = new Date(j2.updatedAt as string)
+
+      return date2.getTime() - date1.getTime()
+    })[0]
   }
 
   get id(): string {
@@ -51,6 +71,10 @@ export class Deployment {
 
   get numImages(): number {
     return this._deployment.captures_count
+  }
+
+  get numJobs(): number | undefined {
+    return this._deployment.jobs?.length
   }
 
   get numOccurrences(): number {
