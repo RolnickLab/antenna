@@ -3,6 +3,7 @@ import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
+import { ProcessingService } from 'data-services/models/processing-service'
 import {
   IconButton,
   IconButtonTheme,
@@ -199,8 +200,9 @@ const PipelinesPicker = ({
               <div
                 className="w-2 h-2 rounded-full mb-0.5 shrink-0"
                 style={{
-                  backgroundColor:
-                    p.currentProcessingService.service.status.color,
+                  backgroundColor: p.currentProcessingService.service
+                    ? p.currentProcessingService.service?.status.color
+                    : ProcessingService.getStatusInfo('OFFLINE').color,
                 }}
               />
               <span className="whitespace-nowrap text-ellipsis overflow-hidden">
