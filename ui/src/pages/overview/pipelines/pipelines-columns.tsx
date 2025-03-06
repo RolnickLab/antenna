@@ -23,6 +23,22 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     ),
   },
   {
+    id: 'processing-services-online',
+    name: 'Processing services online',
+    sortField: 'processing_services_online',
+    renderCell: (item: Pipeline) => (
+      <BasicTableCell value={item.processingServicesOnline} />
+    ),
+  },
+  {
+    id: 'processing-services-online-last-checked',
+    name: 'Status last checked',
+    sortField: 'processing_services_online_last_checked',
+    renderCell: (item: Pipeline) => (
+      <BasicTableCell value={item.processingServicesOnlineLastChecked} />
+    ),
+  },
+  {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',

@@ -1,7 +1,9 @@
 import datetime
 
 from django.db.models import QuerySet
+from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
@@ -10,8 +12,8 @@ from ami.main.models import create_source_image_from_upload
 from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
+from ami.users.roles import ProjectManager
 from ami.utils.dates import get_image_timestamp_from_filename
-from ami.utils.requests import get_active_classification_threshold
 
 from ..models import (
     Classification,
@@ -494,8 +496,8 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    occurrence_images = serializers.SerializerMethodField()
-    parent = TaxonNestedSerializer(read_only=True)
+    parents = TaxonNestedSerializer(read_only=True)
+    parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
 
     class Meta:
         model = Taxon
@@ -503,11 +505,11 @@ class TaxonListSerializer(DefaultSerializer):
             "id",
             "name",
             "rank",
-            "parent",
+            "parent_id",
+            "parents",
             "details",
             "occurrences_count",
             "occurrences",
-            "occurrence_images",
             "last_detected",
             "best_determination_score",
             "created_at",
@@ -529,27 +531,14 @@ class TaxonListSerializer(DefaultSerializer):
             params=params,
         )
 
-    def get_occurrence_images(self, obj):
-        """
-        Call the occurrence_images method on the Taxon model, with arguments.
-        """
-
-        # request = self.context.get("request")
-        # project_id = request.query_params.get("project") if request else None
-        project_id = self.context["request"].query_params["project_id"]
-        classification_threshold = get_active_classification_threshold(self.context["request"])
-
-        return obj.occurrence_images(
-            # @TODO pass the request to generate media url & filter by current user's access
-            # request=self.context.get("request"),
-            project_id=project_id,
-            classification_threshold=classification_threshold,
-        )
-
 
 class CaptureTaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True)
+
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
 
     class Meta:
         model = Taxon
@@ -702,10 +691,9 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
-    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True, source="example_occurrences")
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
-    # parents = TaxonParentNestedSerializer(many=True, read_only=True, source="parents_json")
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
 
     class Meta:
@@ -719,7 +707,6 @@ class TaxonSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
-            "detections_count",
             "events_count",
             "occurrences",
             "gbif_taxon_key",
@@ -799,6 +786,10 @@ class ClassificationListSerializer(DefaultSerializer):
 
 
 class ClassificationNestedSerializer(ClassificationSerializer):
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
     class Meta:
         model = Classification
         fields = [
@@ -1037,6 +1028,13 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     hour_start = serializers.IntegerField(required=False, allow_null=True)
     hour_end = serializers.IntegerField(required=False, allow_null=True)
 
+    deployment_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
     # Kwargs for other sampling methods, this is not complete
     # see the SourceImageCollection model for all available kwargs.
     size = serializers.IntegerField(required=False, allow_null=True)
@@ -1073,10 +1071,30 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "source_images_with_detections_count",
             "occurrences_count",
             "taxa_count",
+            "description",
             "jobs",
             "created_at",
             "updated_at",
         ]
+
+    def get_permissions(self, instance, instance_data):
+        request = self.context.get("request")
+
+        request: Request = self.context["request"]
+        user = request.user
+        project = instance.get_project()
+        permissions = get_perms(user, project)
+        source_image_collection_permissions = {
+            perm.split("_")[0] for perm in permissions if perm.endswith("_sourceimagecollection")
+        }
+        source_image_collection_permissions.discard("create")
+        if instance.dataset_type == "curated":
+            source_image_collection_permissions.discard("populate")
+            if Project.Permissions.STAR_SOURCE_IMAGE in permissions:
+                source_image_collection_permissions.add("star")
+
+        instance_data["user_permissions"] = list(source_image_collection_permissions)
+        return instance_data
 
     def get_source_images(self, obj) -> str:
         """
@@ -1093,6 +1111,18 @@ class SourceImageCollectionSerializer(DefaultSerializer):
 class OccurrenceIdentificationSerializer(DefaultSerializer):
     user = UserNestedSerializer(read_only=True)
     taxon = TaxonNestedSerializer(read_only=True)
+
+    def get_permissions(self, instance, instance_data):
+        # If the user can delete an identification then return a delete permission
+        request: Request = self.context["request"]
+        user = request.user
+        project = instance.get_project()
+        # Add delete permission if identification created by current user or user is a project manager
+        permissions = set()
+        if instance.user == user or ProjectManager.has_role(user, project):
+            permissions.add("delete")
+        instance_data["user_permissions"] = permissions
+        return instance_data
 
     class Meta:
         model = Identification
@@ -1114,6 +1144,19 @@ class OccurrenceListSerializer(DefaultSerializer):
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+
+    def get_permissions(self, instance, instance_data):
+        request: Request = self.context["request"]
+        user = request.user
+        project = instance.get_project()
+        permissions = set()
+        if Project.Permissions.CREATE_IDENTIFICATION in get_perms(user, project):
+            # check if the user has identification permissions on this project,
+            # then add  update permission to response
+            permissions.add("update")
+
+        instance_data["user_permissions"] = permissions
+        return instance_data
 
     class Meta:
         model = Occurrence

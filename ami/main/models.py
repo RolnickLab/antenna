@@ -104,7 +104,7 @@ def create_default_research_site(project: "Project") -> "Site":
 
 
 class ProjectQuerySet(models.QuerySet):
-    def filter_by_user(self, user):
+    def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
         """
@@ -139,6 +139,9 @@ class Project(BaseModel):
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
     objects = ProjectManager()
+
+    def get_project(self):
+        return self
 
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
@@ -184,8 +187,106 @@ class Project(BaseModel):
             logger.info(f"Created new project {self}")
             self.create_related_defaults()
 
+    class Permissions:
+        """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
+        `delete_<model>`, `view_<model>`"""
+
+        # Project permissions
+        VIEW = "view_project"
+        CHANGE = "update_project"
+        DELETE = "delete_project"
+        ADD = "create_project"
+
+        # Identification permissions
+        CREATE_IDENTIFICATION = "create_identification"
+        UPDATE_IDENTIFICATION = "update_identification"
+        DELETE_IDENTIFICATION = "delete_identification"
+
+        # Job permissions
+        CREATE_JOB = "create_job"
+        UPDATE_JOB = "update_job"
+        RUN_JOB = "run_job"
+        DELETE_JOB = "delete_job"
+        RETRY_JOB = "retry_job"
+        CANCEL_JOB = "cancel_job"
+
+        # Deployment permissions
+        CREATE_DEPLOYMENT = "create_deployment"
+        DELETE_DEPLOYMENT = "delete_deployment"
+        UPDATE_DEPLOYMENT = "update_deployment"
+
+        # Collection permissions
+        CREATE_COLLECTION = "create_sourceimagecollection"
+        UPDATE_COLLECTION = "update_sourceimagecollection"
+        DELETE_COLLECTION = "delete_sourceimagecollection"
+        POPULATE_COLLECTION = "populate_sourceimagecollection"
+
+        # Source Image permissions
+        STAR_SOURCE_IMAGE = "star_sourceimage"
+
+        # Storage permissions
+        CREATE_STORAGE = "create_s3storagesource"
+        DELETE_STORAGE = "delete_s3storagesource"
+        UPDATE_STORAGE = "update_s3storagesource"
+
+        # Site permissions
+        CREATE_SITE = "create_site"
+        DELETE_SITE = "delete_site"
+        UPDATE_SITE = "update_site"
+
+        # Device permissions
+        CREATE_DEVICE = "create_device"
+        DELETE_DEVICE = "delete_device"
+        UPDATE_DEVICE = "update_device"
+
+        # Other permissions
+        VIEW_PRIVATE_DATA = "view_private_data"
+        TRIGGER_EXPORT = "trigger_export"
+        DELETE_OCCURRENCES = "delete_occurrences"
+        IMPORT_DATA = "import_data"
+        MANAGE_MEMBERS = "manage_members"
+
     class Meta:
         ordering = ["-priority", "created_at"]
+        permissions = [
+            # Identification permissions
+            ("create_identification", "Can create identifications"),
+            ("update_identification", "Can update identifications"),
+            ("delete_identification", "Can delete identifications"),
+            # Job permissions
+            ("create_job", "Can create a job"),
+            ("update_job", "Can update a job"),
+            ("run_job", "Can run a job"),
+            ("delete_job", "Can delete a job"),
+            ("retry_job", "Can retry a job"),
+            ("cancel_job", "Can cancel a job"),
+            # Deployment permissions
+            ("create_deployment", "Can create a deployment"),
+            ("delete_deployment", "Can delete a deployment"),
+            ("update_deployment", "Can update a deployment"),
+            # Collection permissions
+            ("create_sourceimagecollection", "Can create a collection"),
+            ("update_sourceimagecollection", "Can update a collection"),
+            ("delete_sourceimagecollection", "Can delete a collection"),
+            ("populate_sourceimagecollection", "Can populate a collection"),
+            # Source Image permissions
+            ("star_sourceimage", "Can star a source image"),
+            # Storage permissions
+            ("create_s3storagesource", "Can create storage"),
+            ("delete_s3storagesource", "Can delete storage"),
+            ("update_s3storagesource", "Can update storage"),
+            # Site permissions
+            ("create_site", "Can create a site"),
+            ("delete_site", "Can delete a site"),
+            ("update_site", "Can update a site"),
+            # Device permissions
+            ("create_device", "Can create a device"),
+            ("delete_device", "Can delete a device"),
+            ("update_device", "Can update a device"),
+            # Other permissions
+            ("view_private_data", "Can view private data"),
+            ("trigger_exports", "Can trigger data exports"),
+        ]
 
 
 @final
@@ -1688,6 +1789,9 @@ class Identification(BaseModel):
             "-created_at",
         ]
 
+    def get_project(self):
+        return self.occurrence.get_project()
+
     def save(self, *args, **kwargs):
         """
         If this is a new identification:
@@ -2088,6 +2192,17 @@ class OccurrenceQuerySet(models.QuerySet):
             "identifications__user",
         )
 
+    def unique_taxa(self, project: Project | None = None) -> models.QuerySet:
+        qs = self
+        if project:
+            qs = self.filter(project=project)
+        qs = (
+            qs.filter(determination__isnull=False, event__isnull=False)
+            .order_by("determination_id")
+            .distinct("determination_id")
+        )
+        return qs
+
 
 class OccurrenceManager(models.Manager):
     def get_queryset(self) -> OccurrenceQuerySet:
@@ -2114,7 +2229,7 @@ class Occurrence(BaseModel):
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
-    objects = OccurrenceManager()
+    objects: OccurrenceManager = OccurrenceManager()
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
@@ -2659,7 +2774,11 @@ class Taxon(BaseModel):
         # This is handled by an annotation if we are filtering by project, deployment or event
         return None
 
-    def occurrence_images(
+    def occurrence_images(self, limit: int | None = 10) -> list[str]:
+        # This is handled by an annotation if we are filtering by project, deployment or event
+        return []
+
+    def get_occurrence_images(
         self,
         limit: int | None = 10,
         project_id: int | None = None,
@@ -2911,10 +3030,15 @@ class SourceImageCollection(BaseModel):
 
 
     Collections are saved so that they can be reviewed or re-used later.
+
     """
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    # dataset_type = models.CharField(
+    #     max_length=255,
+    #     choices=as_choices(["Curated", "Dynamic", "Sampling"]),
+    # )
     images = models.ManyToManyField("SourceImage", related_name="collections", blank=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
     method = models.CharField(
@@ -2934,6 +3058,16 @@ class SourceImageCollection(BaseModel):
     objects = SourceImageCollectionManager()
 
     jobs: models.QuerySet["Job"]
+
+    def infer_dataset_type(self):
+        if "starred" in self.name.lower():
+            return "curated"
+        else:
+            return "sampling"
+
+    @property
+    def dataset_type(self):
+        return self.infer_dataset_type()
 
     def source_images_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
@@ -3003,9 +3137,12 @@ class SourceImageCollection(BaseModel):
         month_end: int | None = None,
         date_start: str | None = None,
         date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
 
+        if deployment_ids is not None:
+            qs = qs.filter(deployment__in=deployment_ids)
         if date_start is not None:
             qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
         if date_end is not None:

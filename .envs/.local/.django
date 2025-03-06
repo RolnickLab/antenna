@@ -2,6 +2,7 @@
 DJANGO_SETTINGS_MODULE="config.settings.local"
 USE_DOCKER=yes
 DJANGO_DEBUG=True
+DJANGO_LOG_LEVEL=INFO
 IPYTHONDIR=/app/.ipython
 
 # Default superuser for local development
