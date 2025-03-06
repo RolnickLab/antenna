@@ -2364,7 +2364,7 @@ class TaxonQuerySet(models.QuerySet):
 
 
 @final
-class TaxaManager(models.Manager.from_queryset(TaxonQuerySet)):
+class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
     def get_queryset(self):
         # Prefetch parent and parents
         # return super().get_queryset().select_related("parent").prefetch_related("parents")
@@ -2611,7 +2611,7 @@ class Taxon(BaseModel):
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
 
-    objects: TaxaManager = TaxaManager()
+    objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
     parent_id: int | None
