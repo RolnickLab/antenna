@@ -292,3 +292,24 @@ def event_top_taxa(event_pk: int, top_n: int = 10):
         "type": "bar",
         "orientation": "h",
     }
+
+
+def project_top_taxa(project_pk: int, top_n: int = 10):
+    Taxon = apps.get_model("main", "Taxon")
+    top_taxa = (
+        Taxon.objects.all()
+        .with_occurrence_counts(project=project_pk)  # type: ignore
+        .order_by("-occurrence_count")[:top_n]
+    )
+
+    if top_taxa:
+        taxa, counts = list(zip(*[(t.name, t.occurrence_count) for t in reversed(top_taxa)]))
+    else:
+        taxa, counts = [], []
+
+    return {
+        "title": "Top species",
+        "data": {"x": counts, "y": taxa},
+        "type": "bar",
+        "orientation": "h",
+    }
