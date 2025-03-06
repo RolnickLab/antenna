@@ -68,7 +68,7 @@ export const FilterControl = ({
       </label>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
-          isValid={!filter.error}
+          error={filter.error}
           onAdd={(value) => addFilter(field, value)}
           onClear={() => clearFilter(field)}
           value={filter.value}

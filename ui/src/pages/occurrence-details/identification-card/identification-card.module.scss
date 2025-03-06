@@ -11,6 +11,14 @@
   overflow: hidden;
 }
 
+.timestamp {
+  display: block;
+  color: $color-neutral-300;
+  padding: 4px 8px;
+  text-align: right;
+  @include paragraph-x-small();
+}
+
 .header {
   padding: 16px;
   border-bottom: 1px solid $color-neutral-100;

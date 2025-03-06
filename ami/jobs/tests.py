@@ -100,8 +100,10 @@ class TestJobView(APITestCase):
         jobs_create_url = reverse_with_params("api:job-list")
         job_data = {
             "project_id": self.project.pk,
+            "source_image_collection_id": self.source_image_collection.pk,
             "name": "Test job unauthenticated",
             "delay": 0,
+            "job_type_key": SourceImageCollectionPopulateJob.key,
         }
         self.client.force_authenticate(user=None)
         resp = self.client.post(jobs_create_url, job_data)
@@ -113,9 +115,10 @@ class TestJobView(APITestCase):
         job_data = {
             "project_id": self.job.project.pk,
             "name": name,
-            "collection_id": self.source_image_collection.pk,
+            "source_image_collection_id": self.source_image_collection.pk,
             "delay": 0,
             "start_now": start_now,
+            "job_type_key": SourceImageCollectionPopulateJob.key,
         }
         resp = self.client.post(jobs_create_url, job_data)
         self.client.force_authenticate(user=None)

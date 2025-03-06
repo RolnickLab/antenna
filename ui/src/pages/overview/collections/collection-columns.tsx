@@ -1,11 +1,13 @@
 import { API_ROUTES } from 'data-services/constants'
 import { Collection } from 'data-services/models/collection'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
   CellTheme,
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
 import styles from 'pages/overview/entities/styles.module.scss'
@@ -54,6 +56,43 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     ),
   },
   {
+    id: 'status',
+    name: 'Status',
+    renderCell: (item: Collection) => {
+      if (!item.currentJob) {
+        return <></>
+      }
+
+      return (
+        <Tooltip content={item.currentJob.type.label}>
+          <div>
+            <StatusTableCell
+              color={item.currentJob.status.color}
+              label={item.currentJob.status.label}
+            />
+          </div>
+        </Tooltip>
+      )
+    },
+  },
+  {
+    id: 'jobs',
+    name: translate(STRING.FIELD_LABEL_JOBS),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.JOBS({ projectId }),
+          filters: { source_image_collection: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
@@ -81,23 +120,16 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     renderCell: (item: Collection) => <BasicTableCell value={item.numTaxa} />,
   },
   {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Collection) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: Collection) => <BasicTableCell value={item.updatedAt} />,
-  },
-  {
-    id: 'collection-actions',
-    name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: Collection) => (
-      <div className={styles.entityActions}>
-        {item.canPopulate && <PopulateCollection collection={item} />}
-      </div>
-    ),
   },
   {
     id: 'actions',
@@ -108,6 +140,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     },
     renderCell: (item: Collection) => (
       <div className={styles.entityActions}>
+        {item.canPopulate && <PopulateCollection collection={item} />}
         {item.canUpdate && editableSamplingMethods.includes(item.method) && (
           <UpdateEntityDialog
             collection={API_ROUTES.COLLECTIONS}

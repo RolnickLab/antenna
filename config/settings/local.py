@@ -23,15 +23,6 @@ ALLOWED_HOSTS = [
     "django",
 ] + env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
-# CACHES
-# ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#caches
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "",
-    }
-}
 
 # EMAIL
 # ------------------------------------------------------------------------------
@@ -59,6 +50,11 @@ EMAIL_SUBJECT_PREFIX = env(
 # http://whitenoise.evans.io/en/latest/django.html#using-whitenoise-in-development
 INSTALLED_APPS = ["whitenoise.runserver_nostatic"] + INSTALLED_APPS  # noqa: F405
 
+
+# Long queries can be a problem in development, this should stop them after 30s
+database_options = DATABASES["default"].get("OPTIONS", {})  # noqa: F405
+database_options["options"] = "-c statement_timeout=30s"
+DATABASES["default"]["OPTIONS"] = database_options  # noqa: F405
 
 # django-debug-toolbar
 # ------------------------------------------------------------------------------

@@ -142,8 +142,12 @@ services:
 
   ml_backend:
     build:
-      context: ./ml_backends/example
+      context: ./processing_services/example
     volumes:
-      - ./ml_backends/example/:/app:ml_backend
+      - ./processing_services/example/:/app
     ports:
       - "2005:2000"
+    networks:
+      default:
+          aliases:
+            - processing_service

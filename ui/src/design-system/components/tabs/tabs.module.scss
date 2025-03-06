@@ -6,8 +6,11 @@
 }
 
 .tabsList {
-  margin-bottom: 16px;
   padding: 2px 0;
+
+  &:not(:last-child) {
+    margin-bottom: 16px;
+  }
 
   :not(:last-child) {
     margin-right: 4px;

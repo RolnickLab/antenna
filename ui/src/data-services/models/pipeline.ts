@@ -1,5 +1,6 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Algorithm, ServerAlgorithm } from './algorithm'
+import { ProcessingService } from './processing-service'
 
 export type ServerPipeline = any // TODO: Update this type
 
@@ -79,6 +80,53 @@ export class Pipeline {
 
     return getFormatedDateTimeString({
       date: new Date(this._pipeline.updated_at),
+    })
+  }
+
+  get currentProcessingService(): {
+    online: boolean
+    service: ProcessingService
+  } {
+    const processingServices = this._pipeline.processing_services.map(
+      (service: any) => new ProcessingService(service)
+    )
+    for (const processingService of processingServices) {
+      if (processingService.lastCheckedLive) {
+        return { online: true, service: processingService }
+      }
+    }
+
+    return { online: false, service: processingServices[0] }
+  }
+
+  get processingServicesOnline(): string {
+    const processingServices = this._pipeline.processing_services
+    let total_online = 0
+    for (const processingService of processingServices) {
+      if (processingService.last_checked_live) {
+        total_online += 1
+      }
+    }
+
+    return total_online + '/' + processingServices.length
+  }
+
+  get processingServicesOnlineLastChecked(): string | undefined {
+    const processingServices = this._pipeline.processing_services
+
+    if (!processingServices.length) {
+      return undefined
+    }
+
+    const last_checked_times = []
+    for (const processingService of processingServices) {
+      last_checked_times.push(
+        new Date(processingService.last_checked).getTime()
+      )
+    }
+
+    return getFormatedDateTimeString({
+      date: new Date(Math.max(...last_checked_times)),
     })
   }
 }

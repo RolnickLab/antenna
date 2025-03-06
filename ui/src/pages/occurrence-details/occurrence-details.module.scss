@@ -43,7 +43,7 @@
 }
 
 .infoWrapper {
-  width: 320px;
+  width: 480px;
   position: relative;
   overflow: hidden;
 
@@ -73,7 +73,7 @@
 .identifications {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 32px;
   padding: 4px 0;
 }
 

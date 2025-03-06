@@ -199,7 +199,7 @@ def detections_per_hour(project_pk: int):
 
 
 def occurrences_accumulated(project_pk: int):
-    # Line chart of the accumulated number of occurrnces over time throughout the season
+    # Line chart of the accumulated number of occurrences over time throughout the season
 
     Occurrence = apps.get_model("main", "Occurrence")
     occurrences_per_day = (
@@ -212,7 +212,8 @@ def occurrences_accumulated(project_pk: int):
         .order_by("event__start")
     )
 
-    if occurrences_per_day.count():
+    occurrences_exist = Occurrence.objects.filter(project=project_pk).exists()
+    if occurrences_exist:
         days, counts = list(zip(*occurrences_per_day))
         # Accumulate the counts
         counts = list(itertools.accumulate(counts))
