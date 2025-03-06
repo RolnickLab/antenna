@@ -124,7 +124,7 @@ def create_roles_for_project(project):
         permissions = role_class.permissions
         group, created = Group.objects.get_or_create(name=role_name)
         if created:
-            logger.info(f"Role created {role_class} for project {project}")
+            logger.debug(f"Role created {role_class} for project {project}")
         else:
             # Reset permissions to make sure permissions are updated
             # every time we call this function

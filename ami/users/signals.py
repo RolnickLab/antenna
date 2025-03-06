@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def create_roles(sender, **kwargs):
     """Creates predefined roles with specific permissions ."""
 
-    logger.info("Creating roles")
+    logger.info("Creating roles for all projects")
     for project in Project.objects.all():
         create_roles_for_project(project)
 
@@ -30,7 +30,7 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
 
     # Temporarily disconnect the signal before updating project.members to prevent infinite recursion.
     m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
-    logger.info("Disconnecting signal to prevent infinite recursion.")
+    logger.debug("Disconnecting signal to prevent infinite recursion.")
     try:
         with transaction.atomic():  # Ensure DB consistency
             for group in Group.objects.filter(pk__in=pk_set):
@@ -61,4 +61,4 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
     finally:
         # Reconnect the signal after updating members
         m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
-        logger.info("Reconnecting signal after updating project members.")
+        logger.debug("Reconnecting signal after updating project members.")
