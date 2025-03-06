@@ -24,6 +24,7 @@ from ami.main.models import (
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
+from ami.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,9 @@ def create_deployment(
 def create_test_project(name: str | None) -> Project:
     short_id = uuid.uuid4().hex[:8]
     name = name or f"Test Project {short_id}"
-    project = Project.objects.create(name=name)
+
+    admin_user = User.objects.filter(is_superuser=True).first()
+    project = Project.objects.create(name=name, owner=admin_user, description="Test description")
     data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
     create_deployment(project, data_source, f"Test Deployment {short_id}")
     create_processing_service(project)
