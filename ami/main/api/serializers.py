@@ -14,7 +14,6 @@ from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
 from ami.utils.dates import get_image_timestamp_from_filename
-from ami.utils.requests import get_active_classification_threshold
 
 from ..models import (
     Classification,
@@ -497,8 +496,8 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    occurrence_images = serializers.SerializerMethodField()
-    parent = TaxonNestedSerializer(read_only=True)
+    parents = TaxonNestedSerializer(read_only=True)
+    parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
 
     class Meta:
         model = Taxon
@@ -506,11 +505,11 @@ class TaxonListSerializer(DefaultSerializer):
             "id",
             "name",
             "rank",
-            "parent",
+            "parent_id",
+            "parents",
             "details",
             "occurrences_count",
             "occurrences",
-            "occurrence_images",
             "last_detected",
             "best_determination_score",
             "created_at",
@@ -530,23 +529,6 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrence-list",
             request=self.context.get("request"),
             params=params,
-        )
-
-    def get_occurrence_images(self, obj):
-        """
-        Call the occurrence_images method on the Taxon model, with arguments.
-        """
-
-        # request = self.context.get("request")
-        # project_id = request.query_params.get("project") if request else None
-        project_id = self.context["request"].query_params["project_id"]
-        classification_threshold = get_active_classification_threshold(self.context["request"])
-
-        return obj.occurrence_images(
-            # @TODO pass the request to generate media url & filter by current user's access
-            # request=self.context.get("request"),
-            project_id=project_id,
-            classification_threshold=classification_threshold,
         )
 
 
@@ -709,10 +691,9 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
-    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True, source="example_occurrences")
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
-    # parents = TaxonParentNestedSerializer(many=True, read_only=True, source="parents_json")
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
 
     class Meta:
@@ -726,7 +707,6 @@ class TaxonSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
-            "detections_count",
             "events_count",
             "occurrences",
             "gbif_taxon_key",
