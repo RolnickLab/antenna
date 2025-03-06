@@ -104,7 +104,7 @@ def create_default_research_site(project: "Project") -> "Site":
 
 
 class ProjectQuerySet(models.QuerySet):
-    def filter_by_user(self, user):
+    def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
         """
