@@ -63,7 +63,9 @@ class ProcessingService(BaseModel):
                     pipeline=pipeline,
                     project=project,
                     enabled=True,  # @TODO: How to get this value?
-                    default_parameters={},  # @TODO: How to get this value?
+                    default_parameters={},  # @TODO: How to get this value? -- leave blank for now?
+                    # (just for django admin + passing to backend during processing)
+                    # @TODO: rename default_parameters to config
                 )
                 pipeline_project_config.save()
 
