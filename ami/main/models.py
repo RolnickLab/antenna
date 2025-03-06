@@ -166,6 +166,8 @@ class Project(BaseModel):
             plots.append(charts.events_per_month(project_pk=self.pk))
             # plots.append(charts.captures_per_month(project_pk=self.pk))
         plots.append(charts.project_top_taxa(project_pk=self.pk))
+        plots.append(charts.average_occurrences_per_month(project_pk=self.pk))
+        plots.append(charts.unique_species_per_month(project_pk=self.pk))
 
         return plots
 
