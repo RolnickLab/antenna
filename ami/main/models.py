@@ -168,6 +168,9 @@ class Project(BaseModel):
         else:
             plots.append(charts.events_per_month(project_pk=self.pk))
             # plots.append(charts.captures_per_month(project_pk=self.pk))
+        plots.append(charts.project_top_taxa(project_pk=self.pk))
+        plots.append(charts.average_occurrences_per_month(project_pk=self.pk))
+        plots.append(charts.unique_species_per_month(project_pk=self.pk))
 
         return plots
 
@@ -2455,8 +2458,19 @@ def update_occurrence_determination(
     return needs_update
 
 
+class TaxonQuerySet(models.QuerySet):
+    def with_occurrence_counts(self, project: Project):
+        """
+        Annotate each taxon with the count of its occurrences for a given project.
+        """
+        qs = self
+        qs = qs.filter(occurrences__project=project)
+
+        return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+
+
 @final
-class TaxaManager(models.Manager):
+class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
     def get_queryset(self):
         # Prefetch parent and parents
         # return super().get_queryset().select_related("parent").prefetch_related("parents")
@@ -2703,7 +2717,7 @@ class Taxon(BaseModel):
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
 
-    objects: TaxaManager = TaxaManager()
+    objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
     parent_id: int | None
