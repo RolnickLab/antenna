@@ -321,7 +321,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_NAME]: 'Name',
   [STRING.FIELD_LABEL_NEW_PASSWORD]: 'New password',
   [STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED]: 'Pipelines registered',
-  [STRING.FIELD_LABEL_OCCURRENCES]: 'Occurrences',
+  [STRING.FIELD_LABEL_OCCURRENCES]: 'Direct occurrences',
   [STRING.FIELD_LABEL_PASSWORD]: 'Password',
   [STRING.FIELD_LABEL_PASSWORD_CURRENT]: 'Current password',
   [STRING.FIELD_LABEL_PASSWORD_NEW]: 'New password',
