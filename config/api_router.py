@@ -4,6 +4,7 @@ from django.urls.conf import include
 from djoser.views import UserViewSet
 from rest_framework.routers import DefaultRouter, SimpleRouter
 
+from ami.exports import views as export_views
 from ami.jobs import views as job_views
 from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
@@ -21,6 +22,7 @@ router.register(r"deployments/devices", views.DeviceViewSet)
 router.register(r"deployments/sites", views.SiteViewSet)
 router.register(r"deployments", views.DeploymentViewSet)
 router.register(r"events", views.EventViewSet)
+router.register(r"exports", export_views.OccurrenceExportViewSet)
 router.register(r"captures/collections", views.SourceImageCollectionViewSet)
 router.register(r"captures/upload", views.SourceImageUploadViewSet)
 router.register(r"captures", views.SourceImageViewSet)
