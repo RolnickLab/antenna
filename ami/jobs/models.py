@@ -8,15 +8,18 @@ from dataclasses import dataclass
 import pydantic
 from celery import uuid
 from celery.result import AsyncResult
+from django.core.files.storage import default_storage
 from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
+from ami.exports.base import export_occurrences_to_csv, export_occurrences_to_dwc, export_occurrences_to_json
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -596,6 +599,77 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
 
+class DataExportJob(JobType):
+    """
+    Job type to handle Project data exports
+    """
+
+    name = "Export Occurrence Data"
+    key = "occurrence_export"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        """
+        Run the export job asynchronously with format selection (CSV, JSON, Darwin Core).
+        """
+        logger.info("Job started: Exporting occurrences")
+
+        # Add progress tracking
+        job.progress.add_stage(cls.name, key=cls.key)
+        job.progress.add_stage_param(cls.key, "Export progress", "")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        # Validate project presence
+        if not job.project:
+            raise ValueError("No project provided for occurrence export job")
+
+        job.logger.info(f"Starting export for project {job.project}")
+
+        # Determine the export format (default to JSON)
+        export_format = job.result.get("format", "json")  # Assume 'json' if not specified
+        job.logger.info(f"Export format selected: {export_format}")
+        # Retrieve occurrences from project
+        occurrences = job.project.occurrences.all()
+        if not occurrences.exists():
+            raise ValueError("No occurrences found for export")
+
+        # Select and Execute the Appropriate Export Function
+        if export_format == "json":
+            file_path = export_occurrences_to_json(occurrences, job=job)
+        elif export_format == "csv":
+            file_path = export_occurrences_to_csv(occurrences, job=job)
+        elif export_format == "darwin_core":
+            file_path = export_occurrences_to_dwc(occurrences)
+        else:
+            raise ValueError(f"Invalid export format: {export_format}")
+
+        job.logger.info(f"Export completed: {file_path}")
+
+        #  Upload File to MinIO Storage
+        file_name = f"exports/{job.task_id}.{export_format}"
+        with open(file_path, "rb") as f:
+            default_storage.save(file_name, f)
+
+        file_url = default_storage.url(file_name)
+        job.logger.info(f"File uploaded to MinIO: {file_url}")
+
+        # Finalize Job
+        job.progress.update_stage(
+            cls.key,
+            status=JobState.SUCCESS,
+            progress=1,
+            file_url=file_url,
+        )
+
+        job.finished_at = datetime.datetime.now()
+        job.result = {"file_url": file_url}
+        job.update_status(JobState.SUCCESS, save=False)
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -605,7 +679,7 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
-VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType]
+VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType, DataExportJob]
 
 
 def get_job_type_by_key(key: str) -> type[JobType] | None:
@@ -874,3 +948,16 @@ class Job(BaseModel):
         # permissions = [
         #     ("run_job", "Can run a job"),
         #     ("cancel_job", "Can cancel a job"),
+
+
+class DataExportHistory(BaseModel):
+    """A model to track Occurrence data exports"""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exports")
+    job = models.OneToOneField(Job, on_delete=models.CASCADE, related_name="export_history")
+    status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
+
+    file_url = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return f"Export {self.job.id} - {self.status}"
