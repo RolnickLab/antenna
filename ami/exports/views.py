@@ -3,11 +3,11 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from ami.jobs.models import DataExportJob, Job, JobState
+from ami.main.api.views import ProjectMixin
 from ami.main.models import Occurrence
-from ami.utils.requests import get_active_project
 
 
-class OccurrenceExportViewSet(ReadOnlyModelViewSet):
+class OccurrenceExportViewSet(ReadOnlyModelViewSet, ProjectMixin):
     """
     API endpoint for exporting occurrences.
     """
@@ -23,7 +23,7 @@ class OccurrenceExportViewSet(ReadOnlyModelViewSet):
             return Response({"error": f"Invalid format. Supported formats: {', '.join(valid_formats)}"}, status=400)
 
         # Validate and retrieve the project
-        project = get_active_project(request)
+        project = self.get_active_project()
         if not project:
             return Response({"error": "Project ID not provided or invalid"}, status=400)
 
