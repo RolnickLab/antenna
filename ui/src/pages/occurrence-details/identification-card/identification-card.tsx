@@ -28,7 +28,7 @@ export const IdentificationCard = ({
   occurrence: Occurrence
   identification: Identification
   user?: {
-    id: string
+    id?: string
     name: string
     image?: string
   }
