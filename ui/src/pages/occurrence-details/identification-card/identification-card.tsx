@@ -28,7 +28,7 @@ export const IdentificationCard = ({
   occurrence: Occurrence
   identification: Identification
   user?: {
-    id: string
+    id?: string
     name: string
     image?: string
   }
@@ -39,10 +39,10 @@ export const IdentificationCard = ({
   const byCurrentUser = currentUser && user?.id === currentUser.id
   const canAgree = occurrence.userPermissions.includes(UserPermission.Update)
   const canDelete = identification.userPermissions.includes(
-    UserPermission.Update
+    UserPermission.Delete
   )
   const showAgree = !byCurrentUser && canAgree
-  const showDelete = byCurrentUser && canDelete
+  const showDelete = canDelete
   const formattedTime = getFormatedDateTimeString({
     date: new Date(identification.createdAt),
   })
