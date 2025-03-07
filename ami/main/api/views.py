@@ -124,7 +124,7 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Create instance but do not save
-        instance = serializer.Meta.model(**serializer.validated_data)
+        instance = serializer.Meta.model(**serializer.validated_data)  # type: ignore
         self.check_object_permissions(request, instance)
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -1457,7 +1457,7 @@ class IdentificationViewSet(DefaultViewSet):
         Set the user to the current user.
         """
         # Get an instance for the model without saving
-        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)
+        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)  # type: ignore
 
         # Check permissions before saving
         self.check_object_permissions(self.request, obj)
