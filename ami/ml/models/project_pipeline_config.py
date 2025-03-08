@@ -16,8 +16,8 @@ class ProjectPipelineConfig(BaseModel):
 
     project = models.ForeignKey(Project, related_name="project_pipeline_configs", on_delete=models.CASCADE)
     pipeline = models.ForeignKey(Pipeline, related_name="project_pipeline_configs", on_delete=models.CASCADE)
-    enabled = models.BooleanField()
-    default_parameters = models.JSONField()
+    enabled = models.BooleanField(default=True)
+    config = models.JSONField(default=dict)
 
     def __str__(self):
         return f'#{self.pk} "{self.pipeline}" in {self.project}'

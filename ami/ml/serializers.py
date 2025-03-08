@@ -82,7 +82,7 @@ class ProjectPipelineConfigSerializer(DefaultSerializer):
             "project",
             "pipeline",
             "enabled",
-            "default_parameters",
+            "config",
         ]
 
 
