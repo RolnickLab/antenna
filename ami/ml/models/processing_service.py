@@ -61,13 +61,13 @@ class ProcessingService(BaseModel):
                 created = True
 
             for project in self.projects.all():
-                pipeline_project_config = ProjectPipelineConfig.objects.create(
+                project_pipeline_config, created = ProjectPipelineConfig.objects.get_or_create(
                     pipeline=pipeline,
                     project=project,
-                    enabled=True,
-                    config={},
+                    defaults={"enabled": True, "config": {}},
                 )
-                pipeline_project_config.save()
+                if created:
+                    project_pipeline_config.save()
 
             self.pipelines.add(pipeline)
 
