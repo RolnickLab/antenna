@@ -92,13 +92,7 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
-        pipelines_to_remove = []
-        for pipeline in query_set:
-            project_pipeline_config = ProjectPipelineConfig.objects.get(pipeline=pipeline, project=project.id)
-            if not project_pipeline_config.enabled:
-                pipelines_to_remove.append(pipeline.id)
-        for pipeline_id in pipelines_to_remove:
-            query_set = query_set.exclude(id=pipeline_id)
+            query_set = query_set.filter(projects=project.id, project_pipeline_configs__enabled=True)
 
         return query_set
 
