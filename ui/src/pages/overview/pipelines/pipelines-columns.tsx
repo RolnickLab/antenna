@@ -1,6 +1,5 @@
 import { Pipeline } from 'data-services/models/pipeline'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
 import { PipelineDetailsDialog } from 'pages/pipeline-details/pipeline-details-dialog'
 import { STRING, translate } from 'utils/language'
@@ -50,18 +49,18 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     sortField: 'updated_at',
     renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
   },
-  {
-    id: 'status',
-    name: 'Status',
-    renderCell: (item: Pipeline) => {
-      return (
-        <StatusTableCell
-          color={item.enabled.color}
-          label={item.enabled.label}
-        />
-      )
-    },
-  },
+  // {
+  //   id: 'status',
+  //   name: 'Status',
+  //   renderCell: (item: Pipeline) => {
+  //     return (
+  //       <StatusTableCell
+  //         color={item.enabled.color}
+  //         label={item.enabled.label}
+  //       />
+  //     )
+  //   },
+  // },
   {
     id: 'processing-services-online',
     name: 'Processing Services Online',
