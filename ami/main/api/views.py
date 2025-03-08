@@ -1293,8 +1293,9 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Classification.objects.all().select_related("taxon", "algorithm")  # , "detection")
     serializer_class = ClassificationSerializer
-    # https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
     filterset_fields = [
+        # Docs about slow loading API browser because of large choice fields
+        # https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
         "taxon",
         "algorithm",
         "detection__source_image__project",
