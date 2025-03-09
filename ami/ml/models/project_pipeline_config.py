@@ -23,5 +23,6 @@ class ProjectPipelineConfig(BaseModel):
         return f'#{self.pk} "{self.pipeline}" in {self.project}'
 
     class Meta:
+        unique_together = ("pipeline", "project")
         verbose_name = "Project-Pipeline Configuration"
         verbose_name_plural = "Project-Pipeline Configurations"
