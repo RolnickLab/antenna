@@ -7,7 +7,6 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
 import styles from 'pages/overview/entities/styles.module.scss'
@@ -93,21 +92,18 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   },
   {
     id: 'status',
-    name: 'Status',
+    name: 'Latest job status',
     renderCell: (item: Collection) => {
       if (!item.currentJob) {
         return <></>
       }
 
       return (
-        <Tooltip content={item.currentJob.type.label}>
-          <div>
-            <StatusTableCell
-              color={item.currentJob.status.color}
-              label={item.currentJob.status.label}
-            />
-          </div>
-        </Tooltip>
+        <StatusTableCell
+          color={item.currentJob.status.color}
+          details={item.currentJob.type.label}
+          label={item.currentJob.status.label}
+        />
       )
     },
   },

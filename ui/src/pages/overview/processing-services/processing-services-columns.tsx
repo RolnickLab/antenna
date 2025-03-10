@@ -44,15 +44,13 @@ export const columns: (
   {
     id: 'status',
     name: 'Status',
-    renderCell: (item: ProcessingService) => {
-      return (
-        <StatusTableCell
-          color={item.status.color}
-          label={item.status.label}
-          details={'Last Checked: ' + item.lastChecked}
-        />
-      )
-    },
+    renderCell: (item: ProcessingService) => (
+      <StatusTableCell
+        color={item.status.color}
+        details={'Last checked ' + item.lastChecked}
+        label={item.status.label}
+      />
+    ),
   },
   {
     id: 'num-pipelines-added',
