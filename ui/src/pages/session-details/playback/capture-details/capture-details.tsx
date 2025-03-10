@@ -1,9 +1,9 @@
 import classNames from 'classnames'
 import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
-import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
 import { Job } from 'data-services/models/job'
+import { ProcessingService } from 'data-services/models/processing-service'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ExternalLinkIcon, HeartIcon, Loader2Icon } from 'lucide-react'
 import { Button, buttonVariants, Select } from 'nova-ui-kit'
@@ -35,7 +35,11 @@ export const CaptureDetails = ({
     <>
       <div className={styles.starButtonWrapper}>
         {user.loggedIn && (
-          <StarButton capture={capture} captureId={captureId} />
+          <StarButton
+            capture={capture}
+            captureId={captureId}
+            canStar={capture.canStar}
+          />
         )}
         <a
           href={capture.url}
@@ -138,16 +142,16 @@ const StarButton = ({
   capture,
   captureFetching,
   captureId,
+  canStar,
 }: {
   capture?: Capture
   captureFetching?: boolean
   captureId: string
+  canStar: boolean
 }) => {
-  const { projectId } = useParams()
-  const { project } = useProjectDetails(projectId as string, true)
   const isStarred = capture?.isStarred ?? false
   const { starCapture, isLoading } = useStarCapture(captureId, isStarred)
-  const tooltipContent = project?.canUpdate
+  const tooltipContent = canStar
     ? isStarred
       ? translate(STRING.STARRED)
       : translate(STRING.STAR)
@@ -157,7 +161,7 @@ const StarButton = ({
     <Tooltip content={tooltipContent}>
       <Button
         className="rounded-md !bg-neutral-700 text-neutral-200"
-        disabled={!project?.canUpdate}
+        disabled={!canStar}
         size="icon"
         onClick={() => starCapture()}
       >
@@ -232,8 +236,9 @@ const PipelinesPicker = ({
               <div
                 className="w-2 h-2 rounded-full mb-0.5 shrink-0"
                 style={{
-                  backgroundColor:
-                    p.currentProcessingService.service.status.color,
+                  backgroundColor: p.currentProcessingService.service
+                    ? p.currentProcessingService.service?.status.color
+                    : ProcessingService.getStatusInfo('OFFLINE').color,
                 }}
               />
               <span className="whitespace-nowrap text-ellipsis overflow-hidden">

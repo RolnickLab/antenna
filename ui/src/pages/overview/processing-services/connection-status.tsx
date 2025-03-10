@@ -32,11 +32,16 @@ export const ConnectionStatus = ({
   const [lastUpdated, setLastUpdated] = useState<Date>()
 
   const update = async () => {
-    await testProcessingServiceConnection({
-      id: processingServiceId,
-      subdir,
-      regex,
-    })
+    try {
+      await testProcessingServiceConnection({
+        id: processingServiceId,
+        subdir,
+        regex,
+      })
+    } catch {
+      // Error handled in hook
+    }
+
     setLastUpdated(new Date())
   }
 
