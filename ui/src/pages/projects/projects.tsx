@@ -39,7 +39,7 @@ export const Projects = () => {
     <>
       <PageHeader
         title={translate(STRING.NAV_ITEM_PROJECTS)}
-        subTitle={translate(STRING.RESULTS, { total: projects?.length ?? 0 })}
+        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
         isLoading={isLoading}
         isFetching={isFetching}
       >
