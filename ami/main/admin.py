@@ -6,6 +6,7 @@ from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
 from django.utils.formats import number_format
+from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
@@ -54,8 +55,8 @@ class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
 
 
 @admin.register(Project)
-class ProjectAdmin(admin.ModelAdmin[Project]):
-    """Admin panel example for ``Project`` model."""
+class ProjectAdmin(GuardedModelAdmin):
+    """Admin panel for ``Project`` model."""
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
@@ -248,6 +249,15 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "updated_at",
     )
 
+    list_filter = (
+        "project",
+        "deployment",
+        "determination__rank",
+        "created_at",
+    )
+    search_fields = ("determination__name", "determination__search_names")
+    autocomplete_fields = ("determination",)
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
         qs = qs.select_related("determination", "project", "deployment", "event")
@@ -323,7 +333,7 @@ class TaxonParentFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         # return Taxon.objects.exclude(rank="SPECIES").values_list("id", "name")
-        choices = [(taxon.pk, str(taxon)) for taxon in Taxon.objects.exclude(rank__in=["SPECIES", "GENUS"])]
+        choices = [(taxon.pk, str(taxon)) for taxon in Taxon.objects.exclude(rank__in=["SPECIES", "GENUS", "UNKNOWN"])]
         return choices
 
     def queryset(self, request, queryset):

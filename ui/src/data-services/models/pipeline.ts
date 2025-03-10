@@ -1,5 +1,6 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Algorithm, ServerAlgorithm } from './algorithm'
+import { ProcessingService } from './processing-service'
 
 export type ServerPipeline = any // TODO: Update this type
 
@@ -80,6 +81,22 @@ export class Pipeline {
     return getFormatedDateTimeString({
       date: new Date(this._pipeline.updated_at),
     })
+  }
+
+  get currentProcessingService(): {
+    online: boolean
+    service?: ProcessingService
+  } {
+    const processingServices = this._pipeline.processing_services.map(
+      (service: any) => new ProcessingService(service)
+    )
+    for (const processingService of processingServices) {
+      if (processingService.lastCheckedLive) {
+        return { online: true, service: processingService }
+      }
+    }
+
+    return { online: false, service: processingServices[0] }
   }
 
   get processingServicesOnline(): string {

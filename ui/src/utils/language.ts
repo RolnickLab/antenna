@@ -310,7 +310,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
-  [STRING.FIELD_LABEL_LAST_CHECKED]: 'Last seen online',
+  [STRING.FIELD_LABEL_LAST_CHECKED]: 'Last checked',
   [STRING.FIELD_LABEL_JOBS]: 'Jobs',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
@@ -321,7 +321,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_NAME]: 'Name',
   [STRING.FIELD_LABEL_NEW_PASSWORD]: 'New password',
   [STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED]: 'Pipelines registered',
-  [STRING.FIELD_LABEL_OCCURRENCES]: 'Occurrences',
+  [STRING.FIELD_LABEL_OCCURRENCES]: 'Direct occurrences',
   [STRING.FIELD_LABEL_PASSWORD]: 'Password',
   [STRING.FIELD_LABEL_PASSWORD_CURRENT]: 'Current password',
   [STRING.FIELD_LABEL_PASSWORD_NEW]: 'New password',
@@ -428,7 +428,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
-  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing Services',
+  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing services',
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
   [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
   [STRING.TAB_ITEM_DEVICES]: 'Device types',

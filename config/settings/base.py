@@ -90,7 +90,8 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "anymail",
-    # "cachalot",
+    "cachalot",
+    "guardian",
 ]
 
 LOCAL_APPS = [
@@ -115,6 +116,7 @@ MIGRATION_MODULES = {"sites": "ami.contrib.sites.migrations"}
 # https://docs.djangoproject.com/en/dev/ref/settings/#authentication-backends
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
+    "guardian.backends.ObjectPermissionBackend",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
 AUTH_USER_MODEL = "users.User"
@@ -273,6 +275,7 @@ MANAGERS = ADMINS
 # https://docs.djangoproject.com/en/dev/ref/settings/#logging
 # See https://docs.djangoproject.com/en/dev/topics/logging for
 # more details on how to customize your logging configuration.
+LOG_LEVEL = env.str("DJANGO_LOG_LEVEL", default="INFO").upper()  # type: ignore[no-untyped-call]
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -283,12 +286,12 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "DEBUG",
+            "level": LOG_LEVEL,
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         }
     },
-    "root": {"level": "INFO", "handlers": ["console"]},
+    "root": {"level": LOG_LEVEL, "handlers": ["console"]},
 }
 
 # Celery
@@ -399,6 +402,8 @@ DJOSER = {
         "user_create": ["rest_framework.permissions.IsAdminUser"],
     },
 }
+# Django Guardian
+ANONYMOUS_USER_NAME = "anonymoususer"
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
 # See more configuration options at https://drf-spectacular.readthedocs.io/en/latest/settings.html#settings

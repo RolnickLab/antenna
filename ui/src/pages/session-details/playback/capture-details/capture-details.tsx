@@ -1,15 +1,15 @@
 import classNames from 'classnames'
 import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
-import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
+import { ProcessingService } from 'data-services/models/processing-service'
 import {
   IconButton,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
-import { Select, SelectTheme } from 'design-system/components/select/select'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { Select } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -37,7 +37,11 @@ export const CaptureDetails = ({
     <>
       <div className={styles.starButtonWrapper}>
         {user.loggedIn && (
-          <StarButton capture={capture} captureId={captureId} />
+          <StarButton
+            capture={capture}
+            captureId={captureId}
+            canStar={capture.canStar}
+          />
         )}
         <a
           href={capture.url}
@@ -126,16 +130,16 @@ const StarButton = ({
   capture,
   captureFetching,
   captureId,
+  canStar,
 }: {
   capture?: Capture
   captureFetching?: boolean
   captureId: string
+  canStar: boolean
 }) => {
-  const { projectId } = useParams()
-  const { project } = useProjectDetails(projectId as string, true)
   const isStarred = capture?.isStarred ?? false
   const { starCapture, isLoading } = useStarCapture(captureId, isStarred)
-  const tooltipContent = project?.canUpdate
+  const tooltipContent = canStar
     ? isStarred
       ? translate(STRING.STARRED)
       : translate(STRING.STAR)
@@ -145,7 +149,7 @@ const StarButton = ({
     <Tooltip content={tooltipContent}>
       <IconButton
         icon={isStarred ? IconType.HeartFilled : IconType.Heart}
-        disabled={!project?.canUpdate}
+        disabled={!canStar}
         loading={isLoading || captureFetching}
         theme={IconButtonTheme.Neutral}
         onClick={() => starCapture()}
@@ -178,22 +182,39 @@ const PipelinesPicker = ({
   onValueChange: (value?: string) => void
 }) => {
   const { projectId } = useParams()
-  const { pipelines = [], isLoading } = usePipelines({
+  const { pipelines = [] } = usePipelines({
     projectId: projectId as string,
   })
 
   return (
-    <Select
-      loading={isLoading}
-      options={pipelines.map((p) => ({
-        value: String(p.id),
-        label: p.name,
-      }))}
-      placeholder="Pipeline"
-      showClear={false}
-      theme={SelectTheme.NeutralCompact}
-      value={value}
-      onValueChange={onValueChange}
-    />
+    <Select.Root value={value ?? ''} onValueChange={onValueChange}>
+      <Select.Trigger className="h-8 !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0">
+        <Select.Value placeholder="Select a pipeline" />
+      </Select.Trigger>
+      <Select.Content>
+        {pipelines.map((p) => (
+          <Select.Item
+            className="h-8 body-small"
+            key={p.name}
+            value={String(p.id)}
+            disabled={!p.currentProcessingService.online}
+          >
+            <div className="flex items-center gap-4">
+              <div
+                className="w-2 h-2 rounded-full mb-0.5 shrink-0"
+                style={{
+                  backgroundColor: p.currentProcessingService.service
+                    ? p.currentProcessingService.service?.status.color
+                    : ProcessingService.getStatusInfo('OFFLINE').color,
+                }}
+              />
+              <span className="whitespace-nowrap text-ellipsis overflow-hidden">
+                {p.name}
+              </span>
+            </div>
+          </Select.Item>
+        ))}
+      </Select.Content>
+    </Select.Root>
   )
 }
