@@ -34,9 +34,11 @@ export const NewDeploymentDialog = () => {
           title={label}
           onCancelClick={() => setIsOpen(false)}
           onSubmit={async (data) => {
-            await createDeployment({ ...data, projectId })
-            if (!error) {
+            try {
+              await createDeployment({ ...data, projectId })
               setIsOpen(false)
+            } catch {
+              // Error handled in hook
             }
           }}
         />

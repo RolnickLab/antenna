@@ -9,6 +9,10 @@ class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def get_project(self):
+        """Get the project associated with the model."""
+        return self.project if hasattr(self, "project") else None
+
     def __str__(self) -> str:
         """All django models should have this method."""
         if hasattr(self, "name"):

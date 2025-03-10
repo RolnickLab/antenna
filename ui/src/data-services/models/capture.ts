@@ -1,6 +1,6 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
-
+import { UserPermission } from 'utils/user/types'
 export type ServerCapture = any // TODO: Update this type
 
 export type DetectionOccurrence = {
@@ -67,7 +67,12 @@ export class Capture {
       )
     }
   }
-
+  get canStar(): boolean {
+    const hasPermission = this._capture.user_permissions.includes(
+      UserPermission.Star
+    )
+    return hasPermission
+  }
   get dateTimeLabel(): string {
     return getFormatedDateTimeString({
       date: new Date(this._capture.timestamp),

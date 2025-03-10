@@ -2,13 +2,13 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from ami.base.views import ProjectMixin
 from ami.exports.registry import ExportRegistry
 from ami.jobs.models import DataExport, DataExportJob, Job, JobState
 from ami.jobs.serializers import DataExportSerializer
-from ami.utils.requests import get_active_project
 
 
-class ExportViewSet(ModelViewSet):
+class ExportViewSet(ModelViewSet, ProjectMixin):
     """
     API endpoint for exporting occurrences.
     """
@@ -32,7 +32,8 @@ class ExportViewSet(ModelViewSet):
         # Extract filters from request
         filters = request.query_params.dict()
 
-        project = get_active_project(request)
+        project = self.get_active_project()
+
         if not project:
             return Response({"error": "Project ID not provided or invalid"}, status=400)
 
@@ -91,7 +92,7 @@ class ExportViewSet(ModelViewSet):
         """
         Retrieve all data exports and allow filtering by project_id.
         """
-        project = get_active_project(request)
+        project = self.get_active_project()
 
         if project:
             exports = self.queryset.filter(job__project=project)
