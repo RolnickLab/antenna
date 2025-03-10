@@ -4,6 +4,14 @@ import { ProcessingService } from './processing-service'
 
 export type ServerPipeline = any // TODO: Update this type
 
+export const PIPELINE_ENABLED_CODES = ['ENABLED', 'DISABLED'] as const
+
+export type PipelineEnabledCode = (typeof PIPELINE_ENABLED_CODES)[number]
+
+export enum PipelineEnabledType {
+  Enabled,
+  Disabled,
+}
 export class Pipeline {
   protected readonly _pipeline: ServerPipeline
   protected readonly _algorithms: Algorithm[] = []
@@ -128,5 +136,39 @@ export class Pipeline {
     return getFormatedDateTimeString({
       date: new Date(Math.max(...last_checked_times)),
     })
+  }
+
+  get enabled(): {
+    code: PipelineEnabledCode
+    label: string
+    type: PipelineEnabledType
+    color: string
+  } {
+    const status_code = this._pipeline.project_pipeline_configs[0].enabled
+      ? 'ENABLED'
+      : 'DISABLED'
+    return Pipeline.getEnabledInfo(status_code)
+  }
+
+  static getEnabledInfo(code: PipelineEnabledCode) {
+    const label =
+      String(code).charAt(0).toUpperCase() + String(code).toLowerCase().slice(1)
+
+    const type = {
+      DISABLED: PipelineEnabledType.Disabled,
+      ENABLED: PipelineEnabledType.Enabled,
+    }[code]
+
+    const color = {
+      [PipelineEnabledType.Disabled]: '#ef4444', // color-destructive-500,
+      [PipelineEnabledType.Enabled]: '#09af8a', // color-success-500
+    }[type]
+
+    return {
+      code,
+      label,
+      type,
+      color,
+    }
   }
 }
