@@ -42,7 +42,7 @@ def add_object_level_permissions(user: User | None, response_data: dict) -> dict
         permissions.update(["update"])
         if user.is_superuser:
             permissions.update(["delete"])
-    response_data["user_permissions"] = permissions
+    response_data["user_permissions"] = list(permissions)
     return response_data
 
 

@@ -15,7 +15,9 @@ from django_pydantic_field import SchemaField
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.exports.base import export_occurrences_to_csv, export_occurrences_to_dwc, export_occurrences_to_json
+
+# from ami.exports.base import export_occurrences_to_csv, export_occurrences_to_dwc, export_occurrences_to_json
+from ami.exports.registry import ExportRegistry
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
@@ -628,33 +630,27 @@ class DataExportJob(JobType):
 
         job.logger.info(f"Starting export for project {job.project}")
 
-        # Determine the export format (default to JSON)
-        export_format = job.result.get("format", "json")  # Assume 'json' if not specified
-        job.logger.info(f"Export format selected: {export_format}")
-        # Retrieve occurrences from project
-        occurrences = job.project.occurrences.all()
-        if not occurrences.exists():
-            raise ValueError("No occurrences found for export")
+        # Get the export function from the registry
+        export_format = job.params.get("format")
+        export_class = ExportRegistry.get_exporter(job.params.get("format"))
+        if not export_class:
+            raise ValueError("Invalid export format")
+        logger.debug(f"Exporter class {export_class}")
+        exporter = export_class(job=job, filters=job.params.get("filters"))
+        job.logger.info(f"Starting export for format: {export_format}")
+        file_path = exporter.export()
 
-        # Select and Execute the Appropriate Export Function
-        if export_format == "json":
-            file_path = export_occurrences_to_json(occurrences, job=job)
-        elif export_format == "csv":
-            file_path = export_occurrences_to_csv(occurrences, job=job)
-        elif export_format == "darwin_core":
-            file_path = export_occurrences_to_dwc(occurrences)
-        else:
-            raise ValueError(f"Invalid export format: {export_format}")
+        # Retrieve occurrences from project
 
         job.logger.info(f"Export completed: {file_path}")
 
         #  Upload File to MinIO Storage
-        file_name = f"exports/{job.task_id}.{export_format}"
+        file_name = f"exports/{job.task_id}.{export_class.file_format}"
         with open(file_path, "rb") as f:
             default_storage.save(file_name, f)
 
         file_url = default_storage.url(file_name)
-        job.logger.info(f"File uploaded to MinIO: {file_url}")
+        job.logger.info(f"File uploaded to Project Storage: {file_url}")
 
         # Finalize Job
         job.progress.update_stage(
@@ -720,6 +716,7 @@ class Job(BaseModel):
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
     logs: JobLogs = SchemaField(JobLogs, default=JobLogs())
+    params = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
@@ -950,13 +947,18 @@ class Job(BaseModel):
         #     ("cancel_job", "Can cancel a job"),
 
 
-class DataExportHistory(BaseModel):
+def get_export_choices():
+    """Dynamically fetch available export formats from the ExportRegistry."""
+    return [(key, key) for key in ExportRegistry.get_supported_formats()]
+
+
+class DataExport(BaseModel):
     """A model to track Occurrence data exports"""
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exports")
-    job = models.OneToOneField(Job, on_delete=models.CASCADE, related_name="export_history")
+    job = models.OneToOneField(Job, on_delete=models.CASCADE, related_name="data_export")
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
-
+    format = models.CharField(max_length=255, choices=get_export_choices())
     file_url = models.URLField(blank=True, null=True)
 
     def __str__(self):

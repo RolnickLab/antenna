@@ -41,10 +41,6 @@ djoser==2.2.0
 django-sendgrid-v5==1.2.2
 django-anymail[sendgrid]==10.0  # https://github.com/anymail/django-anymail
 
-# Darwinc Core Format
-dwca-writer
-pandas
-xmltodict
 ## Formerly dev-only dependencies
 # However we cannot run the app without some of these these dependencies
 # and it is easier to maintain in a single file

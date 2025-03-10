@@ -1011,7 +1011,7 @@ class OccurrenceViewSet(DefaultViewSet):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
 
-        if self.action == "list" or self.action == "export":
+        if self.action == "list":
             qs = (
                 qs.all()
                 .exclude(detections=None)
