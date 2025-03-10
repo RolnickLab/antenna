@@ -40,11 +40,15 @@ class DetectionsByDeterminationAndCaptureTabularSerializer(serializers.Serialize
 
     def to_representation(self, instance: typing.Any) -> dict[str, typing.Any]:
         data = super().to_representation(instance)
-        taxon: Taxon = Taxon.objects.get(id=data["taxon_id"])
-
-        for taxon_rank in taxon.parents_json:
-            field_name = f"taxon_{taxon_rank.rank.name.lower()}"
-            data[field_name] = taxon_rank.name
+        try:
+            taxon: Taxon = Taxon.objects.get(id=data["taxon_id"])
+        except Taxon.DoesNotExist:
+            logger.warning(f"Taxon with ID '{data['taxon_id']}' not found")
+            pass
+        else:
+            for taxon_rank in taxon.parents_json:
+                field_name = f"taxon_{taxon_rank.rank.name.lower()}"
+                data[field_name] = taxon_rank.name
 
         return data
 

@@ -1,5 +1,6 @@
 import csv
 import logging
+import typing
 
 from django.core.files.storage import default_storage
 from django.db import models
@@ -28,7 +29,11 @@ class BaseExportView(APIView):
     pass
 
 
-def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.Serializer], batch_size=1000):
+def get_data_in_batches(
+    QuerySet: models.QuerySet,
+    Serializer: type[serializers.Serializer],
+    batch_size: int = 1000,
+) -> typing.Iterator[list[dict]]:
     items = QuerySet.iterator(chunk_size=batch_size)
     batch = []
     for i, item in enumerate(items):
@@ -55,7 +60,11 @@ def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.
         yield batch
 
 
-def write_export(report_name, Serializer: type[serializers.Serializer], QuerySet: models.QuerySet):
+def write_export(
+    report_name: str,
+    Serializer: type[serializers.Serializer],
+    QuerySet: models.QuerySet,
+) -> str:
     timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")
     file_name = f"{slugify(report_name)}-{timestamp}.csv"
     file_path = file_name

@@ -16,16 +16,37 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = "Export data by capture"
 
+    def add_arguments(self, parser) -> None:
+        parser.add_argument(
+            "--project-id",
+            type=int,
+            required=True,
+            help="Project ID to export data from",
+        )
+        parser.add_argument(
+            "--collection-ids",
+            type=int,
+            nargs="+",
+            required=False,
+            default=[],
+            help="Collection IDs to export data from (space-separated list)",
+        )
+
     def handle(self, *args, **options):
         # for i, batch in enumerate(by_capture.get_data_in_batches())
         #     # print(f"Processing batch {batch}")
         #     print(f"Processing batch {i}")
+        project_id: int = options["project_id"]
+        collection_ids: list[int] = options["collection_ids"]
+
+        qs = all_captures.get_queryset().filter(project=project_id)
+        if collection_ids:
+            qs = qs.filter(collections__in=collection_ids)
 
         fname = write_export(
             "captures",
             Serializer=all_captures.CapturesTabularSerializer,
-            QuerySet=all_captures.get_queryset().filter(project=85).filter(collections__in=[82, 79]),
-            # .filter(collections__in=[82]),
+            QuerySet=qs,
         )
         # get full path to the file
         print(f"Exported to {fname}")
