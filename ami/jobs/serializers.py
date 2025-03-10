@@ -11,7 +11,7 @@ from ami.main.models import Deployment, Project, SourceImage, SourceImageCollect
 from ami.ml.models import Pipeline
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobLogs, JobProgress, MLJob
+from .models import DataExport, Job, JobLogs, JobProgress, MLJob
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -139,4 +139,33 @@ class JobSerializer(JobListSerializer):
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
             "result",
+        ]
+
+
+class DataExportSerializer(serializers.ModelSerializer):
+    """
+    Serializer for DataExport model.
+    """
+
+    job_id = serializers.IntegerField(source="job.id", read_only=True)
+    status = serializers.CharField(source="job.status", read_only=True)
+    progress = serializers.FloatField(source="job.progress.summary.progress", read_only=True)
+    created_at = serializers.DateTimeField(source="job.scheduled_at", read_only=True)
+    started_at = serializers.DateTimeField(source="job.started_at", read_only=True)
+    finished_at = serializers.DateTimeField(source="job.finished_at", read_only=True)
+    file_url = serializers.URLField(read_only=True)
+
+    class Meta:
+        model = DataExport
+        fields = [
+            "id",
+            "user",
+            "job_id",
+            "status",
+            "progress",
+            "format",
+            "created_at",
+            "started_at",
+            "finished_at",
+            "file_url",
         ]
