@@ -10,9 +10,10 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import SourceImage
-from ami.utils.requests import get_active_project, project_id_doc_param
+from ami.utils.requests import project_id_doc_param
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
@@ -27,7 +28,7 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
-class AlgorithmViewSet(DefaultViewSet):
+class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows algorithm (ML models) to be viewed or edited.
     """
@@ -60,7 +61,7 @@ class AlgorithmCategoryMapViewSet(DefaultViewSet):
     ]
 
 
-class PipelineViewSet(DefaultViewSet):
+class PipelineViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows pipelines to be viewed or edited.
     """
@@ -76,8 +77,7 @@ class PipelineViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
-        # If pipelines are filtered by project, also filter processing services by project
+        project = self.get_active_project()
         if project:
             qs = qs.filter(projects=project).prefetch_related(
                 Prefetch(
@@ -114,7 +114,7 @@ class PipelineViewSet(DefaultViewSet):
         return Response(results.dict())
 
 
-class ProcessingServiceViewSet(DefaultViewSet):
+class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows processing services to be viewed or edited.
     """
@@ -126,8 +126,7 @@ class ProcessingServiceViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
-        project = get_active_project(self.request)
-
+        project = self.get_active_project()
         if project:
             qs = qs.filter(projects=project)
         return qs
@@ -142,7 +141,13 @@ class ProcessingServiceViewSet(DefaultViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # immediately get status after creating a processing service
+        instance: ProcessingService | None = serializer.instance
+        assert instance is not None
+        status_response = instance.get_status()
+        return Response(
+            {"instance": serializer.data, "status": status_response.dict()}, status=status.HTTP_201_CREATED
+        )
 
     @action(detail=True, methods=["get"])
     def status(self, request: Request, pk=None) -> Response:
@@ -157,4 +162,5 @@ class ProcessingServiceViewSet(DefaultViewSet):
     def register_pipelines(self, request: Request, pk=None) -> Response:
         processing_service = ProcessingService.objects.get(pk=pk)
         response = processing_service.create_pipelines()
+        processing_service.save()
         return Response(response.dict())

@@ -48,3 +48,7 @@ services:
       context: ./processing_services/example
     volumes:
       - ./processing_services/example/:/app
+    networks:
+      default:
+          aliases:
+            - processing_service

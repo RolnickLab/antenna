@@ -14,15 +14,11 @@ export const StatusTableCell = ({
   label,
 }: StatusTableCellProps) => (
   <div className={styles.tableCell}>
-    {details?.length ? (
-      <Tooltip content={details}>
-        <div>
-          <StatusMarker color={color} />
-        </div>
-      </Tooltip>
-    ) : (
-      <StatusMarker color={color} />
-    )}
-    <span className={styles.label}>{label}</span>
+    <Tooltip content={details}>
+      <div className={styles.content}>
+        <StatusMarker color={color} />
+        <span className={styles.label}>{label}</span>
+      </div>
+    </Tooltip>
   </div>
 )

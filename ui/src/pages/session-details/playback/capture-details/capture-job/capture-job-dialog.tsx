@@ -1,28 +1,27 @@
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import {
-  IconButton,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { EyeIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { JobDetails } from 'pages/job-details/job-details'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 
 export const CaptureJobDialog = ({ id }: { id: string }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const { job, isLoading, isFetching, error } = useJobDetails(id)
+  const { job, isLoading, isFetching, error } = useJobDetails(id, isOpen)
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Tooltip content={job?.description ?? `Job ${id}`}>
+      <Tooltip content="Job details">
         <div>
           <Dialog.Trigger>
-            <IconButton
-              theme={IconButtonTheme.Neutral}
-              icon={IconType.BatchId}
-            />
+            <Button
+              size="icon"
+              className="rounded-md !bg-neutral-700 text-neutral-200"
+            >
+              <EyeIcon className="w-4 h-4" />
+            </Button>
           </Dialog.Trigger>
         </div>
       </Tooltip>
