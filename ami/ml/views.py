@@ -75,17 +75,17 @@ class PipelineViewSet(DefaultViewSet):
     ]
 
     def get_queryset(self) -> QuerySet:
-        query_set: QuerySet = super().get_queryset()
+        qs: QuerySet = super().get_queryset()
         project = get_active_project(self.request)
         # If pipelines are filtered by project, also filter processing services by project
         if project:
-            query_set = query_set.filter(projects=project).prefetch_related(
+            qs = qs.filter(projects=project).prefetch_related(
                 Prefetch(
                     "processing_services",
-                    queryset=ProcessingService.objects.filter(projects=project.id),
+                    queryset=ProcessingService.objects.filter(projects=project.pk),
                 )
             )
-        return query_set
+        return qs
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
@@ -125,17 +125,12 @@ class ProcessingServiceViewSet(DefaultViewSet):
     ordering_fields = ["id", "created_at", "updated_at"]
 
     def get_queryset(self) -> QuerySet:
-        query_set: QuerySet = super().get_queryset()
+        qs: QuerySet = super().get_queryset()
         project = get_active_project(self.request)
 
         if project:
-            query_set = query_set.filter(projects=project).prefetch_related(
-                Prefetch(
-                    "pipelines",
-                    queryset=Pipeline.objects.filter(projects=project.id),
-                )
-            )
-        return query_set
+            qs = qs.filter(projects=project)
+        return qs
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
