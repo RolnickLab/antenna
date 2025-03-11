@@ -192,9 +192,32 @@ def process_images(
         if url
     ]
 
+    if job_id:
+        try:
+            config = pipeline.project_pipeline_configs.get(project_id=job.project).config
+            task_logger.info(
+                f"Sending pipeline request using {config} from the project-pipeline config "
+                f"for Pipeline {pipeline} and Project {job.project}."
+            )
+        except Exception as e:
+            task_logger.error(
+                f"Error getting the project-pipeline config for Pipeline {pipeline} " f"and Project {job.project}: {e}"
+            )
+            config = {}
+            task_logger.info(
+                "Using empty config when sending pipeline request since no project-pipeline config "
+                f"was found for Pipeline {pipeline} and Project {job.project}"
+            )
+    else:
+        config = {}
+        task_logger.info(
+            f"Using empty config when sending pipeline request since no job was found for Pipeline {pipeline}"
+        )
+
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
         source_images=source_images,
+        config=config,
     )
 
     session = create_session()
