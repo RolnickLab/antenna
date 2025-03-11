@@ -76,25 +76,25 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
     ]
 
     def get_queryset(self) -> QuerySet:
-        query_set: QuerySet = super().get_queryset()
+        qs: QuerySet = super().get_queryset()
         project = self.get_active_project()
         if project:
-            query_set = query_set.filter(projects=project).prefetch_related(
+            qs = qs.filter(projects=project).prefetch_related(
                 Prefetch(
                     "processing_services",
-                    queryset=ProcessingService.objects.filter(projects=project.id),
+                    queryset=ProcessingService.objects.filter(projects=project.pk),
                 )
             )
-            query_set = query_set.prefetch_related(
+            qs = qs.prefetch_related(
                 Prefetch(
                     "project_pipeline_configs",
-                    queryset=ProjectPipelineConfig.objects.filter(pipeline__in=query_set, project=project.id),
+                    queryset=ProjectPipelineConfig.objects.filter(pipeline__in=qs, project=project.id),
                 )
             )
 
-            query_set = query_set.filter(projects=project.id, project_pipeline_configs__enabled=True)
+            qs = qs.filter(projects=project.id, project_pipeline_configs__enabled=True)
 
-        return query_set
+        return qs
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
