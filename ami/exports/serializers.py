@@ -3,10 +3,6 @@ from rest_framework import serializers
 from ami.main.models import Occurrence
 
 
-class DefaultExportSerializer(serializers.ModelSerializer):
-    pass
-
-
 def get_export_serializer():
     from ami.main.api.serializers import OccurrenceSerializer
 
@@ -23,26 +19,24 @@ def get_export_serializer():
             return instance_data
 
         def to_representation(self, instance):
-            return super().to_representation(instance)
+            return serializers.HyperlinkedModelSerializer.to_representation(self, instance)
 
     return OccurrenceExportSerializer
 
 
-class OccurrenceTabularSerializer(DefaultExportSerializer):
+class OccurrenceTabularSerializer(serializers.ModelSerializer):
     """Serializer to format occurrences for tabular data export."""
 
     event_id = serializers.IntegerField(source="event.id", allow_null=True)
     event_name = serializers.CharField(source="event.name", allow_null=True)
     deployment_id = serializers.IntegerField(source="deployment.id", allow_null=True)
     deployment_name = serializers.CharField(source="deployment.name", allow_null=True)
+    project_id = serializers.IntegerField(source="project.id", allow_null=True)
+    project_name = serializers.CharField(source="project.name", allow_null=True)
+
     determination_id = serializers.IntegerField(source="determination.id", allow_null=True)
     determination_name = serializers.CharField(source="determination.name", allow_null=True)
-    detections_count = serializers.IntegerField()
-    first_appearance_timestamp = serializers.DateTimeField()
-    duration = serializers.SerializerMethodField()
-
-    def get_duration(self, obj):
-        return obj.duration().total_seconds() if obj.duration() else None
+    determination_score = serializers.FloatField(allow_null=True)
 
     class Meta:
         model = Occurrence
@@ -52,10 +46,13 @@ class OccurrenceTabularSerializer(DefaultExportSerializer):
             "event_name",
             "deployment_id",
             "deployment_name",
+            "project_id",
+            "project_name",
             "determination_id",
             "determination_name",
             "determination_score",
             "detections_count",
             "first_appearance_timestamp",
+            "last_appearance_timestamp",
             "duration",
         ]

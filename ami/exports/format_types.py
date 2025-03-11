@@ -22,7 +22,7 @@ class JSONExporter(BaseExporter):
         return get_export_serializer()
 
     def get_queryset(self):
-        return self.job.project.occurrences.all()
+        return self.job.project.occurrences.all().with_timestamps().with_detections_count()
 
     def export(self):
         """Exports occurrences to JSON format."""
@@ -51,7 +51,7 @@ class CSVExporter(BaseExporter):
     serializer_class = OccurrenceTabularSerializer
 
     def get_queryset(self):
-        return self.job.project.occurrences.all()
+        return self.job.project.occurrences.all().with_timestamps().with_detections_count()
 
     def export(self):
         """Exports occurrences to CSV format."""
