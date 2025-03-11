@@ -11,9 +11,11 @@ import styles from './styles.module.scss'
 
 export const ProcessingServiceDetailsDialog = ({
   id,
+  projectId,
   name,
 }: {
   id: string
+  projectId: string
   name: string
 }) => {
   const [isOpen, setIsOpen] = useState(false)
@@ -40,6 +42,7 @@ export const ProcessingServiceDetailsDialog = ({
         <div className={styles.content}>
           <ProcessingServiceDetailsContent
             id={id}
+            projectId={projectId}
             onLoadingChange={setIsLoading}
           />
         </div>
@@ -50,13 +53,17 @@ export const ProcessingServiceDetailsDialog = ({
 
 const ProcessingServiceDetailsContent = ({
   id,
+  projectId,
   onLoadingChange,
 }: {
   id: string
+  projectId: string
   onLoadingChange: (isLoading: boolean) => void
 }) => {
-  const { processingService, isLoading, error } =
-    useProcessingServiceDetails(id)
+  const { processingService, isLoading, error } = useProcessingServiceDetails(
+    id,
+    { projectId }
+  )
 
   useEffect(() => {
     onLoadingChange(isLoading)

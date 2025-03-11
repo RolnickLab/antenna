@@ -931,7 +931,9 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def choose_processing_service_for_pipeline(self, job_id, pipeline_name) -> ProcessingService:
+    def choose_processing_service_for_pipeline(
+        self, job_id: int, pipeline_name: str, project_id: int
+    ) -> ProcessingService:
         # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
 
         job = None
@@ -942,7 +944,12 @@ class Pipeline(BaseModel):
             job = Job.objects.get(pk=job_id)
             task_logger = job.logger
 
-        processing_services = self.processing_services.all()
+        # get all processing services that are associated with the provided pipeline project
+        processing_services = self.processing_services.filter(projects=project_id)
+        task_logger.info(
+            f"Searching processing services:"
+            f"{[processing_service.name for processing_service in processing_services]}"
+        )
 
         # check the status of all processing services
         timeout = 5 * 60.0  # 5 minutes
@@ -972,8 +979,8 @@ class Pipeline(BaseModel):
 
             return processing_service_lowest_latency
 
-    def process_images(self, images: typing.Iterable[SourceImage], job_id: int | None = None):
-        processing_service = self.choose_processing_service_for_pipeline(job_id, self.name)
+    def process_images(self, images: typing.Iterable[SourceImage], project_id: int, job_id: int | None = None):
+        processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
 
         if not processing_service.endpoint_url:
             raise ValueError(

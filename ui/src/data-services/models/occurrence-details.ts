@@ -23,7 +23,7 @@ export interface Identification {
 export interface HumanIdentification extends Identification {
   comment: string
   user: {
-    id: string
+    id?: string
     name: string
     image?: string
   }
@@ -58,13 +58,16 @@ export class OccurrenceDetails extends Occurrence {
         const taxon = new Taxon(i.taxon)
         const overridden = i.withdrawn
         const applied = taxon.id === this.determinationTaxon.id
+        const user = i.user
+          ? { id: `${i.user.id}`, name: i.user.name, image: i.user.image }
+          : { name: 'Unknown user' }
 
         const identification: HumanIdentification = {
           id: `${i.id}`,
           applied,
           overridden,
           taxon,
-          user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
+          user,
           comment: i.comment,
           userPermissions: i.user_permissions,
           createdAt: i.created_at,
