@@ -8,7 +8,7 @@ Antenna fills the data gap to help understand insects and protect biodiversity b
 
 Antenna is a highly collaborative community and aspires to be a safe and welcoming space for all. Therefore, we have prepared guidelines for our community in which we outline the expected behavior from everyone, as well as steps for reporting unacceptable behavior.
 
-These guidelines coexist harmoniously with our [Terms of service](https://antenna.insectai.org/terms-of-service) and are not intended to replace them in any way.
+These guidelines coexist harmoniously with our [Terms of service](/terms-of-service) and are not intended to replace them in any way.
 
 1. ## **Scope**
 
