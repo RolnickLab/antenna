@@ -11,6 +11,8 @@ import { TermsOfServicePage } from 'components/info-page/terms-of-service-page/t
 import { Menu } from 'components/menu/menu'
 import { TermsOfServiceInfo } from 'components/terms-of-service-info/terms-of-service-info'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import { AlertCircleIcon, ChevronRightIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
 import { ResetPassword } from 'pages/auth/reset-password'
@@ -27,7 +29,14 @@ import { Species } from 'pages/species/species'
 import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { ReactNode, useContext, useEffect } from 'react'
 import { Helmet, HelmetProvider } from 'react-helmet-async'
-import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
+import {
+  Link,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useParams,
+} from 'react-router-dom'
 import {
   BreadcrumbContext,
   BreadcrumbContextProvider,
@@ -36,6 +45,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { CookieConsentContextProvider } from 'utils/cookieConsent/cookieConsentContext'
 import { STRING, translate } from 'utils/language'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
+import { DEFAULT_PAGE_TITLE } from 'utils/usePageTitle'
 import { UserContextProvider } from 'utils/user/userContext'
 import { UserInfoContextProvider } from 'utils/user/userInfoContext'
 import { UserPreferencesContextProvider } from 'utils/userPreferences/userPreferencesContext'
@@ -48,7 +58,7 @@ const INTRO_CONTAINER_ID = 'intro'
 export const App = () => (
   <AppProviders>
     <Helmet>
-      <title>Antenna Data Platform</title>
+      <title>{DEFAULT_PAGE_TITLE}</title>
       <meta
         name="description"
         content="An interdisciplinary platform to upload, classify, and analyse in-the-wild images of invertebrates for research and conservation efforts."
@@ -107,6 +117,7 @@ export const App = () => (
             </InfoPageContainer>
           }
         />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
     <ReactQueryDevtools initialIsOpen={false} />
@@ -208,4 +219,30 @@ const InfoPageContainer = ({ children }: { children: ReactNode }) => (
       <ErrorBoundary>{children}</ErrorBoundary>
     </div>
   </main>
+)
+
+const NotFound = () => (
+  <>
+    <Helmet>
+      <title>Page not found | {DEFAULT_PAGE_TITLE}</title>
+    </Helmet>
+    <main className={styles.main}>
+      <div className={styles.content}>
+        <div className="flex flex-col items-center py-24">
+          <AlertCircleIcon className="w-8 h-8 text-destructive mb-8" />
+          <span className="body-large font-medium mb-2">Page not found</span>
+          <span className="body-base text-muted-foreground mb-8">
+            Sorry, we couldn't find the page you are looking for.
+          </span>
+          <Link
+            to={APP_ROUTES.HOME}
+            className={buttonVariants({ variant: 'link' })}
+          >
+            <span>To homepage</span>
+            <ChevronRightIcon className="w-4 h-4 ml-2" />
+          </Link>
+        </div>
+      </div>
+    </main>
+  </>
 )
