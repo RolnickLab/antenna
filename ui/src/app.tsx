@@ -6,7 +6,8 @@ import { Analytics } from 'components/analytics'
 import { CookieDialog } from 'components/cookie-dialog/cookie-dialog'
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
-import { InfoPage } from 'components/info-page/info-page'
+import { CodeOfConductPage } from 'components/info-page/code-of-conduct-page/code-of-conduct-page'
+import { TermsOfServicePage } from 'components/info-page/terms-of-service-page/terms-of-service-page'
 import { Menu } from 'components/menu/menu'
 import { TermsOfServiceInfo } from 'components/terms-of-service-info/terms-of-service-info'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
@@ -90,7 +91,22 @@ export const App = () => (
           <Route path="collections/:id" element={<CollectionDetails />} />
           <Route path="*" element={<UnderConstruction />} />
         </Route>
-        <Route path="/:slug" element={<InfoPageContainer />} />
+        <Route
+          path="/terms-of-service"
+          element={
+            <InfoPageContainer>
+              <TermsOfServicePage />
+            </InfoPageContainer>
+          }
+        />
+        <Route
+          path="/code-of-conduct"
+          element={
+            <InfoPageContainer>
+              <CodeOfConductPage />
+            </InfoPageContainer>
+          }
+        />
       </Routes>
     </div>
     <ReactQueryDevtools initialIsOpen={false} />
@@ -186,16 +202,10 @@ const ProjectContainer = () => {
   )
 }
 
-const InfoPageContainer = () => {
-  const { slug } = useParams()
-
-  return (
-    <main className={styles.main}>
-      <div className={styles.content}>
-        <ErrorBoundary>
-          <InfoPage slug={slug as string} />
-        </ErrorBoundary>
-      </div>
-    </main>
-  )
-}
+const InfoPageContainer = ({ children }: { children: ReactNode }) => (
+  <main className={styles.main}>
+    <div className={styles.content}>
+      <ErrorBoundary>{children}</ErrorBoundary>
+    </div>
+  </main>
+)
