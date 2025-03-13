@@ -85,6 +85,11 @@ export const HumanIdentification = ({
               >
                 <TaxonDetails compact taxon={identification.taxon} />
               </Link>
+              {identification.comment ? (
+                <p className="w-full body-small italic text-muted-foreground">
+                  "{identification.comment}"
+                </p>
+              ) : null}
               <div className="flex items-center gap-2">
                 {showAgree && (
                   <Agree
