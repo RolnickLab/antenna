@@ -23,6 +23,7 @@ export const useClassificationDetails = (
       enabled,
       queryKey: [API_ROUTES.CLASSIFICATIONS, id],
       url: `${API_URL}/${API_ROUTES.CLASSIFICATIONS}/${id}/`,
+      retry: 0,
     })
 
   const classification = useMemo(
