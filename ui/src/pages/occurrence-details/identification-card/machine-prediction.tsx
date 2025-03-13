@@ -38,6 +38,9 @@ export const MachinePrediction = ({
     identification.id,
     open
   )
+  const topN = classification?.topN.filter(
+    ({ taxon }) => taxon.id !== identification.taxon.id
+  )
   const formattedTime = getFormatedDateTimeString({
     date: new Date(identification.createdAt),
   })
@@ -88,35 +91,37 @@ export const MachinePrediction = ({
         </MachinePredictionDetails>
         <Collapsible.Root open={open} onOpenChange={setOpen}>
           <Collapsible.Content>
-            <FetchDetails error={error} isLoading={isLoading} />
-            {classification?.topN
-              .filter(({ taxon }) => taxon.id !== identification.taxon.id)
-              .map(({ score, taxon }) => {
-                const applied = taxon.id === occurrence.determinationTaxon.id
+            <FetchDetails
+              empty={topN && topN.length === 0}
+              error={error}
+              isLoading={isLoading}
+            />
+            {topN?.map(({ score, taxon }) => {
+              const applied = taxon.id === occurrence.determinationTaxon.id
 
-                return (
-                  <MachinePredictionDetails
-                    key={taxon.id}
-                    applied={applied}
-                    score={score}
-                    taxon={taxon}
-                  >
-                    {showAgree && (
-                      <Agree
-                        agreed={
-                          currentUser
-                            ? occurrence.userAgreed(currentUser.id, taxon.id)
-                            : false
-                        }
-                        agreeWith={{ predictionId: identification.id }}
-                        applied={applied}
-                        occurrenceId={occurrence.id}
-                        taxonId={taxon.id}
-                      />
-                    )}
-                  </MachinePredictionDetails>
-                )
-              })}
+              return (
+                <MachinePredictionDetails
+                  key={taxon.id}
+                  applied={applied}
+                  score={score}
+                  taxon={taxon}
+                >
+                  {showAgree && (
+                    <Agree
+                      agreed={
+                        currentUser
+                          ? occurrence.userAgreed(currentUser.id, taxon.id)
+                          : false
+                      }
+                      agreeWith={{ predictionId: identification.id }}
+                      applied={applied}
+                      occurrenceId={occurrence.id}
+                      taxonId={taxon.id}
+                    />
+                  )}
+                </MachinePredictionDetails>
+              )
+            })}
           </Collapsible.Content>
         </Collapsible.Root>
       </IdentificationCard>
@@ -168,9 +173,11 @@ const MachinePredictionDetails = ({
 }
 
 const FetchDetails = ({
+  empty,
   error,
   isLoading,
 }: {
+  empty?: boolean
   error: unknown
   isLoading: boolean
 }) => {
@@ -186,6 +193,14 @@ const FetchDetails = ({
     return (
       <div className="py-6 px-4 border-border border-t">
         <ErrorState compact error={error} />
+      </div>
+    )
+  }
+
+  if (empty) {
+    return (
+      <div className="py-6 px-4 border-border border-t">
+        <span className="body-small">No details to show.</span>
       </div>
     )
   }
