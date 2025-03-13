@@ -5,7 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -59,6 +59,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    TaxaList,
     Taxon,
     User,
     update_detection_counts,
@@ -89,6 +90,7 @@ from .serializers import (
     SourceImageUploadSerializer,
     StorageSourceSerializer,
     StorageStatusSerializer,
+    TaxaListSerializer,
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
@@ -967,6 +969,40 @@ class OccurrenceDateFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences by TaxaList.
+    """
+
+    query_param = "taxalist"
+
+    def filter_queryset(self, request, queryset, view):
+        taxalist_id = request.query_params.get(self.query_param)
+        logger.debug(f"Queryset count before filtering by taxalist {queryset.count()}")
+        if taxalist_id:
+            taxalist_id = IntegerField(required=False).clean(taxalist_id)
+            taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
+
+            if taxa_list:
+                taxa = taxa_list.taxa.all()  # Get taxalist taxon objects
+
+                logger.debug(f"Filtering by taxalist {taxalist_id} with {len(taxa)} taxa")
+                logger.debug(f"Filtering by taxalist {taxalist_id} taxa_ids {taxa}")
+
+                # filter by the exact determination
+                query_filter = Q(determination__in=taxa)
+
+                # filter by the taxon's children
+                for taxon in taxa:
+                    query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
+
+                queryset = queryset.filter(query_filter)
+                logger.debug(f"Queryset count after filtering by taxalist {queryset.count()}")
+                return queryset
+
+        return queryset
+
+
 class TaxonCollectionFilter(filters.BaseFilterBackend):
     """
     Filter taxa by the collection their occurrences belong to.
@@ -999,6 +1035,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceDateFilter,
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
+        OccurrenceTaxaListFilter,
     ]
     filterset_fields = [
         "event",
@@ -1285,6 +1322,19 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
+    queryset = TaxaList.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        project = self.get_active_project()
+        if project:
+            return qs.filter(projects=project)
+        return qs
+
+    serializer_class = TaxaListSerializer
 
 
 class ClassificationViewSet(DefaultViewSet):

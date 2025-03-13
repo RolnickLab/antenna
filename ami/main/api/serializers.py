@@ -30,6 +30,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    TaxaList,
     Taxon,
 )
 
@@ -530,6 +531,15 @@ class TaxonListSerializer(DefaultSerializer):
             request=self.context.get("request"),
             params=params,
         )
+
+
+class TaxaListSerializer(serializers.ModelSerializer):
+    taxa = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), many=True)
+    projects = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), many=True)
+
+    class Meta:
+        model = TaxaList
+        fields = ["id", "name", "description", "taxa", "projects"]
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
