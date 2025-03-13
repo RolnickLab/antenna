@@ -189,16 +189,19 @@ const FetchDetails = ({
 
   if (error) {
     return (
-      <div className="py-6 px-4 border-border border-t">
-        <ErrorState compact error={error} />
+      <div className="flex justify-center py-6 px-4 border-border border-t text-center">
+        <ErrorState
+          compact
+          error={{ message: 'Could not load classification details' }}
+        />
       </div>
     )
   }
 
   if (empty) {
     return (
-      <div className="py-6 px-4 border-border border-t">
-        <span className="body-small">No details to show.</span>
+      <div className="py-6 px-4 border-border border-t text-center text-muted-foreground">
+        <span className="body-small">No classification details to show</span>
       </div>
     )
   }
