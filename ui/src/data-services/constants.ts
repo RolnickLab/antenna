@@ -31,4 +31,6 @@ export const STATUS_CODES = {
   FORBIDDEN: 403,
 }
 
+export const REFETCH_INTERVAL = 10000 // Refetch every 10 second when polling
+
 export const SUCCESS_TIMEOUT = 1000 // Reset success after 1 second

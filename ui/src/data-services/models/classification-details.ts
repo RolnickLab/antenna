@@ -19,11 +19,13 @@ export class ClassificationDetails {
     this._classification = classification
     this.algorithm = new Algorithm(classification.algorithm)
     this.taxon = new Taxon(classification.taxon)
-    this.topN = classification.top_n.map(({ logit, score, taxon }: any) => ({
-      logit: _.round(logit, 4),
-      score: _.round(score, 4),
-      taxon: new Taxon(taxon),
-    }))
+    this.topN = classification.top_n
+      .filter(({ taxon }: any) => !!taxon)
+      .map(({ logit, score, taxon }: any) => ({
+        logit: _.round(logit, 4),
+        score: _.round(score, 4),
+        taxon: new Taxon(taxon),
+      }))
   }
 
   get id(): string {

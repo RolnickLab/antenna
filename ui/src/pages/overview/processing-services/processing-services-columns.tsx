@@ -11,8 +11,12 @@ import { STRING, translate } from 'utils/language'
 import { PopulateProcessingService } from './processing-services-actions'
 
 export const columns: (
-  projectId: string
-) => TableColumn<ProcessingService>[] = () => [
+  projectId: string,
+  canCreate?: boolean
+) => TableColumn<ProcessingService>[] = (
+  projectId: string,
+  canCreate?: boolean
+) => [
   {
     id: 'id',
     sortField: 'id',
@@ -25,7 +29,11 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: ProcessingService) => (
       <BasicTableCell>
-        <ProcessingServiceDetailsDialog id={item.id} name={item.name} />
+        <ProcessingServiceDetailsDialog
+          id={item.id}
+          projectId={projectId}
+          name={item.name}
+        />
       </BasicTableCell>
     ),
   },
@@ -40,15 +48,13 @@ export const columns: (
   {
     id: 'status',
     name: 'Status',
-    renderCell: (item: ProcessingService) => {
-      return (
-        <StatusTableCell
-          color={item.status.color}
-          label={item.status.label}
-          details={'Last Checked: ' + item.lastChecked}
-        />
-      )
-    },
+    renderCell: (item: ProcessingService) => (
+      <StatusTableCell
+        color={item.status.color}
+        details={'Last checked ' + item.lastChecked}
+        label={item.status.label}
+      />
+    ),
   },
   {
     id: 'num-pipelines-added',
@@ -67,7 +73,7 @@ export const columns: (
     },
     renderCell: (item: ProcessingService) => (
       <div className={styles.entityActions}>
-        {<PopulateProcessingService processingService={item} />}
+        {canCreate && <PopulateProcessingService processingService={item} />}
         {item.canUpdate && (
           <UpdateEntityDialog
             collection={API_ROUTES.PROCESSING_SERVICES}

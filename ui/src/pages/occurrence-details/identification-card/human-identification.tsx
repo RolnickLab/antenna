@@ -30,7 +30,7 @@ export const HumanIdentification = ({
   identification: Identification
   occurrence: Occurrence
   user: {
-    id: string
+    id?: string
     image?: string
     name: string
   }

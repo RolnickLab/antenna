@@ -85,7 +85,7 @@ export class Pipeline {
 
   get currentProcessingService(): {
     online: boolean
-    service: ProcessingService
+    service?: ProcessingService
   } {
     const processingServices = this._pipeline.processing_services.map(
       (service: any) => new ProcessingService(service)

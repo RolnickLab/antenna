@@ -3,13 +3,17 @@ import logging
 
 from django.db import connection, models
 from django.test import TestCase
+from guardian.shortcuts import get_perms
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
+from ami.jobs.models import Job
 from ami.main.models import (
+    Deployment,
     Device,
     Event,
+    Identification,
     Occurrence,
     Project,
     S3StorageSource,
@@ -23,6 +27,7 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
+from ami.users.roles import BasicMember, Identifier, ProjectManager
 
 logger = logging.getLogger(__name__)
 
@@ -721,6 +726,7 @@ class TestIdentification(APITestCase):
         self.user = User.objects.create_user(  # type: ignore
             email="testuser@insectai.org",
             is_staff=True,
+            is_superuser=True,
         )
         self.factory = APIRequestFactory()
         self.client.force_authenticate(user=self.user)
@@ -733,7 +739,7 @@ class TestIdentification(APITestCase):
         Post a new identification suggestion and check that it changed the occurrence's determination.
         """
 
-        suggest_id_endpoint = "/api/v2/identifications/"
+        suggest_id_endpoint = f"/api/v2/identifications/?project_id={self.project.pk}"
         taxa = Taxon.objects.filter(projects=self.project)
         assert taxa.count() > 1
 
@@ -931,14 +937,7 @@ class TestProjectSettingsFiltering(APITestCase):
 
 class TestProjectOwnerAutoAssignment(APITestCase):
     def setUp(self) -> None:
-        self.user_1 = User.objects.create_user(
-            email="testuser@insectai.org",
-            is_staff=True,
-        )
-        self.user_2 = User.objects.create_user(
-            email="testuser2@insectai.org",
-            is_staff=True,
-        )
+        self.user_1 = User.objects.create_user(email="testuser@insectai.org", is_staff=True, is_superuser=True)
         self.factory = APIRequestFactory()
         self.client.force_authenticate(user=self.user_1)
         return super().setUp()
@@ -949,3 +948,482 @@ class TestProjectOwnerAutoAssignment(APITestCase):
         self.client.post(project_endpoint, request)
         project = Project.objects.filter(name=request["name"]).first()
         self.assertEqual(self.user_1.id, project.owner.id)
+
+
+class TestProjectPermissions(APITestCase):
+    def _create_project(self, owner, member):
+        self.project = Project.objects.create(name="T Project", description="Test Description", owner=owner)
+        self.project.members.add(member)
+
+    def setUp(self) -> None:
+        # Create users
+        self.superuser = User.objects.create_superuser(
+            email="superuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+        self.owner = User.objects.create_user(email="owner@insectai.org", is_staff=True)
+        self.new_owner = User.objects.create_user(email="new_owner@insectai.org", is_staff=False)
+        self.member = User.objects.create_user(email="member@insectai.org", is_staff=False)
+        self.other_user = User.objects.create_user(email="other@insectai.org", is_staff=False)
+        # Create a staff user
+        self.staff_user = User.objects.create_user(
+            email="staffuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+        # Create a regular user
+        self.regular_user = User.objects.create_user(
+            email="regularuser@insectai.org",
+            password="password123",
+        )
+
+        # API endpoint for creating projects
+        self.project_create_endpoint = "/api/v2/projects/"
+        # Create a project
+        self._create_project(self.owner, self.member)
+        # Setup the request factory and authenticate as owner by default
+        self.factory = APIRequestFactory()
+
+    def test_owner_permissions(self):
+        # Owner has view, change, and delete permissions
+        self.assertTrue(self.owner.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.DELETE, self.project))
+        # test permissions from the API
+        self.client.force_authenticate(user=self.owner)
+
+        # Owner can view, update, and delete the project
+        response = self.client.get(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.patch(f"/api/v2/projects/{self.project.id}/", {"name": "Updated Project"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.delete(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_member_permissions(self):
+        # Member has view and change permissions, but not delete
+        self.assertTrue(self.member.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertFalse(self.member.has_perm(Project.Permissions.DELETE, self.project))
+
+        # test permissions from the API
+        # create the project
+        self._create_project(self.owner, self.member)
+
+        # Authenticate as member
+        self.client.force_authenticate(user=self.member)
+
+        # Member can view and update, but not delete
+        response = self.client.get(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.patch(f"/api/v2/projects/{self.project.id}/", {"name": "Updated Again"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        response = self.client.delete(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_other_user_permissions(self):
+        # Other users only have view permissions
+        self.assertTrue(self.other_user.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.DELETE, self.project))
+
+        # test permissions from the API
+        # Authenticate as other_user
+        self.client.force_authenticate(user=self.other_user)
+
+        # Other users can only view
+        response = self.client.get(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.put(f"/api/v2/projects/{self.project.id}/", {"name": "Should Fail"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        response = self.client.delete(f"/api/v2/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_permissions_on_owner_change(self):
+        """Test permissions update when the project owner is changed."""
+
+        self._create_project(self.owner, self.member)
+        # Change the owner
+        self.project.owner = self.new_owner
+        self.project.save()
+
+        # Check the new owner has the owner permissions
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.VIEW, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.DELETE, self.project))
+
+    def test_permissions_on_member_removal(self):
+        """Test permissions are removed when a user is no longer a member of the project."""
+        # Remove the member from the project
+        self.project.members.remove(self.member)
+
+        # Check the removed member no longer has permissions
+        self.assertFalse(self.member.has_perm(Project.Permissions.CHANGE, self.project))
+
+    def test_superuser_has_all_permissions(self):
+        # Log in as the superuser
+        self.client.force_authenticate(user=self.superuser)
+
+        # Get all permissions for the superuser on the project
+        superuser_permissions = get_perms(self.superuser, self.project)
+
+        # Assert that the superuser has all object-level permissions
+        project_permissions = [
+            Project.Permissions.VIEW,
+            Project.Permissions.CHANGE,
+            Project.Permissions.DELETE,
+        ]
+        for perm in project_permissions:
+            self.assertIn(perm, superuser_permissions)
+
+    def test_superuser_can_create_project(self):
+        """Ensure a superuser can create a project."""
+        self.client.force_authenticate(user=self.superuser)
+        data = {"name": "Superuser Project", "description": "Created by superuser"}
+        response = self.client.post(self.project_create_endpoint, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_regular_user_cannot_create_project(self):
+        """Ensure a regular user cannot create a project."""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {"name": "Regular User Project", "description": "Created by regular user"}
+        response = self.client.post(self.project_create_endpoint, data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_user_cannot_create_project(self):
+        """Ensure an anonymous user cannot create a project."""
+        data = {"name": "Anonymous User Project", "description": "Created by anonymous user"}
+        response = self.client.post(self.project_create_endpoint, data)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class TestRolePermissions(APITestCase):
+    # Create users
+    def setUp(self) -> None:
+        self.project_manager = User.objects.create_user(email="project_manager@insectai.org", is_staff=False)
+        self._create_project(self.project_manager)
+
+        self.basic_member = User.objects.create_user(email="basic_member@insectai.org", is_staff=False)
+        self.identifier = User.objects.create_user(email="identifier@insectai.org", is_staff=False)
+
+        self._assign_roles()
+        # Create a regular with no role assigned in the project
+        self.regular_user = User.objects.create_user(email="ru@insectai.org", is_staff=False)
+
+        self._create_job()
+        self.PERMISSIONS_MAPS = {
+            "project_manager": {
+                "project": {"create": False, "update": True, "delete": True},
+                "collection": {"create": True, "update": True, "delete": True, "populate": True},
+                "storage": {"create": True, "update": True, "delete": True},
+                "site": {"create": True, "update": True, "delete": True},
+                "device": {"create": True, "update": True, "delete": True},
+                "job": {"create": True, "update": True, "delete": True, "run": True, "retry": True, "cancel": True},
+                "identification": {"create": True, "update": True, "delete": True},
+                "capture": {"star": True, "unstar": True},
+            },
+            "basic_member": {
+                "project": {"create": False, "update": False, "delete": False},
+                "collection": {"create": False, "update": False, "delete": False, "populate": False},
+                "storage": {"create": False, "update": False, "delete": False},
+                "site": {"create": False, "update": False, "delete": False},
+                "device": {"create": False, "update": False, "delete": False},
+                "job": {
+                    "create": False,
+                    "update": False,
+                    "delete": False,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
+                "identification": {"create": False, "delete": False},
+                "capture": {"star": True, "unstar": True},
+            },
+            "identifier": {
+                "project": {"create": False, "update": False, "delete": False},
+                "collection": {"create": False, "update": False, "delete": False, "populate": False},
+                "storage": {"create": False, "update": False, "delete": False},
+                "site": {"create": False, "update": False, "delete": False},
+                "device": {"create": False, "update": False, "delete": False},
+                "job": {
+                    "create": False,
+                    "update": False,
+                    "delete": False,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
+                "identification": {"create": True, "update": True, "delete": True},
+                "capture": {"star": True, "unstar": True},
+            },
+            "regular_user": {
+                "project": {"create": False, "update": False, "delete": False},
+                "collection": {"create": False, "update": False, "delete": False, "populate": False},
+                "storage": {"create": False, "update": False, "delete": False},
+                "site": {"create": False, "update": False, "delete": False},
+                "device": {"create": False, "update": False, "delete": False},
+                "job": {
+                    "create": False,
+                    "update": False,
+                    "delete": False,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
+                "identification": {"create": False, "delete": False},
+                "capture": {"star": False, "unstar": False},
+            },
+        }
+
+    def _assign_roles(self):
+        ProjectManager.assign_user(self.project_manager, self.project)
+        BasicMember.assign_user(self.basic_member, self.project)
+        Identifier.assign_user(self.identifier, self.project)
+
+    def _create_project(self, owner):
+        self.project = Project.objects.create(name="Insect Project", description="Test Description", owner=owner)
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        S3StorageSource.objects.create(name="New source", project=self.project, bucket="Test Bucket")
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_taxa(project=self.project)
+        create_occurrences(deployment=self.deployment, num=1)
+        self._create_job()
+        Identification.objects.create(
+            user=self.project_manager, taxon=Taxon.objects.first(), occurrence=self.project.occurrences.first()
+        )
+
+    def _create_job(self):
+        self.job = Job.objects.create(name="Test Job", project=self.project)
+
+    def _test_role_permissions(self, role_class, user, permissions_map):
+        """Generic function to test role-based permissions based on an entity permission map."""
+        self._create_project(owner=self.project_manager)
+        self._assign_roles()
+        capture_id = self.project.occurrences.first().detections.first().source_image.pk
+        occurrence_id = self.project.occurrences.first().pk
+        endpoints = {
+            "collection": "/api/v2/captures/collections/",
+            "site": "/api/v2/deployments/sites/",
+            "device": "/api/v2/deployments/devices/",
+            "storage": "/api/v2/storage/",
+            "job": "/api/v2/jobs/",
+            "identification": "/api/v2/identifications/",
+            "project": "/api/v2/projects/",
+            "capture_star": f"/api/v2/captures/{capture_id}/star/",
+            "capture_unstar": f"/api/v2/captures/{capture_id}/unstar/",
+        }
+
+        self.client.force_authenticate(user=user)
+
+        entity_ids = {
+            "project": self.project.pk,
+            "collection": self.project.sourceimage_collections.first().pk,
+            "storage": self.project.storage_sources.first().pk,
+            "device": self.project.devices.first().pk,
+            "site": self.project.sites.first().pk,
+            "job": self.project.jobs.first().pk,
+            "identification": self.project.occurrences.first().identifications.first().pk,
+        }
+        create_data = {
+            "collection": {
+                "description": "New Collection",
+                "name": "Collection 1",
+                "project": self.project.pk,
+                "method": "common_combined",
+            },
+            "site": {"description": "New Site", "name": "Site 1", "project": self.project.pk},
+            "device": {"description": "New Device", "name": "Device 1", "project": self.project.pk},
+            "storage": {"name": "New Storage", "project": self.project.pk, "bucket": "test-bucket"},
+            "job": {"delay": "1", "name": "Test Job", "project_id": self.project.pk},
+            "identification": {"occurrence_id": occurrence_id, "taxon_id": "5", "comment": "Identifier comment"},
+            "project": {"name": "New Project", "description": "This is a test project."},
+        }
+
+        for entity, actions in permissions_map.items():
+            if entity == "capture":
+                continue
+            # Check Collection-Level Permissions in List Response
+            response = self.client.get(f"{endpoints[entity]}?project_id={self.project.pk}")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            logger.info(f"{role_class} , {entity} list response {response.json()}")
+            expected_collection_permissions = []
+            if actions.get("create", False):
+                # Identification update permissions are included
+                # in the user_permissions field at the object level
+                # in the /occurrences/{id}/ endpoint response.
+                if entity != "identification":
+                    expected_collection_permissions.append("create")
+            logger.info(
+                f"{role_class}, expected collection level permissions for {entity}: {expected_collection_permissions}"
+            )
+            self.assertEqual(set(response.json().get("user_permissions", [])), set(expected_collection_permissions))
+
+            # Step 1: Test Create
+            logger.info(f"Testing {role_class} create permission for {entity} ")
+            can_create = actions["create"] if "create" in actions else False
+            logger.info(f"entity endpoint : {endpoints[entity]}")
+            if entity == "project":
+                response = self.client.post(endpoints[entity], create_data.get(entity, {}), format="multipart")
+            else:
+                response = self.client.post(endpoints[entity], create_data.get(entity, {}))
+            expected_status = status.HTTP_201_CREATED if can_create else status.HTTP_403_FORBIDDEN
+            self.assertEqual(response.status_code, expected_status)
+            entity_ids[entity] = response.json().get("id") if can_create else entity_ids.get(entity, None)
+
+            #  Check Object-Level Permissions in List Response
+            if entity_ids[entity]:
+                response = self.client.get(endpoints[entity])
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+            object_permissions = []
+            # Add update, delete and other custom permissions
+            # populate, retry_job, cancel_job, start_job
+            for action, allowed in actions.items():
+                if allowed and action != "create":
+                    object_permissions.append(action)
+
+            results = response.json().get("results", [])
+            if results:
+                object_id = entity_ids[entity]
+                obj = next((r for r in results if r["id"] == object_id), None)
+                if obj:
+                    self.assertEqual(set(obj.get("user_permissions", [])), set(object_permissions))
+
+            # Step 2: Test Update
+            logger.info(f"Testing {role_class} update permission for {entity} , actions {actions}")
+            can_update = actions["update"] if "update" in actions else False
+            logger.info(f"{entity} can_update: {can_update}")
+            if entity_ids[entity]:
+                logger.info(f"{entity} update request {create_data.get(entity, {})}")
+                response = self.client.patch(
+                    f"{endpoints[entity]}{entity_ids[entity]}/",
+                    create_data.get(entity, {}).update({"name": "Updated Name"}),
+                )
+                logger.info(f"{entity} update response {response.json()}")
+                expected_status = status.HTTP_200_OK if can_update else status.HTTP_403_FORBIDDEN
+                logger.info(f"{entity} expected_status: {expected_status}, response_status:{response.status_code}")
+                self.assertEqual(response.status_code, expected_status)
+
+            # Step 3: Test Custom Actions
+            if entity == "job" and entity_ids[entity]:
+                for action in ["run", "retry", "cancel"]:
+                    logger.info(f"Testing {role_class} for job {action} custom permission")
+                    if action in actions:
+                        response = self.client.post(f"{endpoints[entity]}{entity_ids[entity]}/{action}/")
+                        expected_status = status.HTTP_200_OK if actions[action] else status.HTTP_403_FORBIDDEN
+                        self.assertEqual(response.status_code, expected_status)
+
+            if entity == "collection" and entity_ids[entity] and "populate" in actions:
+                logger.info(f"Testing {role_class} for  collection populate custom permission")
+                response = self.client.post(f"{endpoints[entity]}{entity_ids[entity]}/populate/")
+                expected_status = status.HTTP_200_OK if actions["populate"] else status.HTTP_403_FORBIDDEN
+                self.assertEqual(response.status_code, expected_status)
+        # Step 4: Test Capture (Star/Unstar)
+        if "capture" in permissions_map:
+            logger.info(f"Testing {role_class} for  capture star permission ")
+            can_star = permissions_map["capture"].get("star", False)
+            response = self.client.post(endpoints["capture_star"])
+            expected_status = status.HTTP_200_OK if can_star else status.HTTP_403_FORBIDDEN
+            self.assertEqual(response.status_code, expected_status)
+            logger.info(f"Testing {role_class} for  capture unstar permission ")
+            can_unstar = permissions_map["capture"].get("unstar", False)
+            response = self.client.post(endpoints["capture_unstar"])
+            expected_status = status.HTTP_200_OK if can_unstar else status.HTTP_403_FORBIDDEN
+            self.assertEqual(response.status_code, expected_status)
+        logger.info(f"{role_class}: entity_ids: {entity_ids}")
+        # Step 5: Unassign Role and Verify Permissions are Revoked
+        if role_class:
+            role_class.unassign_user(user, self.project)
+            BasicMember.unassign_user(user, project=self.project)
+            self.client.force_authenticate(user=user)
+
+            for entity, actions in permissions_map.items():
+                if "create" in actions:
+                    logger.info(f"Testing {role_class} for create permission on {entity} after role unassignment")
+                    response = self.client.post(endpoints[entity], create_data.get(entity, {}))
+                    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+                if "update" in actions:
+                    logger.info(f"Testing {role_class} for update permission on {entity} after role unassignment")
+                    logger.info(
+                        f"""Testing {role_class}
+                        after role unassignment endpoint:
+                         {endpoints[entity]}{entity_ids[entity]}/"""
+                    )
+                    response = self.client.patch(
+                        f"{endpoints[entity]}{entity_ids[entity]}/",
+                        create_data.get(entity, {}).update({"name": "Updated Name"}),
+                    )
+                    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+            response = self.client.post(endpoints["capture_star"])
+            logger.info(f"star capture response: {response.json()}")
+            logger.info(f"Testing {role_class} for star capture permission after role unassignment")
+            logger.info(f"{role_class} {user} user permissions: {get_perms(user, self.project)}")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+            response = self.client.post(endpoints["capture_unstar"])
+            logger.info(f"Testing {role_class} for unstar capture permission after role unassignment")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Step 6: Reassign Role and Verify Ability to Delete Objects
+        if role_class:
+            role_class.assign_user(user, self.project)
+            self.client.force_authenticate(user=user)
+
+            for entity, actions in permissions_map.items():
+                if entity == "project":
+                    # skip deleting project for now
+                    continue
+
+                if "delete" in actions and actions["delete"] and entity_ids[entity]:
+                    logger.info(f"Testing {role_class} for delete permission on {entity}")
+                    can_delete = actions["delete"]
+                    response = self.client.delete(f"{endpoints[entity]}{entity_ids[entity]}/")
+                    logger.info(f"{role_class} delete response status for {entity} : {response.status_code}")
+                    expected_status = status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN
+                    self.assertEqual(response.status_code, expected_status)
+
+            # try to delete the project
+            entity = "project"
+            actions = permissions_map[entity]
+            if "delete" in actions and actions["delete"] and entity_ids[entity]:
+                logger.info(f"Testing {role_class} for delete permission on {entity}")
+                can_delete = actions["delete"]
+                response = self.client.delete(f"{endpoints[entity]}{entity_ids[entity]}/")
+                logger.info(f"{role_class} delete response status for {entity} : {response.status_code}")
+                expected_status = status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN
+                self.assertEqual(response.status_code, expected_status)
+
+    def test_identifier_permissions(self):
+        """Test Identifier role permissions."""
+
+        expected_permissions = Identifier.permissions
+        assigned_permissions = set(get_perms(self.identifier, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
+        self._test_role_permissions(Identifier, self.identifier, self.PERMISSIONS_MAPS["identifier"])
+
+    def test_basic_member_permissions_(self):
+        """Test Basic Member role permissions."""
+        expected_permissions = BasicMember.permissions
+        assigned_permissions = set(get_perms(self.basic_member, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
+
+        self._test_role_permissions(BasicMember, self.basic_member, self.PERMISSIONS_MAPS["basic_member"])
+
+    def test_regular_user_permissions(self):
+        """Test Regular User permissions (view-only)."""
+        self._test_role_permissions(None, self.regular_user, self.PERMISSIONS_MAPS["regular_user"])
+
+    def test_project_manager_permissions_(self):
+        """Test Project Manager role permissions."""
+        expected_permissions = ProjectManager.permissions
+        assigned_permissions = set(get_perms(self.project_manager, self.project))
+        self.assertEqual(assigned_permissions, expected_permissions)
+        self._test_role_permissions(ProjectManager, self.project_manager, self.PERMISSIONS_MAPS["project_manager"])

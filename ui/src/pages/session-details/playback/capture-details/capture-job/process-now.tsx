@@ -29,7 +29,7 @@ export const ProcessNow = ({
   return (
     <Tooltip content={tooltipContent}>
       <Button
-        className="!bg-neutral-700 text-neutral-200"
+        className="rounded-md !bg-neutral-700 text-neutral-200"
         disabled={disabled}
         onClick={() => {
           if (!capture) {

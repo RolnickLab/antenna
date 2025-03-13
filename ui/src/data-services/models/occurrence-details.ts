@@ -23,7 +23,7 @@ export interface Identification {
 export interface HumanIdentification extends Identification {
   comment: string
   user: {
-    id: string
+    id?: string
     name: string
     image?: string
   }
@@ -64,11 +64,13 @@ export class OccurrenceDetails extends Occurrence {
           applied,
           overridden,
           taxon,
-          user: {
-            id: `${i.user.id}`,
-            name: i.user.name?.length ? i.user.name : 'Anonymous',
-            image: i.user.image,
-          },
+          user: i.user
+            ? {
+                id: `${i.user.id}`,
+                name: i.user.name?.length ? i.user.name : 'Anonymous user',
+                image: i.user.image,
+              }
+            : { name: 'Unknown user' },
           comment: i.comment,
           userPermissions: i.user_permissions,
           createdAt: i.created_at,

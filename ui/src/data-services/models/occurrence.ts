@@ -81,7 +81,7 @@ export class Occurrence {
   }
 
   get determinationVerified(): boolean {
-    return !!this._occurrence.determination_details.identification?.user
+    return !!this._occurrence.determination_details.identification
   }
 
   get determinationVerifiedBy() {
@@ -91,9 +91,9 @@ export class Occurrence {
     return verifiedBy
       ? {
           id: `${verifiedBy.id}`,
-          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous',
+          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous user',
         }
-      : undefined
+      : { name: 'Unknown user' }
   }
 
   get durationLabel(): string | undefined {
@@ -144,6 +144,10 @@ export class Occurrence {
 
   userAgreed(userId: string, taxonId?: string): boolean {
     return this._occurrence.identifications?.some((identification: any) => {
+      if (!identification.user) {
+        return false
+      }
+
       if (identification.withdrawn) {
         return false
       }
