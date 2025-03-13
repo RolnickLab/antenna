@@ -41,11 +41,9 @@ export const HumanIdentification = ({
     date: new Date(identification.createdAt),
   })
   const byCurrentUser = currentUser && user?.id === currentUser.id
-  const canAgree = identification.userPermissions.includes(
-    UserPermission.Update
-  )
+  const canAgree = occurrence.userPermissions.includes(UserPermission.Update)
   const canDelete = identification.userPermissions.includes(
-    UserPermission.Update // TODO: Update after permission PR is merged
+    UserPermission.Delete
   )
   const showAgree = !byCurrentUser && canAgree
   const showDelete = byCurrentUser && canDelete

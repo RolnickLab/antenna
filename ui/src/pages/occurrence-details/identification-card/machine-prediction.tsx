@@ -44,9 +44,7 @@ export const MachinePrediction = ({
   const formattedTime = getFormatedDateTimeString({
     date: new Date(identification.createdAt),
   })
-  const showAgree = identification.userPermissions.includes(
-    UserPermission.Update
-  )
+  const showAgree = occurrence.userPermissions.includes(UserPermission.Update)
 
   return (
     <div>
