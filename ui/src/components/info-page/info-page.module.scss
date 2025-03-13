@@ -78,17 +78,31 @@
     font-weight: 600;
   }
 
-  ol {
+  ul {
     display: block;
-    list-style-type: decimal;
-    margin: 0 0 32px 64px;
+    margin: 0 0 32px 16px;
 
     li {
       display: list-item;
       @include paragraph-small();
 
       &:not(:last-child) {
-        margin-bottom: 32px;
+        margin-bottom: 8px;
+      }
+    }
+  }
+
+  ol {
+    display: block;
+    list-style-type: decimal;
+    margin: 0 0 32px 16px;
+
+    li {
+      display: list-item;
+      @include paragraph-small();
+
+      &:not(:last-child) {
+        margin-bottom: 8px;
       }
     }
 
