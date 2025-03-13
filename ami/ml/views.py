@@ -1,8 +1,10 @@
 import logging
 
+from django.db.models import Prefetch
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
+from rest_framework import exceptions as api_exceptions
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -74,11 +76,16 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
     ]
 
     def get_queryset(self) -> QuerySet:
-        query_set: QuerySet = super().get_queryset()
+        qs: QuerySet = super().get_queryset()
         project = self.get_active_project()
         if project:
-            query_set = query_set.filter(projects=project)
-        return query_set
+            qs = qs.filter(projects=project).prefetch_related(
+                Prefetch(
+                    "processing_services",
+                    queryset=ProcessingService.objects.filter(projects=project.pk),
+                )
+            )
+        return qs
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
@@ -99,7 +106,11 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
         )  # TODO: Filter images by projects user has access to
         if not random_image:
             return Response({"error": "No image found to process."}, status=status.HTTP_404_NOT_FOUND)
-        results = pipeline.process_images(images=[random_image], job_id=None)
+
+        project = pipeline.projects.first()
+        if not project:
+            raise api_exceptions.ValidationError("Pipeline has no project associated with it.")
+        results = pipeline.process_images(images=[random_image], project_id=project.pk, job_id=None)
         return Response(results.dict())
 
 
@@ -114,11 +125,11 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     ordering_fields = ["id", "created_at", "updated_at"]
 
     def get_queryset(self) -> QuerySet:
-        query_set: QuerySet = super().get_queryset()
+        qs: QuerySet = super().get_queryset()
         project = self.get_active_project()
         if project:
-            query_set = query_set.filter(projects=project)
-        return query_set
+            qs = qs.filter(projects=project)
+        return qs
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
@@ -131,7 +142,8 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         # immediately get status after creating a processing service
-        instance = serializer.instance
+        instance: ProcessingService | None = serializer.instance
+        assert instance is not None
         status_response = instance.get_status()
         return Response(
             {"instance": serializer.data, "status": status_response.dict()}, status=status.HTTP_201_CREATED

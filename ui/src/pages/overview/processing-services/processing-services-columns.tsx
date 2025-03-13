@@ -29,7 +29,11 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: ProcessingService) => (
       <BasicTableCell>
-        <ProcessingServiceDetailsDialog id={item.id} name={item.name} />
+        <ProcessingServiceDetailsDialog
+          id={item.id}
+          projectId={projectId}
+          name={item.name}
+        />
       </BasicTableCell>
     ),
   },
@@ -44,15 +48,13 @@ export const columns: (
   {
     id: 'status',
     name: 'Status',
-    renderCell: (item: ProcessingService) => {
-      return (
-        <StatusTableCell
-          color={item.status.color}
-          label={item.status.label}
-          details={'Last Checked: ' + item.lastChecked}
-        />
-      )
-    },
+    renderCell: (item: ProcessingService) => (
+      <StatusTableCell
+        color={item.status.color}
+        details={'Last checked ' + item.lastChecked}
+        label={item.status.label}
+      />
+    ),
   },
   {
     id: 'num-pipelines-added',

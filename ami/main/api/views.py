@@ -1041,7 +1041,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "event",
         "deployment",
         "determination__rank",
-        "detections__source_image",
     ]
     ordering_fields = [
         "created_at",
@@ -1324,6 +1323,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+
 class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
     queryset = TaxaList.objects.all()
 
@@ -1336,27 +1336,34 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
 
     serializer_class = TaxaListSerializer
 
-
-class ClassificationViewSet(DefaultViewSet):
+    
+class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint for viewing and adding classification results from a model.
     """
 
-    queryset = Classification.objects.all()  # .select_related("taxon", "algorithm", "detection")
+    queryset = Classification.objects.all().select_related("taxon", "algorithm")  # , "detection")
     serializer_class = ClassificationSerializer
     filterset_fields = [
-        "detection",
-        "detection__occurrence",
+        # Docs about slow loading API browser because of large choice fields
+        # https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
         "taxon",
         "algorithm",
-        "detection__source_image",
         "detection__source_image__project",
+        "detection__source_image__collections",
     ]
     ordering_fields = [
         "created_at",
         "updated_at",
         "score",
     ]
+
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        project = self.get_active_project()
+        if project:
+            qs = qs.filter(detection__source_image__project=project)
+        return qs
 
     def get_serializer_class(self):
         """
