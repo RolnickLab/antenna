@@ -631,6 +631,8 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         SourceImageCollection.objects.all()
         .with_source_images_count()  # type: ignore
         .with_source_images_with_detections_count()
+        .with_occurrences_count()
+        .with_taxa_count()
         .prefetch_related("jobs")
     )
     serializer_class = SourceImageCollectionSerializer

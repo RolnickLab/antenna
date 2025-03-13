@@ -104,8 +104,8 @@ export const AVAILABLE_FILTERS: {
     field: 'verified',
   },
   {
-    label: 'Verified by',
-    field: 'verified_by_me',
+    label: 'Capture collection',
+    field: 'collection',
   },
 ]
 
