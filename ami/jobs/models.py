@@ -276,7 +276,11 @@ class JobLogHandler(logging.Handler):
             self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
 
         # @TODO consider saving logs to the database periodically rather than on every log
-        self.job.save(update_fields=["logs"], update_progress=False)
+        try:
+            self.job.save(update_fields=["logs"], update_progress=False)
+        except Exception as e:
+            logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
+            pass
 
 
 @dataclass
