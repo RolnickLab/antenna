@@ -225,7 +225,8 @@ class TestPipeline(TestCase):
 
     def test_create_pipeline(self):
         assert self.pipeline.slug.startswith("test-pipeline")
-        self.assertEqual(self.pipeline.algorithms.count(), len(ALGORITHM_CHOICES))
+        self.assertEqual(self.pipeline.algorithms.count(), 3)
+        self.assertEqual(self.pipeline_two.algorithms.count(), 3)
 
         for algorithm in self.pipeline.algorithms.all():
             assert isinstance(algorithm, Algorithm)
