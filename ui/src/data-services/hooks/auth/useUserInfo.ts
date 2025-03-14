@@ -1,11 +1,14 @@
-import { API_ROUTES, API_URL, STATUS_CODES } from 'data-services/constants'
+import {
+  API_ROUTES,
+  API_URL,
+  REFETCH_INTERVAL,
+  STATUS_CODES,
+} from 'data-services/constants'
 import { useMemo } from 'react'
 import { useUser } from 'utils/user/userContext'
 import { useAuthorizedQuery } from './useAuthorizedQuery'
 
 type ServerUserInfo = any // TODO: Update this type
-
-const REFETCH_INTERVAL = 10000 // Refetch every 10 second
 
 export const useUserInfo = () => {
   const { user, clearToken } = useUser()

@@ -26,6 +26,7 @@ from django_pydantic_field import SchemaField
 
 import ami.tasks
 import ami.utils
+from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
 from ami.users.models import User
@@ -41,6 +42,9 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 
 
 class TaxonRank(OrderedEnum):
+    KINGDOM = "KINGDOM"
+    PHYLUM = "PHYLUM"
+    CLASS = "CLASS"
     ORDER = "ORDER"
     SUPERFAMILY = "SUPERFAMILY"
     FAMILY = "FAMILY"
@@ -54,6 +58,9 @@ class TaxonRank(OrderedEnum):
 
 DEFAULT_RANKS = sorted(
     [
+        TaxonRank.KINGDOM,
+        TaxonRank.PHYLUM,
+        TaxonRank.CLASS,
         TaxonRank.ORDER,
         TaxonRank.FAMILY,
         TaxonRank.SUBFAMILY,
@@ -97,7 +104,7 @@ def create_default_research_site(project: "Project") -> "Site":
 
 
 class ProjectQuerySet(models.QuerySet):
-    def filter_by_user(self, user):
+    def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
         """
@@ -133,6 +140,9 @@ class Project(BaseModel):
     jobs: models.QuerySet["Job"]
     objects = ProjectManager()
 
+    def get_project(self):
+        return self
+
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
@@ -158,6 +168,9 @@ class Project(BaseModel):
         else:
             plots.append(charts.events_per_month(project_pk=self.pk))
             # plots.append(charts.captures_per_month(project_pk=self.pk))
+        plots.append(charts.project_top_taxa(project_pk=self.pk))
+        plots.append(charts.average_occurrences_per_month(project_pk=self.pk))
+        plots.append(charts.unique_species_per_month(project_pk=self.pk))
 
         return plots
 
@@ -177,8 +190,106 @@ class Project(BaseModel):
             logger.info(f"Created new project {self}")
             self.create_related_defaults()
 
+    class Permissions:
+        """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
+        `delete_<model>`, `view_<model>`"""
+
+        # Project permissions
+        VIEW = "view_project"
+        CHANGE = "update_project"
+        DELETE = "delete_project"
+        ADD = "create_project"
+
+        # Identification permissions
+        CREATE_IDENTIFICATION = "create_identification"
+        UPDATE_IDENTIFICATION = "update_identification"
+        DELETE_IDENTIFICATION = "delete_identification"
+
+        # Job permissions
+        CREATE_JOB = "create_job"
+        UPDATE_JOB = "update_job"
+        RUN_JOB = "run_job"
+        DELETE_JOB = "delete_job"
+        RETRY_JOB = "retry_job"
+        CANCEL_JOB = "cancel_job"
+
+        # Deployment permissions
+        CREATE_DEPLOYMENT = "create_deployment"
+        DELETE_DEPLOYMENT = "delete_deployment"
+        UPDATE_DEPLOYMENT = "update_deployment"
+
+        # Collection permissions
+        CREATE_COLLECTION = "create_sourceimagecollection"
+        UPDATE_COLLECTION = "update_sourceimagecollection"
+        DELETE_COLLECTION = "delete_sourceimagecollection"
+        POPULATE_COLLECTION = "populate_sourceimagecollection"
+
+        # Source Image permissions
+        STAR_SOURCE_IMAGE = "star_sourceimage"
+
+        # Storage permissions
+        CREATE_STORAGE = "create_s3storagesource"
+        DELETE_STORAGE = "delete_s3storagesource"
+        UPDATE_STORAGE = "update_s3storagesource"
+
+        # Site permissions
+        CREATE_SITE = "create_site"
+        DELETE_SITE = "delete_site"
+        UPDATE_SITE = "update_site"
+
+        # Device permissions
+        CREATE_DEVICE = "create_device"
+        DELETE_DEVICE = "delete_device"
+        UPDATE_DEVICE = "update_device"
+
+        # Other permissions
+        VIEW_PRIVATE_DATA = "view_private_data"
+        TRIGGER_EXPORT = "trigger_export"
+        DELETE_OCCURRENCES = "delete_occurrences"
+        IMPORT_DATA = "import_data"
+        MANAGE_MEMBERS = "manage_members"
+
     class Meta:
         ordering = ["-priority", "created_at"]
+        permissions = [
+            # Identification permissions
+            ("create_identification", "Can create identifications"),
+            ("update_identification", "Can update identifications"),
+            ("delete_identification", "Can delete identifications"),
+            # Job permissions
+            ("create_job", "Can create a job"),
+            ("update_job", "Can update a job"),
+            ("run_job", "Can run a job"),
+            ("delete_job", "Can delete a job"),
+            ("retry_job", "Can retry a job"),
+            ("cancel_job", "Can cancel a job"),
+            # Deployment permissions
+            ("create_deployment", "Can create a deployment"),
+            ("delete_deployment", "Can delete a deployment"),
+            ("update_deployment", "Can update a deployment"),
+            # Collection permissions
+            ("create_sourceimagecollection", "Can create a collection"),
+            ("update_sourceimagecollection", "Can update a collection"),
+            ("delete_sourceimagecollection", "Can delete a collection"),
+            ("populate_sourceimagecollection", "Can populate a collection"),
+            # Source Image permissions
+            ("star_sourceimage", "Can star a source image"),
+            # Storage permissions
+            ("create_s3storagesource", "Can create storage"),
+            ("delete_s3storagesource", "Can delete storage"),
+            ("update_s3storagesource", "Can update storage"),
+            # Site permissions
+            ("create_site", "Can create a site"),
+            ("delete_site", "Can delete a site"),
+            ("update_site", "Can update a site"),
+            # Device permissions
+            ("create_device", "Can create a device"),
+            ("delete_device", "Can delete a device"),
+            ("update_device", "Can update a device"),
+            # Other permissions
+            ("view_private_data", "Can view private data"),
+            ("trigger_exports", "Can trigger data exports"),
+        ]
 
 
 @final
@@ -1521,8 +1632,8 @@ def set_dimensions_for_collection(
 
 
 def sample_captures_by_interval(
-    minute_interval: int = 10,
-    qs: models.QuerySet[SourceImage] | None = None,
+    minute_interval: int,
+    qs: models.QuerySet[SourceImage],
     max_num: int | None = None,
 ) -> typing.Generator[SourceImage, None, None]:
     """
@@ -1531,9 +1642,6 @@ def sample_captures_by_interval(
 
     last_capture = None
     total = 0
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1555,7 +1663,7 @@ def sample_captures_by_interval(
 
 def sample_captures_by_position(
     position: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage | None, None, None]:
     """
     Return the n-th position capture from each event.
@@ -1563,9 +1671,6 @@ def sample_captures_by_position(
     For example if position = 0, the first capture from each event will be returned.
     If position = -1, the last capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1593,7 +1698,7 @@ def sample_captures_by_position(
 
 def sample_captures_by_nth(
     nth: int,
-    qs: models.QuerySet[SourceImage] | None = None,
+    qs: models.QuerySet[SourceImage],
 ) -> typing.Generator[SourceImage, None, None]:
     """
     Return every nth capture from each event.
@@ -1601,9 +1706,6 @@ def sample_captures_by_nth(
     For example if nth = 1, every capture from each event will be returned.
     If nth = 5, every 5th capture from each event will be returned.
     """
-
-    if not qs:
-        raise ValueError("Queryset must be provided, and it should be limited to a Project.")
 
     qs = qs.exclude(timestamp=None).order_by("timestamp")
 
@@ -1689,6 +1791,9 @@ class Identification(BaseModel):
         ordering = [
             "-created_at",
         ]
+
+    def get_project(self):
+        return self.occurrence.get_project()
 
     def save(self, *args, **kwargs):
         """
@@ -2090,6 +2195,17 @@ class OccurrenceQuerySet(models.QuerySet):
             "identifications__user",
         )
 
+    def unique_taxa(self, project: Project | None = None) -> models.QuerySet:
+        qs = self
+        if project:
+            qs = self.filter(project=project)
+        qs = (
+            qs.filter(determination__isnull=False, event__isnull=False)
+            .order_by("determination_id")
+            .distinct("determination_id")
+        )
+        return qs
+
 
 class OccurrenceManager(models.Manager):
     def get_queryset(self) -> OccurrenceQuerySet:
@@ -2116,7 +2232,7 @@ class Occurrence(BaseModel):
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
-    objects = OccurrenceManager()
+    objects: OccurrenceManager = OccurrenceManager()
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
@@ -2342,8 +2458,19 @@ def update_occurrence_determination(
     return needs_update
 
 
+class TaxonQuerySet(models.QuerySet):
+    def with_occurrence_counts(self, project: Project):
+        """
+        Annotate each taxon with the count of its occurrences for a given project.
+        """
+        qs = self
+        qs = qs.filter(occurrences__project=project)
+
+        return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+
+
 @final
-class TaxaManager(models.Manager):
+class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
     def get_queryset(self):
         # Prefetch parent and parents
         # return super().get_queryset().select_related("parent").prefetch_related("parents")
@@ -2569,6 +2696,8 @@ class Taxon(BaseModel):
     active = models.BooleanField(default=True)
     synonym_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="synonyms")
 
+    common_name_en = models.CharField(max_length=255, blank=True, null=True)
+
     search_names = ArrayField(models.CharField(max_length=255), null=True, blank=True)
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
@@ -2588,7 +2717,7 @@ class Taxon(BaseModel):
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
 
-    objects: TaxaManager = TaxaManager()
+    objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
     parent_id: int | None
@@ -2659,7 +2788,11 @@ class Taxon(BaseModel):
         # This is handled by an annotation if we are filtering by project, deployment or event
         return None
 
-    def occurrence_images(
+    def occurrence_images(self, limit: int | None = 10) -> list[str]:
+        # This is handled by an annotation if we are filtering by project, deployment or event
+        return []
+
+    def get_occurrence_images(
         self,
         limit: int | None = 10,
         project_id: int | None = None,
@@ -2711,10 +2844,15 @@ class Taxon(BaseModel):
 
         current_taxon = self
         parents = []
+        logger.debug(f"Updating parents for {current_taxon} (#{current_taxon.pk})")
         while current_taxon.parent is not None:
-            parents.append(
-                TaxonParent(id=current_taxon.parent.id, name=current_taxon.parent.name, rank=current_taxon.parent.rank)
+            taxon_parent = TaxonParent(
+                id=current_taxon.parent.id,
+                name=current_taxon.parent.name,
+                rank=current_taxon.parent.rank,
             )
+            logger.debug(f"Adding parent {taxon_parent} to {current_taxon} (#{current_taxon.pk}) in parents_json")
+            parents.append(taxon_parent)
             current_taxon = current_taxon.parent
         # Sort parents by rank using ordered enum
         parents = sorted(parents, key=lambda t: t.rank)
@@ -2723,6 +2861,22 @@ class Taxon(BaseModel):
             self.save()
 
         return parents
+
+    def update_search_names(self, save=False):
+        """
+        Add common names to the search names list.
+
+        @TODO add synonyms and other names to the search names list.
+        """
+        search_names = self.search_names or []
+        common_name_field_names = [field.name for field in self._meta.fields if field.name.startswith("common_name_")]
+        for field_name in common_name_field_names:
+            common_name = getattr(self, field_name)
+            if common_name:
+                search_names.append(common_name)
+        self.search_names = list(set(search_names))
+        if save:
+            self.save(update_fields=["search_names"])
 
     class Meta:
         ordering = [
@@ -2743,6 +2897,7 @@ class Taxon(BaseModel):
     def update_calculated_fields(self, save=False):
         self.display_name = self.get_display_name()
         self.update_parents(save=False)
+        self.update_search_names(save=False)
         if save:
             self.save(update_calculated_fields=False)
 
@@ -2889,10 +3044,15 @@ class SourceImageCollection(BaseModel):
 
 
     Collections are saved so that they can be reviewed or re-used later.
+
     """
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    # dataset_type = models.CharField(
+    #     max_length=255,
+    #     choices=as_choices(["Curated", "Dynamic", "Sampling"]),
+    # )
     images = models.ManyToManyField("SourceImage", related_name="collections", blank=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sourceimage_collections")
     method = models.CharField(
@@ -2912,6 +3072,16 @@ class SourceImageCollection(BaseModel):
     objects = SourceImageCollectionManager()
 
     jobs: models.QuerySet["Job"]
+
+    def infer_dataset_type(self):
+        if "starred" in self.name.lower():
+            return "curated"
+        else:
+            return "sampling"
+
+    @property
+    def dataset_type(self):
+        return self.infer_dataset_type()
 
     def source_images_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
@@ -2973,35 +3143,54 @@ class SourceImageCollection(BaseModel):
     def sample_common_combined(
         self,
         minute_interval: int | None = None,
-        max_num: int | None = 100,
+        max_num: int | None = None,
+        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
         hour_start: int | None = None,
         hour_end: int | None = None,
-        month_start: datetime.date | None = None,
-        month_end: datetime.date | None = None,
-        day_start: datetime.date | None = None,
-        day_end: datetime.date | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
-        if month_start:
+
+        if deployment_ids is not None:
+            qs = qs.filter(deployment__in=deployment_ids)
+        if date_start is not None:
+            qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
+        if date_end is not None:
+            qs = qs.filter(timestamp__date__lte=DateStringField.to_date(date_end))
+
+        if month_start is not None:
             qs = qs.filter(timestamp__month__gte=month_start)
-        if month_end:
+        if month_end is not None:
             qs = qs.filter(timestamp__month__lte=month_end)
-        if day_start:
-            qs = qs.filter(timestamp__day__gte=day_start)
-        if day_end:
-            qs = qs.filter(timestamp__day__lte=day_end)
-        if hour_start:
+
+        if hour_start is not None and hour_end is not None:
+            if hour_start < hour_end:
+                # Hour range within the same day (e.g., 08:00 to 15:00)
+                qs = qs.filter(timestamp__hour__gte=hour_start, timestamp__hour__lte=hour_end)
+            else:
+                # Hour range has Midnight crossover: (e.g., 17:00 to 06:00)
+                qs = qs.filter(models.Q(timestamp__hour__gte=hour_start) | models.Q(timestamp__hour__lte=hour_end))
+        elif hour_start is not None:
             qs = qs.filter(timestamp__hour__gte=hour_start)
-        if hour_end:
+        elif hour_end is not None:
             qs = qs.filter(timestamp__hour__lte=hour_end)
-        if not minute_interval and max_num:
-            qs = qs[:max_num]
-        if minute_interval:
+
+        if minute_interval is not None:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
             # Ensure the queryset is limited to the project
             qs = qs.filter(project=self.project)
-            qs = sample_captures_by_interval(minute_interval, qs=qs, max_num=max_num)
+            qs = sample_captures_by_interval(minute_interval=minute_interval, qs=qs, max_num=max_num)
+        else:
+            if max_num is not None:
+                if shuffle:
+                    qs = qs.order_by("?")
+                qs = qs[:max_num]
+
         return qs
 
     def sample_interval(
@@ -3016,19 +3205,19 @@ class SourceImageCollection(BaseModel):
             qs = qs.exclude(event__in=exclude_events)
         qs.exclude(event__in=exclude_events)
         qs = qs.filter(project=self.project)
-        return sample_captures_by_interval(minute_interval, qs=qs)
+        return sample_captures_by_interval(minute_interval=minute_interval, qs=qs)
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_position(position, qs=qs)
+        return sample_captures_by_position(position=position, qs=qs)
 
     def sample_nth(self, nth: int):
         """Sample every nth source image from all events in the project"""
 
         qs = self.get_queryset()
-        return sample_captures_by_nth(nth, qs=qs)
+        return sample_captures_by_nth(nth=nth, qs=qs)
 
     def sample_random_from_each_event(self, num_each: int = 10):
         """Sample n random source images from each event in the project."""

@@ -35,10 +35,12 @@ class ProcessingService(BaseModel):
         verbose_name_plural = "Processing Services"
 
     def create_pipelines(self):
-        # Call the status endpoint and get the pipelines/algorithms
-        resp = self.get_status()
+        """
+        Register pipeline choices in Antenna using the pipeline configurations from the processing service API.
+        """
+        pipeline_configs = self.get_pipeline_configs()
 
-        pipelines_to_add = resp.pipeline_configs
+        pipelines_to_add = pipeline_configs  # all of them
         pipelines = []
         pipelines_created = []
         algorithms_created = []
@@ -88,51 +90,53 @@ class ProcessingService(BaseModel):
         )
 
     def get_status(self):
-        info_url = urljoin(self.endpoint_url, "info")
+        """
+        Check the status of the processing service.
+        This is a simple health check that pings the /readyz endpoint of the service.
+        """
+        ready_check_url = urljoin(self.endpoint_url, "readyz")
         start_time = time.time()
         error = None
+        pipeline_configs = []
+        pipelines_online = []
         timestamp = datetime.datetime.now()
         self.last_checked = timestamp
+        resp = None
 
         try:
-            resp = requests.get(info_url)
+            resp = requests.get(ready_check_url)
             resp.raise_for_status()
-        except requests.exceptions.RequestException as e:
+            self.last_checked_live = True
             latency = time.time() - start_time
-            self.last_checked_live = False
-            self.last_checked_latency = latency
-            self.save()
-            error = f"Error connecting to {info_url}: {e}"
+        except requests.exceptions.RequestException as e:
+            error = f"Error connecting to {ready_check_url}: {e}"
             logger.error(error)
-
-            return ProcessingServiceStatusResponse(
-                error=error,
-                timestamp=timestamp,
-                request_successful=False,
-                server_live=False,
-                pipelines_online=[],
-                pipeline_configs=[],
-                endpoint_url=self.endpoint_url,
-                latency=latency,
+            self.last_checked_live = False
+        finally:
+            latency = time.time() - start_time
+            self.last_checked_latency = latency
+            self.save(
+                update_fields=[
+                    "last_checked",
+                    "last_checked_live",
+                    "last_checked_latency",
+                ]
             )
 
-        info_data = ProcessingServiceInfoResponse.parse_obj(resp.json())
-        pipeline_configs = info_data.pipelines
-
-        # @TODO these are likely extra requests that could be avoided
-        # @TODO add schemas for these if we keep them
-        server_live: bool = requests.get(urljoin(self.endpoint_url, "livez")).json().get("status", False)
-        pipelines_online: list[str] = requests.get(urljoin(self.endpoint_url, "readyz")).json().get("status", [])
-
-        latency = time.time() - start_time
-        self.last_checked_live = server_live
-        self.last_checked_latency = latency
-        self.save()
+        if self.last_checked_live:
+            # The specific pipeline statuses are not required for the status response
+            # but the intention is to show which ones are loaded into memory and ready to use.
+            # @TODO: this may be overkill, but it is displayed in the UI now.
+            try:
+                pipelines_online: list[str] = resp.json().get("status", [])
+            except (ValueError, KeyError) as e:
+                error = f"Error parsing pipeline statuses from {ready_check_url}: {e}"
+                logger.error(error)
 
         response = ProcessingServiceStatusResponse(
             timestamp=timestamp,
-            request_successful=resp.ok,
-            server_live=server_live,
+            request_successful=resp.ok if resp else False,
+            server_live=self.last_checked_live,
             pipelines_online=pipelines_online,
             pipeline_configs=pipeline_configs,
             endpoint_url=self.endpoint_url,
@@ -141,3 +145,14 @@ class ProcessingService(BaseModel):
         )
 
         return response
+
+    def get_pipeline_configs(self):
+        """
+        Get the pipeline configurations from the processing service.
+        This can be a long response as it includes the full category map for each algorithm.
+        """
+        info_url = urljoin(self.endpoint_url, "info")
+        resp = requests.get(info_url)
+        resp.raise_for_status()
+        info_data = ProcessingServiceInfoResponse.parse_obj(resp.json())
+        return info_data.pipelines
