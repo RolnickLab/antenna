@@ -4932,7 +4932,7 @@ __metadata:
     leaflet: "npm:^1.9.3"
     lodash: "npm:^4.17.21"
     lucide-react: "npm:^0.454.0"
-    nova-ui-kit: "npm:^1.1.24"
+    nova-ui-kit: "npm:^1.1.25"
     plotly.js: "npm:^2.25.2"
     postcss: "npm:^8.4.47"
     prettier: "npm:2.8.4"
@@ -10309,9 +10309,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nova-ui-kit@npm:^1.1.24":
-  version: 1.1.24
-  resolution: "nova-ui-kit@npm:1.1.24"
+"nova-ui-kit@npm:^1.1.25":
+  version: 1.1.25
+  resolution: "nova-ui-kit@npm:1.1.25"
   dependencies:
     "@radix-ui/react-checkbox": "npm:^1.1.4"
     "@radix-ui/react-collapsible": "npm:^1.1.1"
@@ -10330,7 +10330,7 @@ __metadata:
     react-dom: "npm:^18.3.1"
     tailwind-merge: "npm:^2.5.4"
     tailwindcss-animate: "npm:^1.0.7"
-  checksum: e96cbcb30b62bb4264b1f3e0fdd6018e1162054bd6f2b8ddecaf07dac19e137a1560c2c92b8d4cc440a294c1cfb83e2d53a89a32db01d59d87b39b7c8e0da9d5
+  checksum: 875bd1999657317c8ea5f1e58219708a3a587c66d60ef23bd72cceef8f3ca40ba34a10b7e441ae51e145083fa5dd4e43c5e3b63867d7b42647579fe0f43caf34
   languageName: node
   linkType: hard
 

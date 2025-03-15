@@ -40,7 +40,6 @@ export const TaxonSearch = ({
         value={searchString}
         onValueChange={setSearchString}
       />
-
       <Command.List>
         <Command.Empty>No results found.</Command.Empty>
         <Command.Group>
