@@ -43,6 +43,7 @@ export const Species = () => {
           <FilterControl field="event" readonly />
           <FilterControl field="deployment" />
           <FilterControl field="taxon" />
+          <FilterControl field="taxa_list_id" />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader

@@ -10,6 +10,7 @@ import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
+import { TaxaListFilter } from './filters/taxalist-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
 import { FilterProps } from './filters/types'
@@ -34,6 +35,7 @@ const ComponentMap: {
   source_image_single: ImageFilter,
   status: StatusFilter,
   taxon: TaxonFilter,
+  taxa_list_id: TaxaListFilter,
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
 }

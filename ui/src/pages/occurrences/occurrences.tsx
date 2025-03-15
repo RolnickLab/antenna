@@ -95,6 +95,7 @@ export const Occurrences = () => {
             <FilterControl field="date_start" />
             <FilterControl field="date_end" />
             <FilterControl field="taxon" />
+            <FilterControl field="taxa_list_id" />
             <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}

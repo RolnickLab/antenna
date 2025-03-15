@@ -86,6 +86,10 @@ export const AVAILABLE_FILTERS: {
   {
     label: 'Taxon',
     field: 'taxon',
+    },
+   {
+    label: 'Taxa List',
+    field: 'taxa_list_id',
   },
   {
     label: 'Source image',
