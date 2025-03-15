@@ -319,42 +319,78 @@ CELERY_TASK_COMPRESSION = "gzip"
 CELERY_RESULT_COMPRESSION = "gzip"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_TIME_LIMIT = 7 * 60 * 24
+CELERY_TASK_TIME_LIMIT = 7200  # 2 hours (reduced from 7 days to prevent timeouts)
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_SOFT_TIME_LIMIT = 6 * 60 * 24
+CELERY_TASK_SOFT_TIME_LIMIT = 6000  # 100 minutes (reduced from 6 days)
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
 CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
-
 # Health checking and retries, specific to Redis
 CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
 CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
 CELERY_REDIS_SOCKET_KEEPALIVE = True
 CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
-
 # Help distribute long-running tasks
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-prefetch-multiplier
 # @TODO Review and test this setting
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
-# Connection settings to match Redis timeout and keepalive
+# Broker transport options to fix acknowledgement timeout
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_transport_options
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "visibility_timeout": 43200,  # 12 hours - default celery value
-    "socket_timeout": 120,  # Matches Redis timeout setting
-    "socket_connect_timeout": 30,  # Max time to establish connection
-    "socket_keepalive": True,  # Enable TCP keepalive
-    "retry_on_timeout": True,  # Retry operations if Redis times out
-    "max_connections": 20,  # Per process connection pool limit
+    'confirm_publish': True,
+    'max_retries': 5,
+    'interval_start': 0,
+    'interval_step': 0.2,
+    'interval_max': 1.0,
+    'consumer_timeout': 3600000,  # 1 hour in milliseconds
 }
 
+# Task acknowledgement settings
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-task_acks_late
+CELERY_TASK_ACKS_LATE = False  # Acknowledge tasks before execution
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-track-started
+CELERY_TASK_TRACK_STARTED = True  # Track when tasks are started
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-reject-on-worker-lost
+CELERY_TASK_REJECT_ON_WORKER_LOST = True  # Task will be requeued if worker dies
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-acks-on-failure-or-timeout
+CELERY_ACKS_ON_FAILURE_OR_TIMEOUT = False  # Don't acknowledge failed tasks
+
+# Connection settings
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#broker-heartbeat
+CELERY_BROKER_HEARTBEAT = 10  # Seconds
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#broker-connection-retry
 CELERY_BROKER_CONNECTION_RETRY = True
-CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#broker-connection-max-retries
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
+
+# Worker settings
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-disable-rate-limits
+CELERY_WORKER_DISABLE_RATE_LIMITS = True
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-hijack-root-logger
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-max-tasks-per-child
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000  # Restart worker after 1000 tasks
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-concurrency
+CELERY_WORKER_CONCURRENCY = 4  # Adjust based on available cores
+
+# Logging format for better debugging
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#celeryd-log-format
+CELERYD_LOG_FORMAT = "[%(asctime)s: %(levelname)s/%(processName)s] [%(task_name)s(%(task_id)s)] %(message)s"
+
+# If you want to use RabbitMQ as results backend instead of Redis, uncomment these:
+# CELERY_RESULT_BACKEND = "rpc://"
+# CELERY_RPC_BACKEND_OPTIONS = {
+#     'exchange': 'celery_results',
+#     'exchange_type': 'direct',
+#     'persistent': True,
+#     'expires': 86400,  # 1 day in seconds
+# }
 
 
 # django-rest-framework
