@@ -42,6 +42,8 @@ services:
       - "5550:5555"
     command: /start-flower
     restart: always
+    volumes:
+      - ./data/flower/:/data/
 
   awscli:
     build:
