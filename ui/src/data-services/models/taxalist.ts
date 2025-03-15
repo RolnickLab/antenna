@@ -51,10 +51,14 @@ export class TaxaList {
   }
 
   get canDelete(): boolean {
-    return this._taxaList.user_permissions?.includes(UserPermission.Delete) ?? false
+    return (
+      this._taxaList.user_permissions?.includes(UserPermission.Delete) ?? false
+    )
   }
 
   get canUpdate(): boolean {
-    return this._taxaList.user_permissions?.includes(UserPermission.Update) ?? false
+    return (
+      this._taxaList.user_permissions?.includes(UserPermission.Update) ?? false
+    )
   }
 }
