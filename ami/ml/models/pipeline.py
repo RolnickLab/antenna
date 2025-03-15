@@ -849,6 +849,15 @@ def save_results(
             pipeline.algorithms.add(algo)
             job_logger.debug(f"Added algorithm {algo} to pipeline {pipeline}")
 
+    # Warn if the algorithms used in the pipeline response are not the same as the ones registered in the pipeline
+    if len(algorithms_used) != len(registered_algos):
+        job_logger.warning(
+            f"Pipeline {pipeline} has {len(registered_algos)} algorithms registered, but {len(algorithms_used)} "
+            "algorithms were used in the results response. "
+            "\n*** Update the registered pipeline to match the algorithms used in the results *** \n"
+            "otherwise images will always be reprocessed in future runs."
+        )
+
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
 
