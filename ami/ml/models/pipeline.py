@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 def filter_processed_images(
     images: typing.Iterable[SourceImage],
     pipeline: Pipeline,
-    logger: logging.Logger = logger,
+    task_logger: logging.Logger = logger,
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline.
@@ -66,20 +66,20 @@ def filter_processed_images(
     detection_type_keys = Algorithm.detection_algorithm_task_types
     detection_algorithms = pipeline_algorithms.filter(task_type__in=detection_type_keys)
     if not detection_algorithms.exists():
-        logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
+        task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
     classification_algorithms = pipeline_algorithms.exclude(task_type__in=detection_type_keys)
     if not classification_algorithms.exists():
-        logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
+        task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
 
     for image in images:
         existing_detections = image.detections.filter(detection_algorithm__in=pipeline_algorithms)
         if not existing_detections.exists():
-            logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
+            task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
         elif existing_detections.filter(classifications__isnull=True).exists():
             # Check if there are detections with no classifications
-            logger.debug(
+            task_logger.debug(
                 f"Image {image} needs processing: has existing detections with no classifications "
                 "from pipeline {pipeline}"
             )
@@ -87,19 +87,22 @@ def filter_processed_images(
         else:
             # If there are existing detections with classifications,
             # Compare their classification algorithms to the current pipeline's algorithms
-            pipeline_algorithm_ids = classification_algorithms.values_list("id", flat=True)
-            detection_algorithm_ids = existing_detections.values_list("classifications__algorithm_id", flat=True)
+            pipeline_algorithm_ids = set(classification_algorithms.values_list("id", flat=True))
+            detection_algorithm_ids = set(existing_detections.values_list("classifications__algorithm_id", flat=True))
 
-            if not set(pipeline_algorithm_ids).issubset(set(detection_algorithm_ids)):
-                logger.debug(
+            if not pipeline_algorithm_ids.issubset(detection_algorithm_ids):
+                task_logger.debug(
                     f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}:"
                     f" {detection_algorithm_ids} vs {pipeline_algorithm_ids}"
                     f"Since we do yet have a mechanism to reclassify detections, processing the image from scratch."
                 )
+                # log all algorithms that are in the pipeline but not in the detection
+                missing_algos = pipeline_algorithm_ids - detection_algorithm_ids
+                task_logger.info(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
                 yield image
             else:
                 # If all detections have been classified by the pipeline, skip the image
-                logger.debug(
+                task_logger.debug(
                     f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!"
                 )
                 continue
@@ -116,10 +119,12 @@ def collect_images(
     """
     Collect images from a collection, a list of images or a deployment.
     """
+    task_logger = logger
     if job_id:
         from ami.jobs.models import Job
 
         job = Job.objects.get(pk=job_id)
+        task_logger = job.logger
     else:
         job = None
 
@@ -136,20 +141,14 @@ def collect_images(
     total_images = len(images)
     if pipeline and skip_processed:
         msg = f"Filtering images that have already been processed by pipeline {pipeline}"
-        logger.info(msg)
-        if job:
-            job.logger.info(msg)
-        images = list(filter_processed_images(images, pipeline, logger=logger))
+        task_logger.info(msg)
+        images = list(filter_processed_images(images, pipeline, task_logger=task_logger))
     else:
         msg = "NOT filtering images that have already been processed"
-        logger.info(msg)
-        if job:
-            job.logger.info(msg)
+        task_logger.info(msg)
 
     msg = f"Found {len(images)} out of {total_images} images to process"
-    logger.info(msg)
-    if job:
-        job.logger.info(msg)
+    task_logger.info(msg)
 
     return images
 
@@ -176,7 +175,7 @@ def process_images(
         task_logger = job.logger
 
     prefiltered_images = list(images)
-    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, logger=task_logger))
+    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
     if len(images) < len(prefiltered_images):
         # Log how many images were filtered out because they have already been processed
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
