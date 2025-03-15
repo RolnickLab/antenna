@@ -8,6 +8,7 @@ import { Helmet } from 'react-helmet-async'
 import { useOutletContext } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useSelectedView } from 'utils/useSelectedView'
+import { Algorithms } from './algorithms/algorithms'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
@@ -72,6 +73,10 @@ export const Overview = () => {
             label={translate(STRING.TAB_ITEM_COLLECTIONS)}
           />
           <Tabs.Trigger
+            value="algorithms"
+            label={translate(STRING.TAB_ITEM_ALGORITHMS)}
+          />
+          <Tabs.Trigger
             value="pipelines"
             label={translate(STRING.TAB_ITEM_PIPELINES)}
           />
@@ -97,6 +102,9 @@ export const Overview = () => {
         </Tabs.Content>
         <Tabs.Content value="collections">
           <Collections />
+        </Tabs.Content>
+        <Tabs.Content value="algorithms">
+          <Algorithms />
         </Tabs.Content>
         <Tabs.Content value="pipelines">
           <Pipelines />

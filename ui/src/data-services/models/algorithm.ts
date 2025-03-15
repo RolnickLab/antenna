@@ -44,4 +44,12 @@ export class Algorithm {
       date: new Date(this._algorithm.updated_at),
     })
   }
+
+  get taskType(): string {
+    return this._algorithm.task_type
+  }
+
+  get categoryMap(): string {
+    return this._algorithm.category_map
+  }
 }
