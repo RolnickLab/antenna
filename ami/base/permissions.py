@@ -66,7 +66,7 @@ def add_object_level_permissions(
         # Do not return create, view permissions at object-level
         filtered_permissions -= {"create", "view"}
         permissions.update(filtered_permissions)
-    response_data["user_permissions"] = permissions
+    response_data["user_permissions"] = list(permissions)
     return response_data
 
 
