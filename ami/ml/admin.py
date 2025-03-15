@@ -1,3 +1,4 @@
+from django.apps import apps
 from django.contrib import admin
 
 from ami.main.admin import AdminBase
@@ -5,6 +6,8 @@ from ami.main.admin import AdminBase
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
+
+ProjectPipelineConfig = apps.get_model("ml", "ProjectPipelineConfig")
 
 
 @admin.register(Algorithm)
@@ -32,8 +35,14 @@ class AlgorithmAdmin(AdminBase):
     ]
 
 
+class ProjectPipelineConfigInline(admin.TabularInline):
+    model = ProjectPipelineConfig
+    extra = 0
+
+
 @admin.register(Pipeline)
 class PipelineAdmin(AdminBase):
+    inlines = [ProjectPipelineConfigInline]
     list_display = [
         "name",
         "version",

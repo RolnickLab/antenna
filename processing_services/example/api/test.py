@@ -44,7 +44,7 @@ class TestAPI(unittest.TestCase):
             SourceImage(id="2", url="https://example.com/image2.jpg"),
         ]
         source_image_requests = [SourceImageRequest(**image.dict()) for image in source_images]
-        request = PipelineRequest(pipeline="random", source_images=source_image_requests)
+        request = PipelineRequest(pipeline="random", source_images=source_image_requests, config={})
         response = self.client.post("/process", json=request.dict())
 
         self.assertEqual(response.status_code, 200)

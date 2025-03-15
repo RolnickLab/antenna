@@ -18,6 +18,7 @@ from ami.utils.requests import project_id_doc_param
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
+from .models.project_pipeline_config import ProjectPipelineConfig
 from .serializers import (
     AlgorithmCategoryMapSerializer,
     AlgorithmSerializer,
@@ -85,6 +86,15 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
                     queryset=ProcessingService.objects.filter(projects=project.pk),
                 )
             )
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "project_pipeline_configs",
+                    queryset=ProjectPipelineConfig.objects.filter(pipeline__in=qs, project=project.id),
+                )
+            )
+
+            qs = qs.filter(projects=project.id, project_pipeline_configs__enabled=True)
+
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])

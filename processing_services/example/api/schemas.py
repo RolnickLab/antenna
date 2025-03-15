@@ -190,6 +190,7 @@ PipelineChoice = typing.Literal["random", "constant"]
 class PipelineRequest(pydantic.BaseModel):
     pipeline: PipelineChoice
     source_images: list[SourceImageRequest]
+    config: dict
 
     # Example for API docs:
     class Config:
