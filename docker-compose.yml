@@ -102,6 +102,8 @@ services:
     ports:
       - "5555:5555"
     command: /start-flower
+    volumes:
+      - ./data/flower/:/data/
 
   minio:
     image: minio/minio:latest
