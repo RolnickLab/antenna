@@ -974,20 +974,14 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
     Filter occurrences by TaxaList.
     """
 
-    query_param = "taxalist"
+    query_param = "taxa_list_id"
 
     def filter_queryset(self, request, queryset, view):
-        taxalist_id = request.query_params.get(self.query_param)
-        logger.debug(f"Queryset count before filtering by taxalist {queryset.count()}")
+        taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
         if taxalist_id:
-            taxalist_id = IntegerField(required=False).clean(taxalist_id)
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
-
             if taxa_list:
                 taxa = taxa_list.taxa.all()  # Get taxalist taxon objects
-
-                logger.debug(f"Filtering by taxalist {taxalist_id} with {len(taxa)} taxa")
-                logger.debug(f"Filtering by taxalist {taxalist_id} taxa_ids {taxa}")
 
                 # filter by the exact determination
                 query_filter = Q(determination__in=taxa)
@@ -997,7 +991,6 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
                     query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
 
                 queryset = queryset.filter(query_filter)
-                logger.debug(f"Queryset count after filtering by taxalist {queryset.count()}")
                 return queryset
 
         return queryset
@@ -1104,6 +1097,29 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+class TaxonTaxaListFilter(filters.BaseFilterBackend):
+    """
+    Filter Taxa by TaxaList.
+    """
+
+    query_param = "taxa_list_id"
+
+    def filter_queryset(self, request, queryset, view):
+        taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        if taxalist_id:
+            taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
+            if taxa_list:
+                taxa = taxa_list.taxa.all()  # Get taxa in the TaxaList
+                query_filter = Q(id__in=taxa)
+                for taxon in taxa:
+                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
+                queryset = queryset.filter(query_filter)
+                return queryset
+
+        return queryset
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1111,7 +1127,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter, TaxonCollectionFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [
+        CustomTaxonFilter,
+        TaxonCollectionFilter,
+        TaxonTaxaListFilter,
+    ]
     filterset_fields = [
         "name",
         "rank",
@@ -1323,7 +1343,6 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-
 class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
     queryset = TaxaList.objects.all()
 
@@ -1336,7 +1355,7 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
 
     serializer_class = TaxaListSerializer
 
-    
+
 class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint for viewing and adding classification results from a model.
