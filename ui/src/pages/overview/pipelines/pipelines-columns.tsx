@@ -49,18 +49,6 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     sortField: 'updated_at',
     renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
   },
-  // {
-  //   id: 'status',
-  //   name: 'Status',
-  //   renderCell: (item: Pipeline) => {
-  //     return (
-  //       <StatusTableCell
-  //         color={item.enabled.color}
-  //         label={item.enabled.label}
-  //       />
-  //     )
-  //   },
-  // },
   {
     id: 'processing-services-online',
     name: 'Processing Services Online',

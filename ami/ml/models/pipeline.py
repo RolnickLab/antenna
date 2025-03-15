@@ -199,7 +199,8 @@ def process_images(
                 f"Sending pipeline request using {config} from the project-pipeline config "
                 f"for Pipeline {pipeline} and Project {job.project}."
             )
-        except Exception as e:
+            raise pipeline.project_pipeline_configs.model.DoesNotExist
+        except pipeline.project_pipeline_configs.model.DoesNotExist as e:
             task_logger.error(
                 f"Error getting the project-pipeline config for Pipeline {pipeline} " f"and Project {job.project}: {e}"
             )

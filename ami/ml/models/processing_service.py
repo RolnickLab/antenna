@@ -67,7 +67,10 @@ class ProcessingService(BaseModel):
                     defaults={"enabled": True, "config": {}},
                 )
                 if created:
+                    logger.info(f"Created project pipeline config for {project.name} and {pipeline.name}.")
                     project_pipeline_config.save()
+                else:
+                    logger.info(f"Using existing project pipeline config for {project.name} and {pipeline.name}.")
 
             self.pipelines.add(pipeline)
 
