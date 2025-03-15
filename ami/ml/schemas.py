@@ -122,6 +122,18 @@ class DetectionResponse(pydantic.BaseModel):
     classifications: list[ClassificationResponse] = []
 
 
+class DetectionRequest(pydantic.BaseModel):
+    id: str
+    source_image_id: str
+    bbox: BoundingBox | None = None
+    timestamp: datetime.datetime | None = None
+    crop_image_url: str | None = None
+    base64: str | None = None
+    # Consider making features a dict/mapping of different embeddings, vectors, etc.
+    features: list[float] | None = None
+    logits: list[float] | None = None
+
+
 class SourceImageRequest(pydantic.BaseModel):
     # @TODO bring over new SourceImage & b64 validation from the lepsAI repo
     id: str
@@ -147,6 +159,7 @@ KnownPipelineChoices = typing.Literal[
 class PipelineRequest(pydantic.BaseModel):
     pipeline: str
     source_images: list[SourceImageRequest]
+    detections: list[DetectionRequest] | None = None
 
 
 class PipelineResultsResponse(pydantic.BaseModel):

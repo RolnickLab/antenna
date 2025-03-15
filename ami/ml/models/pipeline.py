@@ -38,6 +38,7 @@ from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     ClassificationResponse,
+    DetectionRequest,
     DetectionResponse,
     PipelineRequest,
     PipelineResultsResponse,
@@ -191,14 +192,31 @@ def process_images(
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
-    source_images = [
-        SourceImageRequest(
-            id=str(source_image.pk),
-            url=url,
+    source_images: list[SourceImageRequest] = []
+    detections: list[DetectionRequest] = []
+
+    for source_image, url in zip(images, urls):
+        assert url  # For type checking
+        source_images.append(
+            SourceImageRequest(
+                id=str(source_image.pk),
+                url=url,
+            )
         )
-        for source_image, url in zip(images, urls)
-        if url
-    ]
+
+        for detection in source_image.detections.all():
+            detections.append(
+                DetectionRequest(
+                    id=str(detection.pk),
+                    source_image_id=str(source_image.pk),
+                    bbox=detection.bbox,
+                    timestamp=detection.timestamp,
+                    crop_image_url=detection.url(),
+                    # base64=None,
+                    # features=detection.features,
+                    # logits=detection.logits,
+                )
+            )
 
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
