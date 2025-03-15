@@ -1,8 +1,8 @@
 import { useContext, useEffect, useState } from 'react'
 import { BreadcrumbContext } from './breadcrumbContext'
 
-const DEFAULT_PAGE_TITLE = 'Antenna Data Platform'
 const SEPARATOR = ' | '
+export const DEFAULT_PAGE_TITLE = 'Antenna Data Platform'
 
 export const usePageTitle = () => {
   const [pageTitle, setPageTitle] = useState(DEFAULT_PAGE_TITLE)
