@@ -462,8 +462,9 @@ class MLJob(JobType):
                 if throw_on_save_error:
                     failed_task.maybe_throw()
 
-        percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
-        job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
+        if image_count:
+            percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
+            job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
 
         # Check all Celery sub-tasks if they have completed saving results
         save_tasks_remaining = set(save_tasks) - set(save_tasks_completed)
