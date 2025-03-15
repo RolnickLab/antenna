@@ -101,6 +101,7 @@ class ProcessingService(BaseModel):
         pipelines_online = []
         timestamp = datetime.datetime.now()
         self.last_checked = timestamp
+        resp = None
 
         try:
             resp = requests.get(ready_check_url)
@@ -134,7 +135,7 @@ class ProcessingService(BaseModel):
 
         response = ProcessingServiceStatusResponse(
             timestamp=timestamp,
-            request_successful=resp.ok,
+            request_successful=resp.ok if resp else False,
             server_live=self.last_checked_live,
             pipelines_online=pipelines_online,
             pipeline_configs=pipeline_configs,
