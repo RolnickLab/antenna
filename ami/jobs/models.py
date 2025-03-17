@@ -957,10 +957,30 @@ class DataExport(BaseModel):
     """A model to track Occurrence data exports"""
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exports")
-    job = models.OneToOneField(Job, on_delete=models.CASCADE, related_name="data_export")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="exports")
+    job = models.OneToOneField(Job, on_delete=models.CASCADE, null=True, blank=True, related_name="data_export")
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     format = models.CharField(max_length=255, choices=get_export_choices())
+    filters = models.JSONField(null=True, blank=True)
     file_url = models.URLField(blank=True, null=True)
 
-    def __str__(self):
-        return f"Export {self.job.id} - {self.status}"
+    @property
+    def status(self):
+        return self.job.status if self.job else None
+
+    @property
+    def file_url(self):
+        return self.job.result.get("file_url") if self.job and self.job.result else None
+
+    def start_job(self):
+        """Creates and starts the export job"""
+        job = Job.objects.create(
+            name=f"{self.project} Export Occurrences ({self.format})",
+            project=self.project,
+            job_type_key=DataExportJob.key,
+            params={"filters": self.filters, "format": self.format},
+        )
+
+        self.job = job
+        self.save()
+        job.enqueue()
