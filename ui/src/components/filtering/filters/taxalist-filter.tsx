@@ -1,4 +1,4 @@
-import { useTaxaLists } from 'data-services/hooks/taxalists/useTaxaLists'
+import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { FilterProps } from './types'
