@@ -964,7 +964,6 @@ class DataExport(BaseModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exports")
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="exports")
     job = models.OneToOneField(Job, on_delete=models.CASCADE, null=True, blank=True, related_name="data_export")
-    status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     format = models.CharField(max_length=255, choices=get_export_choices())
     filters = models.JSONField(null=True, blank=True)
     file_url = models.URLField(blank=True, null=True)
