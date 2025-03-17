@@ -22,11 +22,11 @@ class BaseExporter(ABC):
     @abstractmethod
     def export(self):
         """Perform the export process."""
-        pass
+        raise NotImplementedError()
 
     @abstractmethod
     def get_queryset(self):
-        pass
+        raise NotImplementedError()
 
     def get_serializer_class(self):
         return self.serializer_class
