@@ -10,6 +10,7 @@ import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { useSelectedView } from 'utils/useSelectedView'
+import { useWindowSize } from 'utils/useWindowSize'
 import { ProjectGallery } from './project-gallery'
 
 export const TABS = {
@@ -22,7 +23,10 @@ export const Projects = () => {
   const { userInfo } = useUserInfo()
   const { selectedView: selectedTab, setSelectedView: setSelectedTab } =
     useSelectedView(user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS)
-  const { pagination, setPage } = usePagination()
+  const [windowWidth] = useWindowSize()
+  const { pagination, setPage } = usePagination({
+    perPage: windowWidth > 1024 ? 21 : 20, // Adjust page size based on page width to avoid gallery gaps
+  })
   const filters =
     user.loggedIn && selectedTab === TABS.MY_PROJECTS
       ? [{ field: 'user_id', value: userInfo?.id }]
@@ -35,7 +39,7 @@ export const Projects = () => {
     <>
       <PageHeader
         title={translate(STRING.NAV_ITEM_PROJECTS)}
-        subTitle={translate(STRING.RESULTS, { total: projects?.length ?? 0 })}
+        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
         isLoading={isLoading}
         isFetching={isFetching}
       >

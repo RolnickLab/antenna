@@ -54,7 +54,13 @@ export const Header = () => {
             to={APP_ROUTES.TERMS_OF_SERVICE}
             className={classNames(buttonStyles.button, buttonStyles.plain)}
           >
-            <span className={buttonStyles.label}>Terms of Service</span>
+            <span className={buttonStyles.label}>Terms of service</span>
+          </Link>
+          <Link
+            to={APP_ROUTES.CODE_OF_CONDUCT}
+            className={classNames(buttonStyles.button, buttonStyles.plain)}
+          >
+            <span className={buttonStyles.label}>Code of conduct</span>
           </Link>
         </div>
         {user.loggedIn ? (
