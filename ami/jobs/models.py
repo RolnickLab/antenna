@@ -665,7 +665,8 @@ class DataExportJob(JobType):
             progress=1,
             file_url=file_url,
         )
-
+        job.data_export.file_url = file_url
+        job.data_export.save()
         job.finished_at = datetime.datetime.now()
         job.result = {"file_url": file_url}
         job.update_status(JobState.SUCCESS, save=False)
@@ -971,10 +972,6 @@ class DataExport(BaseModel):
     @property
     def status(self):
         return self.job.status if self.job else None
-
-    @property
-    def file_url(self):
-        return self.job.result.get("file_url") if self.job and self.job.result else None
 
     def start_job(self):
         """Creates and starts the export job"""
