@@ -21,7 +21,7 @@ class User(AbstractUser):
     email = EmailField(_("email address"), unique=True)
     username = None  # type: ignore
     image = models.ImageField(upload_to="users", blank=True, null=True)
-
+    affiliation = models.CharField(max_length=255,blank=True,null=True)
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
