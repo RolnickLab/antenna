@@ -509,6 +509,13 @@ class TaxaListAdmin(admin.ModelAdmin[TaxaList]):
     def taxa_count(self, obj) -> int:
         return obj.taxa.count()
 
+    autocomplete_fields = (
+        "taxa",
+        "projects",
+    )
+
+    list_filter = ("projects",)
+
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin[Device]):
