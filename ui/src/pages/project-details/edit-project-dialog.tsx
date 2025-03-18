@@ -2,8 +2,8 @@ import { ErrorState } from 'components/error-state/error-state'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { PenIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { ProjectDetailsForm } from './project-details-form'
@@ -16,7 +16,9 @@ export const EditProjectDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <IconButton icon={IconType.Pencil} />
+        <Button size="icon" variant="ghost">
+          <PenIcon className="w-4 h-4" />
+        </Button>
       </Dialog.Trigger>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
