@@ -201,15 +201,19 @@ const ProjectContainer = () => {
   })
 
   useEffect(() => {
-    setProjectBreadcrumb({
-      title: projectDetails.project?.name ?? '',
-      path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
-    })
+    if (projectDetails.error) {
+      setProjectBreadcrumb(undefined)
+    } else {
+      setProjectBreadcrumb({
+        title: projectDetails.project?.name ?? '',
+        path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
+      })
+    }
 
     return () => {
       setProjectBreadcrumb(undefined)
     }
-  }, [projectDetails.project])
+  }, [projectDetails.project, projectDetails.error])
 
   return (
     <>
