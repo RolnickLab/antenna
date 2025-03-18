@@ -25,7 +25,7 @@ export const Pipelines = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.TAB_ITEM_PIPELINES)}
+        title={translate(STRING.NAV_ITEM_PIPELINES)}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}

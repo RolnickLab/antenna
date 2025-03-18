@@ -35,7 +35,7 @@ export const ProcessingServices = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.TAB_ITEM_PROCESSING_SERVICES)}
+        title={translate(STRING.NAV_ITEM_PROCESSING_SERVICES)}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}

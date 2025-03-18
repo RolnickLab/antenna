@@ -33,7 +33,7 @@ export const Collections = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.TAB_ITEM_COLLECTIONS)}
+        title={translate(STRING.NAV_ITEM_COLLECTIONS)}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}

@@ -21,12 +21,18 @@ import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
+import { Collections } from 'pages/overview/collections/collections'
+import { Devices } from 'pages/overview/entities/devices'
+import { Sites } from 'pages/overview/entities/sites'
 import Overview from 'pages/overview/overview'
+import { Pipelines } from 'pages/overview/pipelines/pipelines'
+import { ProcessingServices } from 'pages/overview/processing-services/processing-services'
+import { Storage } from 'pages/overview/storage/storage'
+import { Summary } from 'pages/overview/summary/summary'
 import { Projects } from 'pages/projects/projects'
 import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
-import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { ReactNode, useContext, useEffect } from 'react'
 import { Helmet, HelmetProvider } from 'react-helmet-async'
 import {
@@ -91,15 +97,29 @@ export const App = () => (
         </Route>
         <Route path="projects" element={<ProjectsContainer />} />
         <Route path="projects/:projectId" element={<ProjectContainer />}>
-          <Route path="" element={<Overview />} />
+          <Route path="" element={<Overview />}>
+            <Route
+              path=""
+              element={<Navigate to={{ pathname: 'summary' }} replace={true} />}
+            />
+            <Route path="summary" element={<Summary />} />
+            <Route path="collections" element={<Collections />} />
+            <Route path="collections/:id" element={<CollectionDetails />} />
+            <Route
+              path="processing-services"
+              element={<ProcessingServices />}
+            />
+            <Route path="pipelines" element={<Pipelines />} />
+            <Route path="sites" element={<Sites />} />
+            <Route path="devices" element={<Devices />} />
+            <Route path="storage" element={<Storage />} />
+          </Route>
           <Route path="jobs/:id?" element={<Jobs />} />
           <Route path="deployments/:id?" element={<Deployments />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="sessions/:id" element={<SessionDetails />} />
           <Route path="occurrences/:id?" element={<Occurrences />} />
           <Route path="taxa/:id?" element={<Species />} />
-          <Route path="collections/:id" element={<CollectionDetails />} />
-          <Route path="*" element={<UnderConstruction />} />
         </Route>
         <Route
           path="/terms-of-service"

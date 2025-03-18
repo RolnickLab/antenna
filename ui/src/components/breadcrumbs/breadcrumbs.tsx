@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { ChevronRightIcon } from 'lucide-react'
 import { Fragment, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Breadcrumb, BreadcrumbContext } from 'utils/breadcrumbContext'
@@ -22,9 +22,9 @@ export const Breadcrumbs = ({
   } = useContext(BreadcrumbContext)
 
   useEffect(() => {
-    const activeNavItem =
-      activeNavItemId !== 'overview' &&
-      navItems.find((navItem) => navItem.id === activeNavItemId)
+    const activeNavItem = navItems.find(
+      (navItem) => navItem.id === activeNavItemId
+    )
 
     setMainBreadcrumb(
       activeNavItem
@@ -70,11 +70,7 @@ export const Breadcrumbs = ({
               </Link>
             )}
             {!isLast && (
-              <Icon
-                type={IconType.ToggleRight}
-                theme={IconTheme.Neutral}
-                size={8}
-              />
+              <ChevronRightIcon className="w-3 h-3 text-muted-foreground/50" />
             )}
           </Fragment>
         )

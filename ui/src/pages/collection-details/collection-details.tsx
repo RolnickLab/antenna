@@ -7,9 +7,8 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { useContext, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
@@ -21,16 +20,7 @@ export const CollectionDetails = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
 
   // Collection details
-  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { collection } = useCollectionDetails(id as string)
-
-  useEffect(() => {
-    setDetailBreadcrumb(collection ? { title: collection.name } : undefined)
-
-    return () => {
-      setDetailBreadcrumb(undefined)
-    }
-  }, [collection])
 
   // Collection captures
   const [sort, setSort] = useState<TableSortSettings>()

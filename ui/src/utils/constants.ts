@@ -1,17 +1,38 @@
 export const APP_ROUTES = {
   /* Static app routes */
+  CODE_OF_CONDUCT: '/code-of-conduct',
   HOME: '/',
   LOGIN: '/auth/login',
-  SIGN_UP: '/auth/sign-up',
-  RESET_PASSWORD: '/auth/reset-password',
-  RESET_PASSWORD_CONFIRM: '/auth/reset-password-confirm',
-  TERMS_OF_SERVICE: '/terms-of-service',
-  CODE_OF_CONDUCT: '/code-of-conduct',
   PROJECTS: '/projects',
+  RESET_PASSWORD_CONFIRM: '/auth/reset-password-confirm',
+  RESET_PASSWORD: '/auth/reset-password',
+  SIGN_UP: '/auth/sign-up',
+  TERMS_OF_SERVICE: '/terms-of-service',
 
   /* Dynamic app routes */
   PROJECT_DETAILS: (params: { projectId: string }) =>
     `/projects/${params.projectId}`,
+
+  SUMMARY: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/summary`,
+
+  COLLECTIONS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/collections`,
+
+  PROCESSING_SERVICES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/processing-services`,
+
+  PIPELINES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/pipelines`,
+
+  SITES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/sites`,
+
+  DEVICES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/devices`,
+
+  STORAGE: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/storage`,
 
   DEPLOYMENTS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/deployments`,
@@ -40,9 +61,6 @@ export const APP_ROUTES = {
 
   TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
     `/projects/${params.projectId}/taxa/${params.taxonId}`,
-
-  COLLECTIONS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/collections`,
 
   COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
     `/projects/${params.projectId}/collections/${params.collectionId}`,

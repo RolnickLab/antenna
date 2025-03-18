@@ -12,7 +12,7 @@ import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { columns } from './storage-columns'
 
-export const StorageSources = () => {
+export const Storage = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'created_at',
@@ -30,7 +30,7 @@ export const StorageSources = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.TAB_ITEM_STORAGE)}
+        title={translate(STRING.NAV_ITEM_STORAGE)}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}
