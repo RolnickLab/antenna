@@ -971,7 +971,12 @@ class OccurrenceDateFilter(filters.BaseFilterBackend):
 
 class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by TaxaList.
+    Filters occurrences based on a TaxaList.
+
+    Queries for all occurrences where the determination taxon is either:
+    - Directly in the requested TaxaList.
+    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
+
     """
 
     query_param = "taxa_list_id"
@@ -1099,7 +1104,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
-    Filter Taxa by TaxaList.
+    Filters taxa based on a TaxaList Similar to `OccurrenceTaxaListFilter`.
+
+    Queries for all taxa that are either:
+    - Directly in the requested TaxaList.
+    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
     """
 
     query_param = "taxa_list_id"
