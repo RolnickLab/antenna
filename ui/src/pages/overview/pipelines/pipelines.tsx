@@ -44,9 +44,10 @@ export const Pipelines = () => {
       />
       {pipelines?.length ? (
         <PaginationBar
+          compact
           pagination={pagination}
-          total={total}
           setPage={setPage}
+          total={total}
         />
       ) : null}
     </>

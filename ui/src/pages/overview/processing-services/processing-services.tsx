@@ -61,6 +61,7 @@ export const ProcessingServices = () => {
       />
       {items?.length ? (
         <PaginationBar
+          compact
           pagination={pagination}
           total={total}
           setPage={setPage}

@@ -62,9 +62,10 @@ export const Entities = ({
       />
       {entities?.length ? (
         <PaginationBar
+          compact
           pagination={pagination}
-          total={total}
           setPage={setPage}
+          total={total}
         />
       ) : null}
     </>

@@ -59,9 +59,10 @@ export const Collections = () => {
       />
       {collections?.length ? (
         <PaginationBar
+          compact
           pagination={pagination}
-          total={total}
           setPage={setPage}
+          total={total}
         />
       ) : null}
     </>
