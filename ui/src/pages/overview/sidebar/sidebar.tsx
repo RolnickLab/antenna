@@ -34,10 +34,14 @@ export const Sidebar = ({ project }: { project: Project }) => {
               {project.description}
             </span>
           ) : null}
-          <div className="flex gap-2 items-center justify-end">
-            <EditProjectDialog id={projectId as string} />
-            <DeleteProjectDialog id={projectId as string} />
-          </div>
+          {project.canUpdate ? (
+            <div className="flex gap-2 items-center justify-end">
+              <EditProjectDialog id={projectId as string} />
+              {project.canDelete ? (
+                <DeleteProjectDialog id={projectId as string} />
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <Separator />
         {sidebarSections.map((section, index) => (

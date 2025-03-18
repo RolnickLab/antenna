@@ -26,7 +26,7 @@ export const EditProjectDialog = ({ id }: { id: string }) => {
       >
         <Dialog.Header
           title={translate(STRING.ENTITY_EDIT, {
-            type: translate(STRING.ENTITY_TYPE_PROJECT),
+            type: translate(STRING.ENTITY_TYPE_PROJECT_DETAILS),
           })}
         />
         <div className={styles.content}>
