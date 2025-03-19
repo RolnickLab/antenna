@@ -3,6 +3,7 @@ import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
+import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -72,6 +73,7 @@ export const Occurrences = () => {
     occurrences?.some((occurrence) => occurrence.id === id)
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
+  const { taxaLists } = useTaxaLists({ projectId: projectId as string })
 
   useEffect(() => {
     document.getElementById('app')?.scrollTo({ top: 0 })
@@ -95,7 +97,9 @@ export const Occurrences = () => {
             <FilterControl field="date_start" />
             <FilterControl field="date_end" />
             <FilterControl field="taxon" />
-            <FilterControl field="taxa_list_id" />
+            {taxaLists && taxaLists.length > 0 && (
+              <FilterControl field="taxa_list_id" />
+            )}
             <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
