@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ami.ml.models import ProcessingService, ProjectPipelineConfig
+    from ami.jobs.models import Job
 
 import collections
 import dataclasses
@@ -903,7 +904,7 @@ class Pipeline(BaseModel):
     description = models.TextField(blank=True)
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
-    # @TODO the algorithms list be retrieved by querying the pipeline endpoint
+    # @TODO the algorithms attribute is not currently used. Review for removal.
     algorithms = models.ManyToManyField("ml.Algorithm", related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(
         default=default_stages,
@@ -917,6 +918,7 @@ class Pipeline(BaseModel):
     )
     processing_services: models.QuerySet[ProcessingService]
     project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
+    jobs: models.QuerySet[Job]
 
     class Meta:
         ordering = ["name", "version"]
