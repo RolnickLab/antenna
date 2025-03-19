@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import ProcessingService
+    from ami.ml.models import ProcessingService  # , ProjectPipelineConfig
 
 import collections
 import dataclasses
@@ -927,6 +927,7 @@ class Pipeline(BaseModel):
         "main.Project", related_name="pipelines", blank=True, through="ml.ProjectPipelineConfig"
     )
     processing_services: models.QuerySet[ProcessingService]
+    # project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
 
     class Meta:
         ordering = ["name", "version"]
