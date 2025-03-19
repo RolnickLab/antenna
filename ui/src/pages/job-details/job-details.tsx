@@ -5,7 +5,7 @@ import { JobDetails as Job } from 'data-services/models/job-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
-import { StatusBar } from 'design-system/components/status/status-bar/status-bar'
+import { StatusBar } from 'design-system/components/status/status-bar'
 import {
   StatusBullet,
   StatusBulletTheme,
@@ -68,11 +68,7 @@ const JobSummary = ({ job }: { job: Job }) => {
       <FormRow>
         <div className={styles.status}>
           <InputContent label={translate(STRING.FIELD_LABEL_STATUS)}>
-            <StatusBar
-              color={job.status.color}
-              description={job.progress.label}
-              progress={job.progress.value}
-            />
+            <StatusBar color={job.status.color} progress={job.progress.value} />
           </InputContent>
         </div>
         <InputValue

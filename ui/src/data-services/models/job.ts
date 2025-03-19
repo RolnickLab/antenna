@@ -159,7 +159,9 @@ export class Job {
     type: JobStatusType
     color: string
   } {
-    return Job.getStatusInfo(this._job.status)
+    return Job.getStatusInfo(
+      this._job.status ?? this._job.progress.summary.status
+    )
   }
 
   get updatedAt(): string | undefined {

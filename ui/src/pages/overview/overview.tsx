@@ -11,6 +11,7 @@ import { useSelectedView } from 'utils/useSelectedView'
 import { Collections } from './collections/collections'
 import { DeploymentsMap } from './deployments-map/deployments-map'
 import { Entities } from './entities/entities'
+import { Exports } from './exports/exports'
 import styles from './overview.module.scss'
 import { Pipelines } from './pipelines/pipelines'
 import { ProcessingServices } from './processing-services/processing-services'
@@ -91,6 +92,10 @@ export const Overview = () => {
             value="processingServices"
             label={translate(STRING.TAB_ITEM_PROCESSING_SERVICES)}
           />
+          <Tabs.Trigger
+            value="exports"
+            label={translate(STRING.NAV_ITEM_EXPORTS)}
+          />
         </Tabs.List>
         <Tabs.Content value="summary">
           <Summary project={project} />
@@ -122,6 +127,9 @@ export const Overview = () => {
         </Tabs.Content>
         <Tabs.Content value="processingServices">
           <ProcessingServices />
+        </Tabs.Content>
+        <Tabs.Content value="exports">
+          <Exports />
         </Tabs.Content>
       </Tabs.Root>
     </>
