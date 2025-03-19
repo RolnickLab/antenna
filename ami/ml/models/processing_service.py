@@ -101,7 +101,7 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
-    def get_status(self):
+    def get_status(self, timeout=6):
         """
         Check the status of the processing service.
         This is a simple health check that pings the /readyz endpoint of the service.
@@ -116,7 +116,7 @@ class ProcessingService(BaseModel):
         resp = None
 
         try:
-            resp = requests.get(ready_check_url)
+            resp = requests.get(ready_check_url, timeout=timeout)
             resp.raise_for_status()
             self.last_checked_live = True
             latency = time.time() - start_time
@@ -158,13 +158,13 @@ class ProcessingService(BaseModel):
 
         return response
 
-    def get_pipeline_configs(self):
+    def get_pipeline_configs(self, timeout=6):
         """
         Get the pipeline configurations from the processing service.
         This can be a long response as it includes the full category map for each algorithm.
         """
         info_url = urljoin(self.endpoint_url, "info")
-        resp = requests.get(info_url)
+        resp = requests.get(info_url, timeout=timeout)
         resp.raise_for_status()
         info_data = ProcessingServiceInfoResponse.parse_obj(resp.json())
         return info_data.pipelines
