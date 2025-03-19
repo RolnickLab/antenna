@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import ProcessingService  # , ProjectPipelineConfig
+    from ami.ml.models import ProcessingService, ProjectPipelineConfig
 
 import collections
 import dataclasses
@@ -162,9 +162,6 @@ def process_images(
 ) -> PipelineResultsResponse:
     """
     Process images using ML pipeline API.
-
-    @TODO find a home for this function.
-    @TODO break into task chunks.
     """
     job = None
     task_logger = logger
@@ -927,7 +924,7 @@ class Pipeline(BaseModel):
         "main.Project", related_name="pipelines", blank=True, through="ml.ProjectPipelineConfig"
     )
     processing_services: models.QuerySet[ProcessingService]
-    # project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
+    project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
 
     class Meta:
         ordering = ["name", "version"]
