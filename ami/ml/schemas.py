@@ -144,10 +144,23 @@ KnownPipelineChoices = typing.Literal[
 ]
 
 
+class PipelineRequestConfigParameters(dict):
+    """Parameters used to configure a pipeline request.
+
+    Accepts any serializable key-value pair.
+    Example: {"force_reprocess": True, "auth_token": "abc123"}
+
+    Supported parameters are defined by the pipeline in the processing service
+    and should be published in the Pipeline's info response.
+    """
+
+    pass
+
+
 class PipelineRequest(pydantic.BaseModel):
     pipeline: str
     source_images: list[SourceImageRequest]
-    config: dict
+    config: PipelineRequestConfigParameters | dict | None = None
 
 
 class PipelineResultsResponse(pydantic.BaseModel):
