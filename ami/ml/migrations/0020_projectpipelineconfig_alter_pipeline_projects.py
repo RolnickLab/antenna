@@ -48,7 +48,7 @@ def revert_m2m_data(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("main", "0058_alter_project_options"),
-        ("ml", "0018_add_processing_services_status_check_celery_beat_task"),
+        ("ml", "0019_alter_algorithm_task_type"),
     ]
 
     operations = [
