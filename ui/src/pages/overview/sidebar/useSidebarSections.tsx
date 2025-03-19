@@ -38,11 +38,19 @@ const getSidebarSections = (
         id: 'processing-services',
         title: translate(STRING.NAV_ITEM_PROCESSING_SERVICES),
         path: APP_ROUTES.PROCESSING_SERVICES({ projectId }),
+        matchPath: APP_ROUTES.PROCESSING_SERVICE_DETAILS({
+          projectId: ':projectId',
+          processingServiceId: '*',
+        }),
       },
       {
         id: 'pipelines',
         title: translate(STRING.NAV_ITEM_PIPELINES),
         path: APP_ROUTES.PIPELINES({ projectId }),
+        matchPath: APP_ROUTES.PIPELINE_DETAILS({
+          projectId: ':projectId',
+          pipelineId: '*',
+        }),
       },
     ],
   },

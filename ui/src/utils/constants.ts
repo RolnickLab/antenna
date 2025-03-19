@@ -19,11 +19,23 @@ export const APP_ROUTES = {
   COLLECTIONS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/collections`,
 
+  COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
+    `/projects/${params.projectId}/collections/${params.collectionId}`,
+
   PROCESSING_SERVICES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/processing-services`,
 
+  PROCESSING_SERVICE_DETAILS: (params: {
+    projectId: string
+    processingServiceId: string
+  }) =>
+    `/projects/${params.projectId}/processing-services/${params.processingServiceId}`,
+
   PIPELINES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/pipelines`,
+
+  PIPELINE_DETAILS: (params: { projectId: string; pipelineId: string }) =>
+    `/projects/${params.projectId}/pipelines/${params.pipelineId}`,
 
   SITES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/sites`,
@@ -61,9 +73,6 @@ export const APP_ROUTES = {
 
   TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
     `/projects/${params.projectId}/taxa/${params.taxonId}`,
-
-  COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
-    `/projects/${params.projectId}/collections/${params.collectionId}`,
 }
 
 export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB

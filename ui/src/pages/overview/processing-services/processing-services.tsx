@@ -6,6 +6,7 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
+import { ProcessingServiceDetailsDialog } from 'pages/processing-service-details/processing-service-details-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -14,7 +15,7 @@ import { UserPermission } from 'utils/user/types'
 import { columns } from './processing-services-columns'
 
 export const ProcessingServices = () => {
-  const { projectId } = useParams()
+  const { projectId, id } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'created_at',
     order: 'desc',
@@ -50,7 +51,6 @@ export const ProcessingServices = () => {
           />
         )}
       </PageHeader>
-
       <Table
         items={items}
         isLoading={isLoading}
@@ -67,6 +67,7 @@ export const ProcessingServices = () => {
           setPage={setPage}
         />
       ) : null}
+      {id ? <ProcessingServiceDetailsDialog id={id} /> : null}
     </>
   )
 }

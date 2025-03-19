@@ -3,6 +3,7 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
+import { PipelineDetailsDialog } from 'pages/pipeline-details/pipeline-details-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -10,7 +11,7 @@ import { usePagination } from 'utils/usePagination'
 import { columns } from './pipelines-columns'
 
 export const Pipelines = () => {
-  const { projectId } = useParams()
+  const { projectId, id } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'id',
     order: 'asc',
@@ -50,6 +51,7 @@ export const Pipelines = () => {
           total={total}
         />
       ) : null}
+      {id ? <PipelineDetailsDialog id={id} /> : null}
     </>
   )
 }
