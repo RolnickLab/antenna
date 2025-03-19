@@ -2,6 +2,6 @@ from django.apps import AppConfig
 from django.utils.translation import gettext_lazy as _
 
 
-class UsersConfig(AppConfig):
+class MLConfig(AppConfig):
     name = "ami.ml"
     verbose_name = _("Machine Learning")
