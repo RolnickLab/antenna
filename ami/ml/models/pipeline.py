@@ -203,10 +203,13 @@ def process_images(
     if not project_id:
         task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
 
+    config = pipeline.get_config(project_id=project_id)
+    task_logger.info(f"Using pipeline config: {config}")
+
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
         source_images=source_images,
-        config=pipeline.get_config(project_id=project_id),
+        config=config,
     )
 
     session = create_session()
