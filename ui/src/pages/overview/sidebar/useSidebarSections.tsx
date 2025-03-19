@@ -47,7 +47,7 @@ const getSidebarSections = (
     ],
   },
   {
-    title: 'Settings',
+    title: 'Metadata',
     items: [
       {
         id: 'sites',
@@ -59,6 +59,11 @@ const getSidebarSections = (
         title: translate(STRING.NAV_ITEM_DEVICES),
         path: APP_ROUTES.DEVICES({ projectId }),
       },
+    ],
+  },
+  {
+    title: 'Settings',
+    items: [
       {
         id: 'storage',
         title: translate(STRING.NAV_ITEM_STORAGE),
