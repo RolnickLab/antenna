@@ -198,29 +198,21 @@ def process_images(
         if url
     ]
 
+    config = {}
     if project_id:
         try:
-            config = pipeline.project_pipeline_configs.get(project_id=project_id).config
+            project_pipeline_config = pipeline.project_pipeline_configs.get(project_id=project_id)
+            config = project_pipeline_config.config or {}
             task_logger.info(
                 f"Sending pipeline request using {config} from the project-pipeline config "
                 f"for Pipeline {pipeline} and Project id {project_id}."
             )
         except pipeline.project_pipeline_configs.model.DoesNotExist as e:
-            task_logger.error(
-                f"Error getting the project-pipeline config for Pipeline {pipeline} "
-                f"and Project id {project_id}: {e}"
-            )
-            config = {}
-            task_logger.info(
-                "Using empty config when sending pipeline request since no project-pipeline config "
-                f"was found for Pipeline {pipeline} and Project id {project_id}"
+            task_logger.warning(
+                f"No project-pipeline config for Pipeline {pipeline} " f"and Project id {project_id}: {e}"
             )
     else:
-        config = {}
-        task_logger.info(
-            "Using empty config when sending pipeline request "
-            f"since no project id was provided for Pipeline {pipeline}"
-        )
+        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
 
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
