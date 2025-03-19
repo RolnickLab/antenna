@@ -71,7 +71,7 @@ class ProjectAdmin(GuardedModelAdmin):
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")
-    search_fields = ("name", "owner__username", "members__username")
+    search_fields = ("name", "owner__email", "members__email")
     filter_horizontal = ("members",)
 
     inlines = [ProjectPipelineConfigInline]
