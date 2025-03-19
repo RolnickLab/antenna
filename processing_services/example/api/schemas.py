@@ -187,7 +187,7 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
 PipelineChoice = typing.Literal["random", "constant"]
 
 
-class PipelineRequestConfigParameters(dict):
+class PipelineRequestConfigParameters(pydantic.BaseModel):
     """Parameters used to configure a pipeline request.
 
     Accepts any serializable key-value pair.
@@ -197,7 +197,14 @@ class PipelineRequestConfigParameters(dict):
     and should be published in the Pipeline's info response.
     """
 
-    pass
+    force_reprocess: bool = pydantic.Field(
+        default=False,
+        description="Force reprocessing of the image, even if it has already been processed.",
+    )
+    auth_token: str | None = pydantic.Field(
+        default=None,
+        description="An optional authentication token to use for the pipeline.",
+    )
 
 
 class PipelineRequest(pydantic.BaseModel):
