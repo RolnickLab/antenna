@@ -10,6 +10,7 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
+from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
@@ -28,6 +29,11 @@ from .models import (
     TaxaList,
     Taxon,
 )
+
+
+class ProjectPipelineConfigInline(admin.TabularInline):
+    model = ProjectPipelineConfig
+    extra = 0
 
 
 class AdminBase(admin.ModelAdmin):
@@ -67,6 +73,8 @@ class ProjectAdmin(GuardedModelAdmin):
     list_filter = ("active", "owner")
     search_fields = ("name", "owner__username", "members__username")
     filter_horizontal = ("members",)
+
+    inlines = [ProjectPipelineConfigInline]
 
     fieldsets = (
         (None, {"fields": ("name", "description", "priority", "active")}),
