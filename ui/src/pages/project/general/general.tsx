@@ -4,6 +4,7 @@ import { Project } from 'data-services/models/project'
 import styles from 'design-system/components/dialog/dialog.module.scss'
 import { DeleteProjectDialog } from 'pages/project-details/delete-project-dialog'
 import { ProjectDetailsForm } from 'pages/project-details/project-details-form'
+import { useEffect } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -20,8 +21,14 @@ export const General = () => {
     error,
   } = useUpdateProject(project.id)
 
+  useEffect(() => {
+    if (project.canUpdate) {
+      navigate(APP_ROUTES.PROJECT_DETAILS({ projectId: project.id }))
+    }
+  }, [project.canUpdate])
+
   if (!project.canUpdate) {
-    return navigate(APP_ROUTES.PROJECT_DETAILS({ projectId: project.id }))
+    return null
   }
 
   return (
