@@ -404,7 +404,9 @@ class MLJob(JobType):
         total_detections = 0
         total_classifications = 0
 
-        CHUNK_SIZE = 4  # Keep it low to see more progress updates
+        # Set to low size because our response JSON just got enormous
+        # @TODO make this configurable
+        CHUNK_SIZE = 1
         chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
         request_failed_images = []
 
