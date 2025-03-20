@@ -64,7 +64,7 @@ def apply_filters(queryset, filters, filter_backends):
     """
     request = generate_fake_request(query_params=filters)
     logger.debug(f"Queryset count before filtering : {queryset.count()}")
-    logger.debug(f"Query params : {filters}")
+    logger.debug(f"Filter values : {filters}")
     logger.debug(f"Filter backends : {filter_backends}")
     for backend in filter_backends:
         queryset = backend().filter_queryset(request, queryset, None)  # `view` is None since we are not using ViewSet
@@ -72,7 +72,7 @@ def apply_filters(queryset, filters, filter_backends):
     return queryset
 
 
-def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.Serializer], batch_size=2):
+def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.Serializer], batch_size=1000):
     """
     Yield batches of serialized data from a queryset efficiently.
     """
@@ -100,3 +100,6 @@ def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.
         except Exception as e:
             logger.warning(f"Error processing occurrence {item.id}: {str(e)}")
             raise e
+
+    if len(batch):
+        yield batch  # yield the last batch if total number of records not divisible by batch_size

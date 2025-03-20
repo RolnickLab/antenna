@@ -18,6 +18,9 @@ class BaseExporter(ABC):
         self.queryset = apply_filters(
             queryset=self.get_queryset(), filters=filters, filter_backends=self.get_filter_backends()
         )
+        self.job.progress.add_stage_param(
+            self.job.job_type_key, "Number of Records Exported", f"{self.queryset.count()}"
+        )
 
     @abstractmethod
     def export(self):
@@ -32,20 +35,6 @@ class BaseExporter(ABC):
         return self.serializer_class
 
     def get_filter_backends(self):
-        from ami.main.api.views import (
-            CustomOccurrenceDeterminationFilter,
-            OccurrenceAlgorithmFilter,
-            OccurrenceCollectionFilter,
-            OccurrenceDateFilter,
-            OccurrenceVerified,
-            OccurrenceVerifiedByMeFilter,
-        )
+        from ami.main.api.views import OccurrenceCollectionFilter
 
-        return [
-            CustomOccurrenceDeterminationFilter,
-            OccurrenceAlgorithmFilter,
-            OccurrenceCollectionFilter,
-            OccurrenceDateFilter,
-            OccurrenceVerified,
-            OccurrenceVerifiedByMeFilter,
-        ]
+        return [OccurrenceCollectionFilter]

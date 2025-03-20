@@ -19,6 +19,7 @@ export const SERVER_JOB_TYPES = [
   'ml',
   'data_storage_sync',
   'populate_captures_collection',
+  'data_export',
   'unknown',
 ] as const
 
@@ -175,6 +176,7 @@ export class Job {
       ml: 'ML pipeline',
       data_storage_sync: 'Data storage sync',
       populate_captures_collection: 'Populate captures collection',
+      data_export: 'Data Export',
       unknown: 'Unknown',
     }[key]
 
