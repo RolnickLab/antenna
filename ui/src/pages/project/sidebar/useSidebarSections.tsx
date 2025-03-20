@@ -73,25 +73,26 @@ const getSidebarSections = ({
       },
     ],
   },
-  ...(canUpdate
-    ? [
-        {
-          title: 'Settings',
-          items: [
+
+  {
+    title: 'Settings',
+    items: [
+      ...(canUpdate
+        ? [
             {
               id: 'general',
               title: translate(STRING.NAV_ITEM_GENERAL),
               path: APP_ROUTES.GENERAL({ projectId }),
             },
-            {
-              id: 'storage',
-              title: translate(STRING.NAV_ITEM_STORAGE),
-              path: APP_ROUTES.STORAGE({ projectId }),
-            },
-          ],
-        },
-      ]
-    : []),
+          ]
+        : []),
+      {
+        id: 'storage',
+        title: translate(STRING.NAV_ITEM_STORAGE),
+        path: APP_ROUTES.STORAGE({ projectId }),
+      },
+    ],
+  },
 ]
 
 export const useSidebarSections = ({
