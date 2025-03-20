@@ -1,17 +1,15 @@
 import classNames from 'classnames'
 import { Project } from 'data-services/models/project'
-import { DeleteProjectDialog } from 'pages/project-details/delete-project-dialog'
-import { EditProjectDialog } from 'pages/project-details/edit-project-dialog'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { useSidebarSections } from './useSidebarSections'
 
 export const Sidebar = ({ project }: { project: Project }) => {
-  const { projectId } = useParams()
-  const { sidebarSections, activeItem } = useSidebarSections(
-    projectId as string
-  )
+  const { sidebarSections, activeItem } = useSidebarSections({
+    projectId: project.id,
+    canUpdate: project.canUpdate,
+  })
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
 
   useEffect(() => {
@@ -33,14 +31,6 @@ export const Sidebar = ({ project }: { project: Project }) => {
             <span className="body-small text-muted-foreground">
               {project.description}
             </span>
-          ) : null}
-          {project.canUpdate ? (
-            <div className="flex gap-2 items-center justify-end">
-              <EditProjectDialog id={projectId as string} />
-              {project.canDelete ? (
-                <DeleteProjectDialog id={projectId as string} />
-              ) : null}
-            </div>
           ) : null}
         </div>
         <Separator />

@@ -10,9 +10,13 @@ interface SidebarItem {
   title: string
 }
 
-const getSidebarSections = (
+const getSidebarSections = ({
+  projectId,
+  canUpdate,
+}: {
   projectId: string
-): { title?: string; items: SidebarItem[] }[] => [
+  canUpdate?: boolean
+}): { title?: string; items: SidebarItem[] }[] => [
   {
     items: [
       {
@@ -69,23 +73,38 @@ const getSidebarSections = (
       },
     ],
   },
-  {
-    title: 'Settings',
-    items: [
-      {
-        id: 'storage',
-        title: translate(STRING.NAV_ITEM_STORAGE),
-        path: APP_ROUTES.STORAGE({ projectId }),
-      },
-    ],
-  },
+  ...(canUpdate
+    ? [
+        {
+          title: 'Settings',
+          items: [
+            {
+              id: 'general',
+              title: translate(STRING.NAV_ITEM_GENERAL),
+              path: APP_ROUTES.GENERAL({ projectId }),
+            },
+            {
+              id: 'storage',
+              title: translate(STRING.NAV_ITEM_STORAGE),
+              path: APP_ROUTES.STORAGE({ projectId }),
+            },
+          ],
+        },
+      ]
+    : []),
 ]
 
-export const useSidebarSections = (projectId: string) => {
+export const useSidebarSections = ({
+  projectId,
+  canUpdate,
+}: {
+  projectId: string
+  canUpdate?: boolean
+}) => {
   const location = useLocation()
   const sidebarSections = useMemo(
-    () => getSidebarSections(projectId as string),
-    [projectId]
+    () => getSidebarSections({ projectId, canUpdate }),
+    [projectId, canUpdate]
   )
   const activeItem = useMemo(() => {
     const items = sidebarSections.map((section) => section.items).flat()

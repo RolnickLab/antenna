@@ -43,6 +43,9 @@ export const APP_ROUTES = {
   DEVICES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/devices`,
 
+  GENERAL: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/general`,
+
   STORAGE: (params: { projectId: string }) =>
     `/projects/${params.projectId}/storage`,
 
