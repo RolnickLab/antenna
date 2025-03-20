@@ -1,5 +1,5 @@
 import { API_ROUTES } from 'data-services/constants'
-import { ServerTaxaList, TaxaList } from 'data-services/models/taxalist'
+import { ServerTaxaList, TaxaList } from 'data-services/models/taxa-list'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
@@ -20,7 +20,7 @@ export const useTaxaLists = (
 } => {
   // Construct API fetch URL with query parameters
   const fetchUrl = getFetchUrl({
-    collection: API_ROUTES.TAXALISTS,
+    collection: API_ROUTES.TAXA_LISTS,
     params,
   })
 
@@ -29,7 +29,7 @@ export const useTaxaLists = (
     results: ServerTaxaList[]
     user_permissions?: UserPermission[]
   }>({
-    queryKey: [API_ROUTES.TAXALISTS, params],
+    queryKey: [API_ROUTES.TAXA_LISTS, params],
     url: fetchUrl,
   })
 

@@ -88,7 +88,7 @@ export const AVAILABLE_FILTERS: {
     field: 'taxon',
   },
   {
-    label: 'Taxa List',
+    label: 'Taxa list',
     field: 'taxa_list_id',
   },
   {
