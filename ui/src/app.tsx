@@ -21,14 +21,14 @@ import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
-import { Collections } from 'pages/overview/collections/collections'
-import { Devices } from 'pages/overview/entities/devices'
-import { Sites } from 'pages/overview/entities/sites'
-import Overview from 'pages/overview/overview'
-import { Pipelines } from 'pages/overview/pipelines/pipelines'
-import { ProcessingServices } from 'pages/overview/processing-services/processing-services'
-import { Storage } from 'pages/overview/storage/storage'
-import { Summary } from 'pages/overview/summary/summary'
+import { Collections } from 'pages/project/collections/collections'
+import { Devices } from 'pages/project/entities/devices'
+import { Sites } from 'pages/project/entities/sites'
+import { Pipelines } from 'pages/project/pipelines/pipelines'
+import { ProcessingServices } from 'pages/project/processing-services/processing-services'
+import Project from 'pages/project/project'
+import { Storage } from 'pages/project/storage/storage'
+import { Summary } from 'pages/project/summary/summary'
 import { Projects } from 'pages/projects/projects'
 import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
@@ -97,7 +97,7 @@ export const App = () => (
         </Route>
         <Route path="projects" element={<ProjectsContainer />} />
         <Route path="projects/:projectId" element={<ProjectContainer />}>
-          <Route path="" element={<Overview />}>
+          <Route path="" element={<Project />}>
             <Route
               path=""
               element={<Navigate to={{ pathname: 'summary' }} replace={true} />}

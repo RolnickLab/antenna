@@ -2,9 +2,9 @@ import { API_ROUTES } from 'data-services/constants'
 import { StorageSource } from 'data-services/models/storage'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { TableColumn, TextAlign } from 'design-system/components/table/types'
-import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
-import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
-import styles from 'pages/overview/entities/styles.module.scss'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
+import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
+import styles from 'pages/project/entities/styles.module.scss'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (

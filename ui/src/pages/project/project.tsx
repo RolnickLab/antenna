@@ -1,13 +1,13 @@
 import { ErrorState } from 'components/error-state/error-state'
-import { Project } from 'data-services/models/project'
+import { Project as ProjectDetails } from 'data-services/models/project'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Helmet } from 'react-helmet-async'
 import { Outlet, useOutletContext } from 'react-router-dom'
 import { Sidebar } from './sidebar/sidebar'
 
-export const Overview = () => {
+export const Project = () => {
   const { project, isLoading, error } = useOutletContext<{
-    project?: Project
+    project?: ProjectDetails
     isLoading: boolean
     isFetching: boolean
     error?: unknown
@@ -40,4 +40,4 @@ export const Overview = () => {
   )
 }
 
-export default Overview
+export default Project
