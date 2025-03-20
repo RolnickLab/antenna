@@ -7,11 +7,11 @@ import { STRING, translate } from 'utils/language'
 import styles from './breadcrumbs.module.scss'
 
 export const Breadcrumbs = ({
+  activeNavItem,
   navItems,
-  activeNavItemId,
 }: {
+  activeNavItem: { id: string; title: string; path?: string }
   navItems: { id: string; title: string; path?: string }[]
-  activeNavItemId: string
 }) => {
   const {
     pageBreadcrumb,
@@ -22,20 +22,16 @@ export const Breadcrumbs = ({
   } = useContext(BreadcrumbContext)
 
   useEffect(() => {
-    const activeNavItem = navItems.find(
-      (navItem) => navItem.id === activeNavItemId
-    )
-
-    setMainBreadcrumb(
-      activeNavItem
-        ? { title: activeNavItem.title, path: activeNavItem.path }
-        : undefined
-    )
+    if (activeNavItem.id === 'project') {
+      setMainBreadcrumb(undefined)
+    } else {
+      setMainBreadcrumb(activeNavItem)
+    }
 
     return () => {
       setMainBreadcrumb(undefined)
     }
-  }, [navItems, activeNavItemId])
+  }, [navItems, activeNavItem])
 
   const breadcrumbs = [
     pageBreadcrumb,
