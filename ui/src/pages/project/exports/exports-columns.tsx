@@ -3,6 +3,7 @@ import { API_ROUTES } from 'data-services/constants'
 import { Export } from 'data-services/models/export'
 import { StatusBar } from 'design-system/components/status/status-bar'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
   CellTheme,
   TableColumn,
@@ -32,20 +33,19 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
     renderCell: (item: Export) => <BasicTableCell value={item.type.label} />,
   },
   {
-    id: 'progress',
-    name: 'Progress',
+    id: 'status',
+    name: translate(STRING.FIELD_LABEL_STATUS),
+    tooltip: translate(STRING.TOOLTIP_STATUS),
     renderCell: (item: Export) => {
       if (!item.job) {
         return <></>
       }
 
       return (
-        <BasicTableCell>
-          <StatusBar
-            color={item.job.status.color}
-            progress={item.job.progress.value}
-          />
-        </BasicTableCell>
+        <StatusTableCell
+          color={item.job.status.color}
+          label={item.job.status.label}
+        />
       )
     },
   },
@@ -71,24 +71,37 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
   {
     id: 'result',
     name: translate(STRING.FIELD_LABEL_RESULT),
-    renderCell: (item: Export) => (
-      <BasicTableCell>
-        <a
-          href={item.fileUrl}
-          download={item.fileUrl}
-          className={classNames(
-            buttonVariants({
-              size: 'small',
-              variant: 'outline',
-            }),
-            '!w-auto !rounded-full'
-          )}
-        >
-          <DownloadIcon className="w-4 h-4" />
-          <span>Download</span>
-        </a>
-      </BasicTableCell>
-    ),
+    renderCell: (item: Export) => {
+      if (item.job.progress.value !== 1) {
+        return (
+          <BasicTableCell>
+            <StatusBar
+              color={item.job.status.color}
+              progress={item.job.progress.value}
+            />
+          </BasicTableCell>
+        )
+      }
+
+      return (
+        <BasicTableCell>
+          <a
+            href={item.fileUrl}
+            download={item.fileUrl}
+            className={classNames(
+              buttonVariants({
+                size: 'small',
+                variant: 'outline',
+              }),
+              '!w-auto !rounded-full'
+            )}
+          >
+            <DownloadIcon className="w-4 h-4" />
+            <span>Download</span>
+          </a>
+        </BasicTableCell>
+      )
+    },
   },
   {
     id: 'created-at',
