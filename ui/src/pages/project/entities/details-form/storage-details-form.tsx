@@ -11,7 +11,7 @@ import { StorageSource } from 'data-services/models/storage'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { Input, LockedInput } from 'design-system/components/input/input'
-import { ConnectionStatus } from 'pages/overview/storage/connection-status'
+import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useState } from 'react'
 import {
   ControllerFieldState,

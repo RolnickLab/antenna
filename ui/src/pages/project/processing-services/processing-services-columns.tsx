@@ -2,11 +2,12 @@ import { API_ROUTES } from 'data-services/constants'
 import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
-import { TableColumn } from 'design-system/components/table/types'
-import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
-import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
-import styles from 'pages/overview/entities/styles.module.scss'
-import { ProcessingServiceDetailsDialog } from 'pages/processing-service-details/processing-service-details-dialog'
+import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
+import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
+import styles from 'pages/project/entities/styles.module.scss'
+import { Link } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { PopulateProcessingService } from './processing-services-actions'
 
@@ -28,13 +29,14 @@ export const columns: (
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: ProcessingService) => (
-      <BasicTableCell>
-        <ProcessingServiceDetailsDialog
-          id={item.id}
-          projectId={projectId}
-          name={item.name}
-        />
-      </BasicTableCell>
+      <Link
+        to={APP_ROUTES.PROCESSING_SERVICE_DETAILS({
+          projectId,
+          processingServiceId: item.id,
+        })}
+      >
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {
