@@ -73,7 +73,7 @@ export const Occurrences = () => {
     occurrences?.some((occurrence) => occurrence.id === id)
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
-  const { taxaLists } = useTaxaLists({ projectId: projectId as string })
+  const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
 
   useEffect(() => {
     document.getElementById('app')?.scrollTo({ top: 0 })
@@ -97,8 +97,8 @@ export const Occurrences = () => {
             <FilterControl field="date_start" />
             <FilterControl field="date_end" />
             <FilterControl field="taxon" />
-            {taxaLists && taxaLists.length > 0 && (
-              <FilterControl field="taxa_list_id" />
+            {taxaLists.length > 0 && (
+              <FilterControl data={taxaLists} field="taxa_list_id" />
             )}
             <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />

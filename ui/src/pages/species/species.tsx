@@ -36,7 +36,7 @@ export const Species = () => {
     filters,
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
-  const { taxaLists } = useTaxaLists({ projectId: projectId as string })
+  const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
 
   return (
     <>
@@ -45,8 +45,8 @@ export const Species = () => {
           <FilterControl field="event" readonly />
           <FilterControl field="deployment" />
           <FilterControl field="taxon" />
-          {taxaLists && taxaLists.length > 0 && (
-            <FilterControl field="taxa_list_id" />
+          {taxaLists.length > 0 && (
+            <FilterControl data={taxaLists} field="taxa_list_id" />
           )}
         </FilterSection>
         <div className="w-full overflow-hidden">

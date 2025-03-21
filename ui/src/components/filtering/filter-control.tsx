@@ -42,12 +42,14 @@ const ComponentMap: {
 
 interface FilterControlProps {
   clearable?: boolean
+  data?: any
   field: string
   readonly?: boolean
 }
 
 export const FilterControl = ({
   clearable = true,
+  data,
   field,
   readonly,
 }: FilterControlProps) => {
@@ -70,6 +72,7 @@ export const FilterControl = ({
       </label>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
+          data={data}
           error={filter.error}
           onAdd={(value) => addFilter(field, value)}
           onClear={() => clearFilter(field)}

@@ -1,15 +1,9 @@
-import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
+import { TaxaList } from 'data-services/models/taxa-list'
 import { Select } from 'nova-ui-kit'
-import { useParams } from 'react-router-dom'
 import { FilterProps } from './types'
 
-export const TaxaListFilter = ({ value, onAdd }: FilterProps) => {
-  const { projectId } = useParams()
-
-  // Fetch TaxaLists filtered by projectId
-  const { taxaLists = [], isLoading } = useTaxaLists({
-    projectId: projectId as string,
-  })
+export const TaxaListFilter = ({ data = [], value, onAdd }: FilterProps) => {
+  const taxaLists = data as TaxaList[]
 
   return (
     <Select.Root
@@ -17,7 +11,7 @@ export const TaxaListFilter = ({ value, onAdd }: FilterProps) => {
       value={value ?? ''}
       onValueChange={onAdd}
     >
-      <Select.Trigger loading={isLoading}>
+      <Select.Trigger>
         <Select.Value placeholder="All taxa lists" />
       </Select.Trigger>
       <Select.Content className="max-h-72">
