@@ -16,6 +16,4 @@ export class TaxaList extends Entity {
   get taxaUrl(): string {
     return this._taxaList.taxa
   }
-
-
 }
