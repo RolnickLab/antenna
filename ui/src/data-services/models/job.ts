@@ -176,7 +176,7 @@ export class Job {
       ml: 'ML pipeline',
       data_storage_sync: 'Data storage sync',
       populate_captures_collection: 'Populate captures collection',
-      data_export: 'Data Export',
+      data_export: 'Data export',
       unknown: 'Unknown',
     }[key]
 

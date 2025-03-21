@@ -103,9 +103,9 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
 
     def get_verification(self, obj):
         """
-        Returns 'Verified' if the occurrence has identifications, otherwise 'Not Verified'.
+        Returns 'Verified' if the occurrence has identifications, otherwise 'Not verified'.
         """
-        return "Verified" if obj.identifications.exists() else "Not Verified"
+        return "Verified" if obj.identifications.exists() else "Not verified"
 
 
 class CSVExporter(BaseExporter):

@@ -19,7 +19,7 @@ class BaseExporter(ABC):
             queryset=self.get_queryset(), filters=filters, filter_backends=self.get_filter_backends()
         )
         self.job.progress.add_stage_param(
-            self.job.job_type_key, "Number of Records Exported", f"{self.queryset.count()}"
+            self.job.job_type_key, "Number of records exported", f"{self.queryset.count()}"
         )
 
     @abstractmethod
