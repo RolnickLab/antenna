@@ -10,6 +10,7 @@ import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
+import { TaxaListFilter } from './filters/taxa-list-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
 import { FilterProps } from './filters/types'
@@ -34,18 +35,21 @@ const ComponentMap: {
   source_image_single: ImageFilter,
   status: StatusFilter,
   taxon: TaxonFilter,
+  taxa_list_id: TaxaListFilter,
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
 }
 
 interface FilterControlProps {
   clearable?: boolean
+  data?: any
   field: string
   readonly?: boolean
 }
 
 export const FilterControl = ({
   clearable = true,
+  data,
   field,
   readonly,
 }: FilterControlProps) => {
@@ -68,6 +72,7 @@ export const FilterControl = ({
       </label>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
+          data={data}
           error={filter.error}
           onAdd={(value) => addFilter(field, value)}
           onClear={() => clearFilter(field)}

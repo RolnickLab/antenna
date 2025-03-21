@@ -88,6 +88,10 @@ export const AVAILABLE_FILTERS: {
     field: 'taxon',
   },
   {
+    label: 'Taxa list',
+    field: 'taxa_list_id',
+  },
+  {
     label: 'Source image',
     field: 'source_image_single', // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
   },
