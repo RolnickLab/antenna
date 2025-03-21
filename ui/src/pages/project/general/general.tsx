@@ -22,7 +22,7 @@ export const General = () => {
   } = useUpdateProject(project.id)
 
   useEffect(() => {
-    if (project.canUpdate) {
+    if (!project.canUpdate) {
       navigate(APP_ROUTES.PROJECT_DETAILS({ projectId: project.id }))
     }
   }, [project.canUpdate])
