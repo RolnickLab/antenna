@@ -574,6 +574,30 @@ class TestPipeline(TestCase):
         remaining_images_to_process = len(images_again)
         self.assertEqual(remaining_images_to_process, len(images), "Images not re-processed with new pipeline")
 
+    def test_project_pipeline_config(self):
+        """
+        Test the default_config for a pipeline, as well as the project pipeline config.
+        Ensure the project pipeline parameters override the pipeline defaults.
+        """
+        from ami.ml.models import ProjectPipelineConfig
+        from ami.ml.schemas import PipelineRequestConfigParameters
+
+        # Add config to the pipeline & project
+        self.pipeline.default_config = PipelineRequestConfigParameters({"test_param": "test_value"})
+        self.pipeline.save()
+        self.project_pipeline_config = ProjectPipelineConfig.objects.create(
+            project=self.project,
+            pipeline=self.pipeline,
+            config={"test_param": "project_value"},
+        )
+        self.project_pipeline_config.save()
+
+        # Check the final config
+        default_config = self.pipeline.get_config()
+        self.assertEqual(default_config["test_param"], "test_value")
+        final_config = self.pipeline.get_config(self.project.pk)
+        self.assertEqual(final_config["test_param"], "project_value")
+
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):
