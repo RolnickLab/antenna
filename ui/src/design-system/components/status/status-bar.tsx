@@ -14,7 +14,7 @@ export const StatusBar = ({
   const label = `${progress * 100}%`
 
   return (
-    <div className="w-full min-w-64 flex items-center gap-2 ">
+    <div className="w-full min-w-32 flex items-center gap-2">
       <div className="w-full h-2 bg-border rounded-full relative">
         <div
           className="h-2 absolute top-0 left-0 rounded-full"

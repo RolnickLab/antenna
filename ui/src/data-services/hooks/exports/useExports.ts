@@ -1,4 +1,4 @@
-import { API_ROUTES } from 'data-services/constants'
+import { API_ROUTES, REFETCH_INTERVAL } from 'data-services/constants'
 import { Export, ServerExport } from 'data-services/models/export'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
@@ -9,7 +9,8 @@ import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 const convertServerRecord = (record: ServerExport) => new Export(record)
 
 export const useExports = (
-  params?: FetchParams
+  params?: FetchParams,
+  poll?: boolean
 ): {
   error?: unknown
   exports?: Export[]
@@ -30,6 +31,7 @@ export const useExports = (
   }>({
     queryKey: [API_ROUTES.EXPORTS, params],
     url: fetchUrl,
+    refetchInterval: poll ? REFETCH_INTERVAL : undefined,
   })
 
   const exports = useMemo(() => data?.results.map(convertServerRecord), [data])

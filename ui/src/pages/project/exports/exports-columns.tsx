@@ -27,8 +27,9 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
   },
   {
     id: 'type',
+    sortField: 'type',
     name: translate(STRING.FIELD_LABEL_TYPE),
-    renderCell: (item: Export) => <BasicTableCell value={item.typeLabel} />,
+    renderCell: (item: Export) => <BasicTableCell value={item.type.label} />,
   },
   {
     id: 'progress',
@@ -70,32 +71,36 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
   {
     id: 'result',
     name: translate(STRING.FIELD_LABEL_RESULT),
-    renderCell: (item: Export) => {
-      if (!item.fileUrl) {
-        return <></>
-      }
-
-      return (
-        <BasicTableCell>
-          <div className="flex items-center gap-4">
-            <a
-              href={item.fileUrl}
-              download={item.fileUrl}
-              className={classNames(
-                buttonVariants({
-                  size: 'small',
-                  variant: 'outline',
-                }),
-                '!rounded-full'
-              )}
-            >
-              <DownloadIcon className="w-4 h-4" />
-              <span>Download</span>
-            </a>
-          </div>
-        </BasicTableCell>
-      )
-    },
+    renderCell: (item: Export) => (
+      <BasicTableCell>
+        <a
+          href={item.fileUrl}
+          download={item.fileUrl}
+          className={classNames(
+            buttonVariants({
+              size: 'small',
+              variant: 'outline',
+            }),
+            '!w-auto !rounded-full'
+          )}
+        >
+          <DownloadIcon className="w-4 h-4" />
+          <span>Download</span>
+        </a>
+      </BasicTableCell>
+    ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Export) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Export) => <BasicTableCell value={item.updatedAt} />,
   },
   {
     id: 'actions',
@@ -110,7 +115,7 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
       }
 
       return (
-        <div className="flex items-center justify-end p-4">
+        <div className="flex items-center justify-end gap-2 p-4">
           <DeleteEntityDialog
             collection={API_ROUTES.EXPORTS}
             id={item.id}

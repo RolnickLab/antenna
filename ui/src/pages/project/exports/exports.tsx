@@ -4,7 +4,7 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
-import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
+import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -15,16 +15,19 @@ import { columns } from './exports-columns'
 export const Exports = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
-    field: 'id',
-    order: 'asc',
+    field: 'created_at',
+    order: 'desc',
   })
   const { pagination, setPage } = usePagination()
   const { exports, userPermissions, total, isLoading, isFetching, error } =
-    useExports({
-      projectId,
-      pagination,
-      sort,
-    })
+    useExports(
+      {
+        projectId,
+        pagination,
+        sort,
+      },
+      true
+    )
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
@@ -38,7 +41,11 @@ export const Exports = () => {
         isFetching={isFetching}
       >
         {canCreate && (
-          <NewEntityDialog collection={API_ROUTES.EXPORTS} type="export" />
+          <NewEntityDialog
+            collection={API_ROUTES.EXPORTS}
+            type="export"
+            isCompact
+          />
         )}
       </PageHeader>
       <Table
@@ -52,9 +59,10 @@ export const Exports = () => {
       />
       {exports?.length ? (
         <PaginationBar
+          compact
           pagination={pagination}
-          total={total}
           setPage={setPage}
+          total={total}
         />
       ) : null}
     </>
