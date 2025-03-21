@@ -15,13 +15,10 @@ from django_pydantic_field import SchemaField
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-
-# from ami.exports.base import export_occurrences_to_csv, export_occurrences_to_dwc, export_occurrences_to_json
 from ami.exports.registry import ExportRegistry
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -404,7 +401,9 @@ class MLJob(JobType):
         total_detections = 0
         total_classifications = 0
 
-        CHUNK_SIZE = 4  # Keep it low to see more progress updates
+        # Set to low size because our response JSON just got enormous
+        # @TODO make this configurable
+        CHUNK_SIZE = 1
         chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
         request_failed_images = []
 
@@ -612,8 +611,8 @@ class DataExportJob(JobType):
     Job type to handle Project data exports
     """
 
-    name = "Export Occurrence Data"
-    key = "occurrence_export"
+    name = "Data Export"
+    key = "data_export"
 
     @classmethod
     def run(cls, job: "Job"):
@@ -623,8 +622,7 @@ class DataExportJob(JobType):
         logger.info("Job started: Exporting occurrences")
 
         # Add progress tracking
-        job.progress.add_stage(cls.name, key=cls.key)
-        job.progress.add_stage_param(cls.key, "Export progress", "")
+        job.progress.add_stage("Exporting data", cls.key)
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -644,33 +642,24 @@ class DataExportJob(JobType):
         logger.debug(f"Exporter class {export_class}")
         exporter = export_class(job=job, filters=job.params.get("filters"))
         job.logger.info(f"Starting export for format: {export_format}")
-        file_path = exporter.export()
-
-        # Retrieve occurrences from project
-
-        job.logger.info(f"Export completed: {file_path}")
-
+        file_temp_path = exporter.export()
         #  Upload File to MinIO Storage
-        file_name = f"exports/{job.task_id}.{export_class.file_format}"
-        with open(file_path, "rb") as f:
-            default_storage.save(file_name, f)
+        file_path = f"exports/{job.data_export.generate_filename()}"
+        job.logger.info(f"Export completed: {file_path}")
+        with open(file_temp_path, "rb") as f:
+            default_storage.save(file_path, f)
 
-        file_url = default_storage.url(file_name)
+        file_url = default_storage.url(file_path)
         job.logger.info(f"File uploaded to Project Storage: {file_url}")
 
         # Finalize Job
-        job.progress.update_stage(
-            cls.key,
-            status=JobState.SUCCESS,
-            progress=1,
-            file_url=file_url,
-        )
+        stage = job.progress.add_stage("Uploading snapshot")
+        job.progress.add_stage_param(stage.key, "File URL", f"{file_url}")
+        job.progress.update_stage(stage.key, status=JobState.SUCCESS, progress=1)
         job.data_export.file_url = file_url
         job.data_export.save()
         job.finished_at = datetime.datetime.now()
-        job.result = {"file_url": file_url}
-        job.update_status(JobState.SUCCESS, save=False)
-        job.save()
+        job.update_status(JobState.SUCCESS, save=True)
 
 
 class UnknownJobType(JobType):
@@ -760,6 +749,13 @@ class Job(BaseModel):
         null=True,
         blank=True,
         related_name="jobs",
+    )
+    data_export = models.OneToOneField(
+        "exports.DataExport",
+        on_delete=models.CASCADE,  # If DataExport is deleted, delete the Job
+        null=True,
+        blank=True,
+        related_name="job",
     )
     pipeline = models.ForeignKey(
         Pipeline,
@@ -952,36 +948,3 @@ class Job(BaseModel):
         # permissions = [
         #     ("run_job", "Can run a job"),
         #     ("cancel_job", "Can cancel a job"),
-
-
-def get_export_choices():
-    """Dynamically fetch available export formats from the ExportRegistry."""
-    return [(key, key) for key in ExportRegistry.get_supported_formats()]
-
-
-class DataExport(BaseModel):
-    """A model to track Occurrence data exports"""
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exports")
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="exports")
-    job = models.OneToOneField(Job, on_delete=models.CASCADE, null=True, blank=True, related_name="data_export")
-    format = models.CharField(max_length=255, choices=get_export_choices())
-    filters = models.JSONField(null=True, blank=True)
-    file_url = models.URLField(blank=True, null=True)
-
-    @property
-    def status(self):
-        return self.job.status if self.job else None
-
-    def start_job(self):
-        """Creates and starts the export job"""
-        job = Job.objects.create(
-            name=f"{self.project} Export Occurrences ({self.format})",
-            project=self.project,
-            job_type_key=DataExportJob.key,
-            params={"filters": self.filters, "format": self.format},
-        )
-
-        self.job = job
-        self.save()
-        job.enqueue()

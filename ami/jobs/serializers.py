@@ -1,18 +1,18 @@
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
+from ami.exports.models import DataExport
 from ami.main.api.serializers import (
     DefaultSerializer,
     DeploymentNestedSerializer,
     SourceImageCollectionNestedSerializer,
     SourceImageNestedSerializer,
-    UserNestedSerializer,
 )
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import DataExport, Job, JobLogs, JobProgress, MLJob
+from .models import Job, JobLogs, JobProgress, MLJob
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -23,6 +23,14 @@ class JobProjectNestedSerializer(DefaultSerializer):
             "name",
             "details",
         ]
+
+
+class DataExportNestedSerializer(serializers.ModelSerializer):
+    file_url = serializers.URLField(read_only=True)
+
+    class Meta:
+        model = DataExport
+        fields = ["id", "user", "project", "format", "filters", "file_url"]
 
 
 class JobTypeSerializer(serializers.Serializer):
@@ -37,6 +45,7 @@ class JobListSerializer(DefaultSerializer):
     pipeline = PipelineNestedSerializer(read_only=True)
     source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
+    data_export = DataExportNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
     logs = SchemaField(schema=JobLogs, read_only=True)
     job_type = JobTypeSerializer(read_only=True)
@@ -117,6 +126,7 @@ class JobListSerializer(DefaultSerializer):
             "logs",
             "job_type",
             "job_type_key",
+            "data_export",
             # "duration",
             # "duration_label",
             # "progress_label",
@@ -140,32 +150,4 @@ class JobSerializer(JobListSerializer):
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
             "result",
-        ]
-
-
-class DataExportJobNestedSerializer(JobListSerializer):
-    """
-    Nested serializer for DataExport.
-    """
-
-    class Meta:
-        model = Job
-        fields = ["id", "project", "progress", "result"]
-
-
-class DataExportSerializer(DefaultSerializer):
-    """
-    Serializer for DataExport
-    """
-
-    job = DataExportJobNestedSerializer(read_only=True)  # Nested job serializer
-    user = UserNestedSerializer(read_only=True)
-
-    class Meta:
-        model = DataExport
-        fields = [
-            "id",
-            "user",
-            "format",
-            "job",
         ]
