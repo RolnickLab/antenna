@@ -139,6 +139,14 @@ const JobSummary = ({ job }: { job: Job }) => {
           label={translate(STRING.FIELD_LABEL_FINISHED_AT)}
           value={job.finishedAt}
         />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_CREATED_AT)}
+          value={job.createdAt}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_UPDATED_AT)}
+          value={job.updatedAt}
+        />
       </FormRow>
       {job.logs.length > 0 && (
         <FormRow>
