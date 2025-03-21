@@ -7,9 +7,9 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
-import { DeleteEntityDialog } from 'pages/overview/entities/delete-entity-dialog'
-import { UpdateEntityDialog } from 'pages/overview/entities/entity-details-dialog'
-import styles from 'pages/overview/entities/styles.module.scss'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
+import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
+import styles from 'pages/project/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'

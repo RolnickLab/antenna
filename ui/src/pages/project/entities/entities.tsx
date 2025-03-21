@@ -1,26 +1,35 @@
-import { API_ROUTES } from 'data-services/constants'
-import { useStorageSources } from 'data-services/hooks/storage-sources/useStorageSources'
+import { useEntities } from 'data-services/hooks/entities/useEntities'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
-import { NewEntityDialog } from 'pages/overview/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
-import { columns } from './storage-columns'
+import { columns } from './entities-columns'
+import { NewEntityDialog } from './new-entity-dialog'
 
-export const StorageSources = () => {
+export const Entities = ({
+  title,
+  collection,
+  type,
+  tooltip,
+}: {
+  title: string
+  collection: string
+  type: string
+  tooltip?: string
+}) => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'created_at',
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { items, userPermissions, total, isLoading, isFetching, error } =
-    useStorageSources({
+  const { entities, userPermissions, total, isLoading, isFetching, error } =
+    useEntities(collection, {
       projectId,
       pagination,
       sort,
@@ -30,32 +39,33 @@ export const StorageSources = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.TAB_ITEM_STORAGE)}
+        title={title}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}
         isLoading={isLoading}
         isFetching={isFetching}
-        tooltip={translate(STRING.TOOLTIP_STORAGE)}
+        tooltip={tooltip}
       >
         {canCreate && (
-          <NewEntityDialog collection={API_ROUTES.STORAGE} type="storage" />
+          <NewEntityDialog collection={collection} type={type} isCompact />
         )}
       </PageHeader>
       <Table
-        columns={columns(projectId as string)}
+        columns={columns(collection, type)}
         error={error}
         isLoading={isLoading}
-        items={items}
+        items={entities}
         onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
       />
-      {items?.length ? (
+      {entities?.length ? (
         <PaginationBar
+          compact
           pagination={pagination}
-          total={total}
           setPage={setPage}
+          total={total}
         />
       ) : null}
     </>
