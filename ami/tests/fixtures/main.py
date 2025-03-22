@@ -21,6 +21,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
@@ -306,6 +307,8 @@ def create_occurrences_from_frame_data(
             identifier = make_identifier(frame.series_id, bbox.identifier)
             detections_by_identifier.setdefault(identifier, []).append((source_image, bbox.bbox))
 
+    algorithm = Algorithm.objects.get(key="random-classifier")
+
     for identifier, detections in detections_by_identifier.items():
         assert source_image.deployment
         if not taxa_list:
@@ -321,9 +324,7 @@ def create_occurrences_from_frame_data(
                 occurrence=occurrences_by_identifier[identifier],
             )
             detection.classifications.create(
-                taxon=taxon,
-                score=random.randint(41, 92) / 100,
-                timestamp=datetime.datetime.now(),
+                taxon=taxon, score=random.randint(41, 92) / 100, timestamp=datetime.datetime.now(), algorithm=algorithm
             )
             detection.save()
 
