@@ -324,7 +324,10 @@ def create_occurrences_from_frame_data(
                 occurrence=occurrences_by_identifier[identifier],
             )
             detection.classifications.create(
-                taxon=taxon, score=random.randint(41, 92) / 100, timestamp=datetime.datetime.now(), algorithm=algorithm
+                taxon=taxon,
+                score=random.randint(41, 92) / 100,
+                timestamp=datetime.datetime.now(),
+                algorithm=algorithm,
             )
             detection.save()
 

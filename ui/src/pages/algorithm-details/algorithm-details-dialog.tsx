@@ -95,13 +95,19 @@ const AlgorithmDetailsContent = ({
               <InputValue
                 label={translate(STRING.FIELD_LABEL_URI)}
                 value={algorithm.uri}
+                to={algorithm.uri}
               />
               <InputValue
-                label={translate(STRING.FIELD_LABEL_CATEGORY_MAP)}
-                value={algorithm.categoryMap}
+                label={translate(STRING.FIELD_LABEL_CATEGORY_MAP_ID)}
+                value={algorithm.categoryMapID}
+                to={algorithm.categoryMapURI}
               />
             </FormRow>
             <FormRow>
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_VERSION)}
+                value={algorithm.version}
+              />
               <InputValue
                 label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
                 value={algorithm.description}

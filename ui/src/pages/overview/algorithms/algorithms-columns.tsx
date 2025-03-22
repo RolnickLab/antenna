@@ -1,7 +1,8 @@
 import { Algorithm } from 'data-services/models/algorithm'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { TableColumn } from 'design-system/components/table/types'
+import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { AlgorithmDetailsDialog } from 'pages/algorithm-details/algorithm-details-dialog'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 export const columns: (projectId: string) => TableColumn<Algorithm>[] = () => [
@@ -34,11 +35,13 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = () => [
     renderCell: (item: Algorithm) => <BasicTableCell value={item.uri} />,
   },
   {
-    id: 'category-map',
-    name: 'Category Map',
+    id: 'category-map-id',
+    name: 'Category Map ID',
     sortField: 'category_map',
     renderCell: (item: Algorithm) => (
-      <BasicTableCell value={item.categoryMap} />
+      <Link to={item.categoryMapURI}>
+        <BasicTableCell value={item.categoryMapID} theme={CellTheme.Bubble} />
+      </Link>
     ),
   },
   {
