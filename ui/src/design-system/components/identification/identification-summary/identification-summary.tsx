@@ -1,5 +1,6 @@
 import { Identification } from 'data-services/models/occurrence-details'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { Icon, IconTheme, IconType } from '../../icon/icon'
 import styles from './identification-summary.module.scss'
@@ -38,9 +39,18 @@ export const IdentificationSummary = ({
       </span>
     </div>
     {identification.algorithm && (
-      <Tooltip content={identification.algorithm.description}>
-        <div className={styles.details}>{identification.algorithm.name}</div>
-      </Tooltip>
+      <Link to={identification.algorithm.uri}>
+        <Tooltip content={identification.algorithm.description}>
+          <div className={styles.details}>
+            {identification.algorithm.name}
+            <Icon
+              type={IconType.ExternalLink}
+              theme={IconTheme.Primary}
+              size={16}
+            />
+          </div>
+        </Tooltip>
+      </Link>
     )}
     {identification.score && (
       <div className={styles.details}>
