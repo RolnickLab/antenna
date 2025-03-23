@@ -144,12 +144,12 @@ services:
 
   ml_backend:
     build:
-      context: ./processing_services/example
+      context: ./processing_services/custom
     volumes:
-      - ./processing_services/example/:/app
+      - ./processing_services/custom/:/app
     ports:
       - "2005:2000"
     networks:
       default:
-          aliases:
-            - processing_service
+        aliases:
+          - processing_service

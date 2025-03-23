@@ -8,3 +8,13 @@ services:
       - "2000:2000"
     extra_hosts:
       - minio:host-gateway
+
+  custom:
+    build:
+      context: ./custom
+    volumes:
+      - ./custom/:/app:z
+    ports:
+      - "2000:2000"
+    extra_hosts:
+      - minio:host-gateway
