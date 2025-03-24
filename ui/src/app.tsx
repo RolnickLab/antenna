@@ -6,10 +6,13 @@ import { Analytics } from 'components/analytics'
 import { CookieDialog } from 'components/cookie-dialog/cookie-dialog'
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
 import { Header } from 'components/header/header'
-import { InfoPage } from 'components/info-page/info-page'
+import { CodeOfConductPage } from 'components/info-page/code-of-conduct-page/code-of-conduct-page'
+import { TermsOfServicePage } from 'components/info-page/terms-of-service-page/terms-of-service-page'
 import { Menu } from 'components/menu/menu'
 import { TermsOfServiceInfo } from 'components/terms-of-service-info/terms-of-service-info'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import { AlertCircleIcon, ChevronRightIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
 import { ResetPassword } from 'pages/auth/reset-password'
@@ -18,15 +21,29 @@ import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
-import Overview from 'pages/overview/overview'
+import { Collections } from 'pages/project/collections/collections'
+import { Devices } from 'pages/project/entities/devices'
+import { Sites } from 'pages/project/entities/sites'
+import { General } from 'pages/project/general/general'
+import { Pipelines } from 'pages/project/pipelines/pipelines'
+import { ProcessingServices } from 'pages/project/processing-services/processing-services'
+import Project from 'pages/project/project'
+import { Storage } from 'pages/project/storage/storage'
+import { Summary } from 'pages/project/summary/summary'
 import { Projects } from 'pages/projects/projects'
 import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
-import { UnderConstruction } from 'pages/under-construction/under-construction'
 import { ReactNode, useContext, useEffect } from 'react'
 import { Helmet, HelmetProvider } from 'react-helmet-async'
-import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
+import {
+  Link,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useParams,
+} from 'react-router-dom'
 import {
   BreadcrumbContext,
   BreadcrumbContextProvider,
@@ -35,6 +52,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { CookieConsentContextProvider } from 'utils/cookieConsent/cookieConsentContext'
 import { STRING, translate } from 'utils/language'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
+import { DEFAULT_PAGE_TITLE } from 'utils/usePageTitle'
 import { UserContextProvider } from 'utils/user/userContext'
 import { UserInfoContextProvider } from 'utils/user/userInfoContext'
 import { UserPreferencesContextProvider } from 'utils/userPreferences/userPreferencesContext'
@@ -47,7 +65,7 @@ const INTRO_CONTAINER_ID = 'intro'
 export const App = () => (
   <AppProviders>
     <Helmet>
-      <title>Antenna Data Platform</title>
+      <title>{DEFAULT_PAGE_TITLE}</title>
       <meta
         name="description"
         content="An interdisciplinary platform to upload, classify, and analyse in-the-wild images of invertebrates for research and conservation efforts."
@@ -80,17 +98,48 @@ export const App = () => (
         </Route>
         <Route path="projects" element={<ProjectsContainer />} />
         <Route path="projects/:projectId" element={<ProjectContainer />}>
-          <Route path="" element={<Overview />} />
+          <Route path="" element={<Project />}>
+            <Route
+              path=""
+              element={<Navigate to={{ pathname: 'summary' }} replace={true} />}
+            />
+            <Route path="summary" element={<Summary />} />
+            <Route path="collections" element={<Collections />} />
+            <Route path="collections/:id" element={<CollectionDetails />} />
+            <Route
+              path="processing-services/:id?"
+              element={<ProcessingServices />}
+            />
+            <Route path="pipelines/:id?" element={<Pipelines />} />
+            <Route path="sites" element={<Sites />} />
+            <Route path="devices" element={<Devices />} />
+            <Route path="general" element={<General />} />
+            <Route path="storage" element={<Storage />} />
+          </Route>
           <Route path="jobs/:id?" element={<Jobs />} />
           <Route path="deployments/:id?" element={<Deployments />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="sessions/:id" element={<SessionDetails />} />
           <Route path="occurrences/:id?" element={<Occurrences />} />
           <Route path="taxa/:id?" element={<Species />} />
-          <Route path="collections/:id" element={<CollectionDetails />} />
-          <Route path="*" element={<UnderConstruction />} />
         </Route>
-        <Route path="/:slug" element={<InfoPageContainer />} />
+        <Route
+          path="/terms-of-service"
+          element={
+            <InfoPageContainer>
+              <TermsOfServicePage />
+            </InfoPageContainer>
+          }
+        />
+        <Route
+          path="/code-of-conduct"
+          element={
+            <InfoPageContainer>
+              <CodeOfConductPage />
+            </InfoPageContainer>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
     <ReactQueryDevtools initialIsOpen={false} />
@@ -154,15 +203,19 @@ const ProjectContainer = () => {
   })
 
   useEffect(() => {
-    setProjectBreadcrumb({
-      title: projectDetails.project?.name ?? '',
-      path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
-    })
+    if (projectDetails.error) {
+      setProjectBreadcrumb(undefined)
+    } else {
+      setProjectBreadcrumb({
+        title: projectDetails.project?.name ?? '',
+        path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
+      })
+    }
 
     return () => {
       setProjectBreadcrumb(undefined)
     }
-  }, [projectDetails.project])
+  }, [projectDetails.project, projectDetails.error])
 
   return (
     <>
@@ -186,16 +239,36 @@ const ProjectContainer = () => {
   )
 }
 
-const InfoPageContainer = () => {
-  const { slug } = useParams()
+const InfoPageContainer = ({ children }: { children: ReactNode }) => (
+  <main className={styles.main}>
+    <div className={styles.content}>
+      <ErrorBoundary>{children}</ErrorBoundary>
+    </div>
+  </main>
+)
 
-  return (
+const NotFound = () => (
+  <>
+    <Helmet>
+      <title>Page not found | {DEFAULT_PAGE_TITLE}</title>
+    </Helmet>
     <main className={styles.main}>
       <div className={styles.content}>
-        <ErrorBoundary>
-          <InfoPage slug={slug as string} />
-        </ErrorBoundary>
+        <div className="flex flex-col items-center py-24">
+          <AlertCircleIcon className="w-8 h-8 text-destructive mb-8" />
+          <span className="body-large font-medium mb-2">Page not found</span>
+          <span className="body-base text-muted-foreground mb-8">
+            Sorry, we couldn't find the page you are looking for.
+          </span>
+          <Link
+            to={APP_ROUTES.HOME}
+            className={buttonVariants({ variant: 'link' })}
+          >
+            <span>To homepage</span>
+            <ChevronRightIcon className="w-4 h-4 ml-2" />
+          </Link>
+        </div>
       </div>
     </main>
-  )
-}
+  </>
+)

@@ -10,12 +10,14 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
+from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
     BlogPost,
     Classification,
     Deployment,
+    Detection,
     Device,
     Event,
     Occurrence,
@@ -27,6 +29,11 @@ from .models import (
     TaxaList,
     Taxon,
 )
+
+
+class ProjectPipelineConfigInline(admin.TabularInline):
+    model = ProjectPipelineConfig
+    extra = 0
 
 
 class AdminBase(admin.ModelAdmin):
@@ -64,8 +71,10 @@ class ProjectAdmin(GuardedModelAdmin):
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")
-    search_fields = ("name", "owner__username", "members__username")
+    search_fields = ("name", "owner__email", "members__email")
     filter_horizontal = ("members",)
+
+    inlines = [ProjectPipelineConfigInline]
 
     fieldsets = (
         (None, {"fields": ("name", "description", "priority", "active")}),
@@ -102,6 +111,11 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "events_count",
         "start_date",
         "end_date",
+    )
+
+    search_fields = (
+        "id",
+        "name",
     )
 
     def start_date(self, obj) -> str | None:
@@ -176,6 +190,11 @@ class EventAdmin(admin.ModelAdmin[Event]):
         "calculated_fields_updated_at",
     )
 
+    search_fields = (
+        "id",
+        "name",
+    )
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
         from django.db.models import ExpressionWrapper, F
@@ -230,8 +249,89 @@ class SourceImageAdmin(AdminBase):
         "collections",
     )
 
+    search_fields = (
+        "id",
+        "path",
+    )
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
+
+
+class ClassificationInline(admin.TabularInline):
+    model = Classification
+    extra = 0
+    fields = (
+        "taxon",
+        "algorithm",
+        "timestamp",
+        "terminal",
+        "created_at",
+    )
+    readonly_fields = (
+        "taxon",
+        "algorithm",
+        "timestamp",
+        "terminal",
+        "created_at",
+    )
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        return qs.select_related("taxon", "algorithm", "detection")
+
+
+class DetectionInline(admin.TabularInline):
+    model = Detection
+    extra = 0
+    fields = (
+        "detection_algorithm",
+        "source_image",
+        "timestamp",
+        "created_at",
+        "occurrence",
+    )
+    readonly_fields = (
+        "detection_algorithm",
+        "source_image",
+        "timestamp",
+        "created_at",
+        "occurrence",
+    )
+
+
+@admin.register(Detection)
+class DetectionAdmin(admin.ModelAdmin[Detection]):
+    """Admin panel example for ``Detection`` model."""
+
+    list_display = (
+        "id",
+        "source_image",
+        "timestamp",
+        "occurrence",
+        "classifications_count",
+        "created_at",
+        "updated_at",
+    )
+
+    autocomplete_fields = ("source_image", "occurrence")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request)
+        return qs.select_related("source_image", "occurrence").annotate(
+            classifications_count=models.Count("classifications"),
+        )
+
+    @admin.display(
+        description="Classifications",
+        ordering="classifications_count",
+    )
+    def classifications_count(self, obj) -> int:
+        return obj.classifications_count
+
+    ordering = ("-created_at",)
+
+    inlines = [ClassificationInline]
 
 
 @admin.register(Occurrence)
@@ -249,6 +349,7 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "updated_at",
     )
 
+    autocomplete_fields = ("determination", "project", "deployment", "event")
     list_filter = (
         "project",
         "deployment",
@@ -256,7 +357,6 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "created_at",
     )
     search_fields = ("determination__name", "determination__search_names")
-    autocomplete_fields = ("determination",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -279,6 +379,9 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         return obj.detections_count
 
     ordering = ("-created_at",)
+
+    # Add classifications as inline
+    inlines = [DetectionInline]
 
 
 @admin.register(Classification)

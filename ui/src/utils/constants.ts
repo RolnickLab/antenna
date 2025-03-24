@@ -1,16 +1,53 @@
 export const APP_ROUTES = {
   /* Static app routes */
+  CODE_OF_CONDUCT: '/code-of-conduct',
   HOME: '/',
   LOGIN: '/auth/login',
-  SIGN_UP: '/auth/sign-up',
-  RESET_PASSWORD: '/auth/reset-password',
-  RESET_PASSWORD_CONFIRM: '/auth/reset-password-confirm',
-  TERMS_OF_SERVICE: '/terms-of-service',
   PROJECTS: '/projects',
+  RESET_PASSWORD_CONFIRM: '/auth/reset-password-confirm',
+  RESET_PASSWORD: '/auth/reset-password',
+  SIGN_UP: '/auth/sign-up',
+  TERMS_OF_SERVICE: '/terms-of-service',
 
   /* Dynamic app routes */
   PROJECT_DETAILS: (params: { projectId: string }) =>
     `/projects/${params.projectId}`,
+
+  SUMMARY: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/summary`,
+
+  COLLECTIONS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/collections`,
+
+  COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
+    `/projects/${params.projectId}/collections/${params.collectionId}`,
+
+  PROCESSING_SERVICES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/processing-services`,
+
+  PROCESSING_SERVICE_DETAILS: (params: {
+    projectId: string
+    processingServiceId: string
+  }) =>
+    `/projects/${params.projectId}/processing-services/${params.processingServiceId}`,
+
+  PIPELINES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/pipelines`,
+
+  PIPELINE_DETAILS: (params: { projectId: string; pipelineId: string }) =>
+    `/projects/${params.projectId}/pipelines/${params.pipelineId}`,
+
+  SITES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/sites`,
+
+  DEVICES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/devices`,
+
+  GENERAL: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/general`,
+
+  STORAGE: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/storage`,
 
   DEPLOYMENTS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/deployments`,
@@ -39,12 +76,6 @@ export const APP_ROUTES = {
 
   TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
     `/projects/${params.projectId}/taxa/${params.taxonId}`,
-
-  COLLECTIONS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/collections`,
-
-  COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
-    `/projects/${params.projectId}/collections/${params.collectionId}`,
 }
 
 export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB

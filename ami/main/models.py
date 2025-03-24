@@ -3008,6 +3008,15 @@ class SourceImageCollectionQuerySet(models.QuerySet):
             )
         )
 
+    def with_source_images_processed_by_algorithm_count(self, algorithm_id: int):
+        return self.annotate(
+            source_images_processed_by_algorithm_count=models.Count(
+                "images",
+                filter=models.Q(images__detections__classifications__algorithm_id=algorithm_id),
+                distinct=True,
+            )
+        )
+
     def with_occurrences_count(self, classification_threshold: float = 0):
         return self.annotate(
             occurrences_count=models.Count(

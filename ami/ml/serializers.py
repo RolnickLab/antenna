@@ -7,6 +7,7 @@ from ami.main.models import Project
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
+from .models.project_pipeline_config import ProjectPipelineConfig
 
 
 class AlgorithmCategoryMapSerializer(DefaultSerializer):
@@ -73,10 +74,23 @@ class ProcessingServiceNestedSerializer(DefaultSerializer):
         ]
 
 
+class ProjectPipelineConfigSerializer(DefaultSerializer):
+    class Meta:
+        model = ProjectPipelineConfig
+        fields = [
+            "id",
+            "project",
+            "pipeline",
+            "enabled",
+            "config",
+        ]
+
+
 class PipelineSerializer(DefaultSerializer):
     algorithms = AlgorithmSerializer(many=True, read_only=True)
     stages = SchemaField(schema=list[PipelineStage], read_only=True)
     processing_services = ProcessingServiceNestedSerializer(many=True, read_only=True)
+    project_pipeline_configs = ProjectPipelineConfigSerializer(many=True, read_only=True)
 
     class Meta:
         model = Pipeline
@@ -89,6 +103,7 @@ class PipelineSerializer(DefaultSerializer):
             "algorithms",
             "stages",
             "processing_services",
+            "project_pipeline_configs",
             "created_at",
             "updated_at",
         ]

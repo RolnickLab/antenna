@@ -21,7 +21,7 @@ export class SpeciesDetails extends Species {
       (d: any) => `${d.id}` === id
     )
 
-    if (!occurrence) {
+    if (!occurrence || !occurrence.best_detection) {
       return
     }
 

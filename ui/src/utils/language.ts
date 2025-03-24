@@ -52,6 +52,7 @@ export enum STRING {
   ENTITY_TYPE_PIPELINE,
   ENTITY_TYPE_JOB,
   ENTITY_TYPE_PROJECT,
+  ENTITY_TYPE_PROJECT_DETAILS,
   ENTITY_VIEW,
 
   /* FIELD_LABEL */
@@ -159,27 +160,28 @@ export enum STRING {
   MESSAGE_VALUE_MISSING,
 
   /* NAV_ITEM */
+  NAV_ITEM_COLLECTIONS,
   NAV_ITEM_DEPLOYMENTS,
+  NAV_ITEM_DEVICES,
+  NAV_ITEM_GENERAL,
   NAV_ITEM_JOBS,
   NAV_ITEM_OCCURRENCES,
-  NAV_ITEM_OVERVIEW,
+  NAV_ITEM_PIPELINES,
+  NAV_ITEM_PROCESSING_SERVICES,
+  NAV_ITEM_PROJECT,
   NAV_ITEM_PROJECTS,
   NAV_ITEM_SESSIONS,
+  NAV_ITEM_SITES,
+  NAV_ITEM_STORAGE,
+  NAV_ITEM_SUMMARY,
   NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
-  TAB_ITEM_PROCESSING_SERVICES,
   TAB_ITEM_ALL_PROJECTS,
-  TAB_ITEM_COLLECTIONS,
-  TAB_ITEM_DEVICES,
   TAB_ITEM_FIELDS,
   TAB_ITEM_GALLERY,
   TAB_ITEM_IDENTIFICATION,
   TAB_ITEM_MY_PROJECTS,
-  TAB_ITEM_PIPELINES,
-  TAB_ITEM_SITES,
-  TAB_ITEM_STORAGE,
-  TAB_ITEM_SUMMARY,
   TAB_ITEM_TABLE,
 
   /* JOB STATUS */
@@ -192,13 +194,13 @@ export enum STRING {
   DONE,
 
   /* TOOLTIPS */
-  TOOLTIP_PROCESSING_SERVICE,
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
-  TOOLTIP_DEVICE_TYPE,
+  TOOLTIP_DEVICE,
   TOOLTIP_JOB,
   TOOLTIP_OCCURRENCE,
   TOOLTIP_PIPELINE,
+  TOOLTIP_PROCESSING_SERVICE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
   TOOLTIP_STATUS,
@@ -373,6 +375,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_TYPE_PIPELINE]: 'pipeline',
   [STRING.ENTITY_TYPE_JOB]: 'job',
   [STRING.ENTITY_TYPE_PROJECT]: 'project',
+  [STRING.ENTITY_TYPE_PROJECT_DETAILS]: 'project details',
   [STRING.ENTITY_VIEW]: 'View {{type}}',
 
   /* MESSAGE */
@@ -419,27 +422,28 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
   /* NAV_ITEM */
+  [STRING.NAV_ITEM_COLLECTIONS]: 'Collections',
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',
+  [STRING.NAV_ITEM_DEVICES]: 'Device types',
+  [STRING.NAV_ITEM_GENERAL]: 'General',
   [STRING.NAV_ITEM_JOBS]: 'Jobs',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
-  [STRING.NAV_ITEM_OVERVIEW]: 'Overview',
+  [STRING.NAV_ITEM_PIPELINES]: 'Pipelines',
+  [STRING.NAV_ITEM_PROCESSING_SERVICES]: 'Processing services',
+  [STRING.NAV_ITEM_PROJECT]: 'Project',
   [STRING.NAV_ITEM_PROJECTS]: 'Projects',
   [STRING.NAV_ITEM_SESSIONS]: 'Sessions',
+  [STRING.NAV_ITEM_SITES]: 'Sites',
+  [STRING.NAV_ITEM_STORAGE]: 'Storage',
+  [STRING.NAV_ITEM_SUMMARY]: 'Summary',
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
-  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing services',
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
-  [STRING.TAB_ITEM_COLLECTIONS]: 'Collections',
-  [STRING.TAB_ITEM_DEVICES]: 'Device types',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery view',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
   [STRING.TAB_ITEM_MY_PROJECTS]: 'My projects',
-  [STRING.TAB_ITEM_PIPELINES]: 'Pipelines',
-  [STRING.TAB_ITEM_SITES]: 'Sites',
-  [STRING.TAB_ITEM_STORAGE]: 'Storage',
-  [STRING.TAB_ITEM_SUMMARY]: 'Summary',
   [STRING.TAB_ITEM_TABLE]: 'Table view',
 
   /* JOB STATUS */
@@ -452,13 +456,11 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DONE]: 'Done',
 
   /* TOOLTIPS */
-  [STRING.TOOLTIP_PROCESSING_SERVICE]:
-    'A processing service is a group of pipelines used for processing images/collections.',
   [STRING.TOOLTIP_COLLECTION]:
     'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
     'A monitoring station is a location where a device is deployed to take images of insects in the wild (at a “Site”).',
-  [STRING.TOOLTIP_DEVICE_TYPE]:
+  [STRING.TOOLTIP_DEVICE]:
     'A device type is the type of equipment or camera used for collecting source images. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
   [STRING.TOOLTIP_JOB]:
     'A job is a request for data processing that specifies the data to process and the pipeline to use.',
@@ -466,6 +468,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'An occurrence refers to when an individual is detected in a sequence of one or more images with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
+  [STRING.TOOLTIP_PROCESSING_SERVICE]:
+    'A processing service is a group of pipelines used for processing images/collections.',
   [STRING.TOOLTIP_SESSION]:
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:

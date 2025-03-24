@@ -9,6 +9,7 @@ from django.db import models
 
 from ami.base.models import BaseModel
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
+from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,18 @@ class ProcessingService(BaseModel):
                 )
                 created = True
 
-            pipeline.projects.add(*self.projects.all())
+            for project in self.projects.all():
+                project_pipeline_config, created = ProjectPipelineConfig.objects.get_or_create(
+                    pipeline=pipeline,
+                    project=project,
+                    defaults={"enabled": True, "config": {}},
+                )
+                if created:
+                    logger.info(f"Created project pipeline config for {project.name} and {pipeline.name}.")
+                    project_pipeline_config.save()
+                else:
+                    logger.info(f"Using existing project pipeline config for {project.name} and {pipeline.name}.")
+
             self.pipelines.add(pipeline)
 
             if created:
@@ -101,6 +113,7 @@ class ProcessingService(BaseModel):
         pipelines_online = []
         timestamp = datetime.datetime.now()
         self.last_checked = timestamp
+        resp = None
 
         try:
             resp = requests.get(ready_check_url)
@@ -134,7 +147,7 @@ class ProcessingService(BaseModel):
 
         response = ProcessingServiceStatusResponse(
             timestamp=timestamp,
-            request_successful=resp.ok,
+            request_successful=resp.ok if resp else False,
             server_live=self.last_checked_live,
             pipelines_online=pipelines_online,
             pipeline_configs=pipeline_configs,
