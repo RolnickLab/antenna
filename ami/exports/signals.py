@@ -15,6 +15,7 @@ def delete_exported_file(sender, instance, **kwargs):
     """
     Deletes the exported file when the DataExport instance is deleted.
     """
+
     file_url = instance.file_url
 
     if file_url:

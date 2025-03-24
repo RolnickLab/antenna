@@ -43,7 +43,17 @@ class JSONExporter(BaseExporter):
         return get_export_serializer()
 
     def get_queryset(self):
-        return self.job.project.occurrences.all().with_timestamps().with_detections_count()
+        return (
+            Occurrence.objects.filter(project=self.job.project)
+            .select_related(
+                "determination",
+                "deployment",
+                "event",
+            )
+            .with_timestamps()
+            .with_detections_count()
+            .with_identifications()
+        )
 
     def export(self):
         """Exports occurrences to JSON format."""
@@ -116,7 +126,17 @@ class CSVExporter(BaseExporter):
     serializer_class = OccurrenceTabularSerializer
 
     def get_queryset(self):
-        return self.job.project.occurrences.all().with_timestamps().with_detections_count()
+        return (
+            Occurrence.objects.filter(project=self.job.project)
+            .select_related(
+                "determination",
+                "deployment",
+                "event",
+            )
+            .with_timestamps()
+            .with_detections_count()
+            .with_identifications()
+        )
 
     def export(self):
         """Exports occurrences to CSV format."""
