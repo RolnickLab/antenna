@@ -89,7 +89,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     determination_id = serializers.IntegerField(source="determination.id", allow_null=True)
     determination_name = serializers.CharField(source="determination.name", allow_null=True)
     determination_score = serializers.FloatField(allow_null=True)
-    verification = serializers.SerializerMethodField()
+    verification_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -104,18 +104,18 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "determination_id",
             "determination_name",
             "determination_score",
+            "verification_status",
             "detections_count",
             "first_appearance_timestamp",
             "last_appearance_timestamp",
             "duration",
-            "verification",
         ]
 
-    def get_verification(self, obj):
+    def get_verification_status(self, obj):
         """
-        Returns 'Verified' if the occurrence has identifications, otherwise 'Not Verified'.
+        Returns 'Verified' if the occurrence has identifications, otherwise 'Not verified'.
         """
-        return "Verified" if obj.identifications.exists() else "Not Verified"
+        return "Verified" if obj.identifications.exists() else "Not verified"
 
 
 class CSVExporter(BaseExporter):

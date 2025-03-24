@@ -1,10 +1,13 @@
 import { Pipeline } from 'data-services/models/pipeline'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { TableColumn } from 'design-system/components/table/types'
-import { PipelineDetailsDialog } from 'pages/pipeline-details/pipeline-details-dialog'
+import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { Link } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
+export const columns: (projectId: string) => TableColumn<Pipeline>[] = (
+  projectId: string
+) => [
   {
     id: 'id',
     sortField: 'id',
@@ -16,9 +19,11 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
     renderCell: (item: Pipeline) => (
-      <BasicTableCell>
-        <PipelineDetailsDialog id={item.id} name={item.name} />
-      </BasicTableCell>
+      <Link
+        to={APP_ROUTES.PIPELINE_DETAILS({ projectId, pipelineId: item.id })}
+      >
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {
@@ -48,21 +53,5 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = () => [
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
-  },
-  {
-    id: 'processing-services-online',
-    name: 'Processing Services Online',
-    sortField: 'processing_services_online',
-    renderCell: (item: Pipeline) => (
-      <BasicTableCell value={item.processingServicesOnline} />
-    ),
-  },
-  {
-    id: 'processing-services-online-last-checked',
-    name: 'Status Last Checked',
-    sortField: 'processing_services_online_last_checked',
-    renderCell: (item: Pipeline) => (
-      <BasicTableCell value={item.processingServicesOnlineLastChecked} />
-    ),
   },
 ]
