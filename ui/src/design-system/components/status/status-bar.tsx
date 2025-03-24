@@ -25,7 +25,7 @@ export const StatusBar = ({
           }}
         />
       </div>
-      <span className="w-12 text-right body-overline text-muted-foreground">
+      <span className="w-12 pt-0.5 text-right body-overline text-muted-foreground">
         {label}
       </span>
     </div>

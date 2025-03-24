@@ -2,8 +2,8 @@ import classNames from 'classnames'
 import { useUpdateEntity } from 'data-services/hooks/entities/useUpdateEntity'
 import { Entity } from 'data-services/models/entity'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { PenIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -38,7 +38,9 @@ export const UpdateEntityDialog = ({
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <IconButton icon={IconType.Pencil} />
+        <Button className="shrink-0" size="icon" variant="ghost">
+          <PenIcon className="w-4 h-4" />
+        </Button>
       </Dialog.Trigger>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}

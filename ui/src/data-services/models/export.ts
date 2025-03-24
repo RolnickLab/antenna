@@ -13,11 +13,19 @@ export type ServerExport = any // TODO: Update this type
 
 export class Export extends Entity {
   public readonly job: Job
+  public readonly sourceImages?: { id: string; name: string }
 
   public constructor(entity: ServerExport) {
     super(entity)
 
     this.job = new JobDetails(this._data.job)
+
+    if (this._data.filters.collection && this._data.collection) {
+      this.sourceImages = {
+        id: this._data.filters.collection,
+        name: this._data.collection,
+      }
+    }
   }
 
   static getExportTypeInfo(key: ServerExportType) {

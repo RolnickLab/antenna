@@ -30,9 +30,6 @@ const config: FormConfig = {
   },
   sourceImages: {
     label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
-    rules: {
-      required: true,
-    },
   },
 }
 
@@ -97,7 +94,6 @@ export const ExportDetailsForm = ({
               error={fieldState.error?.message}
             >
               <CollectionsPicker
-                showClear={false}
                 value={field.value}
                 onValueChange={field.onChange}
               />
