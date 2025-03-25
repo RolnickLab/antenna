@@ -30,6 +30,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    TaxaList,
     Taxon,
 )
 
@@ -529,6 +530,25 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrence-list",
             request=self.context.get("request"),
             params=params,
+        )
+
+
+class TaxaListSerializer(serializers.ModelSerializer):
+    taxa = serializers.SerializerMethodField()
+    projects = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), many=True)
+
+    class Meta:
+        model = TaxaList
+        fields = ["id", "name", "description", "taxa", "projects"]
+
+    def get_taxa(self, obj):
+        """
+        Return URL to the taxa endpoint filtered by this taxalist.
+        """
+        return reverse_with_params(
+            "taxon-list",
+            request=self.context.get("request"),
+            params={"taxa_list_id": obj.pk},
         )
 
 
