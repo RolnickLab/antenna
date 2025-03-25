@@ -1,9 +1,8 @@
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { CheckIcon, Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { FormError } from '../layout/layout'
-import styles from './delete-form.module.scss'
 
 export const DeleteForm = ({
   type,
@@ -27,24 +26,31 @@ export const DeleteForm = ({
       {errorMessage ? (
         <FormError message={errorMessage} style={{ padding: '8px 16px' }} />
       ) : null}
-      <div className={styles.content}>
-        <span className={styles.title}>
+      <div className="grid gap-4 px-4 py-6">
+        <span className="body-overline-small font-semibold text-muted-foreground">
           {translate(STRING.ENTITY_DELETE, { type })}
         </span>
-        <span className={styles.description}>
+        <span className="body-small">
           {translate(STRING.MESSAGE_DELETE_CONFIRM, { type })}
         </span>
-        <div className={styles.formActions}>
-          <Button label={translate(STRING.CANCEL)} onClick={onCancel} />
+        <div className="grid grid-cols-2 gap-4">
+          <Button onClick={onCancel} size="small" variant="outline">
+            <span>{translate(STRING.CANCEL)}</span>
+          </Button>
           <Button
-            label={
-              isSuccess ? translate(STRING.DELETED) : translate(STRING.DELETE)
-            }
-            icon={isSuccess ? IconType.RadixCheck : undefined}
-            theme={ButtonTheme.Destructive}
-            loading={isLoading}
+            disabled={isSuccess}
             onClick={onSubmit}
-          />
+            size="small"
+            variant="destructive"
+          >
+            {isSuccess ? <CheckIcon className="w-4 h-4 mr-2" /> : null}
+            <span>
+              {isSuccess ? translate(STRING.DELETED) : translate(STRING.DELETE)}
+            </span>
+            {isLoading ? (
+              <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+            ) : null}
+          </Button>
         </div>
       </div>
     </>
