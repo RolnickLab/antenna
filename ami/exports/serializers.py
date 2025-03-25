@@ -35,6 +35,7 @@ class DataExportSerializer(DefaultSerializer):
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True)
     filters_display_one = serializers.SerializerMethodField()
     filters_display_two = serializers.SerializerMethodField()
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = DataExport
@@ -52,8 +53,13 @@ class DataExportSerializer(DefaultSerializer):
             "updated_at",
         ]
 
+    def get_file_url(self, obj):
+        return obj.get_absolute_url(request=self.context.get("request"))
+
     def get_filters_display_one(self, obj):
-        """ """
+        """
+        Import the serializer dynamically and generate a representation of the related model.
+        """
         related_model_serializers = {
             "collection": "ami.main.api.serializers.SourceImageCollectionNestedSerializer",
             # "taxa_list": "ami.main.api.serializers.TaxonListNestedSerializer",

@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.text import slugify
+from rest_framework.request import Request
 
 from ami.base.models import BaseModel
 from ami.main.models import Project
@@ -32,4 +33,13 @@ class DataExport(BaseModel):
 
         extension = ExportRegistry.get_exporter(self.format).file_format
         project_slug = slugify(self.project.name)  # Convert project name to a slug
-        return f"{project_slug}_export-{self.id}.{extension}"
+        return f"{project_slug}_export-{self.pk}.{extension}"
+
+    def get_absolute_url(self, request: Request | None) -> str | None:
+        """Returns the full URL of the file."""
+        if not self.file_url:
+            return None
+        if not request:
+            return self.file_url
+        else:
+            return request.build_absolute_uri(self.file_url)
