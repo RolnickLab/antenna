@@ -77,7 +77,11 @@ export const ExportDetailsForm = ({
           config={config.type}
           render={({ field, fieldState }) => (
             <InputContent
-              label={config[field.name].label}
+              label={
+                config[field.name].rules?.required
+                  ? `${config[field.name].label} *`
+                  : config[field.name].label
+              }
               error={fieldState.error?.message}
             >
               <TypePicker value={field.value} onValueChange={field.onChange} />
@@ -90,7 +94,11 @@ export const ExportDetailsForm = ({
           config={config.sourceImages}
           render={({ field, fieldState }) => (
             <InputContent
-              label={config[field.name].label}
+              label={
+                config[field.name].rules?.required
+                  ? `${config[field.name].label} *`
+                  : config[field.name].label
+              }
               error={fieldState.error?.message}
             >
               <CollectionsPicker
