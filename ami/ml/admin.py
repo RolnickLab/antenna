@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from ami.main.admin import AdminBase
+from ami.main.admin import AdminBase, ProjectPipelineConfigInline
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
@@ -34,6 +34,7 @@ class AlgorithmAdmin(AdminBase):
 
 @admin.register(Pipeline)
 class PipelineAdmin(AdminBase):
+    inlines = [ProjectPipelineConfigInline]
     list_display = [
         "name",
         "version",

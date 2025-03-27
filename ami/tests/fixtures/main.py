@@ -66,7 +66,7 @@ def create_processing_service(project):
             processing_service.save()
         except Exception:
             logger.error(f'Could not find project {project_data["name"]}.')
-
+    processing_service.get_status()
     processing_service.create_pipelines()
 
     return processing_service

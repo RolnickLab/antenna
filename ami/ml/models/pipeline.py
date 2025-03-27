@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import ProcessingService
+    from ami.ml.models import ProcessingService  # , ProjectPipelineConfig
 
 import collections
 import dataclasses
@@ -158,6 +158,7 @@ def process_images(
     endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
+    project_id: int | None = None,
 ) -> PipelineResultsResponse:
     """
     Process images using ML pipeline API.
@@ -200,9 +201,34 @@ def process_images(
         if url
     ]
 
+    if project_id:
+        try:
+            config = pipeline.project_pipeline_configs.get(project_id=project_id).config
+            task_logger.info(
+                f"Sending pipeline request using {config} from the project-pipeline config "
+                f"for Pipeline {pipeline} and Project id {project_id}."
+            )
+        except pipeline.project_pipeline_configs.model.DoesNotExist as e:
+            task_logger.error(
+                f"Error getting the project-pipeline config for Pipeline {pipeline} "
+                f"and Project id {project_id}: {e}"
+            )
+            config = {}
+            task_logger.info(
+                "Using empty config when sending pipeline request since no project-pipeline config "
+                f"was found for Pipeline {pipeline} and Project id {project_id}"
+            )
+    else:
+        config = {}
+        task_logger.info(
+            "Using empty config when sending pipeline request "
+            f"since no project id was provided for Pipeline {pipeline}"
+        )
+
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
         source_images=source_images,
+        config=config,
     )
 
     session = create_session()
@@ -897,8 +923,11 @@ class Pipeline(BaseModel):
             "The backend implementation of the pipeline may process data in any way."
         ),
     )
-    projects = models.ManyToManyField("main.Project", related_name="pipelines", blank=True)
+    projects = models.ManyToManyField(
+        "main.Project", related_name="pipelines", blank=True, through="ml.ProjectPipelineConfig"
+    )
     processing_services: models.QuerySet[ProcessingService]
+    # project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
 
     class Meta:
         ordering = ["name", "version"]
@@ -988,6 +1017,7 @@ class Pipeline(BaseModel):
             pipeline=self,
             images=images,
             job_id=job_id,
+            project_id=project_id,
         )
 
     def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):

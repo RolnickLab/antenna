@@ -6,17 +6,17 @@ import styles from './menu.module.scss'
 
 export const Menu = () => {
   const navigate = useNavigate()
-  const { navItems, activeNavItemId } = useNavItems()
+  const { navItems, activeNavItem } = useNavItems()
 
   return (
     <div className={styles.menu}>
       <div className={styles.topBar}>
-        <Breadcrumbs navItems={navItems} activeNavItemId={activeNavItemId} />
+        <Breadcrumbs navItems={navItems} activeNavItem={activeNavItem} />
       </div>
       <div className={styles.navigationBar}>
         <NavigationBar
           items={navItems}
-          activeItemId={activeNavItemId}
+          activeItemId={activeNavItem.id}
           onItemClick={(id) => {
             const item = navItems.find((i) => i.id === id)
             if (item?.path) {

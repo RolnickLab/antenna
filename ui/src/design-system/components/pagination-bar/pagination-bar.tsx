@@ -6,21 +6,28 @@ import { PageButton } from './page-button/page-button'
 import styles from './pagination-bar.module.scss'
 
 interface PaginationBarProps {
+  compact?: boolean
   pagination: {
     page: number
     perPage: number
   }
-  total: number
   setPage: (page: number) => void
+  total: number
 }
 
 export const PaginationBar = ({
+  compact,
   pagination,
-  total,
   setPage,
+  total,
 }: PaginationBarProps) => {
   const { page: currentPage, perPage } = pagination
   const numPages = Math.ceil(total / perPage)
+
+  if (compact && numPages === 1) {
+    return null
+  }
+
   const firstPage = 0
   const lastPage = numPages - 1
   const pageWindow = getPageWindow(currentPage, numPages)

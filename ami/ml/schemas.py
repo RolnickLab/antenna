@@ -147,6 +147,7 @@ KnownPipelineChoices = typing.Literal[
 class PipelineRequest(pydantic.BaseModel):
     pipeline: str
     source_images: list[SourceImageRequest]
+    config: dict
 
 
 class PipelineResultsResponse(pydantic.BaseModel):
