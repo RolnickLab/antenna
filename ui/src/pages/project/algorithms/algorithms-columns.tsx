@@ -1,11 +1,13 @@
 import { Algorithm } from 'data-services/models/algorithm'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
-import { AlgorithmDetailsDialog } from 'pages/algorithm-details/algorithm-details-dialog'
 import { Link } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Algorithm>[] = () => [
+export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
+  projectId: string
+) => [
   {
     id: 'id',
     sortField: 'id',
@@ -17,31 +19,25 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = () => [
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
     renderCell: (item: Algorithm) => (
-      <BasicTableCell>
-        <AlgorithmDetailsDialog id={item.id} name={item.name} />
-      </BasicTableCell>
+      <Link
+        to={APP_ROUTES.ALGORITHM_DETAILS({ projectId, algorithmId: item.id })}
+      >
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
     ),
   },
   {
     id: 'task-type',
-    name: 'Task Type',
+    name: 'Task type',
     sortField: 'task_type',
     renderCell: (item: Algorithm) => <BasicTableCell value={item.taskType} />,
   },
   {
-    id: 'uri',
-    name: 'URI',
-    sortField: 'uri',
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.uri} />,
-  },
-  {
-    id: 'category-map-id',
-    name: 'Category Map ID',
-    sortField: 'category_map',
+    id: 'description',
+    name: 'Description',
+    sortField: 'description',
     renderCell: (item: Algorithm) => (
-      <Link to={item.categoryMapURI}>
-        <BasicTableCell value={item.categoryMapID} theme={CellTheme.Bubble} />
-      </Link>
+      <BasicTableCell value={item.description} />
     ),
   },
   {

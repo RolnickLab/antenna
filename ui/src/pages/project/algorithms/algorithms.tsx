@@ -3,6 +3,7 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
+import { AlgorithmDetailsDialog } from 'pages/algorithm-details/algorithm-details-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -10,7 +11,7 @@ import { usePagination } from 'utils/usePagination'
 import { columns } from './algorithms-columns'
 
 export const Algorithms = () => {
-  const { projectId } = useParams()
+  const { projectId, id } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'id',
     order: 'asc',
@@ -25,7 +26,7 @@ export const Algorithms = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.TAB_ITEM_ALGORITHMS)}
+        title={translate(STRING.NAV_ITEM_ALGORITHMS)}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}
@@ -44,11 +45,13 @@ export const Algorithms = () => {
       />
       {algorithms?.length ? (
         <PaginationBar
+          compact
           pagination={pagination}
-          total={total}
           setPage={setPage}
+          total={total}
         />
       ) : null}
+      {id ? <AlgorithmDetailsDialog id={id} /> : null}
     </>
   )
 }

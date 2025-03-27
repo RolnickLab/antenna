@@ -220,6 +220,7 @@ export enum STRING {
   APPLY_ID,
   APPLY_ID_SHORT,
   BACK_TO_LOGIN,
+  CATEGORY_MAP_DETAILS,
   CLOSE,
   COLUMNS,
   CONNECTED,
@@ -475,8 +476,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* TOOLTIPS */
   [STRING.TOOLTIP_ALGORITHM]:
     'An algorithm is used in a pipeline for processing image/collections.',
-  [STRING.TOOLTIP_PROCESSING_SERVICE]:
-    'A processing service is a group of pipelines used for processing images/collections.',
   [STRING.TOOLTIP_COLLECTION]:
     'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
@@ -505,6 +504,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.APPLY_ID]: 'Apply ID',
   [STRING.APPLY_ID_SHORT]: 'Apply',
   [STRING.BACK_TO_LOGIN]: 'Back to login',
+  [STRING.CATEGORY_MAP_DETAILS]: 'Category map details',
   [STRING.CLOSE]: 'Close',
   [STRING.COLUMNS]: 'Columns',
   [STRING.CONNECTED]: 'Connected',
