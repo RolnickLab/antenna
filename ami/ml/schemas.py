@@ -144,10 +144,29 @@ KnownPipelineChoices = typing.Literal[
 ]
 
 
+class PipelineRequestConfigParameters(dict):
+    """Parameters used to configure a pipeline request.
+
+    Accepts any serializable key-value pair.
+    Example: {"force_reprocess": True, "auth_token": "abc123"}
+
+    Supported parameters are defined by the pipeline in the processing service
+    and should be published in the Pipeline's info response.
+
+    Parameters that are used by Antenna before sending the request to the Processing Service
+    should be prefixed with "request_".
+    Example: {"request_source_image_batch_size": 8}
+    Such parameters need to be ignored by the schema in the Processing Service, or
+    removed before sending the request to the Processing Service.
+    """
+
+    pass
+
+
 class PipelineRequest(pydantic.BaseModel):
     pipeline: str
     source_images: list[SourceImageRequest]
-    config: dict
+    config: PipelineRequestConfigParameters | dict | None = None
 
 
 class PipelineResultsResponse(pydantic.BaseModel):
