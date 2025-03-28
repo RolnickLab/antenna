@@ -100,7 +100,7 @@ def filter_processed_images(
                 )
                 # log all algorithms that are in the pipeline but not in the detection
                 missing_algos = pipeline_algorithm_ids - detection_algorithm_ids
-                task_logger.info(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
+                task_logger.debug(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
                 yield image
             else:
                 # If all detections have been classified by the pipeline, skip the image
