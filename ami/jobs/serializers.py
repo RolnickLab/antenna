@@ -1,6 +1,7 @@
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
+from ami.exports.models import DataExport
 from ami.main.api.serializers import (
     DefaultSerializer,
     DeploymentNestedSerializer,
@@ -24,6 +25,14 @@ class JobProjectNestedSerializer(DefaultSerializer):
         ]
 
 
+class DataExportNestedSerializer(serializers.ModelSerializer):
+    file_url = serializers.URLField(read_only=True)
+
+    class Meta:
+        model = DataExport
+        fields = ["id", "user", "project", "format", "filters", "file_url"]
+
+
 class JobTypeSerializer(serializers.Serializer):
     name = serializers.CharField(read_only=True)
     key = serializers.SlugField(read_only=True)
@@ -36,6 +45,7 @@ class JobListSerializer(DefaultSerializer):
     pipeline = PipelineNestedSerializer(read_only=True)
     source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
+    data_export = DataExportNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
     logs = SchemaField(schema=JobLogs, read_only=True)
     job_type = JobTypeSerializer(read_only=True)
@@ -116,6 +126,7 @@ class JobListSerializer(DefaultSerializer):
             "logs",
             "job_type",
             "job_type_key",
+            "data_export",
             # "duration",
             # "duration_label",
             # "progress_label",

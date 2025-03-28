@@ -1141,7 +1141,7 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
         permissions = set()
         if instance.user == user or ProjectManager.has_role(user, project):
             permissions.add("delete")
-        instance_data["user_permissions"] = permissions
+        instance_data["user_permissions"] = list(permissions)
         return instance_data
 
     class Meta:
@@ -1175,7 +1175,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             # then add  update permission to response
             permissions.add("update")
 
-        instance_data["user_permissions"] = permissions
+        instance_data["user_permissions"] = list(permissions)
         return instance_data
 
     class Meta:
