@@ -8,14 +8,12 @@ from dataclasses import dataclass
 import pydantic
 from celery import uuid
 from celery.result import AsyncResult
-from django.core.files.storage import default_storage
 from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.exports.registry import ExportRegistry
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
@@ -628,36 +626,16 @@ class DataExportJob(JobType):
         job.finished_at = None
         job.save()
 
-        # Validate project presence
-        if not job.project:
-            raise ValueError("No project provided for occurrence export job")
-
         job.logger.info(f"Starting export for project {job.project}")
 
-        # Get the export function from the registry
-        export_format = job.params.get("format")
-        export_class = ExportRegistry.get_exporter(job.params.get("format"))
-        if not export_class:
-            raise ValueError("Invalid export format")
-        logger.debug(f"Exporter class {export_class}")
-        exporter = export_class(job=job, filters=job.params.get("filters"))
-        job.logger.info(f"Starting export for format: {export_format}")
-        file_temp_path = exporter.export()
-        #  Upload File to MinIO Storage
-        file_path = f"exports/{job.data_export.generate_filename()}"
-        job.logger.info(f"Export completed: {file_path}")
-        with open(file_temp_path, "rb") as f:
-            default_storage.save(file_path, f)
+        file_url = job.data_export.run_export()
 
-        file_url = default_storage.url(file_path)
+        job.logger.info(f"Export completed: {file_url}")
         job.logger.info(f"File uploaded to Project Storage: {file_url}")
-
         # Finalize Job
         stage = job.progress.add_stage("Uploading snapshot")
         job.progress.add_stage_param(stage.key, "File URL", f"{file_url}")
         job.progress.update_stage(stage.key, status=JobState.SUCCESS, progress=1)
-        job.data_export.file_url = file_url
-        job.data_export.save()
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS, save=True)
 

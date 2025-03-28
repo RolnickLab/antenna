@@ -33,9 +33,8 @@ class DataExportSerializer(DefaultSerializer):
     job = DataExportJobNestedSerializer(read_only=True)  # Nested job serializer
     user = UserNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True)
-    filters_display_one = serializers.SerializerMethodField()
-    filters_display_two = serializers.SerializerMethodField()
     file_url = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
 
     class Meta:
         model = DataExport
@@ -45,10 +44,11 @@ class DataExportSerializer(DefaultSerializer):
             "project",
             "format",
             "filters",
-            "filters_display_one",
-            "filters_display_two",
+            "filters_display",
             "job",
             "file_url",
+            "record_count",
+            "file_size",
             "created_at",
             "updated_at",
         ]
@@ -56,67 +56,18 @@ class DataExportSerializer(DefaultSerializer):
     def get_file_url(self, obj):
         return obj.get_absolute_url(request=self.context.get("request"))
 
-    def get_filters_display_one(self, obj):
+    def get_file_size(self, obj):
         """
-        Import the serializer dynamically and generate a representation of the related model.
+        Converts file size from bytes to a more readable format.
         """
-        related_model_serializers = {
-            "collection": "ami.main.api.serializers.SourceImageCollectionNestedSerializer",
-            # "taxa_list": "ami.main.api.serializers.TaxonListNestedSerializer",
-        }
-        filters = obj.filters
-        filters_display = {}
-
-        for key, value in filters.items():
-            if key in related_model_serializers:
-                serializer_path = related_model_serializers[key]
-                from django.utils.module_loading import import_string
-
-                try:
-                    Serializer = import_string(serializer_path)
-                    Model = Serializer.Meta.model
-                    instance = Model.objects.get(pk=value)
-                    serializer = Serializer(instance, context=self.context)
-                    filters_display[key] = serializer.data
-                except (ImportError, RuntimeError):
-                    raise ImportError(f"Serializer {serializer_path} could not be imported.")
-                    # filters_display[key] = value
-                except Model.DoesNotExist:
-                    filters_display[key] = f"{Model.__name__} with id {value.pk} not found."
-                except Exception as e:
-                    raise e
-            else:
-                filters_display[key] = value
-
-        return filters_display
-
-    def get_filters_display_two(self, obj):
-        """
-        Import the model dynamically and generate a name based on the model representation.
-        """
-        related_models = {
-            "collection": "main.SourceImageCollection",
-            "taxa_list": "main.TaxaList",
-        }
-        filters = obj.filters
-        filters_display = {}
-
-        from django.apps import apps
-
-        for key, value in filters.items():
-            if key in related_models:
-                model_path = related_models[key]
-                Model = apps.get_model(model_path)
-                model_name = Model.__name__
-
-                try:
-                    instance = Model.objects.get(pk=value)
-                    filters_display[key] = {"id": value, "name": str(instance)}
-                except Model.DoesNotExist:
-                    raise ValueError(f"{model_name} with id {value} not found.")
-                except Exception as e:
-                    raise e
-            else:
-                filters_display[key] = value
-
-        return filters_display
+        if not obj.file_size:
+            return None
+        size_in_bytes = obj.file_size
+        if size_in_bytes < 1024:
+            return f"{size_in_bytes} B"
+        elif size_in_bytes < 1024 * 1024:
+            return f"{size_in_bytes / 1024:.2f} KB"
+        elif size_in_bytes < 1024 * 1024 * 1024:
+            return f"{size_in_bytes / (1024 * 1024):.2f} MB"
+        else:
+            return f"{size_in_bytes / (1024 * 1024 * 1024):.2f} GB"

@@ -44,7 +44,7 @@ class JSONExporter(BaseExporter):
 
     def get_queryset(self):
         return (
-            Occurrence.objects.filter(project=self.job.project)
+            Occurrence.objects.filter(project=self.project)
             .select_related(
                 "determination",
                 "deployment",
@@ -69,10 +69,13 @@ class JSONExporter(BaseExporter):
                 f.write(",\n" if not first else "")
                 f.write(json_data)
                 first = False
-                self.job.progress.update_stage(self.job.job_type_key, progress=round(i * len(batch) / total, 2))
-                self.job.save()
+                if self.job:
+                    self.job.progress.update_stage(self.job.job_type_key, progress=round(i * len(batch) / total, 2))
+                    self.job.save()
             f.write("]")
-            self.job.progress.update_stage(self.job.job_type_key, progress=1)
+            if self.job:
+                self.job.progress.update_stage(self.job.job_type_key, progress=1)
+        self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name  # Return file path
 
 
@@ -127,7 +130,7 @@ class CSVExporter(BaseExporter):
 
     def get_queryset(self):
         return (
-            Occurrence.objects.filter(project=self.job.project)
+            Occurrence.objects.filter(project=self.project)
             .select_related(
                 "determination",
                 "deployment",
@@ -152,7 +155,10 @@ class CSVExporter(BaseExporter):
             writer.writeheader()
             for i, batch in enumerate(get_data_in_batches(self.queryset, self.serializer_class)):
                 writer.writerows(batch)
-                self.job.progress.update_stage(self.job.job_type_key, progress=round(i * len(batch) / total, 2))
-                self.job.save()
-            self.job.progress.update_stage(self.job.job_type_key, progress=1)
+                if self.job:
+                    self.job.progress.update_stage(self.job.job_type_key, progress=round(i * len(batch) / total, 2))
+                    self.job.save()
+            if self.job:
+                self.job.progress.update_stage(self.job.job_type_key, progress=1)
+        self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name  # Return the file path
