@@ -1,8 +1,9 @@
+import classNames from 'classnames'
 import { usePopulateProcessingService } from 'data-services/hooks/processing-services/usePopulateProcessingService'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { AlertCircleIcon, Loader2 } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const PopulateProcessingService = ({
@@ -22,13 +23,16 @@ export const PopulateProcessingService = ({
       }
     >
       <Button
+        className={classNames({ 'text-destructive': error })}
         disabled={isLoading}
-        label={translate(STRING.REGISTER_PIPELINES)}
-        icon={error ? IconType.Error : undefined}
-        loading={isLoading}
         onClick={() => populateProcessingService(processingService.id)}
-        theme={error ? ButtonTheme.Error : ButtonTheme.Success}
-      />
+        size="small"
+        variant="outline"
+      >
+        {error ? <AlertCircleIcon className="w-4 h-4" /> : null}
+        <span>{translate(STRING.REGISTER_PIPELINES)}</span>
+        {isLoading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : null}
+      </Button>
     </Tooltip>
   )
 }
