@@ -78,7 +78,6 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
             project=project,
             job_type_key=DataExportJob.key,
             data_export=data_export,
-            params={"filters": filters, "format": format_type},
             source_image_collection=collection,
         )
         job.enqueue()

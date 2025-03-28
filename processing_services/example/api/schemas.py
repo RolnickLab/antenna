@@ -187,10 +187,30 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
 PipelineChoice = typing.Literal["random", "constant"]
 
 
+class PipelineRequestConfigParameters(pydantic.BaseModel):
+    """Parameters used to configure a pipeline request.
+
+    Accepts any serializable key-value pair.
+    Example: {"force_reprocess": True, "auth_token": "abc123"}
+
+    Supported parameters are defined by the pipeline in the processing service
+    and should be published in the Pipeline's info response.
+    """
+
+    force_reprocess: bool = pydantic.Field(
+        default=False,
+        description="Force reprocessing of the image, even if it has already been processed.",
+    )
+    auth_token: str | None = pydantic.Field(
+        default=None,
+        description="An optional authentication token to use for the pipeline.",
+    )
+
+
 class PipelineRequest(pydantic.BaseModel):
     pipeline: PipelineChoice
     source_images: list[SourceImageRequest]
-    config: dict
+    config: PipelineRequestConfigParameters | dict | None = None
 
     # Example for API docs:
     class Config:
@@ -203,6 +223,7 @@ class PipelineRequest(pydantic.BaseModel):
                         "url": "https://archive.org/download/mma_various_moths_and_butterflies_54143/54143.jpg",
                     }
                 ],
+                "config": {"force_reprocess": True, "auth_token": "abc123"},
             }
         }
 
