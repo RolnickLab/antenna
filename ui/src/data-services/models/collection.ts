@@ -50,7 +50,7 @@ export class Collection extends Entity {
 
   get methodDetailsDisplay(): string[] {
     return Object.entries(this._data.kwargs).map(
-      ([key, value]) => `${snakeCaseToSentenceCase(key)} ${value}`
+      ([key, value]) => `${snakeCaseToSentenceCase(key)}: ${value}`
     )
   }
 

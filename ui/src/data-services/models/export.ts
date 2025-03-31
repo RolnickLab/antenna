@@ -1,3 +1,4 @@
+import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
 import { Entity } from './entity'
 import { Job } from './job'
 import { JobDetails } from './job-details'
@@ -13,19 +14,11 @@ export type ServerExport = any // TODO: Update this type
 
 export class Export extends Entity {
   public readonly job: Job
-  public readonly sourceImages?: { id: string; name: string }
 
   public constructor(entity: ServerExport) {
     super(entity)
 
     this.job = new JobDetails(this._data.job)
-
-    if (this._data.filters.collection && this._data.collection) {
-      this.sourceImages = {
-        id: this._data.filters.collection,
-        name: this._data.collection,
-      }
-    }
   }
 
   static getExportTypeInfo(key: ServerExportType) {
@@ -42,6 +35,18 @@ export class Export extends Entity {
 
   get fileUrl(): string | undefined {
     return this._data.file_url
+  }
+
+  get filtersDisplay(): string[] {
+    return Object.entries(this._data.filters_display).map(([key, _filter]) => {
+      const filter = _filter as { id: number; name: string }
+
+      return `${snakeCaseToSentenceCase(key)}: ${filter.id}`
+    })
+  }
+
+  get numRecords(): number {
+    return this._data.record_count
   }
 
   get type(): {
