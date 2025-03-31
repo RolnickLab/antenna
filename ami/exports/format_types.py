@@ -59,22 +59,19 @@ class JSONExporter(BaseExporter):
         """Exports occurrences to JSON format."""
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
         with open(temp_file.name, "w", encoding="utf-8") as f:
-            total = self.queryset.count()
             first = True
             f.write("[")
-
+            records_exported = 0
             for i, batch in enumerate(get_data_in_batches(self.queryset, self.get_serializer_class())):
                 json_data = json.dumps(batch, cls=DjangoJSONEncoder)
                 json_data = json_data[1:-1]  # remove [ and ] from json string
                 f.write(",\n" if not first else "")
                 f.write(json_data)
                 first = False
-                if self.job:
-                    self.job.progress.update_stage(self.job.job_type_key, progress=round(i * len(batch) / total, 2))
-                    self.job.save()
+                records_exported += len(batch)
+                self.update_job_progress(records_exported)
             f.write("]")
-            if self.job:
-                self.job.progress.update_stage(self.job.job_type_key, progress=1)
+
         self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name  # Return file path
 
@@ -149,16 +146,14 @@ class CSVExporter(BaseExporter):
         # Extract field names dynamically from the serializer
         serializer = self.serializer_class()
         field_names = list(serializer.fields.keys())
-        total = self.queryset.count()
+        records_exported = 0
         with open(temp_file.name, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=field_names)
             writer.writeheader()
+
             for i, batch in enumerate(get_data_in_batches(self.queryset, self.serializer_class)):
                 writer.writerows(batch)
-                if self.job:
-                    self.job.progress.update_stage(self.job.job_type_key, progress=round(i * len(batch) / total, 2))
-                    self.job.save()
-            if self.job:
-                self.job.progress.update_stage(self.job.job_type_key, progress=1)
+                records_exported += len(batch)
+                self.update_job_progress(records_exported)
         self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name  # Return the file path
