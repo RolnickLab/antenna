@@ -22,6 +22,7 @@ export const API_ROUTES = {
   SESSIONS: 'events',
   SITES: 'deployments/sites',
   SPECIES: 'taxa',
+  TAXA_LISTS: 'taxa/lists',
   STORAGE: 'storage',
   SUMMARY: 'status/summary',
   USERS: 'users',
