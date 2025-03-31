@@ -17,7 +17,7 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = DataExport.objects.all()
     serializer_class = DataExportSerializer
-    ordering_fields = ["id", "format", "created_at", "updated_at"]
+    ordering_fields = ["id", "format", "file_size", "created_at", "updated_at"]
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related("job")

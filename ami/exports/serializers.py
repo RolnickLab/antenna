@@ -1,3 +1,4 @@
+from django.template.defaultfilters import filesizeformat
 from rest_framework import serializers
 
 from ami.base.serializers import DefaultSerializer
@@ -34,7 +35,7 @@ class DataExportSerializer(DefaultSerializer):
     user = UserNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True)
     file_url = serializers.SerializerMethodField()
-    file_size = serializers.SerializerMethodField()
+    file_size_display = serializers.SerializerMethodField()
 
     class Meta:
         model = DataExport
@@ -49,6 +50,7 @@ class DataExportSerializer(DefaultSerializer):
             "file_url",
             "record_count",
             "file_size",
+            "file_size_display",
             "created_at",
             "updated_at",
         ]
@@ -56,18 +58,10 @@ class DataExportSerializer(DefaultSerializer):
     def get_file_url(self, obj):
         return obj.get_absolute_url(request=self.context.get("request"))
 
-    def get_file_size(self, obj):
+    def get_file_size_display(self, obj):
         """
         Converts file size from bytes to a more readable format.
         """
         if not obj.file_size:
             return None
-        size_in_bytes = obj.file_size
-        if size_in_bytes < 1024:
-            return f"{size_in_bytes} B"
-        elif size_in_bytes < 1024 * 1024:
-            return f"{size_in_bytes / 1024:.2f} KB"
-        elif size_in_bytes < 1024 * 1024 * 1024:
-            return f"{size_in_bytes / (1024 * 1024):.2f} MB"
-        else:
-            return f"{size_in_bytes / (1024 * 1024 * 1024):.2f} GB"
+        return filesizeformat(obj.file_size)
