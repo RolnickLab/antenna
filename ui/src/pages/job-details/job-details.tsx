@@ -1,5 +1,6 @@
 import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { FormRow, FormSection } from 'components/form/layout/layout'
+import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -83,6 +84,16 @@ const JobSummary = ({ job }: { job: Job }) => {
           <InputValue
             label={translate(STRING.FIELD_LABEL_DELAY)}
             value={job.delay}
+          />
+        ) : null}
+        {job.export ? (
+          <InputValue
+            label="Export"
+            value={Export.getExportTypeInfo(job.export.format as any).label}
+            to={APP_ROUTES.EXPORT_DETAILS({
+              projectId: projectId as string,
+              exportId: job.export.id,
+            })}
           />
         ) : null}
         {job.deployment ? (
