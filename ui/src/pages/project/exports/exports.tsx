@@ -4,6 +4,7 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
+import { ExportDetailsDialog } from 'pages/export-details/export-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -13,7 +14,7 @@ import { UserPermission } from 'utils/user/types'
 import { columns } from './exports-columns'
 
 export const Exports = () => {
-  const { projectId } = useParams()
+  const { projectId, id } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'created_at',
     order: 'desc',
@@ -65,6 +66,7 @@ export const Exports = () => {
           total={total}
         />
       ) : null}
+      {id ? <ExportDetailsDialog id={id} /> : null}
     </>
   )
 }

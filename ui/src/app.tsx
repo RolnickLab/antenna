@@ -107,7 +107,7 @@ export const App = () => (
             <Route path="summary" element={<Summary />} />
             <Route path="collections" element={<Collections />} />
             <Route path="collections/:id" element={<CollectionDetails />} />
-            <Route path="exports" element={<Exports />} />
+            <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
               element={<ProcessingServices />}

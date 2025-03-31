@@ -25,6 +25,9 @@ export const APP_ROUTES = {
   EXPORTS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/exports`,
 
+  EXPORT_DETAILS: (params: { projectId: string; exportId: string }) =>
+    `/projects/${params.projectId}/exports/${params.exportId}`,
+
   PROCESSING_SERVICES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/processing-services`,
 

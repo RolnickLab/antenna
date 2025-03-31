@@ -3,9 +3,15 @@ import { API_ROUTES } from 'data-services/constants'
 import { Export } from 'data-services/models/export'
 import { StatusBar } from 'design-system/components/status/status-bar'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { TableColumn, TextAlign } from 'design-system/components/table/types'
+import {
+  CellTheme,
+  TableColumn,
+  TextAlign,
+} from 'design-system/components/table/types'
 import { DownloadIcon } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
+import { Link } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from '../entities/delete-entity-dialog'
 
@@ -17,7 +23,13 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
     sortField: 'format',
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: Export) => (
-      <BasicTableCell value={item.type.label} details={item.filtersDisplay} />
+      <Link to={APP_ROUTES.EXPORT_DETAILS({ projectId, exportId: item.id })}>
+        <BasicTableCell
+          details={item.filtersLabels}
+          theme={CellTheme.Primary}
+          value={item.type.label}
+        />
+      </Link>
     ),
   },
   {

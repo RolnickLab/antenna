@@ -37,11 +37,15 @@ export class Export extends Entity {
     return this._data.file_url
   }
 
-  get filtersDisplay(): string[] {
+  get fileSizeLabel(): string | undefined {
+    return this._data.file_size
+  }
+
+  get filtersLabels(): string[] {
     return Object.entries(this._data.filters_display).map(([key, _filter]) => {
       const filter = _filter as { id: number; name: string }
 
-      return `${snakeCaseToSentenceCase(key)}: ${filter.id}`
+      return `${snakeCaseToSentenceCase(key)}: ${filter.name}`
     })
   }
 
