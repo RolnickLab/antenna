@@ -11,7 +11,7 @@ export const StatusBar = ({
     )
   }
 
-  const label = `${progress * 100}%`
+  const label = `${(progress * 100).toFixed(0)}%`
 
   return (
     <div className="w-full min-w-32 flex items-center gap-2">

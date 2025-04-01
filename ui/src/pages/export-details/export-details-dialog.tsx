@@ -105,7 +105,7 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
             value={exportDetails.numRecords}
           />
           <InputValue
-            label={translate(STRING.FIELD_LABEL_SIZE)}
+            label={translate(STRING.FIELD_LABEL_FILE_SIZE)}
             value={
               exportDetails.fileSizeLabel?.length
                 ? exportDetails.fileSizeLabel

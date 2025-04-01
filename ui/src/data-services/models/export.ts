@@ -38,7 +38,7 @@ export class Export extends Entity {
   }
 
   get fileSizeLabel(): string | undefined {
-    return this._data.file_size
+    return this._data.file_size_display
   }
 
   get filtersLabels(): string[] {
