@@ -53,7 +53,8 @@ class DataExport(BaseModel):
                 try:
                     Model = apps.get_model(model_path)
                     instance = Model.objects.get(pk=value)
-                    filters_display[key] = {"id": value, "name": str(instance)}
+                    name = getattr(instance, "name", str(instance))
+                    filters_display[key] = {"id": value, "name": name}
                 except Model.DoesNotExist:
                     filters_display[key] = {"id": value, "name": f"{model_path} with id {value} not found"}
                 except Exception as e:
