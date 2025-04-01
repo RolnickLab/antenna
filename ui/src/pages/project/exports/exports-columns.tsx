@@ -65,7 +65,7 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
             )}
           >
             <DownloadIcon className="w-4 h-4" />
-            <span>Download</span>
+            <span>{translate(STRING.DOWNLOAD)}</span>
           </a>
         )}
       </BasicTableCell>

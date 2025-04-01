@@ -82,7 +82,7 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
           />
         </FormRow>
         <FormRow>
-          <InputContent label="Job status">
+          <InputContent label={translate(STRING.FIELD_LABEL_JOB_STATUS)}>
             <div className="flex items-center gap-2">
               <StatusMarker color={exportDetails.job.status.color} />
               <span className={classNames(inputStyles.value, 'pt-0.5')}>
@@ -104,7 +104,14 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
             label={translate(STRING.FIELD_LABEL_RECORDS_EXPORTED)}
             value={exportDetails.numRecords}
           />
-          <InputValue label="File size" value={exportDetails.fileSizeLabel} />
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_SIZE)}
+            value={
+              exportDetails.fileSizeLabel?.length
+                ? exportDetails.fileSizeLabel
+                : undefined
+            }
+          />
         </FormRow>
       </FormSection>
       <FormSection title={translate(STRING.FIELD_LABEL_RESULT)}>
@@ -126,7 +133,7 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
               )}
             >
               <DownloadIcon className="w-4 h-4" />
-              <span>Download</span>
+              <span>{translate(STRING.DOWNLOAD)}</span>
             </a>
           )}
         </div>
