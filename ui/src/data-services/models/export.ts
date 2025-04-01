@@ -40,9 +40,9 @@ export class Export extends Entity {
   get fileSizeLabel(): string | undefined {
     return this._data.file_size_display
   }
-
   get filtersLabels(): string[] {
-    return Object.entries(this._data.filters_display).map(([key, _filter]) => {
+    const filtersObj = this._data.filters_display || this._data.filters || {}
+    return Object.entries(filtersObj).map(([key, _filter]) => {
       const filter = _filter as { id: number; name: string }
 
       return `${snakeCaseToSentenceCase(key)}: ${filter.id}`
