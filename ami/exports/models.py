@@ -84,7 +84,17 @@ class DataExport(BaseModel):
         file_url = f"{settings.MEDIA_URL}{file_path}"
         return file_url
 
-    def run_export(self):
+    def get_exporter(self):
+        """
+        Initialize and return an Exporter instance based on the requested format.
+
+        The init method of the Exporter class is called here,
+        which can trigger a large query, so do this only once.
+        """
+        cache_key = "_exporter"
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
+
         from ami.exports.registry import ExportRegistry
 
         export_format = self.format
@@ -92,12 +102,26 @@ class DataExport(BaseModel):
         if not ExportClass:
             raise ValueError("Invalid export format")
         logger.debug(f"Exporter class {ExportClass}")
-        exporter_class = ExportClass(self)
-        logger.info(f"Starting export for format: {export_format}")
-        file_temp_path = exporter_class.export()
+        exporter = ExportClass(self)
+        setattr(self, cache_key, exporter)
+        return exporter
+
+    def update_record_count(self):
+        """
+        Calculate and save the total number of records in the export's queryset.
+        """
+        exporter = self.get_exporter()
+        self.record_count = exporter.total_records
+        self.save(update_fields=["record_count"])
+        return self.record_count
+
+    def run_export(self):
+        logger.info(f"Starting export for format: {self.format}")
+        exporter = self.get_exporter()
+        file_temp_path = exporter.export()
         file_url = self.save_export_file(file_temp_path)
         self.file_url = file_url
-        self.save()
+        self.save(update_fields=["file_url"])
         return file_url
 
     def get_absolute_url(self, request: Request | None) -> str | None:
