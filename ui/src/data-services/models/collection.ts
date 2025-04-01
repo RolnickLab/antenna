@@ -36,6 +36,15 @@ export class Collection extends Entity {
     })[0]
   }
 
+  get hasJobInProgress(): boolean {
+    return this._jobs.some(
+      (job) =>
+        job.status.code === 'CREATED' ||
+        job.status.code === 'PENDING' ||
+        job.status.code === 'STARTED'
+    )
+  }
+
   get method(): string {
     return this._data.method
   }

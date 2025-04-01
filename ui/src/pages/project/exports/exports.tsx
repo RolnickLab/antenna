@@ -6,7 +6,7 @@ import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import { ExportDetailsDialog } from 'pages/export-details/export-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
@@ -20,6 +20,7 @@ export const Exports = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
+  const [poll, setPoll] = useState(false)
   const { exports, userPermissions, total, isLoading, isFetching, error } =
     useExports(
       {
@@ -27,9 +28,18 @@ export const Exports = () => {
         pagination,
         sort,
       },
-      true
+      poll
     )
   const canCreate = userPermissions?.includes(UserPermission.Create)
+
+  useEffect(() => {
+    // If any export is in progress, we want to poll the endpoint so we can show updates
+    if (exports?.some(({ job }) => job.progress.value !== 1)) {
+      setPoll(true)
+    } else {
+      setPoll(false)
+    }
+  }, [exports])
 
   return (
     <>
