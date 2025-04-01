@@ -3,7 +3,6 @@ import logging
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import models
-from django.utils.functional import cached_property
 from django.utils.text import slugify
 from rest_framework.request import Request
 
@@ -28,16 +27,16 @@ class DataExport(BaseModel):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="exports")
     format = models.CharField(max_length=255, choices=get_export_choices())
     filters = models.JSONField(null=True, blank=True)
+    filters_display = models.JSONField(null=True, blank=True)
     file_url = models.URLField(blank=True, null=True)
     # Number of exported records.
     record_count = models.PositiveIntegerField(default=0)
     # Size of the exported file in bytes.
     file_size = models.PositiveBigIntegerField(default=0)
 
-    @cached_property
-    def filters_display(self):
+    def get_filters_display(self):
         """
-        Cached property to generate a display-friendly version of filters.
+        Precompute a display-friendly version of filters.
         """
         from django.apps import apps
 
@@ -89,13 +88,13 @@ class DataExport(BaseModel):
         from ami.exports.registry import ExportRegistry
 
         export_format = self.format
-        export_class = ExportRegistry.get_exporter(export_format)
-        if not export_class:
+        ExportClass = ExportRegistry.get_exporter(export_format)
+        if not ExportClass:
             raise ValueError("Invalid export format")
-        logger.debug(f"Exporter class {export_class}")
-        exporter = export_class(self)
+        logger.debug(f"Exporter class {ExportClass}")
+        exporter_class = ExportClass(self)
         logger.info(f"Starting export for format: {export_format}")
-        file_temp_path = exporter.export()
+        file_temp_path = exporter_class.export()
         file_url = self.save_export_file(file_temp_path)
         self.file_url = file_url
         self.save()
@@ -109,3 +108,8 @@ class DataExport(BaseModel):
             return self.file_url
         else:
             return request.build_absolute_uri(self.file_url)
+
+    def save(self, *args, **kwargs):
+        # Update filters_display before saving
+        self.filters_display = self.get_filters_display()
+        super().save(*args, **kwargs)
