@@ -1423,11 +1423,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    project=project,
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False,
-                ).count(),
+                "occurrences_count": Occurrence.objects.filter(project=project).count(),
                 "taxa_count": Occurrence.objects.all().unique_taxa(project=project).count(),  # type: ignore
             }
         else:
@@ -1437,10 +1433,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.count(),
                 # "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False
-                ).count(),
+                "occurrences_count": Occurrence.objects.filter().count(),
                 "taxa_count": Occurrence.objects.all().unique_taxa().count(),  # type: ignore
                 "last_updated": timezone.now(),
             }
