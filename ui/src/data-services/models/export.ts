@@ -45,7 +45,7 @@ export class Export extends Entity {
     return Object.entries(this._data.filters_display).map(([key, _filter]) => {
       const filter = _filter as { id: number; name: string }
 
-      return `${snakeCaseToSentenceCase(key)}: ${filter.name}`
+      return `${snakeCaseToSentenceCase(key)}: ${filter.id}`
     })
   }
 
