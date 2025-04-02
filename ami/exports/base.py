@@ -23,10 +23,9 @@ class BaseExporter(ABC):
         )
         self.total_records = self.queryset.count()
         if self.job:
-            self.job.progress.add_stage_param(
-                self.job.job_type_key, "Total records to export", f"{self.total_records}"
-            )
-            self.job.progress.add_stage_param(self.job.job_type_key, "Number of records exported")
+            self.job.progress.add_stage_param(self.job.job_type_key, "Number of records exported", 0)
+            self.job.progress.add_stage_param(self.job.job_type_key, "Total records to export", self.total_records)
+            self.job.save()
 
     @abstractmethod
     def export(self):
@@ -69,6 +68,6 @@ class BaseExporter(ABC):
                 self.job.job_type_key, progress=round(records_exported / self.total_records, 2)
             )
             self.job.progress.add_or_update_stage_param(
-                self.job.job_type_key, "Number of records exported", f"{records_exported}"
+                self.job.job_type_key, "Number of records exported", records_exported
             )
             self.job.save()
