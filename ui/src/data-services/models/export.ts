@@ -18,7 +18,7 @@ export class Export extends Entity {
   public constructor(entity: ServerExport) {
     super(entity)
 
-    if (this._data.jon) {
+    if (this._data.job) {
       this.job = new JobDetails(this._data.job)
     }
   }
