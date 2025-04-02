@@ -101,7 +101,7 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
         </FormRow>
         <FormRow>
           <InputValue
-            label={translate(STRING.FIELD_LABEL_RECORDS_EXPORTED)}
+            label={translate(STRING.FIELD_LABEL_TOTAL_RECORDS)}
             value={exportDetails.numRecords}
           />
           <InputValue

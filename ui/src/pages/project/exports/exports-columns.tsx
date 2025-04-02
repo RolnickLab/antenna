@@ -34,7 +34,7 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
   },
   {
     id: 'status',
-    name: translate(STRING.FIELD_LABEL_RECORDS_EXPORTED),
+    name: translate(STRING.FIELD_LABEL_TOTAL_RECORDS),
     styles: {
       textAlign: TextAlign.Right,
     },
