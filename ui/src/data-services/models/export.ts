@@ -13,12 +13,14 @@ export type ServerExportType = (typeof SERVER_EXPORT_TYPES)[number]
 export type ServerExport = any // TODO: Update this type
 
 export class Export extends Entity {
-  public readonly job: Job
+  public readonly job?: Job
 
   public constructor(entity: ServerExport) {
     super(entity)
 
-    this.job = new JobDetails(this._data.job)
+    if (this._data.jon) {
+      this.job = new JobDetails(this._data.job)
+    }
   }
 
   static getExportTypeInfo(key: ServerExportType) {

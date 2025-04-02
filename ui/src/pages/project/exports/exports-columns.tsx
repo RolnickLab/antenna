@@ -45,14 +45,14 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
     name: translate(STRING.FIELD_LABEL_RESULT),
     renderCell: (item: Export) => (
       <BasicTableCell>
-        {item.job.progress.value !== 1 ? (
+        {item.job && item.job.progress.value !== 1 ? (
           <div className="w-min">
             <StatusBar
               color={item.job.status.color}
               progress={item.job.progress.value}
             />
           </div>
-        ) : (
+        ) : item.fileUrl ? (
           <a
             href={item.fileUrl}
             download={item.fileUrl}
@@ -67,7 +67,7 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
             <DownloadIcon className="w-4 h-4" />
             <span>{translate(STRING.DOWNLOAD)}</span>
           </a>
-        )}
+        ) : null}
       </BasicTableCell>
     ),
   },

@@ -34,7 +34,7 @@ export const Exports = () => {
 
   useEffect(() => {
     // If any export is in progress, we want to poll the endpoint so we can show updates
-    if (exports?.some(({ job }) => job.progress.value !== 1)) {
+    if (exports?.some(({ job }) => job?.progress.value !== 1)) {
       setPoll(true)
     } else {
       setPoll(false)

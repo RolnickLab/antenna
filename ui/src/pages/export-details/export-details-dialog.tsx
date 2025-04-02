@@ -82,21 +82,29 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
           />
         </FormRow>
         <FormRow>
-          <InputContent label={translate(STRING.FIELD_LABEL_JOB_STATUS)}>
-            <div className="flex items-center gap-2">
-              <StatusMarker color={exportDetails.job.status.color} />
-              <span className={classNames(inputStyles.value, 'pt-0.5')}>
-                {exportDetails.job.status.label}
-              </span>
-            </div>
-          </InputContent>
+          {exportDetails.job ? (
+            <InputContent label={translate(STRING.FIELD_LABEL_JOB_STATUS)}>
+              <div className="flex items-center gap-2">
+                <StatusMarker color={exportDetails.job.status.color} />
+                <span className={classNames(inputStyles.value, 'pt-0.5')}>
+                  {exportDetails.job.status.label}
+                </span>
+              </div>
+            </InputContent>
+          ) : (
+            <InputValue label={translate(STRING.FIELD_LABEL_JOB_STATUS)} />
+          )}
           <InputValue
             label={translate(STRING.FIELD_LABEL_JOB)}
-            value={exportDetails.job.name}
-            to={APP_ROUTES.JOB_DETAILS({
-              projectId: projectId as string,
-              jobId: exportDetails.job.id,
-            })}
+            value={exportDetails.job?.name}
+            to={
+              exportDetails.job
+                ? APP_ROUTES.JOB_DETAILS({
+                    projectId: projectId as string,
+                    jobId: exportDetails.job.id,
+                  })
+                : undefined
+            }
           />
         </FormRow>
         <FormRow>
@@ -116,12 +124,12 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
       </FormSection>
       <FormSection title={translate(STRING.FIELD_LABEL_RESULT)}>
         <div>
-          {exportDetails.job.progress.value !== 1 ? (
+          {exportDetails.job && exportDetails.job.progress.value !== 1 ? (
             <StatusBar
               color={exportDetails.job.status.color}
               progress={exportDetails.job.progress.value}
             />
-          ) : (
+          ) : exportDetails.fileUrl ? (
             <a
               href={exportDetails.fileUrl}
               download={exportDetails.fileUrl}
@@ -135,7 +143,7 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
               <DownloadIcon className="w-4 h-4" />
               <span>{translate(STRING.DOWNLOAD)}</span>
             </a>
-          )}
+          ) : null}
         </div>
       </FormSection>
     </>
