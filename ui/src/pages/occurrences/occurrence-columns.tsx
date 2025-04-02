@@ -97,58 +97,34 @@ export const columns: (
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     sortField: 'event',
-    renderCell: (item: Occurrence) => (
-      <Link
-        to={APP_ROUTES.SESSION_DETAILS({
-          projectId,
-          sessionId: item.sessionId,
-        })}
-      >
-        <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => {
+      if (!item.sessionId) {
+        return <></>
+      }
+
+      return (
+        <Link
+          to={APP_ROUTES.SESSION_DETAILS({
+            projectId,
+            sessionId: item.sessionId,
+          })}
+        >
+          <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
+        </Link>
+      )
+    },
   },
   {
     id: 'date',
     name: translate(STRING.FIELD_LABEL_DATE_OBSERVED),
     sortField: 'first_appearance_timestamp',
-    renderCell: (item: Occurrence) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.SESSION_DETAILS({
-            projectId,
-            sessionId: item.sessionId,
-          }),
-          filters: {
-            occurrence: item.id,
-            timestamp: item.firstAppearanceTimestamp,
-          },
-        })}
-      >
-        <BasicTableCell value={item.dateLabel} />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
   },
   {
     id: 'time',
     sortField: 'first_appearance_time',
     name: translate(STRING.FIELD_LABEL_TIME_OBSERVED),
-    renderCell: (item: Occurrence) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.SESSION_DETAILS({
-            projectId,
-            sessionId: item.sessionId,
-          }),
-          filters: {
-            occurrence: item.id,
-            timestamp: item.firstAppearanceTimestamp,
-          },
-        })}
-      >
-        <BasicTableCell value={item.timeLabel} />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.timeLabel} />,
   },
   {
     id: 'duration',
