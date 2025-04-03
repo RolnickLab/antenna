@@ -2170,11 +2170,14 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
-class OccurrenceQuerySet(models.QuerySet):
-    def with_detections_count(self) -> models.QuerySet:
+class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
+    def valid(self):
+        return self.exclude(detections__isnull=True)
+
+    def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
-    def with_timestamps(self) -> models.QuerySet:
+    def with_timestamps(self):
         """
         These are timestamps used for filtering and ordering in the UI.
         """
@@ -2188,14 +2191,14 @@ class OccurrenceQuerySet(models.QuerySet):
             ),
         )
 
-    def with_identifications(self) -> models.QuerySet:
+    def with_identifications(self):
         return self.prefetch_related(
             "identifications",
             "identifications__taxon",
             "identifications__user",
         )
 
-    def unique_taxa(self, project: Project | None = None) -> models.QuerySet:
+    def unique_taxa(self, project: Project | None = None):
         qs = self
         if project:
             qs = self.filter(project=project)
@@ -2207,12 +2210,16 @@ class OccurrenceQuerySet(models.QuerySet):
         return qs
 
 
-class OccurrenceManager(models.Manager):
-    def get_queryset(self) -> OccurrenceQuerySet:
-        return OccurrenceQuerySet(self.model, using=self._db).select_related(
-            "determination",
-            "deployment",
-            "project",
+class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "determination",
+                "deployment",
+                "project",
+            )
         )
 
 
@@ -2232,7 +2239,7 @@ class Occurrence(BaseModel):
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
-    objects: OccurrenceManager = OccurrenceManager()
+    objects = OccurrenceManager()
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
