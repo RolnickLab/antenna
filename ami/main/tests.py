@@ -1547,10 +1547,22 @@ class TestRolePermissions(APITestCase):
         self.assertEqual(assigned_permissions, expected_permissions)
 
         self._test_role_permissions(BasicMember, self.basic_member, self.PERMISSIONS_MAPS["basic_member"])
+        self.test_sourceimage_permissions(
+            user=self.basic_member, permission_map=self.PERMISSIONS_MAPS["basic_member"]["sourceimage"]
+        )
+        self.test_sourceimageupload_permissions(
+            user=self.basic_member, permission_map=self.PERMISSIONS_MAPS["basic_member"]["sourceimageupload"]
+        )
 
     def test_regular_user_permissions(self):
         """Test Regular User permissions (view-only)."""
         self._test_role_permissions(None, self.regular_user, self.PERMISSIONS_MAPS["regular_user"])
+        self.test_sourceimage_permissions(
+            user=self.basic_member, permission_map=self.PERMISSIONS_MAPS["regular_user"]["sourceimage"]
+        )
+        self.test_sourceimageupload_permissions(
+            user=self.basic_member, permission_map=self.PERMISSIONS_MAPS["regular_user"]["sourceimageupload"]
+        )
 
     def test_project_manager_permissions_(self):
         """Test Project Manager role permissions."""
@@ -1558,3 +1570,9 @@ class TestRolePermissions(APITestCase):
         assigned_permissions = set(get_perms(self.project_manager, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
         self._test_role_permissions(ProjectManager, self.project_manager, self.PERMISSIONS_MAPS["project_manager"])
+        self.test_sourceimage_permissions(
+            user=self.basic_member, permission_map=self.PERMISSIONS_MAPS["project_manager"]["sourceimage"]
+        )
+        self.test_sourceimageupload_permissions(
+            user=self.basic_member, permission_map=self.PERMISSIONS_MAPS["project_manager"]["sourceimageupload"]
+        )
