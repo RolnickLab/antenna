@@ -1,9 +1,12 @@
 import datetime
 import logging
+from io import BytesIO
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase
 from guardian.shortcuts import get_perms
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
@@ -20,6 +23,7 @@ from ami.main.models import (
     Site,
     SourceImage,
     SourceImageCollection,
+    SourceImageUpload,
     Taxon,
     TaxonRank,
     group_images_into_events,
@@ -1106,6 +1110,7 @@ class TestProjectPermissions(APITestCase):
 class TestRolePermissions(APITestCase):
     # Create users
     def setUp(self) -> None:
+        self.super_user = User.objects.create_user(email="super_user@insectai.org", is_staff=True, is_superuser=True)
         self.project_manager = User.objects.create_user(email="project_manager@insectai.org", is_staff=False)
         self._create_project(self.project_manager)
 
@@ -1122,6 +1127,8 @@ class TestRolePermissions(APITestCase):
                 "project": {"create": False, "update": True, "delete": True},
                 "collection": {"create": True, "update": True, "delete": True, "populate": True},
                 "storage": {"create": True, "update": True, "delete": True},
+                "sourceimage": {"create": True, "update": True, "delete": True},
+                "sourceimageupload": {"create": True, "update": True, "delete": True},
                 "site": {"create": True, "update": True, "delete": True},
                 "device": {"create": True, "update": True, "delete": True},
                 "job": {"create": True, "update": True, "delete": True, "run": True, "retry": True, "cancel": True},
@@ -1133,6 +1140,8 @@ class TestRolePermissions(APITestCase):
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
+                "sourceimage": {"create": False, "update": False, "delete": False},
+                "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
                 "job": {
                     "create": False,
@@ -1149,6 +1158,8 @@ class TestRolePermissions(APITestCase):
                 "project": {"create": False, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
+                "sourceimage": {"create": False, "update": False, "delete": False},
+                "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
                 "job": {
@@ -1166,6 +1177,8 @@ class TestRolePermissions(APITestCase):
                 "project": {"create": False, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
+                "sourceimage": {"create": False, "update": False, "delete": False},
+                "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
                 "job": {
@@ -1201,6 +1214,42 @@ class TestRolePermissions(APITestCase):
 
     def _create_job(self):
         self.job = Job.objects.create(name="Test Job", project=self.project)
+
+    def _create_source_image_upload_file(self):
+        image_buffer = BytesIO()
+        image = Image.new("RGB", (100, 100), color=(255, 0, 0))  # a red square
+        image.save(image_buffer, format="JPEG")
+        image_buffer.seek(0)
+
+        image_file = SimpleUploadedFile(
+            name="20210101120000-snapshot.jpg", content=image_buffer.read(), content_type="image/jpeg"
+        )
+        return image_file
+
+    def _create_test_source_image_upload(self):
+        """
+        Creates a SourceImageUpload instance using a valid in-memory JPEG image
+        and self.project.deployments.first() as the deployment.
+        """
+        deployment = self.project.deployments.first()
+
+        # Generate a valid JPEG image in memory using Pillow
+        image_file = self._create_source_image_upload_file()
+        upload = SourceImageUpload.objects.create(
+            image=image_file,
+            user=self.project_manager,
+            deployment=deployment,
+        )
+        self.source_image_upload = upload
+        return upload
+
+    def _create_test_source_image(self):
+        return SourceImage.objects.create(
+            project=self.project,
+            deployment=self.project.deployments.first(),
+            uploaded_by=self.project_manager,
+            test_image=False,
+        )
 
     def _test_role_permissions(self, role_class, user, permissions_map):
         """Generic function to test role-based permissions based on an entity permission map."""
@@ -1247,7 +1296,7 @@ class TestRolePermissions(APITestCase):
         }
 
         for entity, actions in permissions_map.items():
-            if entity == "capture":
+            if entity in ["capture", "sourceimageupload", "sourceimage"]:
                 continue
             # Check Collection-Level Permissions in List Response
             response = self.client.get(f"{endpoints[entity]}?project_id={self.project.pk}")
@@ -1345,6 +1394,8 @@ class TestRolePermissions(APITestCase):
             self.client.force_authenticate(user=user)
 
             for entity, actions in permissions_map.items():
+                if entity in ["sourceimage", "sourceimageupload"]:
+                    continue
                 if "create" in actions:
                     logger.info(f"Testing {role_class} for create permission on {entity} after role unassignment")
                     response = self.client.post(endpoints[entity], create_data.get(entity, {}))
@@ -1378,8 +1429,8 @@ class TestRolePermissions(APITestCase):
             self.client.force_authenticate(user=user)
 
             for entity, actions in permissions_map.items():
-                if entity == "project":
-                    # skip deleting project for now
+                if entity in ["project", "sourceimage", "sourceimageupload"]:
+                    # skip deleting project for now and sourceimage,sourceimageupload
                     continue
 
                 if "delete" in actions and actions["delete"] and entity_ids[entity]:
@@ -1401,6 +1452,80 @@ class TestRolePermissions(APITestCase):
                 expected_status = status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN
                 self.assertEqual(response.status_code, expected_status)
 
+    def test_sourceimageupload_permissions(self, user, permission_map):
+        self.client.force_authenticate(user=user)
+
+        list_url = "/api/v2/captures/upload/"
+        # --- Test Create ---
+        response = self.client.post(
+            list_url,
+            {"image": self._create_source_image_upload_file(), "deployment": self.deployment.id},
+            format="multipart",
+        )
+
+        if permission_map.get("create", False):
+            self.assertEqual(response.status_code, 201, f"{user.email} should be able to create sourceimageupload")
+            object_id = response.data["id"]
+        else:
+            self.assertEqual(response.status_code, 403, f"{user.email} should NOT be able to create sourceimageupload")
+            # Use superuser to create the object
+            self.client.force_authenticate(user=self.super_user)
+            upload = self.client.post(
+                list_url,
+                {"image": self._create_source_image_upload_file(), "deployment": self.deployment.id},
+                format="multipart",
+            )
+            object_id = upload.data["id"]
+            self.assertEqual(upload.status_code, 201, "Superuser should be able to create sourceimageupload")
+            object_id = upload.data["id"]
+
+            # Log the created ID
+            logger.info(f"Superuser created SourceImageUpload with ID: {object_id}")
+            self.client.force_authenticate(user=user)  # switch back to original user
+
+        detail_url = f"{list_url}{object_id}/"
+
+        # --- Test Update ---
+        expected_update = 200 if permission_map.get("update", False) else 403
+        response = self.client.patch(detail_url, {"details": "updated"}, format="json")
+        self.assertEqual(response.status_code, expected_update, f"{user.email} update sourceimageupload")
+
+        # --- Test Delete ---
+        expected_delete = 204 if permission_map.get("delete", False) else 403
+        response = self.client.delete(detail_url)
+        self.assertEqual(response.status_code, expected_delete, f"{user.email} delete sourceimageupload")
+
+    def test_sourceimage_permissions(self, user, permission_map):
+        self.client.force_authenticate(user=user)
+
+        list_url = "/api/v2/captures/"
+        # --- Test Create ---
+        response = self.client.post(
+            list_url,
+            {"project": self.project.id, "deployment": self.deployment.id, "test_image": False},
+            format="json",
+        )
+
+        if permission_map.get("create", False):
+            self.assertEqual(response.status_code, 201, f"{user.email} should be able to create sourceimage")
+            object_id = response.data["id"]
+        else:
+            self.assertEqual(response.status_code, 403, f"{user.email} should NOT be able to create sourceimage")
+            image = self._create_test_source_image()
+            object_id = image.id
+
+        detail_url = f"{list_url}{object_id}/"
+
+        # --- Test Update ---
+        expected_update = 200 if permission_map.get("update", False) else 403
+        response = self.client.patch(detail_url, {"test_image": True}, format="json")
+        self.assertEqual(response.status_code, expected_update, f"{user.email} update sourceimage")
+
+        # --- Test Delete ---
+        expected_delete = 204 if permission_map.get("delete", False) else 403
+        response = self.client.delete(detail_url)
+        self.assertEqual(response.status_code, expected_delete, f"{user.email} delete sourceimage")
+
     def test_identifier_permissions(self):
         """Test Identifier role permissions."""
 
@@ -1408,6 +1533,12 @@ class TestRolePermissions(APITestCase):
         assigned_permissions = set(get_perms(self.identifier, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
         self._test_role_permissions(Identifier, self.identifier, self.PERMISSIONS_MAPS["identifier"])
+        self.test_sourceimage_permissions(
+            user=self.identifier, permission_map=self.PERMISSIONS_MAPS["identifier"]["sourceimage"]
+        )
+        self.test_sourceimageupload_permissions(
+            user=self.identifier, permission_map=self.PERMISSIONS_MAPS["identifier"]["sourceimageupload"]
+        )
 
     def test_basic_member_permissions_(self):
         """Test Basic Member role permissions."""

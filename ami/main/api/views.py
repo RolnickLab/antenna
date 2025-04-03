@@ -37,6 +37,8 @@ from ami.base.permissions import (
     S3StorageSourceCRUDPermission,
     SiteCRUDPermission,
     SourceImageCollectionCRUDPermission,
+    SourceImageCRUDPermission,
+    SourceImageUploadCRUDPermission,
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
@@ -127,6 +129,7 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
 
         # Create instance but do not save
         instance = serializer.Meta.model(**serializer.validated_data)
+        logger.info(f"Creating {instance.__class__.__name__} with data: {serializer.validated_data}")
         self.check_object_permissions(request, instance)
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -445,7 +448,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class SourceImageViewSet(DefaultViewSet):
+class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
 
@@ -477,7 +480,7 @@ class SourceImageViewSet(DefaultViewSet):
         "deployment__name",
         "event__start",
     ]
-    permission_classes = [CanStarSourceImage]
+    permission_classes = [CanStarSourceImage, SourceImageCRUDPermission]
 
     def get_serializer_class(self):
         """
@@ -746,7 +749,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class SourceImageUploadViewSet(DefaultViewSet):
+class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for uploading images.
     """
@@ -754,6 +757,7 @@ class SourceImageUploadViewSet(DefaultViewSet):
     queryset = SourceImageUpload.objects.all()
 
     serializer_class = SourceImageUploadSerializer
+    permission_classes = [SourceImageUploadCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
