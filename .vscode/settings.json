@@ -42,5 +42,6 @@
     },
     "files.eol": "\n",
     "files.insertFinalNewline": true,
-    "files.trimTrailingWhitespace": true
+    "files.trimTrailingWhitespace": true,
+    "python.analysis.typeCheckingMode": "basic"
 }
