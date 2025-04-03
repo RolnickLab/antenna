@@ -64,7 +64,11 @@ export const IdentificationCard = ({
           {identification.applied && (
             <StatusLabel label={translate(STRING.ID_APPLIED)} />
           )}
-          <IdentificationSummary user={user} identification={identification} />
+          <IdentificationSummary
+            projectId={projectId}
+            user={user}
+            identification={identification}
+          />
         </div>
         <div className={styles.content}>
           <TaxonInfo

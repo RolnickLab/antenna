@@ -4,6 +4,8 @@ import { Algorithm } from 'data-services/models/algorithm'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
+import { ExternalLinkIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -83,30 +85,37 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
       </FormRow>
       <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_URI)}
-          value={algorithm.uri}
-          to={algorithm.uri}
-        />
-        <InputValue
           label={translate(STRING.FIELD_LABEL_VERSION)}
           value={algorithm.version}
         />
-      </FormRow>
-      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
           value={algorithm.description}
         />
       </FormRow>
-    </FormSection>
-    <FormSection title={translate(STRING.CATEGORY_MAP_DETAILS)}>
       <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_CATEGORY_MAP_ID)}
-          value={algorithm.categoryMapID}
-          to={algorithm.categoryMapURI}
+          label={translate(STRING.FIELD_LABEL_URI)}
+          value={algorithm.uri || 'None'}
+          to={algorithm.uri || undefined}
         />
       </FormRow>
     </FormSection>
+    {algorithm.categoryMapURI && (
+      <FormSection title={translate(STRING.CATEGORY_MAP_DETAILS)}>
+        <a
+          className={buttonVariants({
+            size: 'small',
+            variant: 'outline',
+          })}
+          href={algorithm.categoryMapURI}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <span>View category map API</span>
+          <ExternalLinkIcon className="w-4 h-4 ml-2" />
+        </a>
+      </FormSection>
+    )}
   </>
 )
