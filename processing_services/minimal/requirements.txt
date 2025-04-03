@@ -3,6 +3,3 @@ uvicorn
 pydantic
 Pillow
 requests
-transformers
-torch
-torchvision
