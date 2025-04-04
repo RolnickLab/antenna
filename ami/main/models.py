@@ -225,8 +225,15 @@ class Project(BaseModel):
         POPULATE_COLLECTION = "populate_sourceimagecollection"
 
         # Source Image permissions
+        CREATE_SOURCE_IMAGE = "create_sourceimage"
+        UPDATE_SOURCE_IMAGE = "update_sourceimage"
+        DELETE_SOURCE_IMAGE = "delete_sourceimage"
         STAR_SOURCE_IMAGE = "star_sourceimage"
 
+        # SourceImageUpload permissions
+        CREATE_SOURCE_IMAGE_UPLOAD = "create_sourceimageupload"
+        UPDATE_SOURCE_IMAGE_UPLOAD = "update_sourceimageupload"
+        DELETE_SOURCE_IMAGE_UPLOAD = "delete_sourceimageupload"
         # Storage permissions
         CREATE_STORAGE = "create_s3storagesource"
         DELETE_STORAGE = "delete_s3storagesource"
@@ -273,7 +280,14 @@ class Project(BaseModel):
             ("delete_sourceimagecollection", "Can delete a collection"),
             ("populate_sourceimagecollection", "Can populate a collection"),
             # Source Image permissions
+            ("create_sourceimage", "Can create a source image"),
+            ("update_sourceimage", "Can update a source image"),
+            ("delete_sourceimage", "Can delete a source image"),
             ("star_sourceimage", "Can star a source image"),
+            # SourceImageUpload permissions
+            ("create_sourceimageupload", "Can create a source image upload"),
+            ("update_sourceimageupload", "Can update a source image upload"),
+            ("delete_sourceimageupload", "Can delete a source image upload"),
             # Storage permissions
             ("create_s3storagesource", "Can create storage"),
             ("delete_s3storagesource", "Can delete storage"),
@@ -1278,6 +1292,10 @@ class SourceImageUpload(BaseModel):
     source_image = models.OneToOneField(
         "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
     )
+
+    def get_project(self):
+        """Get the project associated with the model instance."""
+        return self.deployment.get_project()
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

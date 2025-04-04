@@ -111,6 +111,12 @@ class ProjectManager(Role):
             Project.Permissions.CREATE_DEVICE,
             Project.Permissions.UPDATE_DEVICE,
             Project.Permissions.DELETE_DEVICE,
+            Project.Permissions.CREATE_SOURCE_IMAGE,
+            Project.Permissions.DELETE_SOURCE_IMAGE,
+            Project.Permissions.UPDATE_SOURCE_IMAGE,
+            Project.Permissions.CREATE_SOURCE_IMAGE_UPLOAD,
+            Project.Permissions.UPDATE_SOURCE_IMAGE_UPLOAD,
+            Project.Permissions.DELETE_SOURCE_IMAGE_UPLOAD,
         }
     )
 

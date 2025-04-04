@@ -16,6 +16,7 @@ import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { ReactNode, useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { bytesToMB } from 'utils/numberFormats'
@@ -190,6 +191,7 @@ const AddedExampleCapture = ({
   onCancel: () => void
   onSuccess: (id: string) => void
 }) => {
+  const { projectId } = useParams()
   const { uploadCapture, error } = useUploadCapture(onSuccess)
   const { isValid, errorMessage, allowRetry } = useCaptureError({
     error,
@@ -203,7 +205,7 @@ const AddedExampleCapture = ({
     }
 
     // Trigger capture upload on component mount
-    uploadCapture({ deploymentId, file })
+    uploadCapture({ projectId: projectId as string, deploymentId, file })
   }, [])
 
   return (
@@ -221,7 +223,11 @@ const AddedExampleCapture = ({
                   label={translate(STRING.RETRY)}
                   theme={ButtonTheme.Error}
                   onClick={() => {
-                    uploadCapture({ deploymentId, file })
+                    uploadCapture({
+                      projectId: projectId as string,
+                      deploymentId,
+                      file,
+                    })
                   }}
                 />
               ) : (
