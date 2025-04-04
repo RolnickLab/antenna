@@ -7,7 +7,7 @@ import time
 
 import fastapi
 
-from .pipelines import ConstantDetectorClassification, CustomPipeline, Pipeline
+from .pipelines import ConstantPipeline, Pipeline, RandomPipeline
 from .schemas import (
     AlgorithmConfigResponse,
     PipelineRequest,
@@ -17,18 +17,12 @@ from .schemas import (
     SourceImageResponse,
 )
 
-# Configure root logger
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-)
-
-# Get the root logger
 logger = logging.getLogger(__name__)
 
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [CustomPipeline, ConstantDetectorClassification]
+pipelines: list[type[Pipeline]] = [RandomPipeline, ConstantPipeline]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
@@ -43,8 +37,11 @@ async def root():
 @app.get("/info", tags=["services"])
 async def info() -> ProcessingServiceInfoResponse:
     info = ProcessingServiceInfoResponse(
-        name="Custom ML Backend",
-        description=("A template for running custom models locally."),
+        name="ML Backend Template",
+        description=(
+            "A template for an inference API that allows the user to run different sequences of machine learning "
+            "models and processing methods on images for the Antenna platform."
+        ),
         pipelines=[pipeline.config for pipeline in pipelines],
         # algorithms=list(algorithm_choices.values()),
     )
