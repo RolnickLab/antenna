@@ -21,6 +21,13 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   projectId: string
 ) => [
   {
+    id: 'id',
+    name: translate(STRING.FIELD_LABEL_ID),
+    renderCell: (item: Collection) => (
+      <BasicTableCell value={item.id} theme={CellTheme.Primary} />
+    ),
+  },
+  {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',

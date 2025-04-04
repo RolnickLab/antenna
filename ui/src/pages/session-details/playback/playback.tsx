@@ -39,7 +39,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   )
 
   useEffect(() => {
-    // When the active capture has a job in progress, we want to poll the endpoint so we can show any updates from the job
+    // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
     if (activeCapture?.hasJobInProgress) {
       setPoll(true)
     } else {

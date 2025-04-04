@@ -33,6 +33,11 @@ const getSidebarSections = ({
           collectionId: '*',
         }),
       },
+      {
+        id: 'exports',
+        title: translate(STRING.NAV_ITEM_EXPORTS),
+        path: APP_ROUTES.EXPORTS({ projectId }),
+      },
     ],
   },
   {

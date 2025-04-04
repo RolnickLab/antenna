@@ -78,6 +78,10 @@ export class Job {
     return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
   }
 
+  get export(): { id: string; format: string } | undefined {
+    return this._job.data_export
+  }
+
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return
@@ -160,7 +164,9 @@ export class Job {
     type: JobStatusType
     color: string
   } {
-    return Job.getStatusInfo(this._job.status)
+    return Job.getStatusInfo(
+      this._job.status ?? this._job.progress.summary.status
+    )
   }
 
   get updatedAt(): string | undefined {

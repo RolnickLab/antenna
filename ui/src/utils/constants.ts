@@ -22,6 +22,12 @@ export const APP_ROUTES = {
   COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
     `/projects/${params.projectId}/collections/${params.collectionId}`,
 
+  EXPORTS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/exports`,
+
+  EXPORT_DETAILS: (params: { projectId: string; exportId: string }) =>
+    `/projects/${params.projectId}/exports/${params.exportId}`,
+
   PROCESSING_SERVICES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/processing-services`,
 
