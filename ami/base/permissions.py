@@ -89,7 +89,7 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     "create" permission is added to the `user_permissions` set in the `response_data`.
     """
 
-    logger.info(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
+    logger.debug(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
     permissions = response_data.get("user_permissions", set())
     if user and user.is_superuser:
         permissions.add("create")
