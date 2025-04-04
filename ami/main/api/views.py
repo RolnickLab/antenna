@@ -1069,9 +1069,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
-    def get_queryset(self) -> QuerySet:
+    def get_queryset(self) -> QuerySet["Occurrence"]:
         project = self.get_active_project()
-        qs = super().get_queryset()
+        qs = super().get_queryset().valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
         qs = qs.select_related(
@@ -1085,10 +1085,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         if self.action == "list":
             qs = (
                 qs.all()
-                .exclude(detections=None)
-                .exclude(event=None)
                 .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .exclude(first_appearance_timestamp=None)  # This must come after annotations
                 .order_by("-determination_score")
             )
 
@@ -1426,11 +1423,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    project=project,
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False,
-                ).count(),
+                "occurrences_count": Occurrence.objects.valid().filter(project=project).count(),  # type: ignore
                 "taxa_count": Occurrence.objects.all().unique_taxa(project=project).count(),  # type: ignore
             }
         else:
@@ -1440,10 +1433,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.count(),
                 # "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False
-                ).count(),
+                "occurrences_count": Occurrence.objects.valid().count(),  # type: ignore
                 "taxa_count": Occurrence.objects.all().unique_taxa().count(),  # type: ignore
                 "last_updated": timezone.now(),
             }
