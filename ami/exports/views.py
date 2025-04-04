@@ -2,7 +2,6 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from ami.base.views import ProjectMixin
-from ami.exports.registry import ExportRegistry
 from ami.exports.serializers import DataExportSerializer
 from ami.jobs.models import DataExportJob, Job, SourceImageCollection
 from ami.main.api.views import DefaultViewSet
@@ -40,16 +39,9 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
         filters = validated_data.get("filters", {})
         project = validated_data["project"]
 
-        # Validate format
-        if format_type not in ExportRegistry.get_supported_formats():
-            return Response(
-                {"error": f"Invalid format. Supported formats : {ExportRegistry.get_supported_formats()}"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         # Check optional collection filter
         collection = None
-        collection_id = filters.get("collection")
+        collection_id = filters.get("collection_id")
         if collection_id:
             try:
                 collection = SourceImageCollection.objects.get(pk=collection_id)
