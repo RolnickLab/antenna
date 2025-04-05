@@ -189,7 +189,7 @@ class LocalClassifier(Algorithm):
     def compile(self):
         from transformers import pipeline
 
-        self.model = pipeline(model="google/vit-base-patch16-224")
+        self.model = pipeline("image-classification", model="google/vit-base-patch16-224")
         SAVED_MODELS[self.algorithm_config_response.key] = self.model
 
     def run(self, detections: list[DetectionResponse]) -> list[DetectionResponse]:
