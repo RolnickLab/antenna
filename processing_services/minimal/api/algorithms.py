@@ -114,6 +114,6 @@ RANDOM_SPECIES_CLASSIFIER = AlgorithmConfigResponse(
         labels=["Vanessa atalanta", "Vanessa cardui", "Vanessa itea"],
         version="v1",
         description="A simple species classifier",
-        uri="https://huggigface.co/RolnickLab/random-species-classifier",
+        uri="https://huggingface.co/RolnickLab/random-species-classifier",
     ),
 )

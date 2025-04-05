@@ -73,11 +73,11 @@ def open_image(fp: str | bytes | pathlib.Path | io.BytesIO, raise_exception: boo
     try:
         img = PIL.Image.open(fp)
     except PIL.UnidentifiedImageError:
-        logger.warn(f"Unidentified image: {str(fp)[:100]}...")
+        logger.warning(f"Unidentified image: {str(fp)[:100]}...")
         if raise_exception:
             raise
     except OSError:
-        logger.warn(f"Could not open image: {str(fp)[:100]}...")
+        logger.warning(f"Could not open image: {str(fp)[:100]}...")
         if raise_exception:
             raise
     else:
@@ -121,7 +121,7 @@ def get_image(
         try:
             buffer = decode_base64_string(b64)
         except binascii.Error as e:
-            logger.warn(f"Could not decode base64 image: {e}")
+            logger.warning(f"Could not decode base64 image: {e}")
             if raise_exception:
                 raise
             else:
