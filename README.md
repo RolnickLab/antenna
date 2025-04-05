@@ -23,6 +23,7 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
     docker compose up -d
     docker compose logs -f django celeryworker ui
     # Ctrl+c to close the logs
+    docker-compose -f processing_services/docker-compose-minimal.yml up -d
 ```
 
 3) Access the platform the following URLs:
