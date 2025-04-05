@@ -1,15 +1,7 @@
-import datetime
 import logging
 
-from .algorithms import Algorithm, ConstantDetector, LocalClassifier, LocalDetector
-from .schemas import (
-    AlgorithmReference,
-    BoundingBox,
-    ClassificationResponse,
-    DetectionResponse,
-    PipelineConfigResponse,
-    SourceImage,
-)
+from .algorithms import Algorithm, ConstantLocalDetector, LocalClassifier, RandomLocalDetector
+from .schemas import DetectionResponse, PipelineConfigResponse, SourceImage
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -19,16 +11,46 @@ class Pipeline:
     stages: list[Algorithm]
     config: PipelineConfigResponse
 
-    def __init__(self, source_images: list[SourceImage]):
+    def __init__(self, source_images: list[SourceImage], detector_batch_size: int = 1, classifier_batch_size: int = 1):
         self.source_images = source_images
+        self.detector_batch_size = detector_batch_size
+        self.classifier_batch_size = classifier_batch_size
 
     def run(self) -> list[DetectionResponse]:
-        results = [self.make_detections(source_image) for source_image in self.source_images]
-        # Flatten the list of lists
-        return [item for sublist in results for item in sublist]
+        batched_images: list[list[SourceImage]] = []
+        for i in range(0, len(self.source_images), self.detector_batch_size):
+            start_id = i
+            end_id = i + self.detector_batch_size
+            batched_images.append(self.source_images[start_id:end_id])
+        detector_outputs: list[DetectionResponse] = []
+        for images in batched_images:
+            detector_outputs.extend(self.get_detector_response(images))
 
-    def make_detections(self, source_image: SourceImage) -> list[DetectionResponse]:
-        raise NotImplementedError("Subclasses must implement the make_detections")
+        classifier_batched_inputs: list[list[DetectionResponse]] = []
+        for i in range(0, len(detector_outputs), self.classifier_batch_size):
+            start_id = i
+            end_id = i + self.classifier_batch_size
+            batch = detector_outputs[start_id:end_id]
+            classifier_batched_inputs.append(batch)
+        detections: list[DetectionResponse] = []
+        for detector_responses in classifier_batched_inputs:
+            detections.extend(self.get_classifier_response(detector_responses))
+
+        return detections
+
+    def get_detector_response(self, source_images: list[SourceImage]) -> list[DetectionResponse]:
+        logger.info("Running detector...")
+        detector = self.stages[0]
+        for image in source_images:
+            image.open(raise_exception=True)
+        detector_results: list[DetectionResponse] = detector.run(source_images)
+        return detector_results
+
+    def get_classifier_response(self, input_detections: list[DetectionResponse]) -> list[DetectionResponse]:
+        logger.info("Running classifier...")
+        classifier = self.stages[1]
+        detections: list[DetectionResponse] = classifier.run(input_detections)
+        return detections
 
     config = PipelineConfigResponse(
         name="Base Pipeline",
@@ -41,34 +63,10 @@ class Pipeline:
 
 class CustomPipeline(Pipeline):
     """
-    Define a custom pipeline so that the outputs from each algorithm can be correctly processed to produce detections.
+    Demo: A pipeline that uses a single bbox random detector and a local classifier.
     """
 
-    def make_detections(self, source_image: SourceImage) -> list[DetectionResponse]:
-        logger.info("Making detections...")
-        source_image.open(raise_exception=True)
-
-        assert source_image.width is not None and source_image.height is not None
-
-        # For this pipeline, the 1 bbox is always returned
-        logger.info("Running detector...")
-        bboxes: list[BoundingBox] = self.stages[0].run(source_image)
-
-        logger.info("Running classifier...")
-        classifications: list[ClassificationResponse] = self.stages[1].run(source_image)
-
-        return [
-            DetectionResponse(
-                source_image_id=source_image.id,
-                bbox=bbox,
-                timestamp=datetime.datetime.now(),
-                algorithm=AlgorithmReference(name=self.config.algorithms[0].name, key=self.config.algorithms[0].key),
-                classifications=classifications,
-            )
-            for bbox in bboxes
-        ]
-
-    stages = [LocalDetector(), LocalClassifier()]
+    stages = [RandomLocalDetector(), LocalClassifier()]
     config = PipelineConfigResponse(
         name="Local Pipeline",
         slug="local-pipeline",
@@ -80,38 +78,10 @@ class CustomPipeline(Pipeline):
 
 class ConstantDetectorClassification(Pipeline):
     """
-    Demo
+    Demo: A pipeline that uses a double bbox constant detector and a local classifier.
     """
 
-    def make_detections(self, source_image: SourceImage) -> list[DetectionResponse]:
-        logger.info("Making detections...")
-        source_image.open(raise_exception=True)
-
-        assert source_image.width is not None and source_image.height is not None
-
-        # For this pipeline, the 1 bbox is always returned
-        try:
-            bboxes: list[BoundingBox] = self.stages[0].run(source_image)
-        except Exception as e:
-            logger.error(f"Error running detector: {e}")
-
-        try:
-            classifications: list[ClassificationResponse] = self.stages[1].run(source_image)
-        except Exception as e:
-            logger.error(f"Error running classifier: {e}")
-
-        return [
-            DetectionResponse(
-                source_image_id=source_image.id,
-                bbox=bbox,
-                timestamp=datetime.datetime.now(),
-                algorithm=AlgorithmReference(name=self.config.algorithms[0].name, key=self.config.algorithms[0].key),
-                classifications=classifications,
-            )
-            for bbox in bboxes
-        ]
-
-    stages = [ConstantDetector(), LocalClassifier()]
+    stages = [ConstantLocalDetector(), LocalClassifier()]
     config = PipelineConfigResponse(
         name="Constant Detector Classifier Pipeline",
         slug="constant-detector-classifier-pipeline",
