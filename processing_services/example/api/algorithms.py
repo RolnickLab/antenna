@@ -10,7 +10,7 @@ from .schemas import (
     DetectionResponse,
     SourceImage,
 )
-from .utils import get_image
+from .utils import get_image, get_or_download_file
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -175,6 +175,64 @@ class ConstantLocalDetector(Algorithm):
         key="constant-local-detector",
         task_type="detection",
         description="A local detector that returns 2 constant bounding boxes for each image.",
+        version=1,
+        version_name="v1",
+        category_map=None,
+    )
+
+
+class FlatBugDetector(Algorithm):
+    """
+    Darsa Group flat-bug detector.
+    """
+
+    def compile(self, device="cpu"):
+        from flat_bug.predictor import Predictor
+
+        self.model = Predictor(device=device, dtype="float16")
+
+    def run(self, source_images: list[SourceImage]) -> list[DetectionResponse]:
+        detector_responses: list[DetectionResponse] = []
+        for source_image in source_images:
+            if source_image.width and source_image.height:
+                start_time = datetime.datetime.now()
+                path = str(get_or_download_file(source_image.url))
+                logger.info(f"Predicting {path}")
+                prediction = self.model(path)
+                logger.info(f"Predicted: {prediction.json_data}")
+                logger.info(f"Prediction: {prediction.json_data['boxes']}")
+                end_time = datetime.datetime.now()
+                elapsed_time = (end_time - start_time).total_seconds()
+
+                bboxes = [
+                    BoundingBox(x1=box[0], y1=box[1], x2=box[2], x3=box[3]) for box in prediction.json_data["boxes"]
+                ]
+                for bbox in bboxes:
+                    detector_responses.append(
+                        DetectionResponse(
+                            source_image_id=source_image.id,
+                            bbox=bbox,
+                            inference_time=elapsed_time,
+                            algorithm=AlgorithmReference(
+                                name=self.algorithm_config_response.name,
+                                key=self.algorithm_config_response.key,
+                            ),
+                            timestamp=datetime.datetime.now(),
+                            crop_image_url=source_image.url,
+                            # @TODO: this should be the cropped image URL
+                            # (OR in the classifier, apply cropping)
+                        )
+                    )
+            else:
+                raise ValueError(f"Source image {source_image.id} does not have width and height attributes.")
+
+        return detector_responses
+
+    algorithm_config_response = AlgorithmConfigResponse(
+        name="Flat Bug Detector",
+        key="flat_bug_detector",
+        task_type="detection",
+        description="Flat Bug Detector",
         version=1,
         version_name="v1",
         category_map=None,

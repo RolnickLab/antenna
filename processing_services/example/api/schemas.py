@@ -184,7 +184,9 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["random", "constant", "local-pipeline", "constant-detector-classifier-pipeline"]
+PipelineChoice = typing.Literal[
+    "random", "constant", "local-pipeline", "constant-detector-classifier-pipeline", "flat-bug-detector"
+]
 
 
 class PipelineRequest(pydantic.BaseModel):

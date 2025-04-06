@@ -1,6 +1,6 @@
 import logging
 
-from .algorithms import Algorithm, ConstantLocalDetector, LocalClassifier, RandomLocalDetector
+from .algorithms import Algorithm, ConstantLocalDetector, FlatBugDetector, LocalClassifier, RandomLocalDetector
 from .schemas import DetectionResponse, PipelineConfigResponse, SourceImage
 
 logger = logging.getLogger(__name__)
@@ -89,3 +89,31 @@ class ConstantDetectorClassification(Pipeline):
         version=1,
         algorithms=[stage.algorithm_config_response for stage in stages],
     )
+
+
+class FlatBugDetector(Pipeline):
+    """
+    Demo: A pipeline that uses the Darsa Group's flat bug detector. No classifications.
+    """
+
+    stages = [FlatBugDetector()]
+    config = PipelineConfigResponse(
+        name="Flat Bug Detector",
+        slug="flat-bug-detector",
+        description=("A demo pipeline using a new detector."),
+        version=1,
+        algorithms=[stage.algorithm_config_response for stage in stages],
+    )
+
+    def run(self) -> list[DetectionResponse]:
+        """Only return detections with no classification."""
+        batched_images: list[list[SourceImage]] = []
+        for i in range(0, len(self.source_images), self.detector_batch_size):
+            start_id = i
+            end_id = i + self.detector_batch_size
+            batched_images.append(self.source_images[start_id:end_id])
+        detector_outputs: list[DetectionResponse] = []
+        for images in batched_images:
+            detector_outputs.extend(self.get_detector_response(images))
+
+        return detector_outputs
