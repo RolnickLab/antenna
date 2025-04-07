@@ -66,8 +66,9 @@
   align-items: center;
   justify-content: flex-start;
   width: 100%;
-  border-radius: 4px;
-  padding: 8px 12px;
+  border-radius: 6px;
+  height: 48px;
+  padding: 0 16px;
   @include paragraph-small();
   background-color: $color-generic-white;
   color: $color-neutral-700;

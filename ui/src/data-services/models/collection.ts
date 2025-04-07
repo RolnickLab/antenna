@@ -36,22 +36,12 @@ export class Collection extends Entity {
     })[0]
   }
 
-  get method(): string {
-    return this._data.method
-  }
-
-  get kwargs(): object {
+  get kwargs(): { [key: string]: string | number } {
     return this._data.kwargs || {}
   }
 
-  get methodNameDisplay(): string {
-    return snakeCaseToSentenceCase(this._data.method)
-  }
-
-  get methodDetailsDisplay(): string[] {
-    return Object.entries(this._data.kwargs).map(
-      ([key, value]) => `${snakeCaseToSentenceCase(key)} ${value}`
-    )
+  get method(): string {
+    return this._data.method
   }
 
   get name(): string {
@@ -86,5 +76,31 @@ export class Collection extends Entity {
 
   get numTaxa(): number {
     return this._data.taxa_count
+  }
+
+  get settingsDisplay(): string {
+    if (this.method === 'common_combined') {
+      return snakeCaseToSentenceCase(this.type)
+    }
+
+    return snakeCaseToSentenceCase(this.method)
+  }
+
+  get settingsDetailsDisplay(): string[] {
+    return Object.entries(this._data.kwargs).map(
+      ([key, value]) => `${snakeCaseToSentenceCase(key)}: ${value}`
+    )
+  }
+
+  get type(): string {
+    if (this.kwargs['max_num'] !== undefined) {
+      return 'random_sample'
+    }
+
+    if (this.kwargs['minute_interval'] !== undefined) {
+      return 'interval_sample'
+    }
+
+    return 'full_sample'
   }
 }
