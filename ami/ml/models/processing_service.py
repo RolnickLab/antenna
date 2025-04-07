@@ -9,6 +9,7 @@ from django.db import models
 
 from ami.base.models import BaseModel
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
+from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,18 @@ class ProcessingService(BaseModel):
                 )
                 created = True
 
-            pipeline.projects.add(*self.projects.all())
+            for project in self.projects.all():
+                project_pipeline_config, created = ProjectPipelineConfig.objects.get_or_create(
+                    pipeline=pipeline,
+                    project=project,
+                    defaults={"enabled": True, "config": {}},
+                )
+                if created:
+                    logger.info(f"Created project pipeline config for {project.name} and {pipeline.name}.")
+                    project_pipeline_config.save()
+                else:
+                    logger.info(f"Using existing project pipeline config for {project.name} and {pipeline.name}.")
+
             self.pipelines.add(pipeline)
 
             if created:
@@ -89,7 +101,7 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
-    def get_status(self):
+    def get_status(self, timeout=6):
         """
         Check the status of the processing service.
         This is a simple health check that pings the /readyz endpoint of the service.
@@ -104,7 +116,7 @@ class ProcessingService(BaseModel):
         resp = None
 
         try:
-            resp = requests.get(ready_check_url)
+            resp = requests.get(ready_check_url, timeout=timeout)
             resp.raise_for_status()
             self.last_checked_live = True
             latency = time.time() - start_time
@@ -146,13 +158,13 @@ class ProcessingService(BaseModel):
 
         return response
 
-    def get_pipeline_configs(self):
+    def get_pipeline_configs(self, timeout=6):
         """
         Get the pipeline configurations from the processing service.
         This can be a long response as it includes the full category map for each algorithm.
         """
         info_url = urljoin(self.endpoint_url, "info")
-        resp = requests.get(info_url)
+        resp = requests.get(info_url, timeout=timeout)
         resp.raise_for_status()
         info_data = ProcessingServiceInfoResponse.parse_obj(resp.json())
         return info_data.pipelines

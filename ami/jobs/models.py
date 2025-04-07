@@ -399,8 +399,9 @@ class MLJob(JobType):
         total_detections = 0
         total_classifications = 0
 
-        CHUNK_SIZE = 4  # Keep it low to see more progress updates
-        chunks = [images[i : i + CHUNK_SIZE] for i in range(0, image_count, CHUNK_SIZE)]  # noqa
+        config = job.pipeline.get_config(project_id=job.project.pk)
+        chunk_size = config.get("request_source_image_batch_size", 1)
+        chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
         request_failed_images = []
 
         for i, chunk in enumerate(chunks):
@@ -432,9 +433,9 @@ class MLJob(JobType):
                 "process",
                 status=JobState.STARTED,
                 progress=(i + 1) / len(chunks),
-                processed=min((i + 1) * CHUNK_SIZE, image_count),
+                processed=min((i + 1) * chunk_size, image_count),
                 failed=len(request_failed_images),
-                remaining=max(image_count - ((i + 1) * CHUNK_SIZE), 0),
+                remaining=max(image_count - ((i + 1) * chunk_size), 0),
             )
 
             # count the completed, successful, and failed save_tasks:
