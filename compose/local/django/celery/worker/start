@@ -3,5 +3,10 @@
 set -o errexit
 set -o nounset
 
-
-exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker -l INFO'
+if [ "$#" -gt 0 ] && [ "$1" = "--" ]; then
+    shift
+    exec watchfiles --filter python celery.__main__.main --args "-A config.celery_app worker -l INFO $*"
+else
+    # In development, process all queues by default
+    exec watchfiles --filter python celery.__main__.main --args "-A config.celery_app worker -l INFO -Q celery,job_ml_*"
+fi

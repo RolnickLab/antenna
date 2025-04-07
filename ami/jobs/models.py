@@ -14,7 +14,6 @@ from django_pydantic_field import SchemaField
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.utils.schemas import OrderedEnum
@@ -664,6 +663,15 @@ class Job(BaseModel):
         "Job Type", max_length=255, default=UnknownJobType.key, choices=[(t.key, t.name) for t in VALID_JOB_TYPES]
     )
 
+    # Task coordination fields
+    task_queue_name = models.CharField(
+        max_length=255, null=True, blank=True, help_text="Unique queue name for this job's tasks"
+    )
+    total_tasks = models.IntegerField(default=0, help_text="Total number of tasks for this job")
+    completed_tasks = models.IntegerField(default=0, help_text="Number of completed tasks for this job")
+    pending_tasks = models.IntegerField(default=0, help_text="Number of pending tasks for this job")
+    failed_tasks = models.IntegerField(default=0, help_text="Number of failed tasks for this job")
+
     project = models.ForeignKey(
         Project,
         on_delete=models.CASCADE,
@@ -712,6 +720,49 @@ class Job(BaseModel):
                 msg += f"Inferred job type as '{inferred_job_type.name}'"
             raise ValueError(msg)
 
+    def get_task_queue_name(self) -> str:
+        return "celery"
+        """Get or create a unique queue name for this job's tasks"""
+        if not self.task_queue_name:
+            # Create a unique ID with uuid4 instead of using uuid() function
+            unique_id = uuid()[:8]
+            self.task_queue_name = f"job_{self.job_type_key}_{self.pk}_{unique_id}"
+            self.save(update_fields=["task_queue_name"])
+        return self.task_queue_name
+
+    def update_task_counters(self, completed=0, failed=0, pending=0, save=True):
+        """Update task counters atomically to prevent race conditions between workers"""
+        with transaction.atomic():
+            # Refresh from DB to avoid race conditions
+            job = Job.objects.select_for_update().get(pk=self.pk)
+            job.completed_tasks += completed
+            job.failed_tasks += failed
+            job.pending_tasks += pending
+
+            # Check if all tasks are done
+            if job.completed_tasks + job.failed_tasks >= job.total_tasks and job.total_tasks > 0:
+                # Determine final job status
+                if job.failed_tasks > 0:
+                    # Use a threshold to determine overall success/failure
+                    failure_ratio = job.failed_tasks / job.total_tasks
+                    if failure_ratio > 0.5:  # More than 50% failed
+                        job.status = JobState.FAILURE
+                    else:
+                        job.status = JobState.SUCCESS
+                else:
+                    job.status = JobState.SUCCESS
+
+                job.finished_at = datetime.datetime.now()
+
+            if save:
+                job.save()
+
+            # Update instance attributes
+            self.completed_tasks = job.completed_tasks
+            self.failed_tasks = job.failed_tasks
+            self.pending_tasks = job.pending_tasks
+            self.status = job.status
+
     def enqueue(self):
         """
         Add the job to the queue so that it will run in the background.
@@ -719,15 +770,28 @@ class Job(BaseModel):
         assert self.pk is not None, "Job must be saved before it can be enqueued"
         task_id = uuid()
 
+        # Update task-related fields
+        self.total_tasks = 0
+        self.completed_tasks = 0
+        self.pending_tasks = 0
+        self.failed_tasks = 0
+
+        # Create a task queue name if we don't have one yet
+        self.get_task_queue_name()
+
+        # Import the task here to avoid circular imports
+        from ami.jobs.tasks import initialize_job
+
         def send_task():
-            run_job.apply_async(kwargs={"job_id": self.pk}, task_id=task_id)
+            # Use the initialize_job task instead of run_job
+            initialize_job.apply_async(kwargs={"job_id": self.pk}, task_id=task_id)
 
         transaction.on_commit(send_task)
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = AsyncResult(task_id).status
+        self.status = JobState.PENDING
         self.update_progress(save=False)
         self.save()
 
@@ -787,10 +851,12 @@ class Job(BaseModel):
         """
         Terminate the celery task.
         """
+        from celery.result import AsyncResult
+
         self.status = JobState.CANCELING
         self.save()
         if self.task_id:
-            task = run_job.AsyncResult(self.task_id)
+            task = AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
                 self.save()
@@ -804,7 +870,9 @@ class Job(BaseModel):
         Or if a status is provided, update the status of the job to that value.
         """
         if not status and self.task_id:
-            task = run_job.AsyncResult(self.task_id)
+            from celery.result import AsyncResult
+
+            task = AsyncResult(self.task_id)
             status = task.status
 
         if not status:

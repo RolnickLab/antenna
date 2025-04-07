@@ -18,3 +18,4 @@ venv
 .envs/*
 node_modules
 data
+.ipython

@@ -83,12 +83,17 @@ services:
     image: redis:6
     container_name: ami_local_redis
 
-  celeryworker:
+  celeryworker: &celeryworker
     <<: *django
     image: ami_local_celeryworker
     scale: 1
     ports: []
     command: /start-celeryworker
+    restart: on-failure
+
+  celeryworkerml:
+    <<: *celeryworker
+    command: /start-celeryworker -- -Q job_ml_*
 
   celerybeat:
     <<: *django
