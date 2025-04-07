@@ -7,7 +7,7 @@ import time
 
 import fastapi
 
-from .pipelines import ConstantDetectorClassification, CustomPipeline, FlatBugDetector, Pipeline
+from .pipelines import ConstantDetectorClassification, CustomPipeline, FlatBugDetectorPipeline, Pipeline
 from .schemas import (
     AlgorithmConfigResponse,
     PipelineRequest,
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [CustomPipeline, ConstantDetectorClassification, FlatBugDetector]
+pipelines: list[type[Pipeline]] = [CustomPipeline, ConstantDetectorClassification, FlatBugDetectorPipeline]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms

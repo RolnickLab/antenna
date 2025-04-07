@@ -91,7 +91,7 @@ class ConstantDetectorClassification(Pipeline):
     )
 
 
-class FlatBugDetector(Pipeline):
+class FlatBugDetectorPipeline(Pipeline):
     """
     Demo: A pipeline that uses the Darsa Group's flat bug detector. No classifications.
     """
