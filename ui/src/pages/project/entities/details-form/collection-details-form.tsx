@@ -8,10 +8,10 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { Collection } from 'data-services/models/collection'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
 import { DatePicker } from 'design-system/components/select/date-picker'
-import { CheckIcon, Loader2Icon } from 'lucide-react'
-import { Button, Select } from 'nova-ui-kit'
+import { Select } from 'nova-ui-kit'
 import { SAMPLING_TYPES } from 'pages/project/collections/constants'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -282,16 +282,7 @@ export const CollectionDetailsForm = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button type="submit">
-          <span>
-            {isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          </span>
-          {isSuccess ? (
-            <CheckIcon className="w-4 h-4 ml-2" />
-          ) : isLoading ? (
-            <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
-          ) : null}
-        </Button>
+        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
       </FormActions>
     </form>
   )
