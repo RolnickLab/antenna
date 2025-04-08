@@ -5,7 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -59,6 +59,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    TaxaList,
     Taxon,
     User,
     update_detection_counts,
@@ -89,6 +90,7 @@ from .serializers import (
     SourceImageUploadSerializer,
     StorageSourceSerializer,
     StorageStatusSerializer,
+    TaxaListSerializer,
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
@@ -967,6 +969,38 @@ class OccurrenceDateFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
+    """
+    Filters occurrences based on a TaxaList.
+
+    Queries for all occurrences where the determination taxon is either:
+    - Directly in the requested TaxaList.
+    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
+
+    """
+
+    query_param = "taxa_list_id"
+
+    def filter_queryset(self, request, queryset, view):
+        taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        if taxalist_id:
+            taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
+            if taxa_list:
+                taxa = taxa_list.taxa.all()  # Get taxalist taxon objects
+
+                # filter by the exact determination
+                query_filter = Q(determination__in=taxa)
+
+                # filter by the taxon's children
+                for taxon in taxa:
+                    query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
+
+                queryset = queryset.filter(query_filter)
+                return queryset
+
+        return queryset
+
+
 class TaxonCollectionFilter(filters.BaseFilterBackend):
     """
     Filter taxa by the collection their occurrences belong to.
@@ -999,6 +1033,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceDateFilter,
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
+        OccurrenceTaxaListFilter,
     ]
     filterset_fields = [
         "event",
@@ -1030,9 +1065,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
-    def get_queryset(self) -> QuerySet:
+    def get_queryset(self) -> QuerySet["Occurrence"]:
         project = self.get_active_project()
-        qs = super().get_queryset()
+        qs = super().get_queryset().valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
         qs = qs.select_related(
@@ -1046,10 +1081,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         if self.action == "list":
             qs = (
                 qs.all()
-                .exclude(detections=None)
-                .exclude(event=None)
                 .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .exclude(first_appearance_timestamp=None)  # This must come after annotations
                 .order_by("-determination_score")
             )
 
@@ -1067,6 +1099,33 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+class TaxonTaxaListFilter(filters.BaseFilterBackend):
+    """
+    Filters taxa based on a TaxaList Similar to `OccurrenceTaxaListFilter`.
+
+    Queries for all taxa that are either:
+    - Directly in the requested TaxaList.
+    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
+    """
+
+    query_param = "taxa_list_id"
+
+    def filter_queryset(self, request, queryset, view):
+        taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        if taxalist_id:
+            taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
+            if taxa_list:
+                taxa = taxa_list.taxa.all()  # Get taxa in the TaxaList
+                query_filter = Q(id__in=taxa)
+                for taxon in taxa:
+                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
+                queryset = queryset.filter(query_filter)
+                return queryset
+
+        return queryset
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1074,7 +1133,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + [CustomTaxonFilter, TaxonCollectionFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [
+        CustomTaxonFilter,
+        TaxonCollectionFilter,
+        TaxonTaxaListFilter,
+    ]
     filterset_fields = [
         "name",
         "rank",
@@ -1286,6 +1349,19 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
+    queryset = TaxaList.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        project = self.get_active_project()
+        if project:
+            return qs.filter(projects=project)
+        return qs
+
+    serializer_class = TaxaListSerializer
+
+
 class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint for viewing and adding classification results from a model.
@@ -1343,11 +1419,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    project=project,
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False,
-                ).count(),
+                "occurrences_count": Occurrence.objects.valid().filter(project=project).count(),  # type: ignore
                 "taxa_count": Occurrence.objects.all().unique_taxa(project=project).count(),  # type: ignore
             }
         else:
@@ -1357,10 +1429,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.count(),
                 # "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False
-                ).count(),
+                "occurrences_count": Occurrence.objects.valid().count(),  # type: ignore
                 "taxa_count": Occurrence.objects.all().unique_taxa().count(),  # type: ignore
                 "last_updated": timezone.now(),
             }

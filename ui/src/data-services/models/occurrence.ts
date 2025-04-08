@@ -123,11 +123,19 @@ export class Occurrence {
     return this._occurrence.detections_count
   }
 
-  get sessionId(): string {
+  get sessionId(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return `${this._occurrence.event.id}`
   }
 
-  get sessionLabel(): string {
+  get sessionLabel(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return this._occurrence.event.name
   }
 

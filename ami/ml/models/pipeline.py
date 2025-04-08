@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import ProcessingService  # , ProjectPipelineConfig
+    from ami.ml.models import ProcessingService, ProjectPipelineConfig
+    from ami.jobs.models import Job
 
 import collections
 import dataclasses
@@ -40,6 +41,7 @@ from ami.ml.schemas import (
     ClassificationResponse,
     DetectionResponse,
     PipelineRequest,
+    PipelineRequestConfigParameters,
     PipelineResultsResponse,
     SourceImageRequest,
     SourceImageResponse,
@@ -98,7 +100,7 @@ def filter_processed_images(
                 )
                 # log all algorithms that are in the pipeline but not in the detection
                 missing_algos = pipeline_algorithm_ids - detection_algorithm_ids
-                task_logger.info(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
+                task_logger.debug(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
                 yield image
             else:
                 # If all detections have been classified by the pipeline, skip the image
@@ -162,9 +164,6 @@ def process_images(
 ) -> PipelineResultsResponse:
     """
     Process images using ML pipeline API.
-
-    @TODO find a home for this function.
-    @TODO break into task chunks.
     """
     job = None
     task_logger = logger
@@ -201,29 +200,11 @@ def process_images(
         if url
     ]
 
-    if project_id:
-        try:
-            config = pipeline.project_pipeline_configs.get(project_id=project_id).config
-            task_logger.info(
-                f"Sending pipeline request using {config} from the project-pipeline config "
-                f"for Pipeline {pipeline} and Project id {project_id}."
-            )
-        except pipeline.project_pipeline_configs.model.DoesNotExist as e:
-            task_logger.error(
-                f"Error getting the project-pipeline config for Pipeline {pipeline} "
-                f"and Project id {project_id}: {e}"
-            )
-            config = {}
-            task_logger.info(
-                "Using empty config when sending pipeline request since no project-pipeline config "
-                f"was found for Pipeline {pipeline} and Project id {project_id}"
-            )
-    else:
-        config = {}
-        task_logger.info(
-            "Using empty config when sending pipeline request "
-            f"since no project id was provided for Pipeline {pipeline}"
-        )
+    if not project_id:
+        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
+
+    config = pipeline.get_config(project_id=project_id)
+    task_logger.info(f"Using pipeline config: {config}")
 
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
@@ -914,7 +895,7 @@ class Pipeline(BaseModel):
     description = models.TextField(blank=True)
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
-    # @TODO the algorithms list be retrieved by querying the pipeline endpoint
+    # @TODO the algorithms attribute is not currently used. Review for removal.
     algorithms = models.ManyToManyField("ml.Algorithm", related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(
         default=default_stages,
@@ -926,8 +907,18 @@ class Pipeline(BaseModel):
     projects = models.ManyToManyField(
         "main.Project", related_name="pipelines", blank=True, through="ml.ProjectPipelineConfig"
     )
+    default_config: PipelineRequestConfigParameters = SchemaField(
+        schema=PipelineRequestConfigParameters,
+        default=dict,
+        help_text=(
+            "The default configuration for the pipeline. "
+            "Used by both the job sending images to the pipeline "
+            "and the processing service."
+        ),
+    )
     processing_services: models.QuerySet[ProcessingService]
-    # project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
+    project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
+    jobs: models.QuerySet[Job]
 
     class Meta:
         ordering = ["name", "version"]
@@ -938,6 +929,26 @@ class Pipeline(BaseModel):
 
     def __str__(self):
         return f'#{self.pk} "{self.name}" ({self.slug}) v{self.version}'
+
+    def get_config(self, project_id: int | None = None) -> PipelineRequestConfigParameters:
+        """
+        Get the configuration for the pipeline request.
+
+        This will be the same as pipeline.default_config, but if a project ID is provided,
+        the project's pipeline config will be used to override the default config.
+        """
+        config = self.default_config
+        if project_id:
+            try:
+                project_pipeline_config = self.project_pipeline_configs.get(project_id=project_id)
+                if project_pipeline_config.config:
+                    config.update(project_pipeline_config.config)
+                logger.debug(
+                    f"Using ProjectPipelineConfig for Pipeline {self} and Project #{project_id}:" f"config: {config}"
+                )
+            except self.project_pipeline_configs.model.DoesNotExist as e:
+                logger.warning(f"No project-pipeline config for Pipeline {self} " f"and Project #{project_id}: {e}")
+        return config
 
     def collect_images(
         self,

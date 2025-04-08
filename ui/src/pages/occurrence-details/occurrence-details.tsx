@@ -69,20 +69,22 @@ export const OccurrenceDetails = ({
             )
             .map((item) => ({
               ...item,
-              to: pathname.includes(
-                APP_ROUTES.SESSIONS({ projectId: projectId as string })
-              )
-                ? undefined
-                : getAppRoute({
-                    to: APP_ROUTES.SESSION_DETAILS({
-                      projectId: projectId as string,
-                      sessionId: occurrence.sessionId,
+              to:
+                !occurrence.sessionId ||
+                pathname.includes(
+                  APP_ROUTES.SESSIONS({ projectId: projectId as string })
+                )
+                  ? undefined
+                  : getAppRoute({
+                      to: APP_ROUTES.SESSION_DETAILS({
+                        projectId: projectId as string,
+                        sessionId: occurrence.sessionId,
+                      }),
+                      filters: {
+                        occurrence: occurrence.id,
+                        capture: item.captureId,
+                      },
                     }),
-                    filters: {
-                      occurrence: occurrence.id,
-                      capture: item.captureId,
-                    },
-                  }),
             }))
         : [],
     [occurrence]
@@ -97,17 +99,19 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_SESSION),
       value: occurrence.sessionLabel,
-      to: pathname.includes(
-        APP_ROUTES.SESSIONS({ projectId: projectId as string })
-      )
-        ? undefined
-        : getAppRoute({
-            to: APP_ROUTES.SESSION_DETAILS({
-              projectId: projectId as string,
-              sessionId: occurrence.sessionId,
+      to:
+        !occurrence.sessionId ||
+        pathname.includes(
+          APP_ROUTES.SESSIONS({ projectId: projectId as string })
+        )
+          ? undefined
+          : getAppRoute({
+              to: APP_ROUTES.SESSION_DETAILS({
+                projectId: projectId as string,
+                sessionId: occurrence.sessionId,
+              }),
+              filters: { occurrence: occurrence.id },
             }),
-            filters: { occurrence: occurrence.id },
-          }),
     },
     {
       label: translate(STRING.FIELD_LABEL_DATE),
