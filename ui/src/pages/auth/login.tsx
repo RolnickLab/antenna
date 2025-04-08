@@ -70,7 +70,7 @@ export const Login = () => {
           config={config}
           control={control}
         />
-        <Button type="submit">
+        <Button variant="success" type="submit">
           <span>{translate(STRING.LOGIN)}</span>
           {isLoading ? (
             <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
