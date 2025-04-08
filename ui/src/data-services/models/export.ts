@@ -5,7 +5,7 @@ import { JobDetails } from './job-details'
 
 export const SERVER_EXPORT_TYPES = [
   'occurrences_simple_csv',
-  'occurrences_simple_json',
+  'occurrences_api_json',
 ] as const
 
 export type ServerExportType = (typeof SERVER_EXPORT_TYPES)[number]
@@ -26,7 +26,7 @@ export class Export extends Entity {
   static getExportTypeInfo(key: ServerExportType) {
     const label = {
       occurrences_simple_csv: 'Occurrences (simple CSV)',
-      occurrences_simple_json: 'Occurrences (simple JSON)',
+      occurrences_api_json: 'Occurrences (API JSON)',
     }[key]
 
     return {
