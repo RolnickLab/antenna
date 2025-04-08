@@ -55,20 +55,60 @@ const config: FormConfig = {
   },
   'kwargs.hour_start': {
     label: 'Earliest hour',
+    description: 'Enter a number between 0 and 24.',
+    rules: {
+      min: 0,
+      max: 24,
+      validate: (value) => {
+        if (value) {
+          if (!Number.isInteger(Number(value))) {
+            return translate(STRING.MESSAGE_VALUE_INVALID)
+          }
+        }
+      },
+    },
   },
   'kwargs.hour_end': {
     label: 'Latest hour',
+    description: 'Enter a number between 0 and 24.',
+    rules: {
+      min: 0,
+      max: 24,
+      validate: (value) => {
+        if (value) {
+          if (!Number.isInteger(Number(value))) {
+            return translate(STRING.MESSAGE_VALUE_INVALID)
+          }
+        }
+      },
+    },
   },
   'kwargs.max_num': {
     label: 'Max number of images',
     rules: {
+      min: 0,
       required: true,
+      validate: (value) => {
+        if (value) {
+          if (!Number.isInteger(Number(value))) {
+            return translate(STRING.MESSAGE_VALUE_INVALID)
+          }
+        }
+      },
     },
   },
   'kwargs.minute_interval': {
     label: 'Minutes between captures',
     rules: {
+      min: 0,
       required: true,
+      validate: (value) => {
+        if (value) {
+          if (!Number.isInteger(Number(value))) {
+            return translate(STRING.MESSAGE_VALUE_INVALID)
+          }
+        }
+      },
     },
   },
 }
