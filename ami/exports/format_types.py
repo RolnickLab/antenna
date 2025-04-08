@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def get_export_serializer():
-    from ami.main.api.serializers import OccurrenceSerializer  # noqa: F401
+    from ami.main.api.serializers import OccurrenceSerializer
 
     class OccurrenceExportSerializer(OccurrenceSerializer):
         detection_images = serializers.SerializerMethodField()
 
-        def get_detection_images(self, obj):
+        def get_detection_images(self, obj: Occurrence):
             """Convert the generator field to a list before serialization"""
             if hasattr(obj, "detection_images") and callable(obj.detection_images):
                 return list(obj.detection_images())  # Convert generator to list
@@ -50,7 +50,7 @@ class JSONExporter(BaseExporter):
                 "deployment",
                 "event",
             )
-            .with_timestamps()
+            .with_timestamps()  # type: ignore[union-attr]  Custom queryset method
             .with_detections_count()
             .with_identifications()
         )
@@ -133,7 +133,7 @@ class CSVExporter(BaseExporter):
                 "deployment",
                 "event",
             )
-            .with_timestamps()
+            .with_timestamps()  # type: ignore[union-attr]  Custom queryset method
             .with_detections_count()
             .with_identifications()
         )
