@@ -307,7 +307,7 @@ def create_occurrences_from_frame_data(
             identifier = make_identifier(frame.series_id, bbox.identifier)
             detections_by_identifier.setdefault(identifier, []).append((source_image, bbox.bbox))
 
-    algorithm = Algorithm.objects.get(key="random-classifier")
+    algorithm = Algorithm.objects.get(key="random-species-classifier")
 
     for identifier, detections in detections_by_identifier.items():
         assert source_image.deployment
