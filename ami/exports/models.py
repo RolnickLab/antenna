@@ -41,8 +41,8 @@ class DataExport(BaseModel):
         from django.apps import apps
 
         related_models = {
-            "collection": "main.SourceImageCollection",
-            "taxa_list": "main.TaxaList",
+            "collection_id": "main.SourceImageCollection",
+            "taxa_list_id": "main.TaxaList",
         }
         filters = self.filters or {}
         filters_display = {}
@@ -54,6 +54,7 @@ class DataExport(BaseModel):
                     Model = apps.get_model(model_path)
                     instance = Model.objects.get(pk=value)
                     name = getattr(instance, "name", str(instance))
+                    key = key.replace("_id", "")  # Could potentially use the field name of the relationship instead
                     filters_display[key] = {"id": value, "name": name}
                 except Model.DoesNotExist:
                     filters_display[key] = {"id": value, "name": f"{model_path} with id {value} not found"}
