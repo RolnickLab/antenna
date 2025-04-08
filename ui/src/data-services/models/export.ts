@@ -43,7 +43,7 @@ export class Export extends Entity {
     return this._data.file_size_display
   }
   get filtersLabels(): string[] {
-    const filtersObj = this._data.filters_display || this._data.filters || {}
+    const filtersObj = this._data.filters || {}
     return Object.entries(filtersObj).map(([key, _value]) => {
       const value = _value as string
 
