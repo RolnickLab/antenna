@@ -57,7 +57,7 @@ export const ExportDetailsForm = ({
           customFields: {
             format: values.type,
             filters: {
-              collection: values.sourceImages,
+              collection_id: values.sourceImages,
             },
           },
         })
