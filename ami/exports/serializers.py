@@ -2,6 +2,7 @@ from django.template.defaultfilters import filesizeformat
 from rest_framework import serializers
 
 from ami.base.serializers import DefaultSerializer
+from ami.exports.registry import ExportRegistry
 from ami.jobs.models import Job
 from ami.jobs.serializers import JobListSerializer
 from ami.main.api.serializers import UserNestedSerializer
@@ -54,6 +55,12 @@ class DataExportSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def validate_format(self, value):
+        supported_formats = ExportRegistry.get_supported_formats()
+        if value not in supported_formats:
+            raise serializers.ValidationError(f"Invalid format. Supported formats are: {supported_formats}")
+        return value
 
     def get_file_url(self, obj):
         return obj.get_absolute_url(request=self.context.get("request"))

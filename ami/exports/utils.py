@@ -72,7 +72,7 @@ def apply_filters(queryset, filters, filter_backends):
     return queryset
 
 
-def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.Serializer], batch_size=1000):
+def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.Serializer], batch_size=100):
     """
     Yield batches of serialized data from a queryset efficiently.
     """
