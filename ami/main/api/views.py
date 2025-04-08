@@ -265,6 +265,11 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         return Response({"detail": f"User {user.name} removed from project."}, status=status.HTTP_204_NO_CONTENT)
 
 
+class ProjectMemberViewSet(DefaultViewSet):
+    def list(self, request, project_pk=None):
+        return Response({"message": f"Listing members for project {project_pk} (dummy response)."})
+
+
 class DeploymentViewSet(DefaultViewSet, ProjectMixin):
     """
     A model viewset that uses different serializers
