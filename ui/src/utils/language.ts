@@ -1,8 +1,6 @@
 export enum STRING {
   /* BUTTON */
   REGISTER_PIPELINES,
-  AGREE,
-  AGREED,
   BACK,
   CANCEL,
   CHANGE_IMAGE,
@@ -10,6 +8,8 @@ export enum STRING {
   CLEAR,
   CLEAR_FILTERS,
   COLLAPSE,
+  CONFIRM,
+  CONFIRMED,
   CURRENT_LOCATION,
   DELETE,
   DELETED,
@@ -258,8 +258,6 @@ export enum STRING {
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
   [STRING.REGISTER_PIPELINES]: 'Register pipelines',
-  [STRING.AGREE]: 'Agree',
-  [STRING.AGREED]: 'Agreed',
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
   [STRING.CHANGE_IMAGE]: 'Change image',
@@ -267,6 +265,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CLEAR]: 'Clear',
   [STRING.CLEAR_FILTERS]: 'Clear filters',
   [STRING.COLLAPSE]: 'Collapse',
+  [STRING.CONFIRM]: 'Confirm',
+  [STRING.CONFIRMED]: 'Confirmed',
   [STRING.CURRENT_LOCATION]: 'Use current location',
   [STRING.DELETE]: 'Delete',
   [STRING.DELETED]: 'Deleted',
