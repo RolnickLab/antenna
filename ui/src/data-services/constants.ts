@@ -7,6 +7,7 @@ export const API_ROUTES = {
   COLLECTIONS: 'captures/collections',
   DEPLOYMENTS: 'deployments',
   DEVICES: 'deployments/devices',
+  EXPORTS: 'exports',
   IDENTIFICATIONS: 'identifications',
   JOBS: 'jobs',
   LOGIN: 'auth/token/login',

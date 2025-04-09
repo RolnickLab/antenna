@@ -125,7 +125,9 @@ class Project(BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+
     # Backreferences for type hinting
+    captures: models.QuerySet["SourceImage"]
     deployments: models.QuerySet["Deployment"]
     events: models.QuerySet["Event"]
     occurrences: models.QuerySet["Occurrence"]
@@ -138,6 +140,7 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+
     objects = ProjectManager()
 
     def get_project(self):
