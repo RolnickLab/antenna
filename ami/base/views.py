@@ -1,5 +1,6 @@
 import logging
 
+import rest_framework.request
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 
@@ -15,8 +16,10 @@ class ProjectMixin:
     """
 
     require_project = False  # Project is optional
+    request: rest_framework.request.Request
+    kwargs: dict
 
-    def get_active_project(self):
+    def get_active_project(self) -> Project:
         from ami.base.serializers import SingleParamSerializer
 
         project_id = None
