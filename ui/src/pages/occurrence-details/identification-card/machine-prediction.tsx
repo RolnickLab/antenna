@@ -195,7 +195,7 @@ const FetchDetails = ({
       <div className="flex justify-center py-6 px-4 border-border border-t text-center">
         <ErrorState
           compact
-          error={{ message: 'Could not load classification details' }}
+          error={{ message: 'Could not load top predictions' }}
         />
       </div>
     )
@@ -204,7 +204,7 @@ const FetchDetails = ({
   if (empty) {
     return (
       <div className="py-6 px-4 border-border border-t text-center text-muted-foreground">
-        <span className="body-small">No classification details to show</span>
+        <span className="body-small">No more predictions to show</span>
       </div>
     )
   }
