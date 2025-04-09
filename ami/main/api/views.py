@@ -466,6 +466,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "deployment__project",
         "collections",
         "project",
+        "project_id",
     ]
     ordering_fields = [
         "created_at",
