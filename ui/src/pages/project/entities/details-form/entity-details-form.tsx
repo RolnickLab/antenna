@@ -5,8 +5,7 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -64,13 +63,7 @@ export const EntityDetailsForm = ({
         />
       </FormSection>
       <FormActions>
-        <Button
-          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          icon={isSuccess ? IconType.RadixCheck : undefined}
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
       </FormActions>
     </form>
   )

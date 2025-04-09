@@ -8,8 +8,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { Project } from 'data-services/models/project'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { ImageUpload } from 'design-system/components/image-upload/image-upload'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
@@ -132,13 +131,7 @@ export const ProjectDetailsForm = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button
-          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          icon={isSuccess ? IconType.RadixCheck : undefined}
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
       </FormActions>
     </form>
   )
