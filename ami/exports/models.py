@@ -41,8 +41,8 @@ class DataExport(BaseModel):
         from django.apps import apps
 
         related_models = {
-            "collection": "main.SourceImageCollection",
-            "taxa_list": "main.TaxaList",
+            "collection_id": "main.SourceImageCollection",
+            "taxa_list_id": "main.TaxaList",
         }
         filters = self.filters or {}
         filters_display = {}
@@ -53,7 +53,9 @@ class DataExport(BaseModel):
                 try:
                     Model = apps.get_model(model_path)
                     instance = Model.objects.get(pk=value)
-                    filters_display[key] = {"id": value, "name": str(instance)}
+                    name = getattr(instance, "name", str(instance))
+                    key = key.replace("_id", "")  # Could potentially use the field name of the relationship instead
+                    filters_display[key] = {"id": value, "name": name}
                 except Model.DoesNotExist:
                     filters_display[key] = {"id": value, "name": f"{model_path} with id {value} not found"}
                 except Exception as e:
@@ -67,7 +69,9 @@ class DataExport(BaseModel):
         """Generates a slugified filename using project name and export ID."""
         from ami.exports.registry import ExportRegistry
 
-        extension = ExportRegistry.get_exporter(self.format).file_format
+        registry = ExportRegistry.get_exporter(self.format)
+        assert registry, f"Export format '{self.format}' not found in registry"
+        extension = registry.file_format
         project_slug = slugify(self.project.name)  # Convert project name to a slug
         return f"{project_slug}_export-{self.pk}.{extension}"
 
