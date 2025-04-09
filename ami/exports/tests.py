@@ -7,25 +7,33 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
-from ami.main.models import Deployment, Occurrence, Project, SourceImageCollection
-from ami.tests.fixtures.main import create_captures
-from ami.users.models import User
+from ami.main.models import Occurrence, SourceImageCollection
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_occurrences,
+    create_taxa,
+    group_images_into_events,
+    setup_test_project,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class DataExportTest(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(email="testuser@insectai.org", is_superuser=True, is_staff=True)
-        self.project = Project.objects.create(name="Test Project")
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.user = self.project.owner
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        # Create test deployment
-        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
-        # Create captures for the deployment
-        create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
+        # Create captures & occurrences to test exporting
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=4, interval_minutes=1)
+        group_images_into_events(self.deployment)
+        create_taxa(self.project)
+        create_occurrences(num=10, deployment=self.deployment)
         # Create a collection using the provided method
         self.collection = self._create_collection()
         # Define export formats
-        self.export_formats = ["occurrences_simple_csv", "occurrences_simple_json"]
+        self.export_formats = ["occurrences_simple_csv", "occurrences_api_json"]
 
     def _create_export_with_file(self, format_type):
         filename = f"exports/test_export_file_{format_type}.json"
@@ -76,7 +84,7 @@ class DataExportTest(TestCase):
             user=self.user,
             project=self.project,
             format=format_type,
-            filters={"collection": self.collection.pk},
+            filters={"collection_id": self.collection.pk},
             job=None,
         )
 
