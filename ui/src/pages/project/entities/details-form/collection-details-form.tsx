@@ -11,7 +11,8 @@ import { Collection } from 'data-services/models/collection'
 import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
 import { DatePicker } from 'design-system/components/select/date-picker'
-import { Select } from 'nova-ui-kit'
+import { XIcon } from 'lucide-react'
+import { Button, Select } from 'nova-ui-kit'
 import { SAMPLING_TYPES } from 'pages/project/collections/constants'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -195,10 +196,22 @@ export const CollectionDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <DatePicker
-                  value={field.value}
-                  onValueChange={field.onChange}
-                />
+                <div className="flex items-center justify-between gap-2">
+                  <DatePicker
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  />
+                  {field.value && (
+                    <Button
+                      size="icon"
+                      className="shrink-0 text-muted-foreground"
+                      variant="ghost"
+                      onClick={() => field.onChange()}
+                    >
+                      <XIcon className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
               </InputContent>
             )}
           />
@@ -212,10 +225,22 @@ export const CollectionDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <DatePicker
-                  value={field.value}
-                  onValueChange={field.onChange}
-                />
+                <div className="flex items-center justify-between gap-2">
+                  <DatePicker
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  />
+                  {field.value && (
+                    <Button
+                      size="icon"
+                      className="shrink-0 text-muted-foreground"
+                      variant="ghost"
+                      onClick={() => field.onChange()}
+                    >
+                      <XIcon className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
               </InputContent>
             )}
           />
