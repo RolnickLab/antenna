@@ -126,10 +126,8 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         # Create instance but do not save
-        instance = serializer.Meta.model(**serializer.validated_data)
-        logger.info(f"Creating {instance.__class__.__name__} with data: {serializer.validated_data}")
+        instance = serializer.Meta.model(**serializer.validated_data)  # type: ignore
         self.check_object_permissions(request, instance)
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -660,7 +658,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
-        queryset = query_set.with_occurrences_count(
+        queryset = query_set.with_occurrences_count(  # type: ignore
             classification_threshold=classification_threshold
         ).with_taxa_count(  # type: ignore
             classification_threshold=classification_threshold
@@ -813,9 +811,9 @@ class CustomTaxonFilter(filters.BaseFilterBackend):
 
     query_params = ["taxon"]
 
-    def get_filter_taxon(self, request: Request) -> Taxon | None:
+    def get_filter_taxon(self, request: Request, query_params: list[str] | None = None) -> Taxon | None:
         taxon_id = None
-        for param in self.query_params:
+        for param in query_params or self.query_params:
             taxon_id = request.query_params.get(param)
             if taxon_id:
                 break
@@ -850,7 +848,7 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
     query_params = ["determination", "taxon"]
 
     def filter_queryset(self, request, queryset, view):
-        taxon = self.get_filter_taxon(request)
+        taxon = self.get_filter_taxon(request, query_params=self.query_params)
         if taxon:
             # Here the queryset is the Occurrence queryset
             return queryset.filter(
@@ -865,10 +863,14 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     Filter occurrences by the collection their detections source images belong to.
     """
 
-    query_param = "collection"
+    query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
 
     def filter_queryset(self, request, queryset, view):
-        collection_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        collection_id = None
+        for param in self.query_params:
+            collection_id = IntegerField(required=False).clean(request.query_params.get(param))
+            if collection_id:
+                break
         if collection_id:
             # Here the queryset is the Occurrence queryset
             return queryset.filter(detections__source_image__collections=collection_id)
@@ -1535,7 +1537,7 @@ class IdentificationViewSet(DefaultViewSet):
         Set the user to the current user.
         """
         # Get an instance for the model without saving
-        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)
+        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)  # type: ignore
 
         # Check permissions before saving
         self.check_object_permissions(self.request, obj)

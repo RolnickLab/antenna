@@ -1,8 +1,9 @@
+import classNames from 'classnames'
 import { usePopulateCollection } from 'data-services/hooks/collections/usePopulateCollection'
 import { Collection } from 'data-services/models/collection'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { AlertCircleIcon, Loader2 } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const PopulateCollection = ({
@@ -19,13 +20,16 @@ export const PopulateCollection = ({
       }
     >
       <Button
+        className={classNames({ 'text-destructive': error })}
         disabled={isLoading}
-        label={translate(STRING.POPULATE)}
-        icon={error ? IconType.Error : undefined}
-        loading={isLoading}
         onClick={() => populateCollection(collection.id)}
-        theme={error ? ButtonTheme.Error : ButtonTheme.Success}
-      />
+        size="small"
+        variant="outline"
+      >
+        {error ? <AlertCircleIcon className="w-4 h-4" /> : null}
+        <span>{translate(STRING.POPULATE)}</span>
+        {isLoading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : null}
+      </Button>
     </Tooltip>
   )
 }

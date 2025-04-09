@@ -76,7 +76,7 @@ def add_object_level_permissions(
         # Do not return create, view permissions at object-level
         filtered_permissions -= {"create", "view"}
         permissions.update(filtered_permissions)
-    response_data["user_permissions"] = permissions
+    response_data["user_permissions"] = list(permissions)
     return response_data
 
 
@@ -95,7 +95,7 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
         permissions.add("create")
     if user and project and f"create_{model.__name__.lower()}" in get_perms(user, project):
         permissions.add("create")
-    response_data["user_permissions"] = permissions
+    response_data["user_permissions"] = list(permissions)
     return response_data
 
 
