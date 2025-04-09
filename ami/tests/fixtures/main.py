@@ -99,12 +99,15 @@ def create_test_project(name: str | None) -> Project:
     short_id = uuid.uuid4().hex[:8]
     name = name or f"Test Project {short_id}"
 
-    admin_user = User.objects.filter(is_superuser=True).first()
-    project = Project.objects.create(name=name, owner=admin_user, description="Test description")
-    data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
-    create_deployment(project, data_source, f"Test Deployment {short_id}")
-    create_processing_service(project)
-    return project
+    with transaction.atomic():
+        admin_user, _ = User.objects.get_or_create(
+            email=f"antenna+{short_id}@insectai.org", is_superuser=True, is_staff=True
+        )
+        project = Project.objects.create(name=name, owner=admin_user, description="Test description")
+        data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
+        create_deployment(project, data_source, f"Test Deployment {short_id}")
+        create_processing_service(project)
+        return project
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
