@@ -24,6 +24,7 @@ class DataExportTest(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project(reuse=False)
         self.user = self.project.owner
+        self.assertIsNotNone(self.user, "Project owner should not be None.")
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         # Create captures & occurrences to test exporting
@@ -31,6 +32,8 @@ class DataExportTest(TestCase):
         group_images_into_events(self.deployment)
         create_taxa(self.project)
         create_occurrences(num=10, deployment=self.deployment)
+        # Assert project has occurrences
+        self.assertGreater(self.project.occurrences.count(), 0, "No occurrences created for testing.")
         # Create a collection using the provided method
         self.collection = self._create_collection()
         # Define export formats
