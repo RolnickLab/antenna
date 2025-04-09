@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                     "format",
                     models.CharField(
                         choices=[
-                            ("occurrences_simple_json", "occurrences_simple_json"),
+                            ("occurrences_api_json", "occurrences_api_json"),
                             ("occurrences_simple_csv", "occurrences_simple_csv"),
                         ],
                         max_length=255,
