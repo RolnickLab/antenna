@@ -603,6 +603,42 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
 
+class DataExportJob(JobType):
+    """
+    Job type to handle Project data exports
+    """
+
+    name = "Data Export"
+    key = "data_export"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        """
+        Run the export job asynchronously with format selection (CSV, JSON, Darwin Core).
+        """
+        logger.info("Job started: Exporting occurrences")
+
+        # Add progress tracking
+        job.progress.add_stage("Exporting data", cls.key)
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        job.logger.info(f"Starting export for project {job.project}")
+
+        file_url = job.data_export.run_export()
+
+        job.logger.info(f"Export completed: {file_url}")
+        job.logger.info(f"File uploaded to Project Storage: {file_url}")
+        # Finalize Job
+        stage = job.progress.add_stage("Uploading snapshot")
+        job.progress.add_stage_param(stage.key, "File URL", f"{file_url}")
+        job.progress.update_stage(stage.key, status=JobState.SUCCESS, progress=1)
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=True)
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -612,7 +648,7 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
-VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType]
+VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType, DataExportJob]
 
 
 def get_job_type_by_key(key: str) -> type[JobType] | None:
@@ -653,6 +689,7 @@ class Job(BaseModel):
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
     logs: JobLogs = SchemaField(JobLogs, default=JobLogs())
+    params = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
     delay = models.IntegerField("Delay in seconds", default=0, help_text="Delay before running the job")
@@ -689,6 +726,13 @@ class Job(BaseModel):
         null=True,
         blank=True,
         related_name="jobs",
+    )
+    data_export = models.OneToOneField(
+        "exports.DataExport",
+        on_delete=models.CASCADE,  # If DataExport is deleted, delete the Job
+        null=True,
+        blank=True,
+        related_name="job",
     )
     pipeline = models.ForeignKey(
         Pipeline,

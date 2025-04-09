@@ -36,12 +36,31 @@ export class Collection extends Entity {
     })[0]
   }
 
+  get hasJobInProgress(): boolean {
+    return this._jobs.some(
+      (job) =>
+        job.status.code === 'CREATED' ||
+        job.status.code === 'PENDING' ||
+        job.status.code === 'STARTED'
+    )
+  }
+
   get kwargs(): { [key: string]: string | number } {
     return this._data.kwargs || {}
   }
 
   get method(): string {
     return this._data.method
+  }
+
+  get methodNameDisplay(): string {
+    return snakeCaseToSentenceCase(this._data.method)
+  }
+
+  get methodDetailsDisplay(): string[] {
+    return Object.entries(this._data.kwargs).map(
+      ([key, value]) => `${snakeCaseToSentenceCase(key)}: ${value}`
+    )
   }
 
   get name(): string {

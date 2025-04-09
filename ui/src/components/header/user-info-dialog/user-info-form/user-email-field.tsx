@@ -2,7 +2,6 @@ import { FormField } from 'components/form/form-field'
 import { FormError } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserEmail } from 'data-services/hooks/auth/useUpdateUserEmail'
-
 import { SaveButton } from 'design-system/components/button/save-button'
 import {
   EditableInput,

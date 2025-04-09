@@ -1,8 +1,8 @@
 import classNames from 'classnames'
 import { useCreateEntity } from 'data-services/hooks/entities/useCreateEntity'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
+import { PlusIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -40,11 +40,10 @@ export const NewEntityDialog = ({
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <Button
-          label={label}
-          icon={IconType.Plus}
-          theme={ButtonTheme.Default}
-        />
+        <Button size="small" variant="outline">
+          <PlusIcon className="w-4 h-4" />
+          <span>{label}</span>
+        </Button>
       </Dialog.Trigger>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}

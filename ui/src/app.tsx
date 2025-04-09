@@ -24,6 +24,7 @@ import { Occurrences } from 'pages/occurrences/occurrences'
 import { Collections } from 'pages/project/collections/collections'
 import { Devices } from 'pages/project/entities/devices'
 import { Sites } from 'pages/project/entities/sites'
+import { Exports } from 'pages/project/exports/exports'
 import { General } from 'pages/project/general/general'
 import { Pipelines } from 'pages/project/pipelines/pipelines'
 import { ProcessingServices } from 'pages/project/processing-services/processing-services'
@@ -106,6 +107,7 @@ export const App = () => (
             <Route path="summary" element={<Summary />} />
             <Route path="collections" element={<Collections />} />
             <Route path="collections/:id" element={<CollectionDetails />} />
+            <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
               element={<ProcessingServices />}
