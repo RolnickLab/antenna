@@ -69,7 +69,9 @@ class DataExport(BaseModel):
         """Generates a slugified filename using project name and export ID."""
         from ami.exports.registry import ExportRegistry
 
-        extension = ExportRegistry.get_exporter(self.format).file_format
+        registry = ExportRegistry.get_exporter(self.format)
+        assert registry, f"Export format '{self.format}' not found in registry"
+        extension = registry.file_format
         project_slug = slugify(self.project.name)  # Convert project name to a slug
         return f"{project_slug}_export-{self.pk}.{extension}"
 
