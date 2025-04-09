@@ -44,7 +44,8 @@ class JSONExporter(BaseExporter):
 
     def get_queryset(self):
         return (
-            Occurrence.objects.filter(project=self.project)
+            Occurrence.objects.valid()  # type: ignore[union-attr]  Custom manager method
+            .filter(project=self.project)
             .select_related(
                 "determination",
                 "deployment",
@@ -127,7 +128,8 @@ class CSVExporter(BaseExporter):
 
     def get_queryset(self):
         return (
-            Occurrence.objects.filter(project=self.project)
+            Occurrence.objects.valid()  # type: ignore[union-attr]  Custom queryset method
+            .filter(project=self.project)
             .select_related(
                 "determination",
                 "deployment",
