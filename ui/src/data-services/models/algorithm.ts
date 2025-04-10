@@ -1,4 +1,5 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
+import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
 
 export type ServerAlgorithm = any // TODO: Update this type
 
@@ -50,7 +51,7 @@ export class Algorithm {
   }
 
   get taskType(): string {
-    return this._algorithm.task_type
+    return snakeCaseToSentenceCase(this._algorithm.task_type)
   }
 
   get categoryMapURI(): string {

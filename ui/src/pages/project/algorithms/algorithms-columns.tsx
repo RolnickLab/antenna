@@ -33,7 +33,10 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
     id: 'description',
     name: 'Description',
     renderCell: (item: Algorithm) => (
-      <BasicTableCell value={item.description} />
+      <BasicTableCell
+        value={item.description}
+        style={{ width: '480px', whiteSpace: 'normal' }}
+      />
     ),
   },
   {

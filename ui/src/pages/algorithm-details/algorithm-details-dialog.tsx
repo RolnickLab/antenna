@@ -64,8 +64,8 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
       </FormRow>
       <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_KEY)}
-          value={algorithm.key}
+          label={translate(STRING.FIELD_LABEL_VERSION)}
+          value={algorithm.version}
         />
         <InputValue
           label={translate(STRING.FIELD_LABEL_TASK_TYPE)}
@@ -75,46 +75,49 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
 
       <FormRow>
         <InputValue
+          label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
+          value={algorithm.description}
+        />
+        <InputValue
           label={translate(STRING.FIELD_LABEL_CREATED_AT)}
           value={algorithm.createdAt}
         />
+      </FormRow>
+      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_UPDATED_AT)}
           value={algorithm.updatedAt}
         />
       </FormRow>
-      <FormRow>
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_VERSION)}
-          value={algorithm.version}
-        />
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
-          value={algorithm.description}
-        />
-      </FormRow>
-      <FormRow>
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_URI)}
-          value={algorithm.uri || 'None'}
-          to={algorithm.uri || undefined}
-        />
-      </FormRow>
     </FormSection>
     {algorithm.categoryMapURI && (
-      <FormSection title={translate(STRING.CATEGORY_MAP_DETAILS)}>
-        <a
-          className={buttonVariants({
-            size: 'small',
-            variant: 'outline',
-          })}
-          href={algorithm.categoryMapURI}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <span>View category map API</span>
-          <ExternalLinkIcon className="w-4 h-4 ml-2" />
-        </a>
+      <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
+        <div className="grid grid-cols-2 gap-4">
+          <a
+            className={buttonVariants({
+              size: 'small',
+              variant: 'outline',
+            })}
+            href={algorithm.uri}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span>{translate(STRING.FIELD_LABEL_ALGORITHM_URI)}</span>
+            <ExternalLinkIcon className="w-4 h-4 ml-2" />
+          </a>
+          <a
+            className={buttonVariants({
+              size: 'small',
+              variant: 'outline',
+            })}
+            href={algorithm.categoryMapURI}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span>{translate(STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS)}</span>
+            <ExternalLinkIcon className="w-4 h-4 ml-2" />
+          </a>
+        </div>
       </FormSection>
     )}
   </>
