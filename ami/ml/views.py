@@ -41,6 +41,8 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
         "name",
+        "task_type",
+        "description",
         "version",
     ]
     search_fields = ["name"]

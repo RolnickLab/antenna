@@ -16,6 +16,7 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
+    sortField: 'name',
     renderCell: (item: Algorithm) => (
       <Link
         to={APP_ROUTES.ALGORITHM_DETAILS({ projectId, algorithmId: item.id })}
@@ -27,11 +28,13 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
   {
     id: 'task-type',
     name: 'Task type',
+    sortField: 'task_type',
     renderCell: (item: Algorithm) => <BasicTableCell value={item.taskType} />,
   },
   {
     id: 'description',
     name: 'Description',
+    sortField: 'description',
     renderCell: (item: Algorithm) => (
       <BasicTableCell
         value={item.description}
