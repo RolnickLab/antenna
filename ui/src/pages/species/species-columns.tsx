@@ -1,4 +1,3 @@
-import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import {
@@ -6,6 +5,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { TaxonDetails } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -26,7 +26,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
         })}
       >
         <BasicTableCell>
-          <TaxonInfo compact taxon={item} />
+          <TaxonDetails compact taxon={item} />
         </BasicTableCell>
       </Link>
     ),

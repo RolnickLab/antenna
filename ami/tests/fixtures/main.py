@@ -11,7 +11,6 @@ from django.utils import timezone
 from ami.main.models import (
     Deployment,
     Detection,
-    Event,
     Occurrence,
     Project,
     SourceImage,
@@ -101,12 +100,15 @@ def create_test_project(name: str | None) -> Project:
     short_id = uuid.uuid4().hex[:8]
     name = name or f"Test Project {short_id}"
 
-    admin_user = User.objects.filter(is_superuser=True).first()
-    project = Project.objects.create(name=name, owner=admin_user, description="Test description")
-    data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
-    create_deployment(project, data_source, f"Test Deployment {short_id}")
-    create_processing_service(project)
-    return project
+    with transaction.atomic():
+        admin_user, _ = User.objects.get_or_create(
+            email=f"antenna+{short_id}@insectai.org", is_superuser=True, is_staff=True
+        )
+        project = Project.objects.create(name=name, owner=admin_user, description="Test description")
+        data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
+        create_deployment(project, data_source, f"Test Deployment {short_id}")
+        create_processing_service(project)
+        return project
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
@@ -353,25 +355,28 @@ def create_occurrences(
     num: int = 6,
     taxon: Taxon | None = None,
 ):
-    event = Event.objects.filter(deployment=deployment).first()
-    if not event:
-        raise ValueError("No events found for deployment")
+    # Get all source images for the deployment that have an event
+    source_images = list(SourceImage.objects.filter(deployment=deployment))
+    if not source_images:
+        raise ValueError("No source images with events found for deployment")
 
-    for i in range(num):
-        # Every Occurrence requires a Detection
-        source_image = SourceImage.objects.filter(event=event).order_by("?").first()
-        if not source_image:
-            raise ValueError("No source images found for event")
-        taxon = taxon or Taxon.objects.filter(projects=deployment.project).order_by("?").first()
+    # Get taxon if not provided
+    if not taxon:
+        taxon = Taxon.objects.filter(projects=deployment.project).order_by("?").first()
         if not taxon:
             raise ValueError("No taxa found for project")
+
+    # Create occurrences evenly distributed across all source images
+    for i in range(num):
+        # Select images in a round-robin fashion
+        source_image = source_images[i % len(source_images)]
+
         detection = Detection.objects.create(
             source_image=source_image,
-            timestamp=source_image.timestamp,  # @TODO this should be automatically set to the source image timestamp
+            timestamp=source_image.timestamp,
             bbox=[0.1, 0.1, 0.2, 0.2],
         )
-        # Could speed this up by creating an Occurrence with a determined taxon directly
-        # but this tests more of the code.
+
         detection.classifications.create(
             taxon=taxon,
             score=0.9,

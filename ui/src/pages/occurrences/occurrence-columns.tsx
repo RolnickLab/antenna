@@ -1,8 +1,4 @@
-import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
 import { Occurrence } from 'data-services/models/occurrence'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
-import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
@@ -11,7 +7,9 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { SearchIcon } from 'lucide-react'
+import { Button, IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
@@ -97,58 +95,34 @@ export const columns: (
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     sortField: 'event',
-    renderCell: (item: Occurrence) => (
-      <Link
-        to={APP_ROUTES.SESSION_DETAILS({
-          projectId,
-          sessionId: item.sessionId,
-        })}
-      >
-        <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => {
+      if (!item.sessionId) {
+        return <></>
+      }
+
+      return (
+        <Link
+          to={APP_ROUTES.SESSION_DETAILS({
+            projectId,
+            sessionId: item.sessionId,
+          })}
+        >
+          <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
+        </Link>
+      )
+    },
   },
   {
     id: 'date',
     name: translate(STRING.FIELD_LABEL_DATE_OBSERVED),
     sortField: 'first_appearance_timestamp',
-    renderCell: (item: Occurrence) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.SESSION_DETAILS({
-            projectId,
-            sessionId: item.sessionId,
-          }),
-          filters: {
-            occurrence: item.id,
-            timestamp: item.firstAppearanceTimestamp,
-          },
-        })}
-      >
-        <BasicTableCell value={item.dateLabel} />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
   },
   {
     id: 'time',
     sortField: 'first_appearance_time',
     name: translate(STRING.FIELD_LABEL_TIME_OBSERVED),
-    renderCell: (item: Occurrence) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.SESSION_DETAILS({
-            projectId,
-            sessionId: item.sessionId,
-          }),
-          filters: {
-            occurrence: item.id,
-            timestamp: item.firstAppearanceTimestamp,
-          },
-        })}
-      >
-        <BasicTableCell value={item.timeLabel} />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.timeLabel} />,
   },
   {
     id: 'duration',
@@ -196,7 +170,7 @@ const TaxonCell = ({
       <BasicTableCell>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
-            <TaxonInfo compact taxon={item.determinationTaxon} />
+            <TaxonDetails compact taxon={item.determinationTaxon} />
           </Link>
           {showQuickActions && canUpdate && (
             <div className={styles.taxonActions}>
@@ -206,12 +180,12 @@ const TaxonCell = ({
                   identificationId: item.determinationIdentificationId,
                   predictionId: item.determinationPredictionId,
                 }}
+                applied
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <Tooltip content={translate(STRING.SUGGEST_ID)}>
-                <IconButton
-                  icon={IconType.RadixSearch}
+              <BasicTooltip asChild content={translate(STRING.SUGGEST_ID)}>
+                <Button
                   onClick={() =>
                     navigate(detailsRoute, {
                       state: {
@@ -220,8 +194,12 @@ const TaxonCell = ({
                       },
                     })
                   }
-                />
-              </Tooltip>
+                  size="icon"
+                  variant="outline"
+                >
+                  <SearchIcon className="w-4 h-4" />
+                </Button>
+              </BasicTooltip>
               <IdQuickActions
                 occurrenceIds={[item.id]}
                 occurrenceTaxons={[item.determinationTaxon]}
@@ -255,7 +233,7 @@ const ScoreCell = ({
     <div className={styles.scoreCell}>
       <BasicTableCell>
         <div className={styles.scoreCellContent}>
-          <Tooltip
+          <BasicTooltip
             content={
               item.determinationVerified
                 ? translate(STRING.VERIFIED_BY, {
@@ -265,19 +243,19 @@ const ScoreCell = ({
                     score: item.determinationScore,
                   })
             }
+            onTriggerClick={() =>
+              navigate(detailsRoute, {
+                state: {
+                  defaultTab: TABS.IDENTIFICATION,
+                },
+              })
+            }
           >
-            <IdentificationStatus
-              isVerified={item.determinationVerified}
-              score={item.determinationScore}
-              onStatusClick={() =>
-                navigate(detailsRoute, {
-                  state: {
-                    defaultTab: TABS.IDENTIFICATION,
-                  },
-                })
-              }
+            <IdentificationScore
+              confirmed={item.determinationVerified}
+              confidenceScore={item.determinationScore}
             />
-          </Tooltip>
+          </BasicTooltip>
           <span className={styles.scoreCellLabel}>
             {item.determinationScoreLabel}
           </span>

@@ -14,10 +14,3 @@
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
 }
-
-.infoLabel {
-  display: block;
-  @include paragraph-small();
-  font-weight: 600;
-  color: $color-neutral-300;
-}

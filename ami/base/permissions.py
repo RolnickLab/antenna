@@ -7,7 +7,17 @@ from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
 from ami.jobs.models import Job
-from ami.main.models import BaseModel, Deployment, Device, Project, S3StorageSource, Site, SourceImageCollection
+from ami.main.models import (
+    BaseModel,
+    Deployment,
+    Device,
+    Project,
+    S3StorageSource,
+    Site,
+    SourceImage,
+    SourceImageCollection,
+    SourceImageUpload,
+)
 from ami.users.roles import ProjectManager
 
 logger = logging.getLogger(__name__)
@@ -66,7 +76,7 @@ def add_object_level_permissions(
         # Do not return create, view permissions at object-level
         filtered_permissions -= {"create", "view"}
         permissions.update(filtered_permissions)
-    response_data["user_permissions"] = permissions
+    response_data["user_permissions"] = list(permissions)
     return response_data
 
 
@@ -79,14 +89,13 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     "create" permission is added to the `user_permissions` set in the `response_data`.
     """
 
-    logger.info(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
+    logger.debug(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
     permissions = response_data.get("user_permissions", set())
     if user and user.is_superuser:
         permissions.add("create")
-
     if user and project and f"create_{model.__name__.lower()}" in get_perms(user, project):
         permissions.add("create")
-    response_data["user_permissions"] = permissions
+    response_data["user_permissions"] = list(permissions)
     return response_data
 
 
@@ -142,6 +151,14 @@ class DeploymentCRUDPermission(CRUDPermission):
 
 class SourceImageCollectionCRUDPermission(CRUDPermission):
     model = SourceImageCollection
+
+
+class SourceImageUploadCRUDPermission(CRUDPermission):
+    model = SourceImageUpload
+
+
+class SourceImageCRUDPermission(CRUDPermission):
+    model = SourceImage
 
 
 class CanStarSourceImage(permissions.BasePermission):

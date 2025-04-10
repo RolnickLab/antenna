@@ -37,6 +37,8 @@ from ami.base.permissions import (
     S3StorageSourceCRUDPermission,
     SiteCRUDPermission,
     SourceImageCollectionCRUDPermission,
+    SourceImageCRUDPermission,
+    SourceImageUploadCRUDPermission,
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
@@ -124,9 +126,8 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         # Create instance but do not save
-        instance = serializer.Meta.model(**serializer.validated_data)
+        instance = serializer.Meta.model(**serializer.validated_data)  # type: ignore
         self.check_object_permissions(request, instance)
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -445,7 +446,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class SourceImageViewSet(DefaultViewSet):
+class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
 
@@ -465,6 +466,7 @@ class SourceImageViewSet(DefaultViewSet):
         "deployment__project",
         "collections",
         "project",
+        "project_id",
     ]
     ordering_fields = [
         "created_at",
@@ -477,7 +479,7 @@ class SourceImageViewSet(DefaultViewSet):
         "deployment__name",
         "event__start",
     ]
-    permission_classes = [CanStarSourceImage]
+    permission_classes = [CanStarSourceImage, SourceImageCRUDPermission]
 
     def get_serializer_class(self):
         """
@@ -657,7 +659,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             query_set = query_set.filter(project=project)
-        queryset = query_set.with_occurrences_count(
+        queryset = query_set.with_occurrences_count(  # type: ignore
             classification_threshold=classification_threshold
         ).with_taxa_count(  # type: ignore
             classification_threshold=classification_threshold
@@ -746,7 +748,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class SourceImageUploadViewSet(DefaultViewSet):
+class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for uploading images.
     """
@@ -754,6 +756,7 @@ class SourceImageUploadViewSet(DefaultViewSet):
     queryset = SourceImageUpload.objects.all()
 
     serializer_class = SourceImageUploadSerializer
+    permission_classes = [SourceImageUploadCRUDPermission]
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
@@ -809,9 +812,9 @@ class CustomTaxonFilter(filters.BaseFilterBackend):
 
     query_params = ["taxon"]
 
-    def get_filter_taxon(self, request: Request) -> Taxon | None:
+    def get_filter_taxon(self, request: Request, query_params: list[str] | None = None) -> Taxon | None:
         taxon_id = None
-        for param in self.query_params:
+        for param in query_params or self.query_params:
             taxon_id = request.query_params.get(param)
             if taxon_id:
                 break
@@ -846,7 +849,7 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
     query_params = ["determination", "taxon"]
 
     def filter_queryset(self, request, queryset, view):
-        taxon = self.get_filter_taxon(request)
+        taxon = self.get_filter_taxon(request, query_params=self.query_params)
         if taxon:
             # Here the queryset is the Occurrence queryset
             return queryset.filter(
@@ -861,10 +864,14 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     Filter occurrences by the collection their detections source images belong to.
     """
 
-    query_param = "collection"
+    query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
 
     def filter_queryset(self, request, queryset, view):
-        collection_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        collection_id = None
+        for param in self.query_params:
+            collection_id = IntegerField(required=False).clean(request.query_params.get(param))
+            if collection_id:
+                break
         if collection_id:
             # Here the queryset is the Occurrence queryset
             return queryset.filter(detections__source_image__collections=collection_id)
@@ -1065,9 +1072,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
-    def get_queryset(self) -> QuerySet:
+    def get_queryset(self) -> QuerySet["Occurrence"]:
         project = self.get_active_project()
-        qs = super().get_queryset()
+        qs = super().get_queryset().valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
         qs = qs.select_related(
@@ -1081,10 +1088,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         if self.action == "list":
             qs = (
                 qs.all()
-                .exclude(detections=None)
-                .exclude(event=None)
                 .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .exclude(first_appearance_timestamp=None)  # This must come after annotations
                 .order_by("-determination_score")
             )
 
@@ -1422,11 +1426,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    project=project,
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False,
-                ).count(),
+                "occurrences_count": Occurrence.objects.valid().filter(project=project).count(),  # type: ignore
                 "taxa_count": Occurrence.objects.all().unique_taxa(project=project).count(),  # type: ignore
             }
         else:
@@ -1436,10 +1436,7 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.count(),
                 # "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.filter(
-                    # determination_score__gte=confidence_threshold,
-                    event__isnull=False
-                ).count(),
+                "occurrences_count": Occurrence.objects.valid().count(),  # type: ignore
                 "taxa_count": Occurrence.objects.all().unique_taxa().count(),  # type: ignore
                 "last_updated": timezone.now(),
             }
@@ -1541,7 +1538,7 @@ class IdentificationViewSet(DefaultViewSet):
         Set the user to the current user.
         """
         # Get an instance for the model without saving
-        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)
+        obj = serializer.Meta.model(**serializer.validated_data, user=self.request.user)  # type: ignore
 
         # Check permissions before saving
         self.check_object_permissions(self.request, obj)
