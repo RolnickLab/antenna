@@ -5,18 +5,30 @@ import {
   Table,
   TableBackgroundTheme,
 } from 'design-system/components/table/table/table'
-import { TableColumn } from 'design-system/components/table/types'
+import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: TableColumn<Pipeline>[] = [
+export const columns: (projectId: string) => TableColumn<Pipeline>[] = (
+  projectId: string
+) => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: Pipeline) => (
-      <BasicTableCell
-        value={item.name}
-        style={{ width: '240px', whiteSpace: 'normal' }}
-      />
+      <Link
+        to={APP_ROUTES.PIPELINE_DETAILS({
+          projectId: projectId,
+          pipelineId: item.id,
+        })}
+      >
+        <BasicTableCell
+          style={{ width: '240px', whiteSpace: 'normal' }}
+          theme={CellTheme.Primary}
+          value={item.name}
+        />
+      </Link>
     ),
   },
   {
@@ -24,20 +36,10 @@ export const columns: TableColumn<Pipeline>[] = [
     name: translate(STRING.FIELD_LABEL_DESCRIPTION),
     renderCell: (item: Pipeline) => (
       <BasicTableCell
+        style={{ width: '320px', whiteSpace: 'normal' }}
         value={item.description}
-        style={{ width: '240px', whiteSpace: 'normal' }}
       />
     ),
-  },
-  {
-    id: 'created-at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.createdAt} />,
-  },
-  {
-    id: 'updated-at',
-    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
   },
 ]
 
@@ -45,10 +47,14 @@ export const ProcessingServicePipelines = ({
   processingService,
 }: {
   processingService: ProcessingService
-}) => (
-  <Table
-    backgroundTheme={TableBackgroundTheme.White}
-    items={processingService.pipelines}
-    columns={columns}
-  />
-)
+}) => {
+  const { projectId } = useParams()
+
+  return (
+    <Table
+      backgroundTheme={TableBackgroundTheme.White}
+      items={processingService.pipelines}
+      columns={columns(projectId as string)}
+    />
+  )
+}
