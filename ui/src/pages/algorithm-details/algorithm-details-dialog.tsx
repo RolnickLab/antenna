@@ -79,11 +79,15 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
           value={algorithm.description}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_CREATED_AT)}
-          value={algorithm.createdAt}
+          label={translate(STRING.FIELD_LABEL_CATEGORY_COUNT)}
+          value={algorithm.categoryCount}
         />
       </FormRow>
       <FormRow>
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_CREATED_AT)}
+          value={algorithm.createdAt}
+        />
         <InputValue
           label={translate(STRING.FIELD_LABEL_UPDATED_AT)}
           value={algorithm.updatedAt}

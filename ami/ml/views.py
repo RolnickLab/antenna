@@ -42,10 +42,16 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
         "task_type",
+        "category_count",
         "description",
         "version",
     ]
     search_fields = ["name"]
+
+    def get_queryset(self) -> QuerySet["Algorithm"]:
+        qs: QuerySet["Algorithm"] = super().get_queryset()
+        qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
+        return qs
 
 
 class AlgorithmCategoryMapViewSet(DefaultViewSet):

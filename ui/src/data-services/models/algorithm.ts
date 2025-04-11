@@ -63,4 +63,10 @@ export class Algorithm {
   get categoryMapID(): string {
     return this._algorithm.category_map ? this._algorithm.category_map.id : ''
   }
+
+  get categoryCount(): number | undefined {
+    return this._algorithm.category_count
+      ? this._algorithm.category_count
+      : undefined
+  }
 }

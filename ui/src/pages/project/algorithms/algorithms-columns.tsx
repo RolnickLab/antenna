@@ -32,6 +32,14 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
     renderCell: (item: Algorithm) => <BasicTableCell value={item.taskType} />,
   },
   {
+    id: 'category_count',
+    name: translate(STRING.FIELD_LABEL_CATEGORY_COUNT),
+    sortField: 'category_count',
+    renderCell: (item: Algorithm) => (
+      <BasicTableCell value={item.categoryCount} />
+    ),
+  },
+  {
     id: 'description',
     name: 'Description',
     sortField: 'description',
