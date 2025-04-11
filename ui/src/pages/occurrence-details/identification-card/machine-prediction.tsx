@@ -15,7 +15,7 @@ import {
   TaxonDetails,
 } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -38,6 +38,8 @@ export const MachinePrediction = ({
     identification.id,
     open
   )
+  const navigate = useNavigate()
+  const { projectId } = useParams()
   const topN = classification?.topN.filter(
     ({ taxon }) => taxon.id !== identification.taxon.id
   )
@@ -66,6 +68,17 @@ export const MachinePrediction = ({
         }
         title={
           identification.algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)
+        }
+        onTitleClick={
+          identification.algorithm
+            ? () =>
+                navigate(
+                  APP_ROUTES.ALGORITHM_DETAILS({
+                    projectId: projectId as string,
+                    algorithmId: identification.algorithm?.id,
+                  })
+                )
+            : undefined
         }
       >
         <MachinePredictionDetails

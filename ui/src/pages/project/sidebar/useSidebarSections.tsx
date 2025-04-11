@@ -61,6 +61,15 @@ const getSidebarSections = ({
           pipelineId: '*',
         }),
       },
+      {
+        id: 'algorithms',
+        title: translate(STRING.NAV_ITEM_ALGORITHMS),
+        path: APP_ROUTES.ALGORITHMS({ projectId }),
+        matchPath: APP_ROUTES.ALGORITHM_DETAILS({
+          projectId: ':projectId',
+          algorithmId: '*',
+        }),
+      },
     ],
   },
   {

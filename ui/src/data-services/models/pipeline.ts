@@ -75,7 +75,11 @@ export class Pipeline {
     })
   }
 
-  get versionLabel(): string {
+  get versionLabel(): string | undefined {
+    if (this._pipeline.version == undefined) {
+      return undefined
+    }
+
     return this._pipeline.version_name?.length
       ? `${this._pipeline.version} "${this._pipeline.version_name?.length}"`
       : `${this._pipeline.version}`

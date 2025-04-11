@@ -1,7 +1,7 @@
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
-from ami.main.api.serializers import DefaultSerializer
+from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
 from ami.main.models import Project
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -25,7 +25,12 @@ class AlgorithmCategoryMapSerializer(DefaultSerializer):
         ]
 
 
+MinimalCategoryMapNestedSerializer = MinimalNestedModelSerializer.create_for_model(AlgorithmCategoryMap)
+
+
 class AlgorithmSerializer(DefaultSerializer):
+    category_map = MinimalCategoryMapNestedSerializer(read_only=True, source="category_map_id")
+
     class Meta:
         model = Algorithm
         fields = [
@@ -39,6 +44,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "version_name",
             "task_type",
             "category_map",
+            "category_count",
             "created_at",
             "updated_at",
         ]
