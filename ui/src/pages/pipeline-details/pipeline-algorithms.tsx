@@ -24,9 +24,9 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
         })}
       >
         <BasicTableCell
-          value={item.name}
           style={{ width: '240px', whiteSpace: 'normal' }}
           theme={CellTheme.Primary}
+          value={item.name}
         />
       </Link>
     ),
@@ -36,20 +36,10 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
     name: translate(STRING.FIELD_LABEL_DESCRIPTION),
     renderCell: (item: Algorithm) => (
       <BasicTableCell
+        style={{ width: '320px', whiteSpace: 'normal' }}
         value={item.description}
-        style={{ width: '240px', whiteSpace: 'normal' }}
       />
     ),
-  },
-  {
-    id: 'created-at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.createdAt} />,
-  },
-  {
-    id: 'updated-at',
-    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.updatedAt} />,
   },
 ]
 
