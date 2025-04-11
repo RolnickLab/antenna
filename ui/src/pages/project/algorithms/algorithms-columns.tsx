@@ -11,6 +11,7 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
+    sortField: 'id',
     renderCell: (item: Algorithm) => <BasicTableCell value={item.id} />,
   },
   {
@@ -37,17 +38,6 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
     sortField: 'category_count',
     renderCell: (item: Algorithm) => (
       <BasicTableCell value={item.categoryCount} />
-    ),
-  },
-  {
-    id: 'description',
-    name: 'Description',
-    sortField: 'description',
-    renderCell: (item: Algorithm) => (
-      <BasicTableCell
-        value={item.description}
-        style={{ width: '480px', whiteSpace: 'normal' }}
-      />
     ),
   },
   {

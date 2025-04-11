@@ -38,6 +38,7 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = AlgorithmSerializer
     filterset_fields = ["name", "version"]
     ordering_fields = [
+        "id",
         "created_at",
         "updated_at",
         "name",

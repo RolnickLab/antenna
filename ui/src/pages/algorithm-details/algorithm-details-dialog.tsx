@@ -72,15 +72,14 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
           value={algorithm.taskType}
         />
       </FormRow>
-
       <FormRow>
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
-          value={algorithm.description}
-        />
         <InputValue
           label={translate(STRING.FIELD_LABEL_CATEGORY_COUNT)}
           value={algorithm.categoryCount}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
+          value={algorithm.description}
         />
       </FormRow>
       <FormRow>
@@ -94,9 +93,9 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
         />
       </FormRow>
     </FormSection>
-    {algorithm.categoryMapURI && (
-      <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
-        <div className="grid grid-cols-2 gap-4">
+    <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
+      <div className="grid grid-cols-2 gap-4">
+        {algorithm.uri && (
           <a
             className={buttonVariants({
               size: 'small',
@@ -109,6 +108,8 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
             <span>{translate(STRING.FIELD_LABEL_ALGORITHM_URI)}</span>
             <ExternalLinkIcon className="w-4 h-4 ml-2" />
           </a>
+        )}
+        {algorithm.categoryMapURI && (
           <a
             className={buttonVariants({
               size: 'small',
@@ -121,8 +122,8 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
             <span>{translate(STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS)}</span>
             <ExternalLinkIcon className="w-4 h-4 ml-2" />
           </a>
-        </div>
-      </FormSection>
-    )}
+        )}
+      </div>
+    </FormSection>
   </>
 )
