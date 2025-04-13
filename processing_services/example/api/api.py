@@ -3,18 +3,16 @@ Fast API interface for processing images through the localization and classifica
 """
 
 import logging
-import time
 
 import fastapi
 
-from .pipelines import ConstantDetectorClassification, CustomPipeline, FlatBugDetectorPipeline, Pipeline
+from .pipelines import ConstantDetectionPipeline, FlatBugDetectorPipeline, Pipeline, ZeroShotObjectDetectorPipeline
 from .schemas import (
     AlgorithmConfigResponse,
     PipelineRequest,
     PipelineResultsResponse,
     ProcessingServiceInfoResponse,
     SourceImage,
-    SourceImageResponse,
 )
 
 # Configure root logger
@@ -28,7 +26,7 @@ logger = logging.getLogger(__name__)
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [CustomPipeline, ConstantDetectorClassification, FlatBugDetectorPipeline]
+pipelines: list[type[Pipeline]] = [ConstantDetectionPipeline, FlatBugDetectorPipeline, ZeroShotObjectDetectorPipeline]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
@@ -78,32 +76,19 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
 
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
-    source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
-
-    start_time = time.time()
 
     try:
         Pipeline = pipeline_choices[pipeline_slug]
     except KeyError:
         raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
 
-    pipeline = Pipeline(source_images=source_images)
     try:
-        results = pipeline.run()
+        pipeline = Pipeline(source_images=source_images)
+        response = pipeline.run()
     except Exception as e:
         logger.error(f"Error running pipeline: {e}")
         raise fastapi.HTTPException(status_code=422, detail=f"{e}")
 
-    end_time = time.time()
-    seconds_elapsed = float(end_time - start_time)
-
-    response = PipelineResultsResponse(
-        pipeline=pipeline_slug,
-        algorithms={algorithm.key: algorithm for algorithm in pipeline.config.algorithms},
-        source_images=source_image_results,
-        detections=results,
-        total_time=seconds_elapsed,
-    )
     return response
 
 

@@ -21,6 +21,36 @@ PIL.ImageFile.LOAD_TRUNCATED_IMAGES = True
 # see: https://foundation.wikimedia.org/wiki/Policy:User-Agent_policy
 USER_AGENT = "AntennaInsectDataPlatform/1.0 (https://insectai.org)"
 
+# -----------
+# Pipeline stage management
+# -----------
+
+
+def pipeline_stage(stage_index, error_type):
+    """
+    Pipeline stage decorator to add specific error handling.
+    The stage_index represents in what order this stage is run in the pipeline.
+    """
+
+    def decorator(func):
+        import functools
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, stage_index=stage_index, **kwargs)
+            except Exception as e:
+                raise error_type(f"Error in pipeline stage {stage_index}: {str(e)}")
+
+        return wrapper
+
+    return decorator
+
+
+# -----------
+# File handling functions
+# -----------
+
 
 def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
     """

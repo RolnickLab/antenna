@@ -11,18 +11,6 @@ services:
     networks:
       - ml_network
 
-  ml_backend_example:
-    build:
-      context: ./example
-    volumes:
-      - ./example/:/app:z
-    ports:
-      - "2003:2000"
-    extra_hosts:
-      - minio:host-gateway
-    networks:
-      - ml_network
-
 networks:
   ml_network:
     name: ml_network

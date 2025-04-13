@@ -33,7 +33,7 @@ class BoundingBox(pydantic.BaseModel):
         return (self.x1, self.y1, self.x2, self.y2)
 
 
-class SourceImage(pydantic.BaseModel):
+class BaseImage(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     id: str
@@ -68,6 +68,10 @@ class SourceImage(pydantic.BaseModel):
         return self._pil
 
 
+class SourceImage(BaseImage):
+    pass
+
+
 class AlgorithmReference(pydantic.BaseModel):
     name: str
     key: str
@@ -98,12 +102,20 @@ class ClassificationResponse(pydantic.BaseModel):
 
 
 class DetectionResponse(pydantic.BaseModel):
+    # these fields are populated with values from a Detection, excluding source_image details
     source_image_id: str
     bbox: BoundingBox
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
-    crop_image_url: str | None = None
+    classifications: list[ClassificationResponse] = []
+
+
+class Detection(BaseImage):  # BaseImage represents the detection (the cropped image)
+    source_image: SourceImage  # the 'original' image
+    bbox: BoundingBox
+    inference_time: float | None = None
+    algorithm: AlgorithmReference
     classifications: list[ClassificationResponse] = []
 
 
@@ -185,7 +197,7 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
 
 
 PipelineChoice = typing.Literal[
-    "random", "constant", "local-pipeline", "constant-detector-classifier-pipeline", "flat-bug-detector"
+    "constant-detection-pipeline", "flat-bug-detector-pipeline", "zero-shot-object-detector-pipeline"
 ]
 
 

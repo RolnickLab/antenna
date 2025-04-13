@@ -144,6 +144,18 @@ services:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
 
+  ml_backend:
+    build:
+      context: ./processing_services/minimal
+    volumes:
+      - ./processing_services/minimal/:/app
+    ports:
+      - "2005:2000"
+    networks:
+      default:
+        aliases:
+          - processing_service
+
 networks:
   ml_network:
     external: true

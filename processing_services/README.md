@@ -1,10 +1,17 @@
 # Set-Up Custom ML Backends and Models
 
+`processing_services` contains 2 apps:
+- `example`: demos how to add custom pipelines/algorithms.
+- `minimal`: a simple ML backend for basic testing of the processing service API. This minimal app also runs within the main Antenna docker compose stack.
+
+If your goal is to run an ML backend locally, simply copy the `example` directory and follow the steps below.
+
 ## Environment Set Up
 
-1. All changes will be made in the `processing_services/example` app
-2. Update `processing_services/example/requirements.txt` with required packages (i.e. PyTorch, etc)
-3. Rebuild container to install updated dependencies. Start the minimal and example ml backends: `docker compose -f processing_services/docker-compose.yml up -d --build ml_backend_example`
+1. Update `processing_services/example/requirements.txt` with required packages (i.e. PyTorch, etc)
+2. Rebuild container to install updated dependencies. Start the minimal and example ML backends: `docker compose -f processing_services/docker-compose.yml up -d --build ml_backend_example`
+3. To test that everything works, register a new processing service in Antenna with endpoint URL http://ml_backend_example:2000. All ML backends are connected to the main docker compose stack using the `ml_network`.
+
 
 ## Add Algorithms, Pipelines, and ML Backend/Processing Services
 
@@ -13,26 +20,34 @@
     - Make sure to update `algorithm_config_response`.
 2. Define a new pipeline class (i.e. `NewPipeline`) in `processing_services/example/api/pipelines.py`
     Implement/Update:
+    - `stages` (a list of algorithms in order of execution -- typically `stages = [Localizer(), Classifier()]`)
+    - `batch_size` (a list of integers representing the number of entities that can be processed at a time by each stage -- i.e. [1, 1] means that the localizer can process 1 source image a time and the classifier can process 1 bounding box/detection at a time)
     - `config`
-    - `stages` (a list of algorithms in order of execution -- typically `stages = [Detector(), Classifier()]`)
-3. OPTIONAL: Override the default `run()` function.
-    - The `Pipeline` class defines a basic detector-classifier pipeline. Batch processing can be applied to images fed into the detector and/or detections fed into the classifier.
-    - In general, the input/output types of `run()`, `get_detector_response()`, and `get_classifier_response()` should not change.
-    - `make_detections` (call `run()` for each algorithm and process the outputs of each stage/algorithm accordingly)
-        - must return a `list[DetectionResponse]`
-3. Add `NewPipeline` to `processing_services/example/api/api.py`
+3. As needed, override the default `run()` function. Some important considerations:
+    - Always run `_get_pipeline_response` at the end of `run()` to get a valid `PipelineResultsResponse`
+    - Typically, each algorithm in a pipeline has its own stage. Each stage handles batchifying inputs and running the algorithm.
+    - Each stage should have the decorator `@pipeline_stage(stage_index=INT, error_type=ERROR_TYPE)`. The `stage_index` represents the stage's position in the order of stages. Each stage is wrapped in a try-except block and raises `ERROR_TYPE` on failure.
+    - Examples:
+        - `ConstantDetectionPipeline`: localizer + classifier
+        - `ZeroShotobjectDetectorPipeline`: detector
+        - `FlatBugDetectorPipeline`: localizer
+
+4. Add `NewPipeline` to `processing_services/example/api/api.py`
 
 ```
-from .pipelines import ConstantDetectorClassification, CustomPipeline, Pipeline, NewPipeline
+from .pipelines import ConstantDetectionPipeline, FlatBugDetectorPipeline, Pipeline, ZeroShotObjectDetectorPipeline, NewPipeline
 
 ...
-pipelines: list[type[Pipeline]] = [CustomPipeline, ConstantDetectorClassification, NewPipeline ]
+
+pipelines: list[type[Pipeline]] = [ConstantDetectionPipeline, FlatBugDetectorPipeline, ZeroShotObjectDetectorPipeline, NewPipeline ]
 
 ...
 
 ```
-4. Update `PipelineChoice` in `processing_services/example/api/schemas.py` to include the slug of the new pipeline, as defined in `NewPipeline`'s config.
+5. Update `PipelineChoice` in `processing_services/example/api/schemas.py` to include the slug of the new pipeline, as defined in `NewPipeline`'s config.
 
 ```
-PipelineChoice = typing.Literal["random", "constant", "local-pipeline", "constant-detector-classifier-pipeline", "new-pipeline"]
+PipelineChoice = typing.Literal[
+    "constant-detection-pipeline", "flat-bug-detector-pipeline", "zero-shot-object-detector-pipeline", "new-pipeline"
+]
 ```

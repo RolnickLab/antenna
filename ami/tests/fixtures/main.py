@@ -44,7 +44,7 @@ def create_processing_service(project):
         "name": "Test Processing Service",
         "projects": [{"name": project.name}],
         # "endpoint_url": "http://processing_service:2000",
-        "endpoint_url": "http://ml_backend_minimal:2000",
+        "endpoint_url": "http://ml_backend:2000",
     }
 
     processing_service, created = ProcessingService.objects.get_or_create(
