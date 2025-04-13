@@ -1,5 +1,15 @@
 # Set-Up Custom ML Backends and Models
 
+## Background
+
+A processing service or ML backend is a group of pipelines used to process images. In real life, the ML backend can be hosted on a separate server where it handles processing the source images, compiling the models, and running inference.
+
+In this directory, we define locally-run processing services as FastAPI apps. A basic ML backend has the following endpoints:
+- `/info`: returns data about what pipelines and algorithms are supported by the service.
+- `/livez`
+- `/readyz`
+- `/process`: receives source images via a `PipelineRequest` and returns a `PipelineResponse` containing detections
+
 `processing_services` contains 2 apps:
 - `example`: demos how to add custom pipelines/algorithms.
 - `minimal`: a simple ML backend for basic testing of the processing service API. This minimal app also runs within the main Antenna docker compose stack.
