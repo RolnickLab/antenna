@@ -228,8 +228,15 @@ class Project(BaseModel):
         POPULATE_COLLECTION = "populate_sourceimagecollection"
 
         # Source Image permissions
+        CREATE_SOURCE_IMAGE = "create_sourceimage"
+        UPDATE_SOURCE_IMAGE = "update_sourceimage"
+        DELETE_SOURCE_IMAGE = "delete_sourceimage"
         STAR_SOURCE_IMAGE = "star_sourceimage"
 
+        # SourceImageUpload permissions
+        CREATE_SOURCE_IMAGE_UPLOAD = "create_sourceimageupload"
+        UPDATE_SOURCE_IMAGE_UPLOAD = "update_sourceimageupload"
+        DELETE_SOURCE_IMAGE_UPLOAD = "delete_sourceimageupload"
         # Storage permissions
         CREATE_STORAGE = "create_s3storagesource"
         DELETE_STORAGE = "delete_s3storagesource"
@@ -276,7 +283,14 @@ class Project(BaseModel):
             ("delete_sourceimagecollection", "Can delete a collection"),
             ("populate_sourceimagecollection", "Can populate a collection"),
             # Source Image permissions
+            ("create_sourceimage", "Can create a source image"),
+            ("update_sourceimage", "Can update a source image"),
+            ("delete_sourceimage", "Can delete a source image"),
             ("star_sourceimage", "Can star a source image"),
+            # SourceImageUpload permissions
+            ("create_sourceimageupload", "Can create a source image upload"),
+            ("update_sourceimageupload", "Can update a source image upload"),
+            ("delete_sourceimageupload", "Can delete a source image upload"),
             # Storage permissions
             ("create_s3storagesource", "Can create storage"),
             ("delete_s3storagesource", "Can delete storage"),
@@ -1282,6 +1296,10 @@ class SourceImageUpload(BaseModel):
         "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
     )
 
+    def get_project(self):
+        """Get the project associated with the model instance."""
+        return self.deployment.get_project()
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
@@ -1988,7 +2006,11 @@ class Classification(BaseModel):
     def top_n(self, n: int = 3) -> list[dict[str, "Taxon | float | None"]]:
         """Return top N taxa and scores for this classification."""
         if not self.category_map:
-            raise ValueError("Classification must have a category map to get top N.")
+            logger.warning(
+                f"Classification {self.pk}'s algrorithm ({self.algorithm_id} has no catgory map, "
+                "can't get top N predictions."
+            )
+            return []
 
         top_scored = self.top_scores_with_index(n)  # (index, score) pairs
         indexes = [idx for idx, _ in top_scored]

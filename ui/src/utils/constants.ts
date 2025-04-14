@@ -37,8 +37,14 @@ export const APP_ROUTES = {
   }) =>
     `/projects/${params.projectId}/processing-services/${params.processingServiceId}`,
 
+  ALGORITHMS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/algorithms`,
+
   PIPELINES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/pipelines`,
+
+  ALGORITHM_DETAILS: (params: { projectId: string; algorithmId: string }) =>
+    `/projects/${params.projectId}/algorithms/${params.algorithmId}`,
 
   PIPELINE_DETAILS: (params: { projectId: string; pipelineId: string }) =>
     `/projects/${params.projectId}/pipelines/${params.pipelineId}`,

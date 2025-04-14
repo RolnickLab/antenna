@@ -926,6 +926,7 @@ class SourceImageListSerializer(DefaultSerializer):
     detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -946,6 +947,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "occurrences_count",
             "taxa_count",
             "detections",
+            "project",
         ]
 
 

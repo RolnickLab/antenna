@@ -21,6 +21,7 @@ import { CollectionDetails } from 'pages/collection-details/collection-details'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
+import { Algorithms } from 'pages/project/algorithms/algorithms'
 import { Collections } from 'pages/project/collections/collections'
 import { Devices } from 'pages/project/entities/devices'
 import { Sites } from 'pages/project/entities/sites'
@@ -113,6 +114,7 @@ export const App = () => (
               element={<ProcessingServices />}
             />
             <Route path="pipelines/:id?" element={<Pipelines />} />
+            <Route path="algorithms/:id?" element={<Algorithms />} />
             <Route path="sites" element={<Sites />} />
             <Route path="devices" element={<Devices />} />
             <Route path="general" element={<General />} />

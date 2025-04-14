@@ -1,8 +1,6 @@
 export enum STRING {
   /* BUTTON */
   REGISTER_PIPELINES,
-  AGREE,
-  AGREED,
   BACK,
   CANCEL,
   CHANGE_IMAGE,
@@ -10,6 +8,8 @@ export enum STRING {
   CLEAR,
   CLEAR_FILTERS,
   COLLAPSE,
+  CONFIRM,
+  CONFIRMED,
   CURRENT_LOCATION,
   DELETE,
   DELETED,
@@ -46,6 +46,7 @@ export enum STRING {
   ENTITY_DELETE,
   ENTITY_DETAILS,
   ENTITY_EDIT,
+  ENTITY_TYPE_ALGORITHM,
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_EXPORT,
@@ -60,6 +61,9 @@ export enum STRING {
   /* FIELD_LABEL */
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_SCORE,
+  FIELD_LABEL_CATEGORY_MAP_DETAILS,
+  FIELD_LABEL_CATEGORY_MAP_ID,
+  FIELD_LABEL_CATEGORY_COUNT,
   FIELD_LABEL_CAPTURES,
   FIELD_LABEL_CAPTURES_WITH_DETECTIONS,
   FIELD_LABEL_COMMENT,
@@ -88,6 +92,7 @@ export enum STRING {
   FIELD_LABEL_JOB_STATUS,
   FIELD_LABEL_JOB,
   FIELD_LABEL_JOBS,
+  FIELD_LABEL_KEY,
   FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
   FIELD_LABEL_LOCATION,
@@ -123,6 +128,7 @@ export enum STRING {
   FIELD_LABEL_SNAPSHOTS,
   FIELD_LABEL_STARTED_AT,
   FIELD_LABEL_STATUS,
+  FIELD_LABEL_TASK_TYPE,
   FIELD_LABEL_TAXON,
   FIELD_LABEL_TAXA,
   FIELD_LABEL_THUMBNAIL,
@@ -135,6 +141,7 @@ export enum STRING {
   FIELD_LABEL_TYPE,
   FIELD_LABEL_FIRST_DATE,
   FIELD_LABEL_LAST_DATE,
+  FIELD_LABEL_ALGORITHM_URI,
   FIELD_LABEL_UPDATED_AT,
   FIELD_LABEL_UPLOAD_CAPTURES,
   FIELD_LABEL_VERSION,
@@ -176,6 +183,7 @@ export enum STRING {
   NAV_ITEM_GENERAL,
   NAV_ITEM_JOBS,
   NAV_ITEM_OCCURRENCES,
+  NAV_ITEM_ALGORITHMS,
   NAV_ITEM_PIPELINES,
   NAV_ITEM_PROCESSING_SERVICES,
   NAV_ITEM_PROJECT,
@@ -187,6 +195,8 @@ export enum STRING {
   NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
+  TAB_ITEM_ALGORITHMS,
+  TAB_ITEM_PROCESSING_SERVICES,
   TAB_ITEM_ALL_PROJECTS,
   TAB_ITEM_FIELDS,
   TAB_ITEM_GALLERY,
@@ -204,6 +214,7 @@ export enum STRING {
   DONE,
 
   /* TOOLTIPS */
+  TOOLTIP_ALGORITHM,
   TOOLTIP_COLLECTION,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
@@ -225,6 +236,7 @@ export enum STRING {
   COLUMNS,
   CONNECTED,
   CONNECTING,
+  EXTERNAL_RESOURCES,
   FORGOT_PASSWORD,
   FORGOT_PASSWORD_DETAILS,
   ID_APPLIED,
@@ -258,8 +270,6 @@ export enum STRING {
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
   [STRING.REGISTER_PIPELINES]: 'Register pipelines',
-  [STRING.AGREE]: 'Agree',
-  [STRING.AGREED]: 'Agreed',
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
   [STRING.CHANGE_IMAGE]: 'Change image',
@@ -267,6 +277,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CLEAR]: 'Clear',
   [STRING.CLEAR_FILTERS]: 'Clear filters',
   [STRING.COLLAPSE]: 'Collapse',
+  [STRING.CONFIRM]: 'Confirm',
+  [STRING.CONFIRMED]: 'Confirmed',
   [STRING.CURRENT_LOCATION]: 'Use current location',
   [STRING.DELETE]: 'Delete',
   [STRING.DELETED]: 'Deleted',
@@ -299,8 +311,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
+  [STRING.FIELD_LABEL_ALGORITHM_URI]: 'Algorithm source',
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
+  [STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS]: 'Category map details',
+  [STRING.FIELD_LABEL_CATEGORY_MAP_ID]: 'Category map ID',
+  [STRING.FIELD_LABEL_CATEGORY_COUNT]: 'Taxa',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
   [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures w/detections',
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
@@ -329,6 +345,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_JOB_STATUS]: 'Job status',
   [STRING.FIELD_LABEL_JOB]: 'Job',
   [STRING.FIELD_LABEL_JOBS]: 'Jobs',
+  [STRING.FIELD_LABEL_KEY]: 'Key',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
@@ -364,6 +381,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
   [STRING.FIELD_LABEL_STARTED_AT]: 'Started at',
   [STRING.FIELD_LABEL_STATUS]: 'Status',
+  [STRING.FIELD_LABEL_TASK_TYPE]: 'Task type',
   [STRING.FIELD_LABEL_TAXA]: 'Taxa',
   [STRING.FIELD_LABEL_TAXON]: 'Taxon',
   [STRING.FIELD_LABEL_THUMBNAIL]: 'Thumbnail',
@@ -386,6 +404,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
+  [STRING.ENTITY_TYPE_ALGORITHM]: 'algorithm',
   [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_EXPORT]: 'export',
@@ -448,6 +467,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_GENERAL]: 'General',
   [STRING.NAV_ITEM_JOBS]: 'Jobs',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
+  [STRING.NAV_ITEM_ALGORITHMS]: 'Algorithms',
   [STRING.NAV_ITEM_PIPELINES]: 'Pipelines',
   [STRING.NAV_ITEM_PROCESSING_SERVICES]: 'Processing services',
   [STRING.NAV_ITEM_PROJECT]: 'Project',
@@ -459,6 +479,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
+  [STRING.TAB_ITEM_ALGORITHMS]: 'Algorithms',
+  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing services',
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery view',
@@ -476,6 +498,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DONE]: 'Done',
 
   /* TOOLTIPS */
+  [STRING.TOOLTIP_ALGORITHM]:
+    'An algorithm is used in a pipeline for processing image/collections.',
   [STRING.TOOLTIP_COLLECTION]:
     'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
@@ -508,6 +532,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.COLUMNS]: 'Columns',
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting...',
+  [STRING.EXTERNAL_RESOURCES]: 'External resources',
   [STRING.FORGOT_PASSWORD]: 'Forgot password?',
   [STRING.FORGOT_PASSWORD_DETAILS]: `No worries, we'll send you reset instructions.`,
   [STRING.ID_APPLIED]: 'ID applied',

@@ -67,6 +67,22 @@ export const columns: (
     ),
   },
   {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: ProcessingService) => (
+      <BasicTableCell value={item.createdAt} />
+    ),
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: ProcessingService) => (
+      <BasicTableCell value={item.updatedAt} />
+    ),
+  },
+  {
     id: 'actions',
     name: '',
     styles: {
