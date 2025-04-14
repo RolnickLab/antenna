@@ -23,6 +23,7 @@ from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
+from pgvector.django import VectorField
 
 import ami.tasks
 import ami.utils
@@ -1919,6 +1920,7 @@ class Classification(BaseModel):
     logits = ArrayField(
         models.FloatField(), null=True, help_text="The raw output of the last fully connected layer of the model"
     )
+    features = VectorField(dimensions=2048, null=True, help_text="Feature embedding from the model backbone")
     scores = ArrayField(
         models.FloatField(),
         null=True,
