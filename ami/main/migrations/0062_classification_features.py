@@ -6,7 +6,7 @@ import pgvector.django.vector
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0060_add_pgvector_extension"),
+        ("main", "0061_classification_features_squashed_0062_remove_classification_features_and_more.py"),
     ]
 
     operations = [
