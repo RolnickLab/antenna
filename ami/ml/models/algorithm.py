@@ -98,6 +98,18 @@ class AlgorithmCategoryMap(BaseModel):
         super().save(*args, **kwargs)
 
 
+class ArrayLength(models.Func):
+    function = "CARDINALITY"
+
+
+class AlgorithmQuerySet(models.QuerySet["Algorithm"]):
+    def with_category_count(self):
+        """
+        Annotate the queryset with the number of categories in the category map
+        """
+        return self.annotate(category_count=ArrayLength("category_map__labels"))
+
+
 @typing.final
 class Algorithm(BaseModel):
     """A machine learning algorithm"""
@@ -158,6 +170,8 @@ class Algorithm(BaseModel):
     pipelines: models.QuerySet[Pipeline]
     classifications: models.QuerySet[Classification]
 
+    objects = AlgorithmQuerySet.as_manager()
+
     def __str__(self):
         return f'#{self.pk} "{self.name}" ({self.key}) v{self.version}'
 
@@ -174,3 +188,12 @@ class Algorithm(BaseModel):
         if not self.key:
             self.key = f"{slugify(self.name)}-{self.version}"
         super().save(*args, **kwargs)
+
+    def category_count(self) -> int | None:
+        """
+        Return the number of classes in the category map, if applicable and available.
+
+        This must be retrieved using the QuerySet method with_category_count()
+        but is defined here for the serializer to work.
+        """
+        return None

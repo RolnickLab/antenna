@@ -1,8 +1,8 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
 import { useDeleteEntity } from 'data-services/hooks/entities/useDeleteEntity'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { TrashIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 
@@ -22,7 +22,9 @@ export const DeleteEntityDialog = ({
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <IconButton icon={IconType.RadixTrash} />
+        <Button className="shrink-0" size="icon" variant="ghost">
+          <TrashIcon className="w-4 h-4" />
+        </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         <DeleteForm

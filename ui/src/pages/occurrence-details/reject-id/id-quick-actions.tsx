@@ -1,7 +1,7 @@
 import { Taxon } from 'data-services/models/taxa'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
 import * as Popover from 'design-system/components/popover/popover'
+import { EllipsisVerticalIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { RefObject, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { REJECT_OPTIONS } from './constants'
@@ -58,8 +58,10 @@ export const IdQuickActions = ({
 
   return (
     <Popover.Root open={open} onOpenChange={setIsOpen}>
-      <Popover.Trigger>
-        <IconButton icon={IconType.Options} />
+      <Popover.Trigger asChild>
+        <Button size="icon" variant="outline">
+          <EllipsisVerticalIcon className="w-4 h-4" />
+        </Button>
       </Popover.Trigger>
       <Popover.Content
         ariaCloselabel={translate(STRING.CLOSE)}

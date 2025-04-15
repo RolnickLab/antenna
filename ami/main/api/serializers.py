@@ -30,6 +30,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    TaxaList,
     Taxon,
 )
 
@@ -532,6 +533,25 @@ class TaxonListSerializer(DefaultSerializer):
         )
 
 
+class TaxaListSerializer(serializers.ModelSerializer):
+    taxa = serializers.SerializerMethodField()
+    projects = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), many=True)
+
+    class Meta:
+        model = TaxaList
+        fields = ["id", "name", "description", "taxa", "projects"]
+
+    def get_taxa(self, obj):
+        """
+        Return URL to the taxa endpoint filtered by this taxalist.
+        """
+        return reverse_with_params(
+            "taxon-list",
+            request=self.context.get("request"),
+            params={"taxa_list_id": obj.pk},
+        )
+
+
 class CaptureTaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True)
@@ -906,6 +926,7 @@ class SourceImageListSerializer(DefaultSerializer):
     detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -926,6 +947,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "occurrences_count",
             "taxa_count",
             "detections",
+            "project",
         ]
 
 
@@ -1121,7 +1143,7 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
         permissions = set()
         if instance.user == user or ProjectManager.has_role(user, project):
             permissions.add("delete")
-        instance_data["user_permissions"] = permissions
+        instance_data["user_permissions"] = list(permissions)
         return instance_data
 
     class Meta:
@@ -1155,7 +1177,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             # then add  update permission to response
             permissions.add("update")
 
-        instance_data["user_permissions"] = permissions
+        instance_data["user_permissions"] = list(permissions)
         return instance_data
 
     class Meta:

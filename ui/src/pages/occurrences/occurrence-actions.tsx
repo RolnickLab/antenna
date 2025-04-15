@@ -1,9 +1,9 @@
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Occurrence } from 'data-services/models/occurrence'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -17,8 +17,8 @@ export const OccurrenceActions = ({
 }) => {
   const { userInfo } = useUserInfo()
 
-  const allAgreed = !occurrences.some((occurrences) => {
-    const agreed = userInfo ? occurrences.userAgreed(userInfo.id) : false
+  const allAgreed = !occurrences.some((occurrence) => {
+    const agreed = userInfo ? occurrence.userAgreed(userInfo.id) : false
 
     return !agreed
   })
@@ -79,23 +79,24 @@ const Agree = ({
 
   if (isSuccess || allAgreed) {
     return (
-      <Button
-        label={translate(STRING.AGREED)}
-        icon={IconType.RadixCheck}
-        disabled
-      />
+      <Button disabled size="small" variant="outline">
+        <CheckIcon className="w-4 h-4 " />
+        <span>{translate(STRING.CONFIRMED)}</span>
+      </Button>
     )
   }
 
   return (
-    <Tooltip content={error} contentStyle={{ zIndex: 3 }}>
-      <Button
-        icon={error ? IconType.Error : undefined}
-        label={translate(STRING.AGREE)}
-        loading={isLoading}
-        theme={error ? ButtonTheme.Error : undefined}
-        onClick={createIdentifications}
-      />
-    </Tooltip>
+    <BasicTooltip content={error}>
+      <Button size="small" variant="outline" onClick={createIdentifications}>
+        {error ? (
+          <AlertCircleIcon className="w-4 h-4 mr-2 text-destructive" />
+        ) : null}
+        <span>{translate(STRING.CONFIRM)}</span>
+        {isLoading ? (
+          <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+        ) : null}
+      </Button>
+    </BasicTooltip>
   )
 }

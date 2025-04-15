@@ -17,8 +17,8 @@ import { columns } from './processing-services-columns'
 export const ProcessingServices = () => {
   const { projectId, id } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
-    field: 'created_at',
-    order: 'desc',
+    field: 'id',
+    order: 'asc',
   })
   const { pagination, setPage } = usePagination()
   const { items, userPermissions, total, isLoading, isFetching, error } =

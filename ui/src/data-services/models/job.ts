@@ -19,6 +19,7 @@ export const SERVER_JOB_TYPES = [
   'ml',
   'data_storage_sync',
   'populate_captures_collection',
+  'data_export',
   'unknown',
 ] as const
 
@@ -75,6 +76,10 @@ export class Job {
     }
 
     return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
+  }
+
+  get export(): { id: string; format: string } | undefined {
+    return this._job.data_export
   }
 
   get finishedAt(): string | undefined {
@@ -159,7 +164,9 @@ export class Job {
     type: JobStatusType
     color: string
   } {
-    return Job.getStatusInfo(this._job.status)
+    return Job.getStatusInfo(
+      this._job.status ?? this._job.progress.summary.status
+    )
   }
 
   get updatedAt(): string | undefined {
@@ -175,6 +182,7 @@ export class Job {
       ml: 'ML pipeline',
       data_storage_sync: 'Data storage sync',
       populate_captures_collection: 'Populate captures collection',
+      data_export: 'Data export',
       unknown: 'Unknown',
     }[key]
 

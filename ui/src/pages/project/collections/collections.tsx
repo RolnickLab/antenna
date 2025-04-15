@@ -5,7 +5,7 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { Table } from 'design-system/components/table/table/table'
 import { TableSortSettings } from 'design-system/components/table/types'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
@@ -19,6 +19,7 @@ export const Collections = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
+  const [poll, setPoll] = useState(false)
   const { collections, userPermissions, total, isLoading, isFetching, error } =
     useCollections(
       {
@@ -26,9 +27,18 @@ export const Collections = () => {
         pagination,
         sort,
       },
-      true
+      poll
     )
   const canCreate = userPermissions?.includes(UserPermission.Create)
+
+  useEffect(() => {
+    // If any collection has a job in progress, we want to poll the endpoint so we can show job updates
+    if (collections?.some(({ hasJobInProgress }) => hasJobInProgress)) {
+      setPoll(true)
+    } else {
+      setPoll(false)
+    }
+  }, [collections])
 
   return (
     <>

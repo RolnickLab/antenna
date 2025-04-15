@@ -33,6 +33,11 @@ const getSidebarSections = ({
           collectionId: '*',
         }),
       },
+      {
+        id: 'exports',
+        title: translate(STRING.NAV_ITEM_EXPORTS),
+        path: APP_ROUTES.EXPORTS({ projectId }),
+      },
     ],
   },
   {
@@ -54,6 +59,15 @@ const getSidebarSections = ({
         matchPath: APP_ROUTES.PIPELINE_DETAILS({
           projectId: ':projectId',
           pipelineId: '*',
+        }),
+      },
+      {
+        id: 'algorithms',
+        title: translate(STRING.NAV_ITEM_ALGORITHMS),
+        path: APP_ROUTES.ALGORITHMS({ projectId }),
+        matchPath: APP_ROUTES.ALGORITHM_DETAILS({
+          projectId: ':projectId',
+          algorithmId: '*',
         }),
       },
     ],

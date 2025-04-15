@@ -89,7 +89,10 @@ export class Occurrence {
       this._occurrence.determination_details.identification?.user
 
     return verifiedBy
-      ? { id: `${verifiedBy.id}`, name: verifiedBy.name }
+      ? {
+          id: `${verifiedBy.id}`,
+          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous user',
+        }
       : { name: 'Unknown user' }
   }
 
@@ -120,11 +123,19 @@ export class Occurrence {
     return this._occurrence.detections_count
   }
 
-  get sessionId(): string {
+  get sessionId(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return `${this._occurrence.event.id}`
   }
 
-  get sessionLabel(): string {
+  get sessionLabel(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return this._occurrence.event.name
   }
 
@@ -139,7 +150,7 @@ export class Occurrence {
     return this._occurrence.user_permissions
   }
 
-  userAgreed(userId: string): boolean {
+  userAgreed(userId: string, taxonId?: string): boolean {
     return this._occurrence.identifications?.some((identification: any) => {
       if (!identification.user) {
         return false
@@ -151,6 +162,10 @@ export class Occurrence {
 
       const identificationTaxonId = `${identification.taxon.id}`
       const identificationUserId = `${identification.user.id}`
+
+      if (taxonId && taxonId !== identificationTaxonId) {
+        return false
+      }
 
       return (
         identificationTaxonId === this.determinationTaxon.id &&

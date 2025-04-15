@@ -22,6 +22,12 @@ export const APP_ROUTES = {
   COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
     `/projects/${params.projectId}/collections/${params.collectionId}`,
 
+  EXPORTS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/exports`,
+
+  EXPORT_DETAILS: (params: { projectId: string; exportId: string }) =>
+    `/projects/${params.projectId}/exports/${params.exportId}`,
+
   PROCESSING_SERVICES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/processing-services`,
 
@@ -31,8 +37,14 @@ export const APP_ROUTES = {
   }) =>
     `/projects/${params.projectId}/processing-services/${params.processingServiceId}`,
 
+  ALGORITHMS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/algorithms`,
+
   PIPELINES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/pipelines`,
+
+  ALGORITHM_DETAILS: (params: { projectId: string; algorithmId: string }) =>
+    `/projects/${params.projectId}/algorithms/${params.algorithmId}`,
 
   PIPELINE_DETAILS: (params: { projectId: string; pipelineId: string }) =>
     `/projects/${params.projectId}/pipelines/${params.pipelineId}`,
