@@ -98,10 +98,6 @@ export class Collection extends Entity {
   }
 
   get settingsDisplay(): string {
-    if (this.method === 'common_combined') {
-      return snakeCaseToSentenceCase(this.type)
-    }
-
     return snakeCaseToSentenceCase(this.method)
   }
 
@@ -109,17 +105,5 @@ export class Collection extends Entity {
     return Object.entries(this._data.kwargs).map(
       ([key, value]) => `${snakeCaseToSentenceCase(key)}: ${value}`
     )
-  }
-
-  get type(): string {
-    if (this.kwargs['max_num'] !== undefined) {
-      return 'random_sample'
-    }
-
-    if (this.kwargs['minute_interval'] !== undefined) {
-      return 'interval_sample'
-    }
-
-    return 'full_sample'
   }
 }

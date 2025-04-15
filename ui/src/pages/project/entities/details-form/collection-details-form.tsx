@@ -13,7 +13,7 @@ import { InputContent } from 'design-system/components/input/input'
 import { DatePicker } from 'design-system/components/select/date-picker'
 import { XIcon } from 'lucide-react'
 import { Button, Select } from 'nova-ui-kit'
-import { SAMPLING_TYPES } from 'pages/project/collections/constants'
+import { SERVER_SAMPLING_METHODS } from 'pages/project/collections/constants'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
@@ -21,7 +21,7 @@ import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
 type CollectionFormValues = FormValues & {
-  type: string
+  method: string
   kwargs: {
     date_start: string | undefined
     date_end: string | undefined
@@ -29,6 +29,7 @@ type CollectionFormValues = FormValues & {
     hour_end: number | undefined
     max_num: number | undefined
     minute_interval: number | undefined
+    size: number | undefined
   }
 }
 
@@ -42,8 +43,8 @@ const config: FormConfig = {
   description: {
     label: translate(STRING.FIELD_LABEL_DESCRIPTION),
   },
-  type: {
-    label: 'Type',
+  method: {
+    label: 'Method',
     rules: {
       required: true,
     },
@@ -88,7 +89,6 @@ const config: FormConfig = {
     label: 'Max number of images',
     rules: {
       min: 0,
-      required: true,
       validate: (value) => {
         if (value) {
           if (!Number.isInteger(Number(value))) {
@@ -112,6 +112,20 @@ const config: FormConfig = {
       },
     },
   },
+  'kwargs.size': {
+    label: 'Size',
+    rules: {
+      min: 0,
+      required: true,
+      validate: (value) => {
+        if (value) {
+          if (!Number.isInteger(Number(value))) {
+            return translate(STRING.MESSAGE_VALUE_INVALID)
+          }
+        }
+      },
+    },
+  },
 }
 
 export const CollectionDetailsForm = ({
@@ -122,34 +136,48 @@ export const CollectionDetailsForm = ({
   onSubmit,
 }: DetailsFormProps) => {
   const collection = entity as Collection | undefined
-  const { control, handleSubmit, setError, setValue, watch } =
+  const { control, handleSubmit, setError, watch } =
     useForm<CollectionFormValues>({
       defaultValues: {
         name: entity?.name ?? '',
         description: entity?.description ?? '',
-        type: collection?.type ?? SAMPLING_TYPES[0],
-        kwargs: collection?.kwargs ?? {},
+        kwargs: {
+          ...(collection?.kwargs ? collection.kwargs : {}),
+          minute_interval: 10,
+          size: 100,
+        },
+        method: collection?.method ?? SERVER_SAMPLING_METHODS[0],
       },
       mode: 'onChange',
     })
   const errorMessage = useFormError({ error, setFieldError: setError })
-  const type = watch('type')
+  const method = watch('method')
 
   return (
     <form
       onSubmit={handleSubmit((values) => {
         const processedKwargs = Object.fromEntries(
-          Object.entries(values.kwargs).map(([key, value]) => [
-            key,
-            value === '' ? null : value,
-          ])
+          Object.entries(values.kwargs)
+            .filter(([key]) => {
+              // Make sure method specific fields are only passed for related method
+              if (key === 'max_num' || key === 'minute_interval') {
+                return values.method === 'interval'
+              }
+
+              if (key === 'size') {
+                return values.method === 'random'
+              }
+
+              return true
+            })
+            .map(([key, value]) => [key, value === '' ? null : value])
         )
 
         onSubmit({
           name: values.name,
           description: values.description,
           customFields: {
-            method: 'common_combined',
+            method: values.method,
             kwargs: processedKwargs,
           },
         })
@@ -206,7 +234,7 @@ export const CollectionDetailsForm = ({
                       size="icon"
                       className="shrink-0 text-muted-foreground"
                       variant="ghost"
-                      onClick={() => field.onChange()}
+                      onClick={() => field.onChange('')}
                     >
                       <XIcon className="w-4 h-4" />
                     </Button>
@@ -235,7 +263,7 @@ export const CollectionDetailsForm = ({
                       size="icon"
                       className="shrink-0 text-muted-foreground"
                       variant="ghost"
-                      onClick={() => field.onChange()}
+                      onClick={() => field.onChange('')}
                     >
                       <XIcon className="w-4 h-4" />
                     </Button>
@@ -266,9 +294,9 @@ export const CollectionDetailsForm = ({
         </h3>
         <FormRow>
           <FormController
-            name="type"
+            name="method"
             control={control}
-            config={config['type']}
+            config={config['method']}
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
@@ -277,28 +305,31 @@ export const CollectionDetailsForm = ({
               >
                 <SamplingTypePicker
                   value={field.value}
-                  onValueChange={(value) => {
-                    field.onChange(value)
-
-                    // Reset sample settings when type is updated
-                    setValue('kwargs.max_num', undefined)
-                    setValue('kwargs.minute_interval', undefined)
-                  }}
+                  onValueChange={field.onChange}
                 />
               </InputContent>
             )}
           />
-          {type === 'random_sample' ? (
-            <FormField
-              name="kwargs.max_num"
-              type="number"
-              config={config}
-              control={control}
-            />
+          {method === 'interval' ? (
+            <>
+              <FormField
+                name="kwargs.minute_interval"
+                type="number"
+                config={config}
+                control={control}
+              />
+              <div />
+              <FormField
+                name="kwargs.max_num"
+                type="number"
+                config={config}
+                control={control}
+              />
+            </>
           ) : null}
-          {type === 'interval_sample' ? (
+          {method === 'random' ? (
             <FormField
-              name="kwargs.minute_interval"
+              name="kwargs.size"
               type="number"
               config={config}
               control={control}
@@ -325,9 +356,9 @@ export const SamplingTypePicker = ({
       <Select.Value />
     </Select.Trigger>
     <Select.Content>
-      {SAMPLING_TYPES.map((samplingType) => (
-        <Select.Item key={samplingType} value={samplingType}>
-          {snakeCaseToSentenceCase(samplingType)}
+      {SERVER_SAMPLING_METHODS.map((samplingMethod) => (
+        <Select.Item key={samplingMethod} value={samplingMethod}>
+          {snakeCaseToSentenceCase(samplingMethod)}
         </Select.Item>
       ))}
     </Select.Content>
