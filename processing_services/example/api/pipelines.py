@@ -3,7 +3,6 @@ import logging
 from typing import final
 
 from .algorithms import Algorithm, ConstantLocalizer, FlatBugLocalizer, HFImageClassifier, ZeroShotObjectDetector
-from .exceptions import ClassificationError, DetectionError, LocalizationError
 from .schemas import (
     Detection,
     DetectionResponse,
@@ -12,7 +11,6 @@ from .schemas import (
     SourceImage,
     SourceImageResponse,
 )
-from .utils import pipeline_stage
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -36,8 +34,11 @@ class Pipeline:
 
     stages: list[Algorithm]
     batch_sizes: list[int]
+    request_config: dict
     config: PipelineConfigResponse
 
+    stages = []
+    batch_sizes = []
     config = PipelineConfigResponse(
         name="Base Pipeline",
         slug="base",
@@ -46,39 +47,41 @@ class Pipeline:
         algorithms=[],
     )
 
-    def __init__(self, source_images: list[SourceImage], custom_batch_sizes: list[int] = []):
+    def __init__(
+        self, source_images: list[SourceImage], request_config: dict = {}, custom_batch_sizes: list[int] = []
+    ):
         self.source_images = source_images
-        if custom_batch_sizes:
-            self.batch_sizes = custom_batch_sizes
-        if not self.batch_sizes:
-            self.batch_sizes = [1] * len(self.stages)
+        self.request_config = request_config
 
+        logger.info("Initializing algorithms....")
+        self.stages = self.stages or self.get_stages()
+        self.batch_sizes = custom_batch_sizes or self.batch_sizes or [1] * len(self.stages)
         assert len(self.batch_sizes) == len(self.stages), "Number of batch sizes must match the number of stages."
+
+    def get_stages(self) -> list[Algorithm]:
+        """
+        An optional function to initialize and return a list of algorithms/stages.
+        Any pipeline config values relevant to a particular algorithm should be passed or set here.
+        """
+        return []
+
+    @final
+    def compile(self):
+        logger.info("Compiling algorithms....")
+        for stage_idx, stage in enumerate(self.stages):
+            logger.info(f"[{stage_idx}/{len(self.stages)}] Compiling {stage.algorithm_config_response.name}...")
+            stage.compile()
 
     def run(self) -> PipelineResultsResponse:
         """
-        When subclassing, you can override this function to change the order
-        of the stages or add additional stages. Stages are functions with the
-        @pipeline_stage decorator.
-
         This function must always return a PipelineResultsResponse object.
         """
-        start_time = datetime.datetime.now()
-        detections: list[Detection] = self._get_detections(self.source_images)
-        detections_with_classifications: list[Detection] = self._get_detections_with_classifications(detections)
-        end_time = datetime.datetime.now()
-        elapsed_time = (end_time - start_time).total_seconds()
-
-        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
-            detections_with_classifications, elapsed_time
-        )
-
-        return pipeline_response
+        raise NotImplementedError("Subclasses must implement")
 
     @final
     def _batchify_inputs(self, inputs: list, batch_size: int) -> list[list]:
         """
-        Helper funfction to split the inputs into batches of the specified size.
+        Helper function to split the inputs into batches of the specified size.
         """
         batched_inputs = []
         for i in range(0, len(inputs), batch_size):
@@ -87,35 +90,16 @@ class Pipeline:
             batched_inputs.append(inputs[start_id:end_id])
         return batched_inputs
 
-    @pipeline_stage(stage_index=0, error_type=LocalizationError)
-    def _get_detections(self, source_images: list[SourceImage], **kwargs) -> list[Detection]:
-        logger.info("Running detector...")
-        stage_index = kwargs.get("stage_index")
-
-        detector = self.stages[stage_index]  # type: ignore
-        detections: list[Detection] = []
-
-        batched_source_images = self._batchify_inputs(source_images, self.batch_sizes[stage_index])  # type: ignore
-
-        for batch in batched_source_images:
-            detections.extend(detector.run(batch))
-
-        return detections
-
-    @pipeline_stage(stage_index=1, error_type=ClassificationError)
-    def _get_detections_with_classifications(self, detections: list[Detection], **kwargs) -> list[Detection]:
-        logger.info("Running classifier...")
-        stage_index = kwargs.get("stage_index")
-
-        classifier = self.stages[stage_index]  # type: ignore
-        detections_with_classifications: list[Detection] = []
-
-        batched_detections = self._batchify_inputs(detections, self.batch_sizes[stage_index])  # type: ignore
-
-        for batch in batched_detections:
-            detections_with_classifications.extend(classifier.run(batch))
-
-        return detections_with_classifications
+    @final
+    def _get_detections(
+        self, algorithm: Algorithm, inputs: list[SourceImage] | list[Detection], batch_size: int
+    ) -> list[Detection]:
+        """A single stage, step, or algorithm in a pipeline. Batchifies inputs and produces Detections as outputs."""
+        outputs: list[Detection] = []
+        batched_inputs = self._batchify_inputs(inputs, batch_size)  # type: ignore
+        for batch in batched_inputs:
+            outputs.extend(algorithm.run(batch))
+        return outputs
 
     @final
     def _get_pipeline_response(self, detections: list[Detection], elapsed_time: float) -> PipelineResultsResponse:
@@ -159,26 +143,49 @@ class ConstantDetectionPipeline(Pipeline):
         algorithms=[stage.algorithm_config_response for stage in stages],
     )
 
+    def run(self) -> PipelineResultsResponse:
+        start_time = datetime.datetime.now()
+        detections: list[Detection] = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
+        detections_with_classifications: list[Detection] = self._get_detections(
+            self.stages[1], detections, self.batch_sizes[1]
+        )
+        end_time = datetime.datetime.now()
+        elapsed_time = (end_time - start_time).total_seconds()
+
+        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
+            detections_with_classifications, elapsed_time
+        )
+
+        return pipeline_response
+
 
 class ZeroShotObjectDetectorPipeline(Pipeline):
     """
     A pipeline that uses the HuggingFace zero shot object detector.
     """
 
-    stages = [ZeroShotObjectDetector()]
     batch_sizes = [1]
     config = PipelineConfigResponse(
         name="Zero Shot Object Detector Pipeline",
         slug="zero-shot-object-detector-pipeline",
         description=("HF zero shot object detector."),
         version=1,
-        algorithms=[stage.algorithm_config_response for stage in stages],
+        algorithms=[ZeroShotObjectDetector.algorithm_config_response],
     )
+
+    def get_stages(self) -> list[Algorithm]:
+        zero_shot_object_detector = ZeroShotObjectDetector()
+        if "candidate_labels" in self.request_config:
+            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
+
+        self.config.algorithms = [zero_shot_object_detector.algorithm_config_response]
+
+        return [zero_shot_object_detector]
 
     def run(self) -> PipelineResultsResponse:
         start_time = datetime.datetime.now()
-        detections_with_classifications: list[Detection] = self._get_detections_with_classifications(
-            self.source_images
+        detections_with_classifications: list[Detection] = self._get_detections(
+            self.stages[0], self.source_images, self.batch_sizes[0]
         )
         end_time = datetime.datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()
@@ -187,21 +194,6 @@ class ZeroShotObjectDetectorPipeline(Pipeline):
         )
 
         return pipeline_response
-
-    @pipeline_stage(stage_index=0, error_type=DetectionError)
-    def _get_detections_with_classifications(self, source_images: list[SourceImage], **kwargs) -> list[Detection]:
-        logger.info("Running zero shot object detector...")
-        stage_index = kwargs.get("stage_index")
-
-        zero_shot_detector = self.stages[stage_index]  # type: ignore
-        detections_with_classifications: list[Detection] = []
-
-        batched_images = self._batchify_inputs(source_images, self.batch_sizes[stage_index])  # type: ignore
-
-        for batch in batched_images:
-            detections_with_classifications.extend(zero_shot_detector.run(batch))
-
-        return detections_with_classifications
 
 
 class FlatBugDetectorPipeline(Pipeline):
@@ -225,7 +217,7 @@ class FlatBugDetectorPipeline(Pipeline):
     def run(self) -> PipelineResultsResponse:
         start_time = datetime.datetime.now()
         # Only return detections with no classification
-        detections: list[Detection] = self._get_detections(self.source_images)
+        detections: list[Detection] = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
         end_time = datetime.datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()
         pipeline_response: PipelineResultsResponse = self._get_pipeline_response(detections, elapsed_time)

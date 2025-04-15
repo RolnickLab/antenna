@@ -217,6 +217,11 @@ class PipelineRequest(pydantic.BaseModel):
                         "url": "https://archive.org/download/mma_various_moths_and_butterflies_54143/54143.jpg",
                     }
                 ],
+                "config": {
+                    "candidate_labels": [
+                        "bug",
+                    ]
+                },
             }
         }
 

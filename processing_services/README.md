@@ -28,16 +28,17 @@ If your goal is to run an ML backend locally, simply copy the `example` director
 1. Define algorithms in `processing_services/example/api/algorithms.py`.
     - Each algorithm has a `compile()` and `run()` function.
     - Make sure to update `algorithm_config_response`.
+    - `compile()` function should handle loading the saved model from cache
 2. Define a new pipeline class (i.e. `NewPipeline`) in `processing_services/example/api/pipelines.py`
     Implement/Update:
     - `stages` (a list of algorithms in order of execution -- typically `stages = [Localizer(), Classifier()]`)
+        - For dynamic loading of stages, which is useful for passing the pipeline request's `config`, implement `get_stages()`. A good example of this is in the `ZeroShotObjectDetectorPipeline` class.
     - `batch_size` (a list of integers representing the number of entities that can be processed at a time by each stage -- i.e. [1, 1] means that the localizer can process 1 source image a time and the classifier can process 1 bounding box/detection at a time)
     - `config`
-3. As needed, override the default `run()` function. Some important considerations:
+3. Implement the `run()` function. Some important considerations:
     - Always run `_get_pipeline_response` at the end of `run()` to get a valid `PipelineResultsResponse`
-    - Typically, each algorithm in a pipeline has its own stage. Each stage handles batchifying inputs and running the algorithm.
-    - Each stage should have the decorator `@pipeline_stage(stage_index=INT, error_type=ERROR_TYPE)`. The `stage_index` represents the stage's position in the order of stages. Each stage is wrapped in a try-except block and raises `ERROR_TYPE` on failure.
-    - Examples:
+    - Each algorithm/stage in a pipeline should take a list of `SourceImage`s or `Detection`s and produce a list of `Detection`s (with or without classifications). The class member function `_get_detections()` handles this general stage structure; it batchifys the inputs and produces output detections.
+    - 3 example pipelines are already implemented:
         - `ConstantDetectionPipeline`: localizer + classifier
         - `ZeroShotobjectDetectorPipeline`: detector
         - `FlatBugDetectorPipeline`: localizer

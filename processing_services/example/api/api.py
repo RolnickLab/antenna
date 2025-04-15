@@ -74,6 +74,7 @@ async def readyz():
 @app.post("/process", tags=["services"])
 async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
+    request_config = data.config
 
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
 
@@ -83,7 +84,8 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
         raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
 
     try:
-        pipeline = Pipeline(source_images=source_images)
+        pipeline = Pipeline(source_images=source_images, request_config=request_config)
+        pipeline.compile()
         response = pipeline.run()
     except Exception as e:
         logger.error(f"Error running pipeline: {e}")

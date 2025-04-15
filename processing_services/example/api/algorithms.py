@@ -20,14 +20,6 @@ SAVED_MODELS = {}
 class Algorithm:
     algorithm_config_response: AlgorithmConfigResponse
 
-    def __init__(self):
-        if self.algorithm_config_response.key not in SAVED_MODELS:
-            logger.info(f"Compiling {self.algorithm_config_response.key}...")
-            self.compile()
-        else:
-            logger.info(f"Using existing model {self.algorithm_config_response.key}...")
-            self.model = SAVED_MODELS[self.algorithm_config_response.key]
-
     def compile(self):
         raise NotImplementedError("Subclasses must implement the compile method")
 
@@ -142,10 +134,20 @@ class FlatBugLocalizer(Algorithm):
     Darsa Group flat-bug detection and segmentation.
     """
 
-    def compile(self):
-        from flat_bug.predictor import Predictor
+    def compile(self, device="cpu", dtype="float16"):
+        saved_models_key = (
+            f"flat_bug_localizer_{device}_{dtype}"  # generate a key for each uniquely compiled algorithm
+        )
 
-        self.model = Predictor(device="cpu", dtype="float16")
+        if saved_models_key not in SAVED_MODELS:
+            from flat_bug.predictor import Predictor
+
+            logger.info(f"Compiling {self.algorithm_config_response.name} from scratch...")
+            self.model = Predictor(device=device, dtype=dtype)
+            SAVED_MODELS[saved_models_key] = self.model
+        else:
+            logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
+            self.model = SAVED_MODELS[saved_models_key]
 
     def run(self, source_images: list[SourceImage]) -> list[Detection]:
         detector_responses: list[Detection] = []
@@ -207,12 +209,21 @@ class ZeroShotObjectDetector(Algorithm):
     Huggingface Zero-Shot Object Detection model.
     """
 
-    def compile(self):
-        from transformers import pipeline
+    candidate_labels: list[str] = ["bug", "moth", "butterfly", "insect"]
 
-        checkpoint = "google/owlv2-base-patch16-ensemble"
-        self.model = pipeline(model=checkpoint, task="zero-shot-object-detection")
-        SAVED_MODELS[self.algorithm_config_response.key] = self.model
+    def compile(self):
+        saved_models_key = "zero_shot_object_detector"  # generate a key for each uniquely compiled algorithm
+
+        if saved_models_key not in SAVED_MODELS:
+            from transformers import pipeline
+
+            logger.info(f"Compiling {self.algorithm_config_response.name} from scratch...")
+            checkpoint = "google/owlv2-base-patch16-ensemble"
+            self.model = pipeline(model=checkpoint, task="zero-shot-object-detection")
+            SAVED_MODELS[saved_models_key] = self.model
+        else:
+            logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
+            self.model = SAVED_MODELS[saved_models_key]
 
     def run(self, source_images: list[SourceImage]) -> list[Detection]:
         detector_responses: list[Detection] = []
@@ -221,7 +232,10 @@ class ZeroShotObjectDetector(Algorithm):
 
             if source_image.width and source_image.height and source_image._pil:
                 start_time = datetime.datetime.now()
-                predictions = self.model(source_image._pil, candidate_labels=["bug", "moth", "butterfly", "insect"])
+                logger.info("Predicting...")
+                if not self.candidate_labels:
+                    raise ValueError("No candidate labels are provided during inference.")
+                predictions = self.model(source_image._pil, candidate_labels=self.candidate_labels)
                 end_time = datetime.datetime.now()
                 elapsed_time = (end_time - start_time).total_seconds()
 
@@ -287,17 +301,21 @@ class HFImageClassifier(Algorithm):
     """
 
     def compile(self):
-        from transformers import pipeline
+        saved_models_key = "hf_image_classifier"  # generate a key for each uniquely compiled algorithm
 
-        self.model = pipeline("image-classification", model="google/vit-base-patch16-224")
-        SAVED_MODELS[self.algorithm_config_response.key] = self.model
+        if saved_models_key not in SAVED_MODELS:
+            from transformers import pipeline
+
+            logger.info(f"Compiling {self.algorithm_config_response.name} from scratch...")
+            self.model = pipeline("image-classification", model="google/vit-base-patch16-224")
+            SAVED_MODELS[saved_models_key] = self.model
+        else:
+            logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
+            self.model = SAVED_MODELS[saved_models_key]
 
     def run(self, detections: list[Detection]) -> list[Detection]:
         detections_to_return: list[Detection] = []
         start_time = datetime.datetime.now()
-
-        for detection in detections:
-            detection.source_image.open(raise_exception=True)
 
         opened_cropped_images = [detection._pil for detection in detections]  # type: ignore
 
