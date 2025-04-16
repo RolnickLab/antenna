@@ -315,6 +315,7 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
     )
 
     autocomplete_fields = ("source_image", "occurrence")
+    search_fields = ("id",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -405,6 +406,7 @@ class ClassificationAdmin(admin.ModelAdmin[Classification]):
         "detection__source_image__project",
         "taxon__rank",
     )
+    autocomplete_fields = ("taxon", "detection")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
