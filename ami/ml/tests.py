@@ -1,7 +1,9 @@
 import datetime
 import unittest
 
+import numpy as np
 from django.test import TestCase
+from pgvector.django import CosineDistance, L2Distance
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -628,3 +630,58 @@ class TestAlgorithmCategoryMaps(TestCase):
             # Ensure the full labels in the data match the simple, ordered list of labels
             sorted_data = sorted(algorithm.category_map.data, key=lambda x: x["index"])
             assert [category["label"] for category in sorted_data] == algorithm.category_map.labels
+
+
+class ClassificationFeatureVectorTests(TestCase):
+    def setUp(self):
+        self.dim = 2048
+        self.classifications = []
+        # Create a base vector pointing along first axis
+        base_vec = np.zeros(self.dim)
+        # Create 10 normalized vectors as lists
+        base_vec[0] = 1.0  # Unit vector
+        for i in range(10):
+            # Generate a perturbation in a new random direction
+            noise = np.random.randn(self.dim)
+            noise[0] = 0  # Ensure it's orthogonal to base vector
+            noise = noise / np.linalg.norm(noise)
+
+            # Blend with the base vector using different weights
+            alpha = 1 - (i * 0.1)  # Decreasing similarity
+            perturbed_vec = alpha * base_vec + (1 - alpha) * noise
+            perturbed_vec = perturbed_vec / np.linalg.norm(perturbed_vec)
+
+            classification = Classification.objects.create(
+                algorithm=Algorithm.objects.get(key="random-species-classifier"),
+                taxon=None,
+                score=0.5,
+                features_2048=perturbed_vec.tolist(),
+                timestamp=datetime.datetime.now(),
+                detection=None,
+            )
+            self.classifications.append(classification)
+
+    def test_cosine_distance(self):
+        ref_cls = self.classifications[5]
+        ref_vector = ref_cls.features_2048
+
+        qs = (
+            Classification.objects.exclude(features_2048=None)
+            .annotate(cosine_distance=CosineDistance("features_2048", ref_vector))
+            .order_by("cosine_distance")
+        )
+        most_similar = qs.first()
+        self.assertEqual(most_similar.pk, ref_cls.pk, "Most similar classification should be itself")
+
+    def test_l2_distance(self):
+        ref_cls = self.classifications[5]
+        ref_vector = ref_cls.features_2048
+
+        qs = (
+            Classification.objects.exclude(features_2048=None)
+            .annotate(l2_distance=L2Distance("features_2048", ref_vector))
+            .order_by("l2_distance")
+        )
+
+        most_similar = qs.first()
+        self.assertEqual(most_similar.pk, ref_cls.pk, "Most similar classification should be itself")
