@@ -209,7 +209,7 @@ class ZeroShotObjectDetector(Algorithm):
     Huggingface Zero-Shot Object Detection model.
     """
 
-    candidate_labels: list[str] = ["bug", "moth", "butterfly", "insect"]
+    candidate_labels: list[str] = ["insect"]
 
     def compile(self):
         saved_models_key = "zero_shot_object_detector"  # generate a key for each uniquely compiled algorithm
