@@ -1,9 +1,9 @@
 services:
   ml_backend_example:
     build:
-      context: ./example
+      context: .
     volumes:
-      - ./example/:/app:z
+      - ./:/app:z
     ports:
       - "2003:2000"
     extra_hosts:
