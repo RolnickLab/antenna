@@ -219,7 +219,7 @@ class ZeroShotObjectDetector(Algorithm):
 
             logger.info(f"Compiling {self.algorithm_config_response.name} from scratch...")
             checkpoint = "google/owlv2-base-patch16-ensemble"
-            self.model = pipeline(model=checkpoint, task="zero-shot-object-detection")
+            self.model = pipeline(model=checkpoint, task="zero-shot-object-detection", use_fast=True)
             SAVED_MODELS[saved_models_key] = self.model
         else:
             logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
