@@ -15,8 +15,9 @@ services:
     command: /start
 
   postgres:
-    context: .
-    dockerfile: ./compose/local/postgres/Dockerfile
+    build:
+      context: .
+      dockerfile: ./compose/local/postgres/Dockerfile
 
     env_file:
       - ./.envs/.ci/.postgres
