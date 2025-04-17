@@ -1,9 +1,9 @@
 services:
   ml_backend_minimal:
     build:
-      context: ./minimal
+      context: .
     volumes:
-      - ./minimal/:/app:z
+      - ./:/app:z
     ports:
       - "2000:2000"
     extra_hosts:
