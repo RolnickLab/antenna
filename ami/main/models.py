@@ -1242,7 +1242,7 @@ def validate_filename_timestamp(filename: str) -> None:
     # Ensure filename has a timestamp
     timestamp = ami.utils.dates.get_image_timestamp_from_filename(filename)
     if not timestamp:
-        raise ValidationError("Image filename does not contain a valid timestamp (e.g. YYMMDDHHMMSS-snapshot.jpg).")
+        raise ValidationError("Image filename does not contain a valid timestamp (e.g. YYYYMMDDHHMMSS-snapshot.jpg).")
 
 
 def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
