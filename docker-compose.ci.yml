@@ -15,7 +15,7 @@ services:
     command: /start
 
   postgres:
-    image: postgres:13
+    image: postgres:16
     env_file:
       - ./.envs/.ci/.postgres
 
