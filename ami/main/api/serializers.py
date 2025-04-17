@@ -1098,8 +1098,6 @@ class SourceImageCollectionSerializer(DefaultSerializer):
         ]
 
     def get_permissions(self, instance, instance_data):
-        request = self.context.get("request")
-
         request: Request = self.context["request"]
         user = request.user
         project = instance.get_project()
