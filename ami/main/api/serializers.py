@@ -1,5 +1,6 @@
 import datetime
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -13,7 +14,6 @@ from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
-from ami.utils.dates import get_image_timestamp_from_filename
 
 from ..models import (
     Classification,
@@ -32,6 +32,7 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
+    validate_filename_timestamp,
 )
 
 
@@ -1024,13 +1025,10 @@ class SourceImageUploadSerializer(DefaultSerializer):
 
     def validate_image(self, value):
         # Ensure that image filename contains a timestamp
-        timestamp = get_image_timestamp_from_filename(value.name)
-        if timestamp is None:
-            # @TODO bring back EXIF support
-            raise serializers.ValidationError(
-                "Image filename does not contain a timestamp in the format YYYYMMDDHHMMSS "
-                " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
-            )
+        try:
+            validate_filename_timestamp(value.name)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(str(e))
         return value
 
 
