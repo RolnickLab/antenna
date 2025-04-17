@@ -10,6 +10,13 @@ services:
       - minio:host-gateway
     networks:
       - ml_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
 networks:
   ml_network:

@@ -1,5 +1,8 @@
 import datetime
 import logging
+import typing
+
+import torch
 
 from .schemas import (
     AlgorithmConfigResponse,
@@ -15,6 +18,18 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 SAVED_MODELS = {}
+
+
+def get_best_device() -> str:
+    """
+    Returns the best available device for running the model.
+
+    MPS is not supported by the current algoritms.
+    """
+    if torch.cuda.is_available():
+        return f"cuda:{torch.cuda.current_device()}"
+    else:
+        return "cpu"
 
 
 class Algorithm:
@@ -134,7 +149,11 @@ class FlatBugLocalizer(Algorithm):
     Darsa Group flat-bug detection and segmentation.
     """
 
-    def compile(self, device="cpu", dtype="float16"):
+    def compile(
+        self,
+        device: str | None = None,
+        dtype: typing.Literal["float32", "float16"] = "float16",
+    ):
         saved_models_key = (
             f"flat_bug_localizer_{device}_{dtype}"  # generate a key for each uniquely compiled algorithm
         )
@@ -142,8 +161,9 @@ class FlatBugLocalizer(Algorithm):
         if saved_models_key not in SAVED_MODELS:
             from flat_bug.predictor import Predictor
 
-            logger.info(f"Compiling {self.algorithm_config_response.name} from scratch...")
-            self.model = Predictor(device=device, dtype=dtype)
+            device_choice = device if device else get_best_device()
+            logger.info(f"Compiling {self.algorithm_config_response.name} on device {device_choice}...")
+            self.model = Predictor(device=device_choice, dtype=dtype)
             SAVED_MODELS[saved_models_key] = self.model
         else:
             logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
@@ -211,15 +231,22 @@ class ZeroShotObjectDetector(Algorithm):
 
     candidate_labels: list[str] = ["insect"]
 
-    def compile(self):
+    def compile(self, device: str | None = None):
         saved_models_key = "zero_shot_object_detector"  # generate a key for each uniquely compiled algorithm
 
         if saved_models_key not in SAVED_MODELS:
             from transformers import pipeline
 
-            logger.info(f"Compiling {self.algorithm_config_response.name} from scratch...")
+            device_choice = device or get_best_device()
+            device_index = int(device_choice.split(":")[-1]) if ":" in device_choice else -1
+            logger.info(f"Compiling {self.algorithm_config_response.name} on device {device_choice}...")
             checkpoint = "google/owlv2-base-patch16-ensemble"
-            self.model = pipeline(model=checkpoint, task="zero-shot-object-detection", use_fast=True)
+            self.model = pipeline(
+                model=checkpoint,
+                task="zero-shot-object-detection",
+                use_fast=True,
+                device=device_index,
+            )
             SAVED_MODELS[saved_models_key] = self.model
         else:
             logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
