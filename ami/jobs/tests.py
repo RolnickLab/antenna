@@ -1,12 +1,21 @@
 # from rich import print
 import logging
+import threading
 
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
+from ami.jobs.models import (
+    BatchedJobLogHandler,
+    Job,
+    JobLogHandler,
+    JobProgress,
+    JobState,
+    MLJob,
+    SourceImageCollectionPopulateJob,
+)
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.users.models import User
@@ -198,3 +207,136 @@ class TestJobView(APITestCase):
         # This cannot be tested until we have a way to cancel jobs
         # and a way to run async tasks in tests.
         pass
+
+    def test_job_logs_api(self):
+        """Test the storage and retrieval of job logs using the standard JobLogHandler."""
+        job_name = "Test job for logs"
+
+        # Create a job
+        job_data = self._create_job(job_name, start_now=False)
+        job_id = job_data["id"]
+        job = Job.objects.get(pk=job_id)
+
+        # Check that Job.logger has propagate=False (as it should)
+        job_logger = job.logger
+        self.assertFalse(job_logger.propagate, "Job logger should have propagate=False")
+
+        # Check that it uses JobLogHandler
+        self.assertEqual(len(job_logger.handlers), 1, "Job logger should have exactly one handler")
+        self.assertIsInstance(job_logger.handlers[0], JobLogHandler, "Job logger should use JobLogHandler")
+
+        # Use the Job.logger property directly to add logs
+        job_logger.setLevel(logging.DEBUG)
+
+        # Add various log messages using the job logger
+        job_logger.debug("Debug message")
+        job_logger.info("Info message")
+        job_logger.warning("Warning message")
+        job_logger.error("Error message 1")
+        job_logger.error("Error message 2")
+        job_logger.critical("Critical message")
+
+        # Create a second logger instance to simulate concurrent logging
+        # This would normally cause issues with the old array-based method
+        concurrent_logger = logging.getLogger(f"test.jobs.concurrent.{job.pk}")
+        concurrent_logger.addHandler(job_logger.handlers[0])  # Add the JobLogHandler
+        concurrent_logger.setLevel(logging.DEBUG)
+        concurrent_logger.propagate = False  # Match job logger configuration
+
+        # Simulate concurrent logging from different sources
+        for i in range(5):
+            concurrent_logger.info(f"Concurrent message {i}")
+
+        # Retrieve the job via API
+        self.client.force_authenticate(user=self.user)
+        job_detail_url = reverse_with_params("api:job-detail", args=[job_id], params={"project_id": self.project.pk})
+        resp = self.client.get(job_detail_url)
+        self.assertEqual(resp.status_code, 200)
+
+        # Check if logs are present in the response
+        data = resp.json()
+        self.assertIn("log_entries", data)
+        self.assertIn("errors", data)
+
+        # Verify log entries are returned in the expected format
+        log_entries = data["log_entries"]
+        self.assertGreaterEqual(len(log_entries), 9)  # 9 log messages total
+
+        # Check that error logs are correctly identified
+        errors = data["errors"]
+        self.assertEqual(len(errors), 3)  # 3 error/critical messages
+
+        # Verify the error messages
+        error_messages = [error["message"] for error in errors]
+        self.assertIn("Error message 1", error_messages)
+        self.assertIn("Error message 2", error_messages)
+        self.assertIn("Critical message", error_messages)
+
+        # Verify DB entries match what's in the API response
+        from ami.jobs.models import JobLog
+
+        db_logs = JobLog.objects.filter(job_id=job_id).order_by("-timestamp")
+        self.assertEqual(db_logs.count(), len(log_entries))
+
+        # Check that the DB entries for error logs match
+        db_errors = JobLog.objects.filter(job_id=job_id, is_error=True).order_by("-timestamp")
+        self.assertEqual(db_errors.count(), len(errors))
+
+    def test_batched_job_log_handler(self):
+        """Test the batched log handler with no timer and only manual flushing."""
+        job_name = "Test job for batched logs"
+
+        # Create a job
+        job_data = self._create_job(job_name, start_now=False)
+        job_id = job_data["id"]
+        job = Job.objects.get(pk=job_id)
+
+        # Create a simplified version of batched handler with no timer
+        class SimplifiedBatchedHandler(BatchedJobLogHandler):
+            def __init__(self, job, batch_size=None):
+                # Skip the parent init which sets up the timer
+                logging.Handler.__init__(self)
+                self.job = job
+                self.batch_size = batch_size or self.DEFAULT_BATCH_SIZE
+                self.queue = []
+                self._lock = threading.Lock()
+                # Add this attribute to avoid AttributeError in parent close() method
+                self._timer = None
+                self.batch_age_seconds = 5  # Add this to avoid AttributeError
+
+        # Create logger and add the simplified handler
+        batched_logger = logging.getLogger(f"ami.jobs.batched.{job.pk}")
+        batched_handler = SimplifiedBatchedHandler(job, batch_size=5)
+        batched_logger.addHandler(batched_handler)
+        batched_logger.setLevel(logging.DEBUG)
+        batched_logger.propagate = False
+
+        # Add logs below batch size
+        for i in range(3):
+            batched_logger.info(f"Below batch size message {i}")
+
+        # Manually verify no auto-flush yet
+        from ami.jobs.models import JobLog
+
+        db_logs = JobLog.objects.filter(job_id=job_id).order_by("-timestamp")
+        self.assertEqual(db_logs.count(), 0)
+
+        # Manually flush
+        batched_handler.flush()
+
+        # Verify logs were written
+        db_logs = JobLog.objects.filter(job_id=job_id).order_by("-timestamp")
+        self.assertEqual(db_logs.count(), 3)
+
+        # Add some errors and manually flush
+        batched_logger.error("Batched error 1")
+        batched_logger.error("Batched error 2")
+        batched_handler.flush()
+
+        # Verify error logs
+        db_logs = JobLog.objects.filter(job_id=job_id).order_by("-timestamp")
+        self.assertEqual(db_logs.count(), 5)  # 3 previous + 2 new logs
+
+        # Check errors are properly flagged
+        db_errors = JobLog.objects.filter(job_id=job_id, is_error=True).order_by("-timestamp")
+        self.assertEqual(db_errors.count(), 2)

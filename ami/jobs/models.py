@@ -1,6 +1,7 @@
 import datetime
 import logging
 import random
+import threading
 import time
 import typing
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ import pydantic
 from celery import uuid
 from celery.result import AsyncResult
 from django.db import models, transaction
+from django.utils import timezone
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
 
@@ -246,9 +248,37 @@ class JobLogs(pydantic.BaseModel):
     stderr: list[str] = pydantic.Field(default_factory=list, alias="stderr", title="Error messages")
 
 
+class JobLog(BaseModel):
+    """Individual log entry for a Job"""
+
+    class LogLevel(models.TextChoices):
+        DEBUG = "DEBUG", "Debug"
+        INFO = "INFO", "Info"
+        WARNING = "WARNING", "Warning"
+        ERROR = "ERROR", "Error"
+        CRITICAL = "CRITICAL", "Critical"
+
+    job = models.ForeignKey("jobs.Job", on_delete=models.CASCADE, related_name="log_entries")
+    level = models.CharField(max_length=20, choices=LogLevel.choices, default=LogLevel.INFO)
+    message = models.TextField()
+    timestamp = models.DateTimeField(default=timezone.now)
+    is_error = models.BooleanField(default=False, help_text="Whether this log should appear in stderr output")
+
+    class Meta:
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["job", "timestamp"]),
+            models.Index(fields=["job", "is_error"]),
+        ]
+
+
 class JobLogHandler(logging.Handler):
     """
     Class for handling logs from a job and writing them to the job instance.
+    Also creates individual JobLog entries for better concurrency.
+
+    This is the original handler that maintains backward compatibility
+    with the old logs field during migration.
     """
 
     max_log_length = 1000
@@ -261,26 +291,174 @@ class JobLogHandler(logging.Handler):
         # Log to the current app logger
         logger.log(record.levelno, self.format(record))
 
-        # Write to the logs field on the job instance
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.logs.stdout:
-            self.job.logs.stdout.insert(0, msg)
+        # Format the message
+        formatted_msg = self.format(record)
+        timestamp = datetime.datetime.now()
+        timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        msg = f"[{timestamp_str}] {record.levelname} {formatted_msg}"
+        is_error = record.levelno >= logging.ERROR
 
-        # Write a simpler copy of any errors to the errors field
-        if record.levelno >= logging.ERROR:
-            if record.message not in self.job.logs.stderr:
-                self.job.logs.stderr.insert(0, record.message)
-
-        if len(self.job.logs.stdout) > self.max_log_length:
-            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
-        # @TODO consider saving logs to the database periodically rather than on every log
+        # Create a single log entry in the JobLog model
         try:
+            # Create individual log entry
+            if hasattr(self.job, "pk") and self.job.pk:
+                JobLog.objects.create(
+                    job=self.job, level=record.levelname, message=formatted_msg, timestamp=timestamp, is_error=is_error
+                )
+        except Exception as e:
+            logger.error(f"Failed to create JobLog entry for job #{self.job.pk}: {e}")
+
+        # Keep backward compatibility with the old logs field
+        try:
+            # Write to the logs field on the job instance
+            if msg not in self.job.logs.stdout:
+                self.job.logs.stdout.insert(0, msg)
+
+            # Write a simpler copy of any errors to the errors field
+            if is_error:
+                if record.message not in self.job.logs.stderr:
+                    self.job.logs.stderr.insert(0, record.message)
+
+            if len(self.job.logs.stdout) > self.max_log_length:
+                self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
+
+            # @TODO consider saving logs to the database periodically rather than on every log
             self.job.save(update_fields=["logs"], update_progress=False)
         except Exception as e:
             logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
-            pass
+
+
+class BatchedJobLogHandler(logging.Handler):
+    """
+    Enhanced log handler that batches log entries for better performance.
+
+    Features:
+    - Batches logs in memory until batch size is reached
+    - Periodically flushes logs based on time elapsed
+    - Ensures all logs are flushed when job completes
+    - Does NOT update the legacy logs field (use only after migration)
+    """
+
+    # Default values - can be overridden in __init__
+    DEFAULT_BATCH_SIZE = 50  # Flush after this many logs
+    DEFAULT_BATCH_AGE_SECONDS = 5  # Flush after this many seconds
+
+    def __init__(
+        self, job: "Job", batch_size: int | None = None, batch_age_seconds: int | None = None, *args, **kwargs
+    ):
+        self.batch_size = batch_size or self.DEFAULT_BATCH_SIZE
+        self.batch_age_seconds = batch_age_seconds or self.DEFAULT_BATCH_AGE_SECONDS
+        self.job = job
+        self.queue = []
+        self.last_flush = time.time()
+        self._lock = threading.Lock()
+        self._timer = None
+        self._setup_periodic_flush()
+        super().__init__(*args, **kwargs)
+
+        # Register a cleanup handler when job finishes
+        # This uses Django's signal mechanism to ensure logs are flushed
+        from django.db.models.signals import post_save
+        from django.dispatch import receiver
+
+        @receiver(post_save, sender=job.__class__)
+        def ensure_logs_flushed(sender, instance, **kwargs):
+            # Only handle our specific job
+            if instance.pk != job.pk:
+                return
+
+            # Check if job has reached a final state
+            from .models import JobState  # Local import to avoid circular imports
+
+            if instance.status in JobState.final_states():
+                self.flush()
+                # Disconnect after job is done
+                post_save.disconnect(ensure_logs_flushed, sender=job.__class__)
+
+    def _setup_periodic_flush(self):
+        """Set up a timer to periodically flush logs"""
+
+        def _timer_flush():
+            self.flush()
+            # Schedule next flush
+            self._timer = threading.Timer(self.batch_age_seconds, _timer_flush)
+            self._timer.daemon = True
+            self._timer.start()
+
+        # Start the first timer
+        self._timer = threading.Timer(self.batch_age_seconds, _timer_flush)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def emit(self, record: logging.LogRecord):
+        """Process a log record - add to batch and flush if needed"""
+        # Log to the current app logger
+        logger.log(record.levelno, self.format(record))
+
+        # Format the log message
+        formatted_msg = self.format(record)
+        timestamp = timezone.now()
+        is_error = record.levelno >= logging.ERROR
+
+        # Create log entry dict (not saved yet)
+        entry = {
+            "job_id": self.job.pk,
+            "level": record.levelname,
+            "message": formatted_msg,
+            "timestamp": timestamp,
+            "is_error": is_error,
+        }
+
+        with self._lock:
+            # Add to queue
+            self.queue.append(entry)
+
+            # Check if we should flush based on batch size
+            if len(self.queue) >= self.batch_size:
+                self.flush()
+
+    def flush(self):
+        """Flush all queued log entries to the database"""
+        with self._lock:
+            if not self.queue:
+                return
+
+            queue_copy = self.queue.copy()
+            self.queue = []
+            self.last_flush = time.time()
+
+        # Create JobLog objects outside the lock
+        logs = []
+        for entry in queue_copy:
+            logs.append(
+                JobLog(
+                    job_id=entry["job_id"],
+                    level=entry["level"],
+                    message=entry["message"],
+                    timestamp=entry["timestamp"],
+                    is_error=entry["is_error"],
+                )
+            )
+
+        try:
+            # Use atomic transaction to ensure all logs are saved together
+            from django.db import transaction
+
+            with transaction.atomic():
+                JobLog.objects.bulk_create(logs)
+        except Exception as e:
+            logger.error(f"Failed to bulk create logs for job #{self.job.pk}: {e}")
+
+    def close(self):
+        """Clean up resources when handler is closed"""
+        # Flush any remaining logs
+        self.flush()
+
+        # Cancel the periodic flush timer
+        if self._timer:
+            self._timer.cancel()
+
+        super().close()
 
 
 @dataclass

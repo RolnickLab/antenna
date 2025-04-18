@@ -12,7 +12,7 @@ from ami.main.models import Deployment, Project, SourceImage, SourceImageCollect
 from ami.ml.models import Pipeline
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobLogs, JobProgress, MLJob
+from .models import Job, JobLog, JobLogs, JobProgress, MLJob
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -144,10 +144,32 @@ class JobListSerializer(DefaultSerializer):
         ]
 
 
+class JobLogNestedSerializer(serializers.ModelSerializer):
+    """Nested serializer for job logs"""
+
+    class Meta:
+        model = JobLog
+        fields = ["id", "level", "message", "timestamp", "is_error"]
+
+
 class JobSerializer(JobListSerializer):
     # progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
+    log_entries = serializers.SerializerMethodField()
+    errors = serializers.SerializerMethodField()
 
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
+            "log_entries",
+            "errors",
             "result",
         ]
+
+    def get_log_entries(self, obj):
+        """Return all logs for this job"""
+        return JobLogNestedSerializer(obj.log_entries.all().order_by("-timestamp")[:100], many=True).data
+
+    def get_errors(self, obj):
+        """Return only error logs for this job"""
+        return JobLogNestedSerializer(
+            obj.log_entries.filter(is_error=True).order_by("-timestamp")[:100], many=True
+        ).data
