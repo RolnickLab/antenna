@@ -1,5 +1,6 @@
 import classNames from 'classnames'
 import _ from 'lodash'
+import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import styles from './info-block.module.scss'
@@ -11,32 +12,56 @@ interface Field {
 }
 
 export const InfoBlock = ({ fields }: { fields: Field[] }) => (
-  <>
-    {fields.map((field, index) => {
-      const value =
-        field.value === undefined
-          ? translate(STRING.VALUE_NOT_AVAILABLE)
-          : field.value
-      const valueLabel = _.isNumber(value) ? value.toLocaleString() : value
-
-      return (
-        <p className={styles.field} key={index}>
-          <span className={styles.fieldLabel}>{field.label}</span>
-          {field.to ? (
-            <Link to={field.to}>
-              <span
-                className={classNames(styles.fieldValue, styles.link, {
-                  [styles.bubble]: _.isNumber(value),
-                })}
-              >
-                {valueLabel}
-              </span>
-            </Link>
-          ) : (
-            <span className={styles.fieldValue}>{valueLabel}</span>
-          )}
-        </p>
-      )
-    })}
-  </>
+  <div className="grid gap-6">
+    {fields.map((field, index) => (
+      <InfoBlockField key={index} label={field.label}>
+        <InfoBlockFieldValue value={field.value} to={field.to} />
+      </InfoBlockField>
+    ))}
+  </div>
 )
+
+export const InfoBlockField = ({
+  children,
+  label,
+}: {
+  children: ReactNode
+  label: string
+}) => (
+  <div className="grid gap-1">
+    <span className="body-overline font-semibold text-muted-foreground">
+      {label}
+    </span>
+    {children}
+  </div>
+)
+
+export const InfoBlockFieldValue = ({
+  value,
+  to,
+}: {
+  value?: string | number
+  to?: string
+}) => {
+  const _value =
+    value === undefined ? translate(STRING.VALUE_NOT_AVAILABLE) : value
+  const valueLabel = _.isNumber(_value) ? _value.toLocaleString() : _value
+
+  return (
+    <>
+      {to ? (
+        <Link to={to}>
+          <span
+            className={classNames('body-base', 'text-primary font-semibold', {
+              [styles.bubble]: _.isNumber(_value),
+            })}
+          >
+            {valueLabel}
+          </span>
+        </Link>
+      ) : (
+        <span className="body-base">{valueLabel}</span>
+      )}
+    </>
+  )
+}

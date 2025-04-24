@@ -79,11 +79,8 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => (
-      <Link to={item.trainingImagesUrl} target="_blank">
-        <BasicTableCell
-          value={item.trainingImagesLabel}
-          theme={CellTheme.Primary}
-        />
+      <Link to={item.gbifUrl} target="_blank">
+        <BasicTableCell value="GBIF" theme={CellTheme.Primary} />
       </Link>
     ),
   },

@@ -3,11 +3,15 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
-import { InfoBlock } from 'design-system/components/info-block/info-block'
-import { TaxonDetails } from 'nova-ui-kit'
+import {
+  InfoBlockField,
+  InfoBlockFieldValue,
+} from 'design-system/components/info-block/info-block'
+import { ExternalLinkIcon } from 'lucide-react'
+import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
 import { useMemo } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -41,23 +45,6 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
     [species]
   )
 
-  const fields = [
-    {
-      label: translate(STRING.FIELD_LABEL_OCCURRENCES),
-      value:
-        species.numOccurrences !== null ? species.numOccurrences : 'View all',
-      to: getAppRoute({
-        to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
-        filters: { taxon: species.id },
-      }),
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_TRAINING_IMAGES),
-      value: species.trainingImagesLabel,
-      to: species.trainingImagesUrl,
-    },
-  ].filter((field) => field.value !== null)
-
   return (
     <div className={styles.wrapper}>
       <Helmet>
@@ -83,13 +70,50 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         <div className={styles.column}>
           <div className={styles.info}>
             <div className={styles.fields}>
-              <InfoBlock fields={fields} />
+              <div className="grid gap-6">
+                <InfoBlockField
+                  label={translate(STRING.FIELD_LABEL_OCCURRENCES)}
+                >
+                  <InfoBlockFieldValue
+                    value={
+                      species.numOccurrences !== null
+                        ? species.numOccurrences
+                        : 'View all'
+                    }
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCES({
+                        projectId: projectId as string,
+                      }),
+                      filters: { taxon: species.id },
+                    })}
+                  />
+                </InfoBlockField>
+                <InfoBlockField label={translate(STRING.EXTERNAL_RESOURCES)}>
+                  <div className="py-1">
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.gbifUrl}
+                      target="_blank"
+                    >
+                      <span>GBIF</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  </div>
+                </InfoBlockField>
+              </div>
             </div>
           </div>
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection items={blueprintItems} />
+            <BlueprintCollection>
+              {blueprintItems.map((item) => (
+                <BlueprintItem key={item.id} item={item} />
+              ))}
+            </BlueprintCollection>
           </div>
         </div>
       </div>

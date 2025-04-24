@@ -29,11 +29,7 @@ export class Species extends Taxon {
     return this._species.occurrences_count || null
   }
 
-  get trainingImagesLabel(): string {
-    return 'GBIF'
-  }
-
-  get trainingImagesUrl(): string {
+  get gbifUrl(): string {
     return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
   }
 
