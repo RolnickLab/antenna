@@ -39,55 +39,58 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         />
       </div>
       <div className={styles.content}>
-        <div className={styles.column}>
-          <div className={styles.info}>
-            <div className={styles.fields}>
-              <div className="grid gap-6">
-                <InfoBlockField
-                  label={translate(STRING.FIELD_LABEL_OCCURRENCES)}
+        <div className={styles.info}>
+          <div className="grid gap-6">
+            <InfoBlockField label="Last seen">
+              <InfoBlockFieldValue value={species.lastSeenLabel} />
+            </InfoBlockField>
+            <InfoBlockField label="Stations">
+              <InfoBlockFieldValue value={species.stationsLabel} />
+            </InfoBlockField>
+            <InfoBlockField label={translate(STRING.FIELD_LABEL_OCCURRENCES)}>
+              <InfoBlockFieldValue
+                value={
+                  species.numOccurrences !== null
+                    ? species.numOccurrences
+                    : 'View all'
+                }
+                to={getAppRoute({
+                  to: APP_ROUTES.OCCURRENCES({
+                    projectId: projectId as string,
+                  }),
+                  filters: { taxon: species.id },
+                })}
+              />
+            </InfoBlockField>
+            <InfoBlockField
+              className="no-print"
+              label={translate(STRING.EXTERNAL_RESOURCES)}
+            >
+              <div className="py-1 flex items-center gap-3">
+                <Link
+                  className={buttonVariants({
+                    size: 'small',
+                    variant: 'outline',
+                  })}
+                  to={species.gbifUrl}
+                  target="_blank"
                 >
-                  <InfoBlockFieldValue
-                    value={
-                      species.numOccurrences !== null
-                        ? species.numOccurrences
-                        : 'View all'
-                    }
-                    to={getAppRoute({
-                      to: APP_ROUTES.OCCURRENCES({
-                        projectId: projectId as string,
-                      }),
-                      filters: { taxon: species.id },
-                    })}
-                  />
-                </InfoBlockField>
-                <InfoBlockField label={translate(STRING.EXTERNAL_RESOURCES)}>
-                  <div className="py-1 flex items-center gap-3">
-                    <Link
-                      className={buttonVariants({
-                        size: 'small',
-                        variant: 'outline',
-                      })}
-                      to={species.gbifUrl}
-                      target="_blank"
-                    >
-                      <span>GBIF</span>
-                      <ExternalLinkIcon className="w-4 h-4" />
-                    </Link>
-                    <Link
-                      className={buttonVariants({
-                        size: 'small',
-                        variant: 'outline',
-                      })}
-                      to={species.fieldguideUrl}
-                      target="_blank"
-                    >
-                      <span>Fieldguide</span>
-                      <ExternalLinkIcon className="w-4 h-4" />
-                    </Link>
-                  </div>
-                </InfoBlockField>
+                  <span>GBIF</span>
+                  <ExternalLinkIcon className="w-4 h-4" />
+                </Link>
+                <Link
+                  className={buttonVariants({
+                    size: 'small',
+                    variant: 'outline',
+                  })}
+                  to={species.fieldguideUrl}
+                  target="_blank"
+                >
+                  <span>Fieldguide</span>
+                  <ExternalLinkIcon className="w-4 h-4" />
+                </Link>
               </div>
-            </div>
+            </InfoBlockField>
           </div>
         </div>
         <div className={styles.blueprintWrapper}>

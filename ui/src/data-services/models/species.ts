@@ -18,6 +18,7 @@ export class Species extends Taxon {
   }
 
   get coverImage() {
+    // TODO: Replace dummy data
     return {
       url: 'http://production-chroma.s3.amazonaws.com/photos/61883e24fe9c0e7e7bf2fa31/4b747bb37e644f8bbc71ef392ab2ee82.jpg',
       copyright: 'Josh Vandermeulen, some rights reserved (CC BY-NC-ND)',

@@ -8,6 +8,16 @@ export class SpeciesDetails extends Species {
     super(species)
   }
 
+  get lastSeenLabel() {
+    // TODO: Replace dummy data
+    return 'Nov 16, 2023 12:57:50 AM'
+  }
+
+  get stationsLabel() {
+    // TODO: Replace dummy data
+    return 'AMI 2BD0E9C1, AMI BEF510C3, AMI E43B615A'
+  }
+
   get exampleOccurrence() {
     const occurrence = this._species.occurrences?.[0]
 
@@ -25,6 +35,7 @@ export class SpeciesDetails extends Species {
   }
 
   get fieldguideUrl() {
+    // TODO: Replace dummy data
     return 'https://leps.fieldguide.ai/figures?category=59bafb78929d3d10ea903ee9'
   }
 }

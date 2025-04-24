@@ -23,12 +23,14 @@ export const InfoBlock = ({ fields }: { fields: Field[] }) => (
 
 export const InfoBlockField = ({
   children,
+  className,
   label,
 }: {
   children: ReactNode
+  className?: string
   label: string
 }) => (
-  <div className="w-full grid gap-1">
+  <div className={classNames('w-full grid gap-1', className)}>
     <span className="body-overline font-semibold text-muted-foreground">
       {label}
     </span>
@@ -50,17 +52,17 @@ export const InfoBlockFieldValue = ({
   return (
     <>
       {to ? (
-        <Link to={to}>
+        <Link className="body-base" to={to}>
           <span
-            className={classNames('body-base', 'text-primary font-semibold', {
-              [styles.bubble]: _.isNumber(_value),
-            })}
+            className={
+              _.isNumber(_value) ? styles.bubble : 'text-primary font-semibold'
+            }
           >
             {valueLabel}
           </span>
         </Link>
       ) : (
-        <span className="body-base">{valueLabel}</span>
+        <span>{valueLabel}</span>
       )}
     </>
   )

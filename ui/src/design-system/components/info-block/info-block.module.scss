@@ -3,6 +3,8 @@
 
 .bubble {
   @include bubble-label();
-  display: inline-flex;
-  margin: 4px 0;
+
+  @media not print {
+    margin: 4px 0;
+  }
 }
