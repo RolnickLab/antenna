@@ -28,7 +28,7 @@ export const InfoBlockField = ({
   children: ReactNode
   label: string
 }) => (
-  <div className="grid gap-1">
+  <div className="w-full grid gap-1">
     <span className="body-overline font-semibold text-muted-foreground">
       {label}
     </span>
