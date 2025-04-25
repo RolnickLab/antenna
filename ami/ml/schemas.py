@@ -108,6 +108,7 @@ class ClassificationResponse(pydantic.BaseModel):
     logits: list[float] | None = None
     features: list[float] | None = None
     inference_time: float | None = None
+    ood_score: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True
     timestamp: datetime.datetime

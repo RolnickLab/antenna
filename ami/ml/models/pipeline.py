@@ -582,7 +582,14 @@ def create_classification(
 
     if existing_classification:
         # @TODO remove this after all existing classifications have been updated (added 2024-12-20)
-        NEW_FIELDS = ["logits", "scores", "terminal", "category_map"]
+        NEW_FIELDS = [
+            "logits",
+            "scores",
+            "terminal",
+            "category_map",
+        ]
+        # These fields were added 2025-04-26
+        NEW_FIELDS = NEW_FIELDS + ["features_2048", "ood_score"]
         logger.debug(
             "Duplicate classification found: "
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
@@ -616,6 +623,7 @@ def create_classification(
             timestamp=classification_resp.timestamp or now(),
             logits=classification_resp.logits,
             features_2048=classification_resp.features,
+            ood_score=classification_resp.ood_score,
             scores=classification_resp.scores,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,

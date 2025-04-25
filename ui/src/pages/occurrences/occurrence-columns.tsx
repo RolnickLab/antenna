@@ -74,6 +74,14 @@ export const columns: (
     ),
   },
   {
+    id: 'ood-score',
+    name: 'OOD Score',
+    sortField: 'determination_ood_score',
+    renderCell: (item: Occurrence) => (
+      <OODScoreCell item={item} projectId={projectId} />
+    ),
+  },
+  {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     sortField: 'deployment',
@@ -258,6 +266,21 @@ const ScoreCell = ({
           </BasicTooltip>
           <span className={styles.scoreCellLabel}>
             {item.determinationScoreLabel}
+          </span>
+        </div>
+      </BasicTableCell>
+    </div>
+  )
+}
+
+const OODScoreCell = ({ item }: { item: Occurrence; projectId: string }) => {
+  return (
+    <div className={styles.scoreCell}>
+      <BasicTableCell>
+        <div className={styles.scoreCellContent}>
+          <IdentificationScore confidenceScore={item.determinationOODScore} />
+          <span className={styles.scoreCellLabel}>
+            {item.determinationOODScoreLabel}
           </span>
         </div>
       </BasicTableCell>

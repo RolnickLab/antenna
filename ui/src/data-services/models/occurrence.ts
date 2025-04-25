@@ -72,8 +72,20 @@ export class Occurrence {
     return _.round(this._occurrence.determination_score, 4)
   }
 
+  get determinationOODScore(): number {
+    const ood_score = this._occurrence.determination_ood_score
+    if (ood_score === undefined) {
+      return 0
+    }
+    return _.round(ood_score, 4)
+  }
+
   get determinationScoreLabel(): string {
     return this.determinationScore.toFixed(2)
+  }
+
+  get determinationOODScoreLabel(): string {
+    return this.determinationOODScore.toFixed(2)
   }
 
   get determinationTaxon(): Taxon {
