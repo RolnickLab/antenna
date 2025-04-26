@@ -108,6 +108,7 @@ class DetectionResponse(pydantic.BaseModel):
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
+    crop_image_url: str | None = None
     classifications: list[ClassificationResponse] = []
 
 
