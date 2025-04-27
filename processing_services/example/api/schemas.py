@@ -101,25 +101,6 @@ class ClassificationResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
 
 
-class DetectionResponse(pydantic.BaseModel):
-    # these fields are populated with values from a Detection, excluding source_image details
-    source_image_id: str
-    bbox: BoundingBox
-    inference_time: float | None = None
-    algorithm: AlgorithmReference
-    timestamp: datetime.datetime
-    crop_image_url: str | None = None
-    classifications: list[ClassificationResponse] = []
-
-
-class Detection(BaseImage):  # BaseImage represents the detection (the cropped image)
-    source_image: SourceImage  # the 'original' image
-    bbox: BoundingBox
-    inference_time: float | None = None
-    algorithm: AlgorithmReference
-    classifications: list[ClassificationResponse] = []
-
-
 class SourceImageRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="ignore")
 
