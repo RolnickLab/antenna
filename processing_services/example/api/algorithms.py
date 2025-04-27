@@ -262,6 +262,7 @@ class ZeroShotObjectDetector(Algorithm):
                 logger.info("Predicting...")
                 if not self.candidate_labels:
                     raise ValueError("No candidate labels are provided during inference.")
+                logger.info(f"Predicting with candidate labels: {self.candidate_labels}")
                 predictions = self.model(source_image._pil, candidate_labels=self.candidate_labels)
                 end_time = datetime.datetime.now()
                 elapsed_time = (end_time - start_time).total_seconds()

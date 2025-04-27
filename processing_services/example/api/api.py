@@ -10,6 +10,7 @@ from .pipelines import ConstantDetectionPipeline, FlatBugDetectorPipeline, Pipel
 from .schemas import (
     AlgorithmConfigResponse,
     PipelineRequest,
+    PipelineRequestConfigParameters,
     PipelineResultsResponse,
     ProcessingServiceInfoResponse,
     SourceImage,
@@ -83,8 +84,12 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     except KeyError:
         raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
 
+    pipeline_request_config = PipelineRequestConfigParameters(**dict(request_config)) if request_config else None
     try:
-        pipeline = Pipeline(source_images=source_images, request_config=request_config)
+        pipeline = Pipeline(
+            source_images=source_images,
+            request_config=pipeline_request_config,
+        )
         pipeline.compile()
         response = pipeline.run()
     except Exception as e:

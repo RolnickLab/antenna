@@ -7,6 +7,7 @@ from .schemas import (
     Detection,
     DetectionResponse,
     PipelineConfigResponse,
+    PipelineRequestConfigParameters,
     PipelineResultsResponse,
     SourceImage,
     SourceImageResponse,
@@ -34,7 +35,7 @@ class Pipeline:
 
     stages: list[Algorithm]
     batch_sizes: list[int]
-    request_config: dict
+    request_config: PipelineRequestConfigParameters | dict
     config: PipelineConfigResponse
 
     stages = []
@@ -48,7 +49,10 @@ class Pipeline:
     )
 
     def __init__(
-        self, source_images: list[SourceImage], request_config: dict = {}, custom_batch_sizes: list[int] = []
+        self,
+        source_images: list[SourceImage],
+        request_config: PipelineRequestConfigParameters | dict = {},
+        custom_batch_sizes: list[int] = [],
     ):
         self.source_images = source_images
         self.request_config = request_config
@@ -175,9 +179,11 @@ class ZeroShotObjectDetectorPipeline(Pipeline):
 
     def get_stages(self) -> list[Algorithm]:
         zero_shot_object_detector = ZeroShotObjectDetector()
-        if "candidate_labels" in self.request_config:
-            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
-
+        if isinstance(self.request_config, PipelineRequestConfigParameters) and self.request_config.candidate_labels:
+            logger.info(
+                "Setting candidate labels for zero shot object detector to %s", self.request_config.candidate_labels
+            )
+            zero_shot_object_detector.candidate_labels = self.request_config.candidate_labels
         self.config.algorithms = [zero_shot_object_detector.algorithm_config_response]
 
         return [zero_shot_object_detector]

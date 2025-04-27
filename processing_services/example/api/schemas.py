@@ -220,6 +220,10 @@ class PipelineRequestConfigParameters(pydantic.BaseModel):
         default=None,
         description="An optional authentication token to use for the pipeline.",
     )
+    candidate_labels: list[str] | None = pydantic.Field(
+        default=None,
+        description="A list of candidate labels to use for the zero-shot object detector.",
+    )
 
 
 class PipelineRequest(pydantic.BaseModel):
