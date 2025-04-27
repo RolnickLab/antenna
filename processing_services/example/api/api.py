@@ -91,6 +91,7 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
     request_config = data.config
 
+    # process detection and source image requests
     detections = (
         [
             Detection(
