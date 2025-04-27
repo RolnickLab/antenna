@@ -38,7 +38,9 @@ from ami.main.models import (
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
+    AlgorithmReference,
     ClassificationResponse,
+    DetectionRequest,
     DetectionResponse,
     PipelineRequest,
     PipelineRequestConfigParameters,
@@ -61,6 +63,7 @@ def filter_processed_images(
     Return only images that need to be processed by a given pipeline.
     An image needs processing if:
     1. It has no detections from the pipeline's detection algorithm
+    or
     2. It has detections but they don't have classifications from all the pipeline's classification algorithms
     """
     pipeline_algorithms = pipeline.algorithms.all()
@@ -191,14 +194,33 @@ def process_images(
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
-    source_images = [
-        SourceImageRequest(
-            id=str(source_image.pk),
-            url=url,
-        )
-        for source_image, url in zip(images, urls)
-        if url
-    ]
+    source_images: list[SourceImageRequest] = []
+    detection_requests: list[DetectionRequest] = []
+    pipeline_algorithms = pipeline.algorithms.all()
+
+    for source_image, url in zip(images, urls):
+        if url:
+            source_images.append(
+                SourceImageRequest(
+                    id=str(source_image.pk),
+                    url=url,
+                )
+            )
+            # Only re-process detections created by the pipeline's detector
+            for detection in source_image.detections.filter(detection_algorithm__in=pipeline_algorithms):
+                bbox = detection.get_bbox()
+                if bbox and detection.detection_algorithm:
+                    detection_requests.append(
+                        DetectionRequest(
+                            source_image=source_images[-1],
+                            bbox=bbox,
+                            crop_image_url=detection.url(),
+                            algorithm=AlgorithmReference(
+                                name=detection.detection_algorithm.name,
+                                key=detection.detection_algorithm.key,
+                            ),
+                        )
+                    )
 
     if not project_id:
         task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
@@ -206,10 +228,13 @@ def process_images(
     config = pipeline.get_config(project_id=project_id)
     task_logger.info(f"Using pipeline config: {config}")
 
+    task_logger.info(f"Found {len(detection_requests)} existing detections.")
+
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
         source_images=source_images,
         config=config,
+        detections=detection_requests,
     )
 
     session = create_session()
