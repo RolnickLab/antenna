@@ -29,6 +29,12 @@ export class Species extends Taxon {
     return this._images
   }
 
+  get lastSeenLabel() {
+    const date = new Date(this._species.last_detected)
+
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+  }
+
   get numDetections(): number {
     return this._species.detections_count || null
   }

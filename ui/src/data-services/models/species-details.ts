@@ -8,16 +8,6 @@ export class SpeciesDetails extends Species {
     super(species)
   }
 
-  get lastSeenLabel() {
-    // TODO: Replace dummy data
-    return 'Nov 16, 2023 12:57:50 AM'
-  }
-
-  get stationsLabel() {
-    // TODO: Replace dummy data
-    return 'AMI 2BD0E9C1, AMI BEF510C3, AMI E43B615A'
-  }
-
   get exampleOccurrence() {
     const occurrence = this._species.occurrences?.[0]
 
@@ -32,6 +22,11 @@ export class SpeciesDetails extends Species {
         occurrence.determination.name
       } (${_.round(occurrence.determination_score, 4)})`,
     }
+  }
+
+  get stationsLabel() {
+    // TODO: Replace dummy data
+    return 'AMI 2BD0E9C1, AMI BEF510C3, AMI E43B615A'
   }
 
   get fieldguideUrl() {
