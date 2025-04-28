@@ -1,7 +1,9 @@
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
+  ImageCellTheme,
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
@@ -14,6 +16,19 @@ import { STRING, translate } from 'utils/language'
 export const columns: (projectId: string) => TableColumn<Species>[] = (
   projectId: string
 ) => [
+  {
+    id: 'reference-image',
+    name: 'Reference image',
+    renderCell: (item: Species) => {
+      return (
+        <ImageTableCell
+          images={[{ src: item.coverImage.url }]}
+          theme={ImageCellTheme.Light}
+          to={APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id })}
+        />
+      )
+    },
+  },
   {
     id: 'name',
     sortField: 'name',
@@ -30,6 +45,15 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
         </BasicTableCell>
       </Link>
     ),
+  },
+  {
+    id: 'rank',
+    sortField: 'rank',
+    name: 'Taxon rank',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
   },
   {
     id: 'occurrences',
@@ -64,24 +88,11 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     ),
   },
   {
-    id: 'rank',
-    sortField: 'rank',
-    name: 'Taxon rank',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
-  },
-  {
-    id: 'training-images',
-    name: translate(STRING.FIELD_LABEL_TRAINING_IMAGES),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
+    id: 'last-seen',
+    sortField: 'last_detected',
+    name: 'Last seen',
     renderCell: (item: Species) => (
-      <Link to={item.gbifUrl} target="_blank">
-        <BasicTableCell value="GBIF" theme={CellTheme.Primary} />
-      </Link>
+      <BasicTableCell value={item.lastSeenLabel} />
     ),
   },
 ]

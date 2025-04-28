@@ -45,7 +45,7 @@ export const columns: (
 
       return (
         <ImageTableCell
-          images={item.images}
+          images={[item.images[0]]}
           theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
