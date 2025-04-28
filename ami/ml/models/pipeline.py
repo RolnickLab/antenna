@@ -581,37 +581,12 @@ def create_classification(
     ).first()
 
     if existing_classification:
-        # @TODO remove this after all existing classifications have been updated (added 2024-12-20)
-        NEW_FIELDS = [
-            "logits",
-            "scores",
-            "terminal",
-            "category_map",
-        ]
-        # These fields were added 2025-04-26
-        NEW_FIELDS = NEW_FIELDS + ["features_2048", "ood_score"]
-        logger.debug(
-            "Duplicate classification found: "
-            f"{existing_classification.taxon} from {existing_classification.algorithm}, "
-            f"not creating a new one, but updating new fields if they are None ({NEW_FIELDS})"
+        existing_classification = update_existing_classification(
+            existing_classification=existing_classification,
+            classification_resp=classification_resp,
+            classification_algo=classification_algo,
+            logger=logger,
         )
-        fields_to_update = []
-        for field in NEW_FIELDS:
-            # update new fields if they are None
-            if getattr(existing_classification, field) is None:
-                fields_to_update.append(field)
-        if fields_to_update:
-            logger.info(f"Updating fields {fields_to_update} for existing classification {existing_classification}")
-            for field in fields_to_update:
-                if field == "category_map":
-                    # Use the foreign key from the classification algorithm
-                    setattr(existing_classification, field, classification_algo.category_map)
-                else:
-                    # Get the value from the classification response
-                    setattr(existing_classification, field, getattr(classification_resp, field))
-            existing_classification.save(update_fields=fields_to_update)
-            logger.info(f"Updated existing classification {existing_classification}")
-
         classification = existing_classification
 
     else:
@@ -637,6 +612,61 @@ def create_classification(
             logger.debug(f"Initialized new classification {new_classification} (not saved)")
 
     return classification, not existing_classification
+
+
+def update_existing_classification(
+    existing_classification: Classification,
+    classification_resp: ClassificationResponse,
+    classification_algo: Algorithm,
+    logger: logging.Logger = logger,
+) -> Classification:
+    """
+    Update fields on an existing classification.
+
+    Only fields that are whitelisted in the field_map will be updated, and only
+    if their current value is None.
+
+    :param existing_classification: The existing Classification object to update
+    :param classification_resp: A ClassificationResponse object with new data
+    :param classification_algo: The Algorithm object associated with the classification
+    :param logger: A logger instance
+
+    :return: True if any fields were updated, False otherwise
+    """
+    # Whitelist of fields from classification_resp fields to Classification model fields
+    field_map = {
+        "logits": "logits",
+        "scores": "scores",
+        "terminal": "terminal",
+        "category_map": "category_map",
+        "features": "features_2048",
+        "ood_score": "ood_score",
+    }
+
+    logger.debug(
+        "Duplicate classification found: "
+        f"{existing_classification.taxon} from {existing_classification.algorithm}, "
+        f"not creating a new one, but updating new fields if they are None ({list(field_map.values())})"
+    )
+    fields_to_update = []
+    for resp_field, model_field in field_map.items():
+        # update new fields if they are None
+        if getattr(existing_classification, model_field) is None:
+            fields_to_update.append(model_field)
+    if fields_to_update:
+        logger.info(f"Updating fields {fields_to_update} for existing classification {existing_classification}")
+        for resp_field, model_field in field_map.items():
+            if model_field in fields_to_update:
+                if model_field == "category_map":
+                    # Use the foreign key from the classification algorithm
+                    setattr(existing_classification, model_field, classification_algo.category_map)
+                else:
+                    # Get the value from the classification response
+                    setattr(existing_classification, model_field, getattr(classification_resp, resp_field))
+        existing_classification.save(update_fields=fields_to_update)
+        logger.info(f"Updated existing classification {existing_classification}")
+
+    return existing_classification
 
 
 def create_classifications(
