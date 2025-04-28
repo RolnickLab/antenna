@@ -39,3 +39,9 @@
     padding: 16px 16px 80px;
   }
 }
+
+@media print {
+  .wrapper {
+    height: auto;
+  }
+}
