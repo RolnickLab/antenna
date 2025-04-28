@@ -18,9 +18,10 @@ export class SpeciesDetails extends Species {
     return {
       id: occurrence.id,
       image_url: occurrence.best_detection.url,
-      caption: `${occurrence.event.name}\n${
-        occurrence.determination.name
-      } (${_.round(occurrence.determination_score, 4)})`,
+      caption: `${occurrence.determination.name} (${_.round(
+        occurrence.determination_score,
+        4
+      )}), ${occurrence.event.name}`,
     }
   }
 

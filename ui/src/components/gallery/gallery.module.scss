@@ -27,7 +27,7 @@
   justify-content: center;
 }
 
-@media only screen and (max-width: $large-screen-breakpoint) {
+@media (max-width: $large-screen-breakpoint) {
   .gallery {
     grid-template-columns: 1fr 1fr 1fr !important;
   }

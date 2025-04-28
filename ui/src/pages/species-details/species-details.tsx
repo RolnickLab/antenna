@@ -98,9 +98,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
             <BlueprintCollection>
               {species.exampleOccurrence ? (
                 <InfoBlockField label="Example occurrence">
-                  <div className="flex justify-center bg-foreground">
-                    <img src={species.exampleOccurrence.image_url} />
-                  </div>
+                  <img src={species.exampleOccurrence.image_url} />
                   <span className="body-small whitespace-pre text-muted-foreground">
                     {species.exampleOccurrence.caption}
                   </span>
