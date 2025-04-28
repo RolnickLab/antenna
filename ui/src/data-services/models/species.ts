@@ -30,6 +30,10 @@ export class Species extends Taxon {
   }
 
   get lastSeenLabel() {
+    if (!this._species.last_detected) {
+      return undefined
+    }
+
     const date = new Date(this._species.last_detected)
 
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
