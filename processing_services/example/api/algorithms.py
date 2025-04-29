@@ -1,6 +1,5 @@
 import datetime
 import logging
-import typing
 
 import torch
 
@@ -12,7 +11,6 @@ from .schemas import (
     Detection,
     SourceImage,
 )
-from .utils import get_or_download_file
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -138,86 +136,6 @@ class ConstantLocalizer(Algorithm):
         key="constant-localizer",
         task_type="localization",
         description="Returns 2 constant bounding boxes for each image.",
-        version=1,
-        version_name="v1",
-        category_map=None,
-    )
-
-
-class FlatBugLocalizer(Algorithm):
-    """
-    Darsa Group flat-bug detection and segmentation.
-    """
-
-    def compile(
-        self,
-        device: str | None = None,
-        dtype: typing.Literal["float32", "float16"] = "float16",
-    ):
-        saved_models_key = (
-            f"flat_bug_localizer_{device}_{dtype}"  # generate a key for each uniquely compiled algorithm
-        )
-
-        if saved_models_key not in SAVED_MODELS:
-            from flat_bug.predictor import Predictor
-
-            device_choice = device if device else get_best_device()
-            logger.info(f"Compiling {self.algorithm_config_response.name} on device {device_choice}...")
-            self.model = Predictor(device=device_choice, dtype=dtype)
-            SAVED_MODELS[saved_models_key] = self.model
-        else:
-            logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
-            self.model = SAVED_MODELS[saved_models_key]
-
-    def run(self, source_images: list[SourceImage]) -> list[Detection]:
-        detector_responses: list[Detection] = []
-        for source_image in source_images:
-            source_image.open(raise_exception=True)
-
-            if source_image.width and source_image.height and source_image._pil:
-                start_time = datetime.datetime.now()
-                path = str(get_or_download_file(source_image.url))
-                logger.info(f"Predicting {path}")
-                prediction = self.model(path)
-                logger.info(f"Predicted: {prediction.json_data}")
-                logger.info(f"Prediction: {prediction.json_data['boxes']}")
-                end_time = datetime.datetime.now()
-                elapsed_time = (end_time - start_time).total_seconds()
-
-                bboxes = [
-                    BoundingBox(x1=box[0], y1=box[1], x2=box[2], y2=box[3]) for box in prediction.json_data["boxes"]
-                ]
-
-                for bbox in bboxes:
-                    cropped_image_pil = source_image._pil.crop(
-                        (min(bbox.x1, bbox.x2), min(bbox.y1, bbox.y2), max(bbox.x1, bbox.x2), max(bbox.y1, bbox.y2))
-                    )
-                    detection = Detection(
-                        id=f"{source_image.id}-crop-{bbox.x1}-{bbox.y1}-{bbox.x2}-{bbox.y2}",
-                        url=source_image.url,  # @TODO: ideally, should save cropped image at separate url
-                        width=cropped_image_pil.width,
-                        height=cropped_image_pil.height,
-                        timestamp=datetime.datetime.now(),
-                        source_image=source_image,
-                        bbox=bbox,
-                        inference_time=elapsed_time,
-                        algorithm=AlgorithmReference(
-                            name=self.algorithm_config_response.name,
-                            key=self.algorithm_config_response.key,
-                        ),
-                    )
-                    detection._pil = cropped_image_pil
-                    detector_responses.append(detection)
-            else:
-                raise ValueError(f"Source image {source_image.id} does not have width and height attributes.")
-
-        return detector_responses
-
-    algorithm_config_response = AlgorithmConfigResponse(
-        name="Flat Bug Localizer",
-        key="flat-bug-localizer",
-        task_type="localization",
-        description="Darsa Group flat-bug detection and segmentation.",
         version=1,
         version_name="v1",
         category_map=None,

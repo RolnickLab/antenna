@@ -38,19 +38,18 @@ If your goal is to run an ML backend locally, simply copy the `example` director
 3. Implement the `run()` function. Some important considerations:
     - Always run `_get_pipeline_response` at the end of `run()` to get a valid `PipelineResultsResponse`
     - Each algorithm/stage in a pipeline should take a list of `SourceImage`s or `Detection`s and produce a list of `Detection`s (with or without classifications). The class member function `_get_detections()` handles this general stage structure; it batchifys the inputs and produces output detections.
-    - 3 example pipelines are already implemented:
+    - 2 example pipelines are already implemented:
         - `ConstantDetectionPipeline`: localizer + classifier
         - `ZeroShotobjectDetectorPipeline`: detector
-        - `FlatBugDetectorPipeline`: localizer
 
 4. Add `NewPipeline` to `processing_services/example/api/api.py`
 
 ```
-from .pipelines import ConstantDetectionPipeline, FlatBugDetectorPipeline, Pipeline, ZeroShotObjectDetectorPipeline, NewPipeline
+from .pipelines import ConstantDetectionPipeline, Pipeline, ZeroShotObjectDetectorPipeline, NewPipeline
 
 ...
 
-pipelines: list[type[Pipeline]] = [ConstantDetectionPipeline, FlatBugDetectorPipeline, ZeroShotObjectDetectorPipeline, NewPipeline ]
+pipelines: list[type[Pipeline]] = [ConstantDetectionPipeline, ZeroShotObjectDetectorPipeline, NewPipeline ]
 
 ...
 

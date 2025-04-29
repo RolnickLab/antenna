@@ -2,7 +2,7 @@ import datetime
 import logging
 from typing import final
 
-from .algorithms import Algorithm, ConstantLocalizer, FlatBugLocalizer, HFImageClassifier, ZeroShotObjectDetector
+from .algorithms import Algorithm, ConstantLocalizer, HFImageClassifier, ZeroShotObjectDetector
 from .schemas import (
     Detection,
     DetectionResponse,
@@ -198,34 +198,5 @@ class ZeroShotObjectDetectorPipeline(Pipeline):
         pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
             detections_with_classifications, elapsed_time
         )
-
-        return pipeline_response
-
-
-class FlatBugDetectorPipeline(Pipeline):
-    """
-    A pipeline that uses the Darsa Group's flat bug detector. No classifications.
-    """
-
-    stages = [FlatBugLocalizer()]
-    batch_sizes = [1]
-    config = PipelineConfigResponse(
-        name="Flat Bug Detector Pipeline",
-        slug="flat-bug-detector-pipeline",
-        description=(
-            "DARSA Group: Flatbug is a hyperinference and trained YOLOv8 model zoo, "
-            "with a bespoke diverse dataset of the same name."
-        ),
-        version=1,
-        algorithms=[stage.algorithm_config_response for stage in stages],
-    )
-
-    def run(self) -> PipelineResultsResponse:
-        start_time = datetime.datetime.now()
-        # Only return detections with no classification
-        detections: list[Detection] = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
-        end_time = datetime.datetime.now()
-        elapsed_time = (end_time - start_time).total_seconds()
-        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(detections, elapsed_time)
 
         return pipeline_response
