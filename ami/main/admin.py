@@ -461,7 +461,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
         "created_at",
         "updated_at",
     )
-    list_filter = ("lists", "rank", TaxonParentFilter)
+    list_filter = ("unknown_species", "lists", "rank", TaxonParentFilter)
     search_fields = ("name",)
     autocomplete_fields = (
         "parent",
