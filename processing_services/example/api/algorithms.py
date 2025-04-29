@@ -50,101 +50,11 @@ class Algorithm:
     )
 
 
-class ConstantLocalizer(Algorithm):
-    """
-    Returns 2 constant bounding boxes for each image.
-    """
-
-    def compile(self):
-        pass
-
-    def run(self, source_images: list[SourceImage]) -> list[Detection]:
-        detector_responses: list[Detection] = []
-
-        for source_image in source_images:
-            source_image.open(raise_exception=True)
-            start_time = datetime.datetime.now()
-
-            if source_image.width and source_image.height and source_image._pil:
-                x1 = source_image.width * 0.1
-                x2 = source_image.width * 0.3
-                y1 = source_image.height * 0.1
-                y2 = source_image.height * 0.3
-                end_time = datetime.datetime.now()
-                elapsed_time = (end_time - start_time).total_seconds()
-
-                cropped_image_pil = source_image._pil.crop((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
-                detection = Detection(
-                    id=f"{source_image.id}-crop-{x1}-{y1}-{x2}-{y2}",
-                    url=source_image.url,  # @TODO: ideally, should save cropped image at separate url
-                    width=cropped_image_pil.width,
-                    height=cropped_image_pil.height,
-                    timestamp=datetime.datetime.now(),
-                    source_image=source_image,
-                    bbox=BoundingBox(
-                        x1=min(x1, x2),
-                        y1=min(y1, y2),
-                        x2=max(x1, x2),
-                        y2=max(y1, y2),
-                    ),
-                    inference_time=elapsed_time,
-                    algorithm=AlgorithmReference(
-                        name=self.algorithm_config_response.name,
-                        key=self.algorithm_config_response.key,
-                    ),
-                )
-                detection._pil = cropped_image_pil
-                detector_responses.append(detection)
-
-                start_time = datetime.datetime.now()
-                x1 = source_image.width * 0.6
-                x2 = source_image.width * 0.8
-                y1 = source_image.height * 0.6
-                y2 = source_image.height * 0.8
-                end_time = datetime.datetime.now()
-                elapsed_time = (end_time - start_time).total_seconds()
-
-                cropped_image_pil = source_image._pil.crop((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
-                detection = Detection(
-                    id=f"{source_image.id}-crop-{x1}-{y1}-{x2}-{y2}",
-                    url=source_image.url,  # @TODO: ideally, should save cropped image at separate url
-                    width=cropped_image_pil.width,
-                    height=cropped_image_pil.height,
-                    timestamp=datetime.datetime.now(),
-                    source_image=source_image,
-                    bbox=BoundingBox(
-                        x1=min(x1, x2),
-                        y1=min(y1, y2),
-                        x2=max(x1, x2),
-                        y2=max(y1, y2),
-                    ),
-                    inference_time=elapsed_time,
-                    algorithm=AlgorithmReference(
-                        name=self.algorithm_config_response.name,
-                        key=self.algorithm_config_response.key,
-                    ),
-                )
-                detection._pil = cropped_image_pil
-                detector_responses.append(detection)
-            else:
-                raise ValueError(f"Source image {source_image.id} does not have width and height attributes.")
-
-        return detector_responses
-
-    algorithm_config_response = AlgorithmConfigResponse(
-        name="Constant Localizer",
-        key="constant-localizer",
-        task_type="localization",
-        description="Returns 2 constant bounding boxes for each image.",
-        version=1,
-        version_name="v1",
-        category_map=None,
-    )
-
-
 class ZeroShotObjectDetector(Algorithm):
     """
     Huggingface Zero-Shot Object Detection model.
+    Produces both a bounding box and a classification for each detection.
+    The classification is based on the candidate labels.
     """
 
     candidate_labels: list[str] = ["insect"]
@@ -170,7 +80,7 @@ class ZeroShotObjectDetector(Algorithm):
             logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
             self.model = SAVED_MODELS[saved_models_key]
 
-    def run(self, source_images: list[SourceImage]) -> list[Detection]:
+    def run(self, source_images: list[SourceImage], intermediate=False) -> list[Detection]:
         detector_responses: list[Detection] = []
         for source_image in source_images:
             source_image.open(raise_exception=True)
@@ -219,7 +129,7 @@ class ZeroShotObjectDetector(Algorithm):
                                     name=self.algorithm_config_response.name,
                                     key=self.algorithm_config_response.key,
                                 ),
-                                terminal=True,
+                                terminal=not intermediate,
                             )
                         ],
                     )
@@ -234,7 +144,10 @@ class ZeroShotObjectDetector(Algorithm):
         name="Zero Shot Object Detector",
         key="zero-shot-object-detector",
         task_type="detection",
-        description="Huggingface Zero Shot Object Detection model.",
+        description=(
+            "Huggingface Zero Shot Object Detection model."
+            "Produces both a bounding box and a candidate label classification for each detection."
+        ),
         version=1,
         version_name="v1",
         category_map=None,
@@ -280,12 +193,10 @@ class HFImageClassifier(Algorithm):
             logger.info(f"labels: {labels}")
             logger.info(f"scores: {scores}")
 
-            assert (
-                detection.classifications is None or detection.classifications == []
-            ), "Classifications should be empty or None before classification."
+            existing_classifications = detection.classifications
 
             detection_with_classification = detection.copy(deep=True)
-            detection_with_classification.classifications = [
+            detection_with_classification.classifications = existing_classifications + [
                 ClassificationResponse(
                     classification=classification,
                     labels=labels,

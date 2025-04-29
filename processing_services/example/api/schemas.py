@@ -197,9 +197,7 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal[
-    "constant-detection-pipeline", "flat-bug-detector-pipeline", "zero-shot-object-detector-pipeline"
-]
+PipelineChoice = typing.Literal["zero-shot-hf-classifier-pipeline", "zero-shot-object-detector-pipeline"]
 
 
 class PipelineRequestConfigParameters(pydantic.BaseModel):

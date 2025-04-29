@@ -2,7 +2,7 @@ import datetime
 import logging
 from typing import final
 
-from .algorithms import Algorithm, ConstantLocalizer, HFImageClassifier, ZeroShotObjectDetector
+from .algorithms import Algorithm, HFImageClassifier, ZeroShotObjectDetector
 from .schemas import (
     Detection,
     DetectionResponse,
@@ -96,13 +96,13 @@ class Pipeline:
 
     @final
     def _get_detections(
-        self, algorithm: Algorithm, inputs: list[SourceImage] | list[Detection], batch_size: int
+        self, algorithm: Algorithm, inputs: list[SourceImage] | list[Detection], batch_size: int, **kwargs
     ) -> list[Detection]:
         """A single stage, step, or algorithm in a pipeline. Batchifies inputs and produces Detections as outputs."""
         outputs: list[Detection] = []
-        batched_inputs = self._batchify_inputs(inputs, batch_size)  # type: ignore
+        batched_inputs = self._batchify_inputs(inputs, batch_size)
         for batch in batched_inputs:
-            outputs.extend(algorithm.run(batch))
+            outputs.extend(algorithm.run(batch, **kwargs))
         return outputs
 
     @final
@@ -132,26 +132,45 @@ class Pipeline:
         )
 
 
-class ConstantDetectionPipeline(Pipeline):
+class ZeroShotHFClassifierPipeline(Pipeline):
     """
-    A pipeline that generates 2 constant bounding boxes and applies a HuggingFace image classifier.
+    A pipeline that uses the Zero Shot Object Detector to produce bounding boxes
+    and then applies the HuggingFace image classifier.
     """
 
-    stages = [ConstantLocalizer(), HFImageClassifier()]
     batch_sizes = [1, 1]
     config = PipelineConfigResponse(
-        name="Constant Detection Pipeline",
-        slug="constant-detection-pipeline",
-        description=("2 constant bounding boxes with HF image classifier."),
+        name="Zero Shot HF Classifier Pipeline",
+        slug="zero-shot-hf-classifier-pipeline",
+        description=("Zero Shot Object Detector with HF image classifier."),
         version=1,
-        algorithms=[stage.algorithm_config_response for stage in stages],
+        algorithms=[
+            ZeroShotObjectDetector.algorithm_config_response,
+            HFImageClassifier.algorithm_config_response,
+        ],
     )
+
+    def get_stages(self) -> list[Algorithm]:
+        zero_shot_object_detector = ZeroShotObjectDetector()
+        if isinstance(self.request_config, PipelineRequestConfigParameters) and self.request_config.candidate_labels:
+            logger.info(
+                "Setting candidate labels for zero shot object detector to %s", self.request_config.candidate_labels
+            )
+            zero_shot_object_detector.candidate_labels = self.request_config.candidate_labels
+        self.config.algorithms = [
+            zero_shot_object_detector.algorithm_config_response,
+            HFImageClassifier.algorithm_config_response,
+        ]
+
+        return [zero_shot_object_detector, HFImageClassifier()]
 
     def run(self) -> PipelineResultsResponse:
         start_time = datetime.datetime.now()
-        detections: list[Detection] = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
+        detections_with_candidate_labels: list[Detection] = self._get_detections(
+            self.stages[0], self.source_images, self.batch_sizes[0], intermediate=True
+        )
         detections_with_classifications: list[Detection] = self._get_detections(
-            self.stages[1], detections, self.batch_sizes[1]
+            self.stages[1], detections_with_candidate_labels, self.batch_sizes[1]
         )
         end_time = datetime.datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()
@@ -166,13 +185,15 @@ class ConstantDetectionPipeline(Pipeline):
 class ZeroShotObjectDetectorPipeline(Pipeline):
     """
     A pipeline that uses the HuggingFace zero shot object detector.
+    Produces both a bounding box and a classification for each detection.
+    The classification is based on the candidate labels provided in the request.
     """
 
     batch_sizes = [1]
     config = PipelineConfigResponse(
         name="Zero Shot Object Detector Pipeline",
         slug="zero-shot-object-detector-pipeline",
-        description=("HF zero shot object detector."),
+        description=("Zero shot object detector (bbox and classification)."),
         version=1,
         algorithms=[ZeroShotObjectDetector.algorithm_config_response],
     )
