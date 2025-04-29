@@ -639,6 +639,35 @@ class DataExportJob(JobType):
         job.update_status(JobState.SUCCESS, save=True)
 
 
+class DetectionClusteringJob(JobType):
+    name = "Detection Feature Clustering"
+    key = "detection_clustering"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        if not job.source_image_collection:
+            raise ValueError("No source image collection provided")
+
+        job.logger.info(f"Clustering detections for collection {job.source_image_collection}")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        # Call the clustering method
+        job.source_image_collection.cluster_detections(job=job)
+        job.logger.info(f"Finished clustering detections for collection {job.source_image_collection}")
+
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=False)
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -648,7 +677,14 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
-VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType, DataExportJob]
+VALID_JOB_TYPES = [
+    MLJob,
+    SourceImageCollectionPopulateJob,
+    DataStorageSyncJob,
+    UnknownJobType,
+    DataExportJob,
+    DetectionClusteringJob,
+]
 
 
 def get_job_type_by_key(key: str) -> type[JobType] | None:

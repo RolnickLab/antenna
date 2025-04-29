@@ -42,6 +42,7 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.jobs.models import DetectionClusteringJob, Job
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -743,6 +744,28 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
                 "total_images": collection.images.count(),
             }
         )
+
+    @action(detail=True, methods=["post"], name="cluster detections")
+    def cluster_detections(self, request, pk=None):
+        """
+        Trigger a background job to cluster detections from this collection.
+        """
+        collection: SourceImageCollection = self.get_object()
+        job = Job.objects.create(
+            name=f"Clustering detections for collection {collection.pk}",
+            project=collection.project,
+            source_image_collection=collection,
+            job_type_key=DetectionClusteringJob.key,
+            params={
+                "threshold": request.data.get("threshold", 1),
+                "algorithm": request.data.get("algorithm", "kmeans"),
+                "algorithm_kwargs": request.data.get("algorithm_kwargs", {"n_clusters": 5}),
+                "pca_dim": request.data.get("pca_dim", 10),
+            },
+        )
+        job.enqueue()
+        logger.info(f"Triggered clustering job for collection {collection.pk}")
+        return Response({"job_id": job.pk, "project_id": collection.project.pk})
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):

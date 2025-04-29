@@ -9,6 +9,7 @@ import typing
 import urllib.parse
 from typing import Final, final  # noqa: F401
 
+import numpy as np
 import pydantic
 from django.apps import apps
 from django.conf import settings
@@ -22,8 +23,11 @@ from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
+from django.utils.timezone import now
 from django_pydantic_field import SchemaField
 from pgvector.django import CosineDistance, L2Distance, VectorField
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 
 import ami.tasks
 import ami.utils
@@ -2782,7 +2786,7 @@ class Taxon(BaseModel):
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
-
+    unknown_species = models.BooleanField(default=False, help_text="Is this a clustering-generated taxon")
     objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
@@ -3202,6 +3206,105 @@ class SourceImageCollection(BaseModel):
             self.images.set(method(**kwargs))
             self.save()
             task_logger.info(f"Done sampling and saving captures to {self}")
+
+    def cluster_detections(self, job: "Job | None" = None):
+        from ami.jobs.models import JobState
+
+        if job:
+            task_logger = job.logger
+        else:
+            task_logger = logger
+        params = job.params or {}
+        threshold = params.get("threshold", 1)
+        pca_dim = params.get("pca_dim", 10)
+        algorithm = params.get("algorithm", "kmeans")
+        algorithm_kwargs = params.get("algorithm_kwargs", {})
+        feature_collection_stage = job.progress.add_stage("Collecting Features")
+        clusering_stage = job.progress.add_stage("Clustering")
+        create_unknow_taxa_stage = job.progress.add_stage("Creating Unknown Taxa")
+        job.save()
+        detections = Detection.objects.filter(
+            classifications__features_2048__isnull=False,
+            source_image__collections=self,
+            occurrence__determination_score__lte=threshold,
+        )
+
+        task_logger.info(f"Found {detections.count()} detections to process for clustering")
+
+        features = []
+        valid_detections = []
+        job.progress.update_stage(feature_collection_stage.key, status=JobState.STARTED)
+        # Collecting features for detections
+        for idx, detection in enumerate(detections):
+            classification = detection.classifications.filter(features_2048__isnull=False).first()
+            if classification:
+                features.append(classification.features_2048)
+                valid_detections.append(detection)
+            job.progress.update_stage(feature_collection_stage.key, progress=(idx + 1) / (len(detections)))
+            job.save()
+        job.progress.update_stage(feature_collection_stage.key, status=JobState.SUCCESS, progress=1.0)
+        job.save()
+        logger.info(f"Clustering {len(features)} features from {len(valid_detections)} detections")
+
+        if not features:
+            task_logger.info("No feature vectors found")
+            job.update_status(JobState.FAILURE, save=True)
+            return
+
+        features_np = np.array(features)
+
+        # PCA Reduction
+        task_logger.info(f"Reducing features from {features_np.shape[1]} to {pca_dim} dimensions")
+        features_reduced = PCA(n_components=pca_dim).fit_transform(features_np)
+
+        # Clustering
+        clustering_algorithms = {"kmeans": KMeans}
+        clustering_algorithm = clustering_algorithms.get(algorithm, KMeans)
+        n_clusters = algorithm_kwargs.get("n_clusters", 5)
+        cluster_ids = clustering_algorithm(random_state=42, **algorithm_kwargs).fit_predict(features_reduced)
+
+        task_logger.info(f"Clustering completed with {n_clusters} clusters")
+
+        # Clustering Detections
+        job.progress.update_stage(clusering_stage.key, status=JobState.STARTED)
+        clusters = {}
+        for idx, (cluster_id, detection) in enumerate(zip(cluster_ids, valid_detections)):
+            clusters.setdefault(cluster_id, []).append(detection)
+            job.progress.update_stage(clusering_stage.key, progress=(idx + 1) / (len(cluster_ids)))
+            job.save()
+        job.progress.update_stage(clusering_stage.key, status=JobState.SUCCESS, progress=1.0)
+        job.save()
+
+        # Creating Unknown Taxa
+        job.progress.update_stage(create_unknow_taxa_stage.key, status=JobState.STARTED)
+        for idx, (cluster_id, detections_list) in enumerate(clusters.items()):
+            taxon = Taxon.objects.create(
+                name=f"Cluster {cluster_id} (Job {job.pk})",
+                rank="SPECIES",
+                notes=f"Auto-created cluster {cluster_id} from clustering job {job.pk}",
+                unknown_species=True,
+            )
+
+            for idx, detection in enumerate(detections_list):
+                # Create a new Classification linking the detection to the new taxon
+
+                Classification.objects.create(
+                    detection=detection,
+                    taxon=taxon,
+                    algorithm=None,
+                    score=1.0,
+                    timestamp=now(),
+                    logits=None,
+                    features_2048=None,
+                    scores=None,
+                    terminal=True,
+                    category_map=None,
+                )
+            job.progress.update_stage(create_unknow_taxa_stage.key, progress=(idx + 1) / (len(clusters.keys())))
+            job.save()
+        task_logger.info(f"Created {len(clusters)} clusters and updated {len(valid_detections)} detections")
+        job.progress.update_stage(create_unknow_taxa_stage.key, status=JobState.SUCCESS, progress=1.0)
+        job.save()
 
     def sample_random(self, size: int = 100):
         """Create a random sample of source images"""
