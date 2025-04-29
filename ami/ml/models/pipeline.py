@@ -772,7 +772,14 @@ def create_and_update_occurrences_for_detections(
             else:
                 occurrences_to_leave.append(detection.occurrence)
 
-        Occurrence.objects.bulk_update(occurrences_to_update, ["determination", "determination_score"])
+        Occurrence.objects.bulk_update(
+            occurrences_to_update,
+            [
+                "determination",
+                "determination_score",
+                "determination_ood_score",
+            ],
+        )
         logger.info(
             f"Updated the determination of {len(occurrences_to_update)} occurrences, "
             f"left {len(occurrences_to_leave)} unchanged"
