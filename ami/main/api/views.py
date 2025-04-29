@@ -1297,7 +1297,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             if self.action == "list":
-                include_unobserved = self.request.query_params.get("include_unobserved", False)
+                include_unobserved = self.request.query_params.get("include_unobserved", True)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
             if self.action == "retrieve":
                 qs = qs.prefetch_related(
