@@ -112,8 +112,8 @@ class DetectionResponse(pydantic.BaseModel):
     classifications: list[ClassificationResponse] = []
 
 
-class Detection(BaseImage):  # BaseImage represents the detection (the cropped image)
-    source_image: SourceImage  # the 'original' image
+class Detection(BaseImage):
+    source_image: SourceImage  # the 'original' uncropped image
     bbox: BoundingBox
     inference_time: float | None = None
     algorithm: AlgorithmReference
