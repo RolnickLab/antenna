@@ -8,6 +8,7 @@ export class SpeciesDetails extends Species {
     super(species)
   }
 
+  // TODO: Replace dummy data
   get exampleOccurrence() {
     const occurrence = this._species.occurrences?.[0]
 
@@ -18,10 +19,12 @@ export class SpeciesDetails extends Species {
     return {
       id: occurrence.id,
       image_url: occurrence.best_detection.url,
-      caption: `${occurrence.determination.name} (${_.round(
-        occurrence.determination_score,
-        4
-      )}), ${occurrence.event.name}`,
+      caption: this.isUnknown
+        ? `Center of cluster`
+        : `${occurrence.determination.name} (${_.round(
+            occurrence.determination_score,
+            4
+          )})`,
     }
   }
 

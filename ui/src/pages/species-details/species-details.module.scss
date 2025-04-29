@@ -9,10 +9,23 @@
 }
 
 .header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
   padding: 24px;
   background-color: $color-neutral-50;
   border-bottom: 2px solid $color-neutral-100;
   z-index: 1;
+}
+
+.badge {
+  padding: 6px 16px 4px;
+  border-radius: 4px;
+  background-color: $color-success-100;
+  color: $color-success-700;
+  text-align: center;
+  @include label();
 }
 
 .content {

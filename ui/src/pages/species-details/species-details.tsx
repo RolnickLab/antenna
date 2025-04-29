@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import {
@@ -37,6 +38,11 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           size="lg"
           taxon={species}
         />
+        {species.isUnknown ? (
+          <div className={classNames(styles.badge, 'no-print')}>
+            Unknown species
+          </div>
+        ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>
@@ -62,52 +68,73 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 })}
               />
             </InfoBlockField>
-            <InfoBlockField
-              className="no-print"
-              label={translate(STRING.EXTERNAL_RESOURCES)}
-            >
-              <div className="py-1 flex items-center gap-3">
-                <Link
-                  className={buttonVariants({
-                    size: 'small',
-                    variant: 'outline',
-                  })}
-                  to={species.gbifUrl}
-                  target="_blank"
-                >
-                  <span>GBIF</span>
-                  <ExternalLinkIcon className="w-4 h-4" />
-                </Link>
-                <Link
-                  className={buttonVariants({
-                    size: 'small',
-                    variant: 'outline',
-                  })}
-                  to={species.fieldguideUrl}
-                  target="_blank"
-                >
-                  <span>Fieldguide</span>
-                  <ExternalLinkIcon className="w-4 h-4" />
-                </Link>
-              </div>
-            </InfoBlockField>
+            {species.isUnknown ? (
+              <InfoBlockField label="Most similar known taxon">
+                <InfoBlockFieldValue value={species.name} to="#" />
+              </InfoBlockField>
+            ) : (
+              <InfoBlockField
+                className="no-print"
+                label={translate(STRING.EXTERNAL_RESOURCES)}
+              >
+                <div className="py-1 flex items-center gap-3">
+                  <Link
+                    className={buttonVariants({
+                      size: 'small',
+                      variant: 'outline',
+                    })}
+                    to={species.gbifUrl}
+                    target="_blank"
+                  >
+                    <span>GBIF</span>
+                    <ExternalLinkIcon className="w-4 h-4" />
+                  </Link>
+                  <Link
+                    className={buttonVariants({
+                      size: 'small',
+                      variant: 'outline',
+                    })}
+                    to={species.fieldguideUrl}
+                    target="_blank"
+                  >
+                    <span>Fieldguide</span>
+                    <ExternalLinkIcon className="w-4 h-4" />
+                  </Link>
+                </div>
+              </InfoBlockField>
+            )}
           </div>
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
             <BlueprintCollection>
               {species.exampleOccurrence ? (
-                <InfoBlockField label="Example occurrence">
-                  <img src={species.exampleOccurrence.image_url} />
-                  <span className="body-small whitespace-pre text-muted-foreground">
+                <InfoBlockField label="Representative occurrence">
+                  <Link
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCE_DETAILS({
+                        projectId: projectId as string,
+                        occurrenceId: species.exampleOccurrence.id,
+                      }),
+                    })}
+                  >
+                    <img src={species.exampleOccurrence.image_url} />
+                  </Link>
+                  <span className="body-small text-muted-foreground">
                     {species.exampleOccurrence.caption}
                   </span>
                 </InfoBlockField>
               ) : null}
               <InfoBlockField label="Reference image">
-                <img src={species.coverImage.url} />
+                <a
+                  href={species.coverImage.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <img src={species.coverImage.url} />
+                </a>
                 <span className="body-small text-muted-foreground">
-                  {species.coverImage.copyright}
+                  {species.coverImage.caption}
                 </span>
               </InfoBlockField>
             </BlueprintCollection>
