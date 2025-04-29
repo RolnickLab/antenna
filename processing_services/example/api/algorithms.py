@@ -319,7 +319,10 @@ class ZeroShotObjectDetector(Algorithm):
         name="Zero Shot Object Detector",
         key="zero-shot-object-detector",
         task_type="detection",
-        description="Huggingface Zero Shot Object Detection model.",
+        description=(
+            "Huggingface Zero Shot Object Detection model. "
+            "Produces both a bounding box and a classification for each detection."
+        ),
         version=1,
         version_name="v1",
         category_map=None,

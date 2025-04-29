@@ -222,6 +222,7 @@ class ConstantDetectionPipeline(Pipeline):
 class ZeroShotObjectDetectorPipeline(Pipeline):
     """
     A pipeline that uses the HuggingFace zero shot object detector.
+    This pipeline produces both a bounding box and a classification for each detection.
     """
 
     batch_sizes = [1]
@@ -366,7 +367,7 @@ class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
         return pipeline_response
 
 
-class FlatBugDetectorPipeline(Pipeline):
+class FlatBugLocalizerPipeline(Pipeline):
     """
     A pipeline that uses the Darsa Group's flat bug detector. No classifications.
     """

@@ -196,7 +196,6 @@ def process_images(
 
     source_images: list[SourceImageRequest] = []
     detection_requests: list[DetectionRequest] = []
-    pipeline_algorithms = pipeline.algorithms.all()
 
     for source_image, url in zip(images, urls):
         if url:
@@ -207,7 +206,7 @@ def process_images(
                 )
             )
             # Only re-process detections created by the pipeline's detector
-            for detection in source_image.detections.filter(detection_algorithm__in=pipeline_algorithms):
+            for detection in source_image.detections.all():
                 bbox = detection.get_bbox()
                 if bbox and detection.detection_algorithm:
                     detection_requests.append(
@@ -375,23 +374,12 @@ def get_or_create_detection(
     serialized_bbox = list(detection_resp.bbox.dict().values())
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
-    assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-    try:
-        detection_algo = algorithms_used[detection_resp.algorithm.key]
-    except KeyError:
-        raise ValueError(
-            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-            "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_used.keys())}"
-        )
-
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     existing_detection = Detection.objects.filter(
         source_image=source_image,
-        detection_algorithm=detection_algo,
         bbox=serialized_bbox,
     ).first()
 
@@ -411,6 +399,16 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
+        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+        try:
+            detection_algo = algorithms_used[detection_resp.algorithm.key]
+        except KeyError:
+            raise ValueError(
+                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                "The processing service must declare it in the /info endpoint. "
+                f"Known algorithms: {list(algorithms_used.keys())}"
+            )
+
         new_detection = Detection(
             source_image=source_image,
             bbox=serialized_bbox,

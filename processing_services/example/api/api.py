@@ -8,7 +8,7 @@ import fastapi
 
 from .pipelines import (
     ConstantDetectionPipeline,
-    FlatBugDetectorPipeline,
+    FlatBugLocalizerPipeline,
     Pipeline,
     ZeroShotObjectDetectorPipeline,
     ZeroShotObjectDetectorWithConstantClassifierPipeline,
@@ -37,7 +37,7 @@ app = fastapi.FastAPI()
 
 pipelines: list[type[Pipeline]] = [
     ConstantDetectionPipeline,
-    FlatBugDetectorPipeline,
+    FlatBugLocalizerPipeline,
     ZeroShotObjectDetectorPipeline,
     ZeroShotObjectDetectorWithConstantClassifierPipeline,
     ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
