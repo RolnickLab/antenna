@@ -135,8 +135,8 @@ class DetectionResponse(pydantic.BaseModel):
     classifications: list[ClassificationResponse] = []
 
 
-class Detection(BaseImage):  # BaseImage represents the detection (the cropped image)
-    source_image: SourceImage  # the 'original' image
+class Detection(BaseImage):
+    source_image: SourceImage  # the 'original' uncropped image
     bbox: BoundingBox
     inference_time: float | None = None
     algorithm: AlgorithmReference
@@ -205,8 +205,7 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
 
 
 PipelineChoice = typing.Literal[
-    "constant-detection-pipeline",
-    "flat-bug-detector-pipeline",
+    "zero-shot-hf-classifier-pipeline",
     "zero-shot-object-detector-pipeline",
     "zero-shot-object-detector-with-constant-classifier-pipeline",
     "zero-shot-object-detector-with-random-species-classifier-pipeline",

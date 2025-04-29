@@ -5,8 +5,6 @@ from typing import final
 from .algorithms import (
     Algorithm,
     ConstantClassifier,
-    ConstantLocalizer,
-    FlatBugLocalizer,
     HFImageClassifier,
     RandomSpeciesClassifier,
     ZeroShotObjectDetector,
@@ -44,7 +42,7 @@ class Pipeline:
 
     stages: list[Algorithm]
     batch_sizes: list[int]
-    request_config: PipelineRequestConfigParameters | dict
+    request_config: dict
     config: PipelineConfigResponse
 
     stages = []
@@ -65,7 +63,7 @@ class Pipeline:
         custom_batch_sizes: list[int] = [],
     ):
         self.source_images = source_images
-        self.request_config = request_config
+        self.request_config = request_config if isinstance(request_config, dict) else request_config.model_dump()
         self.existing_detections = existing_detections
 
         logger.info("Initializing algorithms....")
@@ -107,13 +105,13 @@ class Pipeline:
 
     @final
     def _get_detections(
-        self, algorithm: Algorithm, inputs: list[SourceImage] | list[Detection], batch_size: int
+        self, algorithm: Algorithm, inputs: list[SourceImage] | list[Detection], batch_size: int, **kwargs
     ) -> list[Detection]:
         """A single stage, step, or algorithm in a pipeline. Batchifies inputs and produces Detections as outputs."""
         outputs: list[Detection] = []
-        batched_inputs = self._batchify_inputs(inputs, batch_size)  # type: ignore
+        batched_inputs = self._batchify_inputs(inputs, batch_size)
         for batch in batched_inputs:
-            outputs.extend(algorithm.run(batch))
+            outputs.extend(algorithm.run(batch, **kwargs))
         return outputs
 
     @final
@@ -179,34 +177,53 @@ class Pipeline:
         return processed_detections
 
 
-class ConstantDetectionPipeline(Pipeline):
+class ZeroShotHFClassifierPipeline(Pipeline):
     """
-    A pipeline that generates 2 constant bounding boxes and applies a HuggingFace image classifier.
+    A pipeline that uses the Zero Shot Object Detector to produce bounding boxes
+    and then applies the HuggingFace image classifier.
     """
 
-    stages = [ConstantLocalizer(), HFImageClassifier()]
     batch_sizes = [1, 1]
     config = PipelineConfigResponse(
-        name="Constant Detection Pipeline",
-        slug="constant-detection-pipeline",
-        description=("2 constant bounding boxes with HF image classifier."),
+        name="Zero Shot HF Classifier Pipeline",
+        slug="zero-shot-hf-classifier-pipeline",
+        description=("Zero Shot Object Detector with HF image classifier."),
         version=1,
-        algorithms=[stage.algorithm_config_response for stage in stages],
+        algorithms=[
+            ZeroShotObjectDetector.algorithm_config_response,
+            HFImageClassifier.algorithm_config_response,
+        ],
     )
+
+    def get_stages(self) -> list[Algorithm]:
+        zero_shot_object_detector = ZeroShotObjectDetector()
+        if "candidate_labels" in self.request_config:
+            logger.info(
+                "Setting candidate labels for zero shot object detector to %s", self.request_config["candidate_labels"]
+            )
+            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
+        self.config.algorithms = [
+            zero_shot_object_detector.algorithm_config_response,
+            HFImageClassifier.algorithm_config_response,
+        ]
+
+        return [zero_shot_object_detector, HFImageClassifier()]
 
     def run(self) -> PipelineResultsResponse:
         start_time = datetime.datetime.now()
-        detections: list[Detection] = []
+        detections_with_candidate_labels: list[Detection] = []
         if self.existing_detections:
             logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections = self._process_existing_detections()
+            detections_with_candidate_labels = self._process_existing_detections()
         else:
             logger.info("[1/2] No existing detections, generating detections...")
-            detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
+            detections_with_candidate_labels: list[Detection] = self._get_detections(
+                self.stages[0], self.source_images, self.batch_sizes[0], intermediate=True
+            )
 
         logger.info("[2/2] Running the classifier...")
         detections_with_classifications: list[Detection] = self._get_detections(
-            self.stages[1], detections, self.batch_sizes[1]
+            self.stages[1], detections_with_candidate_labels, self.batch_sizes[1]
         )
         end_time = datetime.datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()
@@ -222,25 +239,26 @@ class ConstantDetectionPipeline(Pipeline):
 class ZeroShotObjectDetectorPipeline(Pipeline):
     """
     A pipeline that uses the HuggingFace zero shot object detector.
-    This pipeline produces both a bounding box and a classification for each detection.
+    Produces both a bounding box and a classification for each detection.
+    The classification is based on the candidate labels provided in the request.
     """
 
     batch_sizes = [1]
     config = PipelineConfigResponse(
         name="Zero Shot Object Detector Pipeline",
         slug="zero-shot-object-detector-pipeline",
-        description=("HF zero shot object detector."),
+        description=("Zero shot object detector (bbox and classification)."),
         version=1,
         algorithms=[ZeroShotObjectDetector.algorithm_config_response],
     )
 
     def get_stages(self) -> list[Algorithm]:
         zero_shot_object_detector = ZeroShotObjectDetector()
-        if isinstance(self.request_config, PipelineRequestConfigParameters) and self.request_config.candidate_labels:
+        if "candidate_labels" in self.request_config:
             logger.info(
-                "Setting candidate labels for zero shot object detector to %s", self.request_config.candidate_labels
+                "Setting candidate labels for zero shot object detector to %s", self.request_config["candidate_labels"]
             )
-            zero_shot_object_detector.candidate_labels = self.request_config.candidate_labels
+            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
         self.config.algorithms = [zero_shot_object_detector.algorithm_config_response]
 
         return [zero_shot_object_detector]
@@ -363,36 +381,5 @@ class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
             detections_with_classifications, elapsed_time
         )
         logger.info(f"Successfully processed {len(detections_with_classifications)} detections.")
-
-        return pipeline_response
-
-
-class FlatBugLocalizerPipeline(Pipeline):
-    """
-    A pipeline that uses the Darsa Group's flat bug detector. No classifications.
-    """
-
-    stages = [FlatBugLocalizer()]
-    batch_sizes = [1]
-    config = PipelineConfigResponse(
-        name="Flat Bug Detector Pipeline",
-        slug="flat-bug-detector-pipeline",
-        description=(
-            "DARSA Group: Flatbug is a hyperinference and trained YOLOv8 model zoo, "
-            "with a bespoke diverse dataset of the same name."
-        ),
-        version=1,
-        algorithms=[stage.algorithm_config_response for stage in stages],
-    )
-
-    def run(self) -> PipelineResultsResponse:
-        start_time = datetime.datetime.now()
-        # Only return detections with no classification
-        logger.info("[1/1] Running the flat bug detector...")
-        detections: list[Detection] = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
-        end_time = datetime.datetime.now()
-        elapsed_time = (end_time - start_time).total_seconds()
-        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(detections, elapsed_time)
-        logger.info(f"Successfully processed {len(detections)} detections.")
 
         return pipeline_response
