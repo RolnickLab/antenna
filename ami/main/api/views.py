@@ -1070,6 +1070,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "event",
         "deployment",
         "determination__rank",
+        "determination_ood_score",
     ]
     ordering_fields = [
         "created_at",
@@ -1082,6 +1083,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination",
         "determination__name",
         "determination_score",
+        "determination_ood_score",
         "event",
         "detections_count",
         "created_at",
