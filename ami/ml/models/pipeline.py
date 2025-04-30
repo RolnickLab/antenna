@@ -956,6 +956,7 @@ class Pipeline(BaseModel):
     default_config: PipelineRequestConfigParameters = SchemaField(
         schema=PipelineRequestConfigParameters,
         default=dict,
+        blank=True,
         help_text=(
             "The default configuration for the pipeline. "
             "Used by both the job sending images to the pipeline "

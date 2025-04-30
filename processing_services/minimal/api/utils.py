@@ -21,10 +21,6 @@ PIL.ImageFile.LOAD_TRUNCATED_IMAGES = True
 # see: https://foundation.wikimedia.org/wiki/Policy:User-Agent_policy
 USER_AGENT = "AntennaInsectDataPlatform/1.0 (https://insectai.org)"
 
-# -----------
-# File handling functions
-# -----------
-
 
 def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
     """
@@ -77,11 +73,11 @@ def open_image(fp: str | bytes | pathlib.Path | io.BytesIO, raise_exception: boo
     try:
         img = PIL.Image.open(fp)
     except PIL.UnidentifiedImageError:
-        logger.warn(f"Unidentified image: {str(fp)[:100]}...")
+        logger.warning(f"Unidentified image: {str(fp)[:100]}...")
         if raise_exception:
             raise
     except OSError:
-        logger.warn(f"Could not open image: {str(fp)[:100]}...")
+        logger.warning(f"Could not open image: {str(fp)[:100]}...")
         if raise_exception:
             raise
     else:
@@ -125,7 +121,7 @@ def get_image(
         try:
             buffer = decode_base64_string(b64)
         except binascii.Error as e:
-            logger.warn(f"Could not decode base64 image: {e}")
+            logger.warning(f"Could not decode base64 image: {e}")
             if raise_exception:
                 raise
             else:
