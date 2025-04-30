@@ -28,6 +28,12 @@ export class Occurrence {
     })
   }
 
+  get updatedAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._occurrence.updated_at),
+    })
+  }
+
   get dateLabel(): string {
     return getFormatedDateString({
       date: new Date(this.firstAppearanceTimestamp),

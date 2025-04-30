@@ -148,6 +148,12 @@ export const columns: (
     sortField: 'created_at',
     renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
   },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.updatedAt} />,
+  },
 ]
 
 const TaxonCell = ({

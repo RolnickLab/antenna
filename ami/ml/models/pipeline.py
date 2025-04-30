@@ -772,12 +772,16 @@ def create_and_update_occurrences_for_detections(
             else:
                 occurrences_to_leave.append(detection.occurrence)
 
+        for occurrence in occurrences_to_update:
+            occurrence.updated_at = now()
+
         Occurrence.objects.bulk_update(
             occurrences_to_update,
             [
                 "determination",
                 "determination_score",
                 "determination_ood_score",
+                "updated_at",
             ],
         )
         logger.info(
