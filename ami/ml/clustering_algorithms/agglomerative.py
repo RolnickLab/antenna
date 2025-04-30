@@ -33,6 +33,7 @@ class AgglomerativeClusterer(BaseClusterer):
         self.data_dict = None
         # Access from dictionary instead of attribute
         self.distance_threshold = config.get("algorithm_kwargs", {}).get("distance_threshold", 0.5)
+        self.n_components = config.get("pca", {}).get("n_components", 0)
 
     def setup(self, data_dict):
         # estimate the distance threshold
@@ -72,14 +73,17 @@ class AgglomerativeClusterer(BaseClusterer):
         logger.info(f"distance threshold: {self.distance_threshold}")
 
         # Get n_components and linkage from dictionary
-        features = dimension_reduction(standardize(features), self.config.get("pca", {}).get("n_components"))
+        if self.n_components <= min(features.shape[0], features.shape[1]):
+            features = dimension_reduction(standardize(features), self.n_components)
+        else:
+            features = standardize(features)
+            logger.info(f"Skipping PCA, n_components { self.n_components} is larger than features shape ")
 
         # Get linkage parameter from config
         linkage = self.config.get("algorithm_kwargs", {}).get("linkage", "ward")
 
-        clusterer = AgglomerativeClustering(
+        clusters = AgglomerativeClustering(
             n_clusters=None, distance_threshold=self.distance_threshold, linkage=linkage
-        ).fit(features)
+        ).fit_predict(features)
 
-        preds = clusterer.labels_
-        return preds
+        return clusters

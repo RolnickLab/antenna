@@ -21,7 +21,8 @@ def job_save(job):
 
 def cluster_detections(collection, params: dict, task_logger: logging.Logger = logger, job=None):
     from ami.jobs.models import JobState
-    from ami.main.models import Classification, Detection, Taxon
+    from ami.main.models import Classification, Detection, TaxaList, Taxon
+    from ami.ml.models import Algorithm
     from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
 
     ood_threshold = params.get("ood_threshold", 1)
@@ -31,7 +32,7 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     detections = Detection.objects.filter(
         classifications__features_2048__isnull=False,
         source_image__collections=collection,
-        occurrence__determination_score__lte=ood_threshold,
+        occurrence__determination_ood_score__gte=ood_threshold,
     )
 
     task_logger.info(f"Found {detections.count()} detections to process for clustering")
@@ -78,10 +79,16 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
             progress=(idx + 1) / len(valid_detections),
         )
     update_job_progress(job, stage_key="clustering", status=JobState.SUCCESS, progress=1.0)
-
+    taxa_list = TaxaList.objects.create(name=f"Clusters from (Job {job.pk if job else 'unknown'})")
+    taxa_list.projects.add(collection.project)
+    taxa_to_add = []
+    clustering_algorithm = Algorithm.objects.get_or_create(
+        name=algorithm,
+        task_type="clustering",
+    )
     # Creating Unknown Taxa
     update_job_progress(job, stage_key="create_unknown_taxa", status=JobState.STARTED, progress=0.0)
-    for idx, (cluster_id, detections_list) in enumerate(clusters.items()):
+    for idx, (cluster_id, cluster_detections) in enumerate(clusters.items()):
         taxon = Taxon.objects.create(
             name=f"Cluster {cluster_id} (Collection {collection.pk}) (Job {job.pk if job else 'unknown'})",
             rank="SPECIES",
@@ -89,14 +96,15 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
             unknown_species=True,
         )
         taxon.projects.add(collection.project)
+        taxa_to_add.append(taxon)
 
-        for idx, detection in enumerate(detections_list):
+        for idx, detection in enumerate(cluster_detections):
             # Create a new Classification linking the detection to the new taxon
 
             Classification.objects.create(
                 detection=detection,
                 taxon=taxon,
-                algorithm=None,
+                algorithm=clustering_algorithm,
                 score=1.0,
                 timestamp=now(),
                 logits=None,
@@ -111,10 +119,11 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
             status=JobState.STARTED,
             progress=(idx + 1) / len(clusters),
         )
+    taxa_list.taxa.add(*taxa_to_add)
     task_logger.info(f"Created {len(clusters)} clusters and updated {len(valid_detections)} detections")
     update_job_progress(job, stage_key="create_unknown_taxa", status=JobState.SUCCESS, progress=1.0)
 
     # Updating Occurrences
-    create_and_update_occurrences_for_detections(detections=detections_list, logger=task_logger)
+    create_and_update_occurrences_for_detections(detections=valid_detections, logger=task_logger)
     job_save(job)
     return clusters
