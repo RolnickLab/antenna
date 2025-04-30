@@ -1923,7 +1923,6 @@ class Classification(BaseModel):
     features_2048 = VectorField(
         dimensions=2048, null=True, default=None, help_text="Feature embedding from the model backbone"
     )
-
     scores = ArrayField(
         models.FloatField(),
         null=True,
