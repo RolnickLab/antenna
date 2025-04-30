@@ -107,6 +107,10 @@ class ClassificationResponse(pydantic.BaseModel):
     scores: list[float] = []
     logits: list[float] | None = None
     features: list[float] | None = None
+    ood_score: float | None = pydantic.Field(
+        default=None,
+        description="The out-of-distribution score for the classification, if applicable and available.",
+    )
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True
