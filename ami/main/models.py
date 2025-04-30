@@ -1244,7 +1244,7 @@ def validate_filename_timestamp(filename: str) -> None:
     # Ensure filename has a timestamp
     timestamp = ami.utils.dates.get_image_timestamp_from_filename(filename)
     if not timestamp:
-        raise ValidationError("Filename must contain a timestamp in the format YYYYMMDDHHMMSS")
+        raise ValidationError("Image filename does not contain a valid timestamp (e.g. YYYYMMDDHHMMSS-snapshot.jpg).")
 
 
 def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
@@ -1914,6 +1914,7 @@ class Classification(BaseModel):
 
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
+    ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
     timestamp = models.DateTimeField()
     terminal = models.BooleanField(
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
@@ -1924,7 +1925,6 @@ class Classification(BaseModel):
     features_2048 = VectorField(
         dimensions=2048, null=True, default=None, help_text="Feature embedding from the model backbone"
     )
-
     scores = ArrayField(
         models.FloatField(),
         null=True,
@@ -2289,8 +2289,15 @@ class Occurrence(BaseModel):
 
     # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
-    determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
-    determination_score = models.FloatField(null=True, blank=True)
+    determination = models.ForeignKey(
+        "Taxon",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="occurrences",
+        help_text="The Taxon assigned to this occurrence",
+    )
+    determination_score = models.FloatField(null=True, blank=True, help_text="Estimation of confidence")
+    determination_ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -2404,6 +2411,20 @@ class Occurrence(BaseModel):
         else:
             return None
 
+    def get_determination_ood_score(self) -> float | None:
+        """
+        Calculate the OOD score for the whole occurrence.
+        Uses the average OOD score of all identifications.
+        """
+        if not self.determination:
+            return None
+        mean_ood_score = Classification.objects.filter(
+            detection__occurrence=self,
+        ).aggregate(
+            models.Avg("ood_score"),
+        )["ood_score__avg"]
+        return mean_ood_score
+
     def predictions(self):
         # Retrieve the classification with the max score for each algorithm
         classifications = (
@@ -2489,6 +2510,7 @@ def update_occurrence_determination(
     )
     new_determination = None
     new_score = None
+    new_ood_score = None
 
     top_identification = occurrence.best_identification
     if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
@@ -2508,6 +2530,14 @@ def update_occurrence_determination(
     if new_score and new_score != occurrence.determination_score:
         logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
+        needs_update = True
+
+    new_ood_score = occurrence.get_determination_ood_score()
+    if new_ood_score is not None and new_ood_score != occurrence.determination_ood_score:
+        logger.debug(
+            f"Changing det. OOD score of {occurrence} from {occurrence.determination_ood_score} to {new_ood_score}"
+        )
+        occurrence.determination_ood_score = new_ood_score
         needs_update = True
 
     if not needs_update:
