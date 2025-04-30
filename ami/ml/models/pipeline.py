@@ -615,6 +615,7 @@ def create_classification(
             score=max(classification_resp.scores),
             timestamp=classification_resp.timestamp or now(),
             logits=classification_resp.logits,
+            features_2048=classification_resp.features,
             scores=classification_resp.scores,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,

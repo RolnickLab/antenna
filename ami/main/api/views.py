@@ -69,6 +69,7 @@ from ..models import (
 from .serializers import (
     ClassificationListSerializer,
     ClassificationSerializer,
+    ClassificationSimilaritySerializer,
     ClassificationWithTaxaSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
@@ -1408,6 +1409,17 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
             return ClassificationWithTaxaSerializer
         else:
             return ClassificationSerializer
+
+    @action(detail=True, methods=["get"])
+    def similar(self, request, pk=None):
+        try:
+            ref_classification = self.get_object()
+            similar_qs = ref_classification.get_similar_classifications(distance_metric="cosine")
+            serializer = ClassificationSimilaritySerializer(similar_qs, many=True, context={"request": request})
+            return Response(serializer.data)
+
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SummaryView(GenericAPIView, ProjectMixin):

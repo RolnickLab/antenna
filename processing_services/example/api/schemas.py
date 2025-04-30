@@ -95,6 +95,10 @@ class ClassificationResponse(pydantic.BaseModel):
         default_factory=list,
         description="The raw logits output by the model, before any calibration or normalization.",
     )
+    features: list[float] = pydantic.Field(
+        default_factory=list,
+        description="The feature embedding vector from the model's backbone.",
+    )
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True

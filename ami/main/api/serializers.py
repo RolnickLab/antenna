@@ -759,6 +759,7 @@ class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
+    features_2048 = serializers.ListField(child=serializers.FloatField(), read_only=True)
 
     class Meta:
         model = Classification
@@ -770,6 +771,7 @@ class ClassificationSerializer(DefaultSerializer):
             "algorithm",
             "scores",
             "logits",
+            "features_2048",
             "top_n",
             "created_at",
             "updated_at",
@@ -884,6 +886,23 @@ class DetectionNestedSerializer(DefaultSerializer):
             "bbox",
             "occurrence",
             "classifications",
+        ]
+
+
+class ClassificationSimilaritySerializer(ClassificationSerializer):
+    distance = serializers.FloatField(read_only=True)
+    detection = DetectionNestedSerializer(read_only=True)
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = [
+            "id",
+            "details",
+            "distance",
+            "detection",
+            "taxon",
+            "algorithm",
+            "created_at",
+            "updated_at",
         ]
 
 
