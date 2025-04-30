@@ -2532,7 +2532,7 @@ def update_occurrence_determination(
         needs_update = True
 
     new_ood_score = occurrence.get_determination_ood_score()
-    if new_ood_score and new_ood_score != occurrence.determination_ood_score:
+    if new_ood_score is not None and new_ood_score != occurrence.determination_ood_score:
         logger.debug(
             f"Changing det. OOD score of {occurrence} from {occurrence.determination_ood_score} to {new_ood_score}"
         )
