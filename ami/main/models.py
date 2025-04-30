@@ -34,7 +34,6 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
-from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
@@ -3336,6 +3335,8 @@ class SourceImageCollection(BaseModel):
         task_logger.info(f"Created {len(clusters)} clusters and updated {len(valid_detections)} detections")
         job.progress.update_stage(create_unknow_taxa_stage.key, status=JobState.SUCCESS, progress=1.0)
         job.save()
+        from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
+
         create_and_update_occurrences_for_detections(detections=detections_list, logger=task_logger)
         job.save()
 
