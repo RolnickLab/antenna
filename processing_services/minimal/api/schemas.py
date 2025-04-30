@@ -33,7 +33,7 @@ class BoundingBox(pydantic.BaseModel):
         return (self.x1, self.y1, self.x2, self.y2)
 
 
-class BaseImage(pydantic.BaseModel):
+class SourceImage(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     id: str
@@ -66,10 +66,6 @@ class BaseImage(pydantic.BaseModel):
         if self._pil:
             self.width, self.height = self._pil.size
         return self._pil
-
-
-class SourceImage(BaseImage):
-    pass
 
 
 class AlgorithmReference(pydantic.BaseModel):
@@ -106,21 +102,12 @@ class ClassificationResponse(pydantic.BaseModel):
 
 
 class DetectionResponse(pydantic.BaseModel):
-    # these fields are populated with values from a Detection, excluding source_image details
     source_image_id: str
     bbox: BoundingBox
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
     crop_image_url: str | None = None
-    classifications: list[ClassificationResponse] = []
-
-
-class Detection(BaseImage):
-    source_image: SourceImage  # the 'original' uncropped image
-    bbox: BoundingBox
-    inference_time: float | None = None
-    algorithm: AlgorithmReference
     classifications: list[ClassificationResponse] = []
 
 
@@ -201,37 +188,13 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["zero-shot-hf-classifier-pipeline", "zero-shot-object-detector-pipeline"]
-
-
-class PipelineRequestConfigParameters(pydantic.BaseModel):
-    """Parameters used to configure a pipeline request.
-
-    Accepts any serializable key-value pair.
-    Example: {"force_reprocess": True, "auth_token": "abc123"}
-
-    Supported parameters are defined by the pipeline in the processing service
-    and should be published in the Pipeline's info response.
-    """
-
-    force_reprocess: bool = pydantic.Field(
-        default=False,
-        description="Force reprocessing of the image, even if it has already been processed.",
-    )
-    auth_token: str | None = pydantic.Field(
-        default=None,
-        description="An optional authentication token to use for the pipeline.",
-    )
-    candidate_labels: list[str] | None = pydantic.Field(
-        default=None,
-        description="A list of candidate labels to use for the zero-shot object detector.",
-    )
+PipelineChoice = typing.Literal["random", "constant"]
 
 
 class PipelineRequest(pydantic.BaseModel):
     pipeline: PipelineChoice
     source_images: list[SourceImageRequest]
-    config: PipelineRequestConfigParameters | dict | None = None
+    config: dict
 
     # Example for API docs:
     class Config:
@@ -244,7 +207,6 @@ class PipelineRequest(pydantic.BaseModel):
                         "url": "https://archive.org/download/mma_various_moths_and_butterflies_54143/54143.jpg",
                     }
                 ],
-                "config": {"force_reprocess": True, "auth_token": "abc123"},
             }
         }
 

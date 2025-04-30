@@ -25,7 +25,14 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
     # Ctrl+c to close the logs
 ```
 
-3) Access the platform the following URLs:
+3) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
+
+```
+docker compose -f processing_services/example/docker-compose.yml up -d
+# Once running, in Antenna register a new processing service called: http://ml_backend_example:2000
+```
+
+4) Access the platform the following URLs:
 
 - Primary web interface: http://localhost:4000
 - API browser: http://localhost:8000/api/v2/
@@ -37,7 +44,7 @@ A default user will be created with the following credentials. Use these to log 
 - Email: `antenna@insectai.org`
 - Password: `localadmin`
 
-4) Stop all services with:
+5) Stop all services with:
 
     $ docker compose down
 
@@ -155,7 +162,7 @@ docker compose run django python manage.py --help
 
 ##### Launch the Django shell:
 
-    docker-compose exec django python manage.py shell
+    docker compose exec django python manage.py shell
 
     >>> from ami.main.models import SourceImage, Occurrence
     >>> SourceImage.objects.all(project__name='myproject')

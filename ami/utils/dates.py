@@ -11,9 +11,13 @@ logger = logging.getLogger(__name__)
 def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.datetime | None:
     """
     Parse the date and time a photo was taken from its filename.
+    All times are assumed to be in the local timezone. Timezone information is ignored.
+    The maxium precision is seconds (milliseconds are ignored).
 
-    The timestamp must be in the format `YYYYMMDDHHMMSS` but can be
-    preceded or followed by other characters (e.g. `84-20220916202959-snapshot.jpg`).
+    Supports various formats with flexible delimiters. Supports text prefixes and suffixes.
+    - Consecutive digits: YYYYMMDDHHMMSS
+    - Date and time as separate groups: YYYYMMDD and HHMMSS with any delimiter between
+    - Delimited formats within date or time groups
 
     >>> out_fmt = "%Y-%m-%d %H:%M:%S"
     >>> # Aarhus date format
@@ -35,19 +39,34 @@ def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.d
     """
     name = pathlib.Path(img_path).stem
     date = None
+    strptime_format = "%Y%m%d%H%M%S"
 
-    # Extract date from a filename using regex in the format %Y%m%d%H%M%S
-    matches = re.search(r"(\d{14})", name)
-    if matches:
+    # Put more specific/longer patterns first if overlap is possible.
+    # These could be combined into one pattern, but it would be less readable.
+    consecutive_pattern = r"\d{14}"  # YYYYMMDDHHMMSS
+    two_groups_pattern = r"\d{8}[^\d]+\d{6}"  # YYYYMMDD*HHMMSS
+    # Allow single non-digit delimiters within components, and one or more between DD and HH
+    delimited_pattern = r"\d{4}[^\d]\d{2}[^\d]\d{2}[^\d]+\d{2}[^\d]\d{2}[^\d]\d{2}"  # YYYY*MM*DD*+HH*MM*SS
+
+    # Combine patterns with OR '|' but keep them in their own groups
+    pattern = re.compile(f"({consecutive_pattern})|({two_groups_pattern})|({delimited_pattern})")
+
+    match = pattern.search(name)
+    if match:
+        # Get the full string matched by any of the patterns
+        matched_string = match.group(0)
+        # Remove all non-digit characters to create YYYYMMDDHHMMSS
+        consecutive_date_string = re.sub(r"[^\d]", "", matched_string)
+
         try:
-            date = datetime.datetime.strptime(matches.group(), "%Y%m%d%H%M%S")
+            date = datetime.datetime.strptime(consecutive_date_string, strptime_format)
         except ValueError:
             pass
 
     if not date:
         try:
             date = dateutil.parser.parse(name, fuzzy=False)  # Fuzzy will interpret "DSC_1974" as 1974-01-01
-        except dateutil.parser.ParserError:
+        except (dateutil.parser.ParserError, ValueError, OverflowError):
             pass
 
     if not date and raise_error:
