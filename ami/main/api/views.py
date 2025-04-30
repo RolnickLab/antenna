@@ -760,7 +760,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
                 "ood_threshold": request.data.get("ood_threshold", 1),
                 "algorithm": request.data.get("algorithm", "agglomerative"),
                 "algorithm_kwargs": request.data.get("algorithm_kwargs", {"distance_threshold": 0.5}),
-                "pca_dim": request.data.get("pca", 10),
+                "pca_dim": request.data.get("pca", {}).get("n_components", 384),
             },
         )
         job.enqueue()
@@ -1070,7 +1070,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "event",
         "deployment",
         "determination__rank",
-        "determination_ood_score",
     ]
     ordering_fields = [
         "created_at",
@@ -1083,7 +1082,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination",
         "determination__name",
         "determination_score",
-        "determination_ood_score",
         "event",
         "detections_count",
         "created_at",
