@@ -3,31 +3,26 @@ Fast API interface for processing images through the localization and classifica
 """
 
 import logging
+import time
 
 import fastapi
 
-from .pipelines import Pipeline, ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline
+from .pipelines import ConstantPipeline, Pipeline, RandomPipeline
 from .schemas import (
     AlgorithmConfigResponse,
     PipelineRequest,
-    PipelineRequestConfigParameters,
     PipelineResultsResponse,
     ProcessingServiceInfoResponse,
     SourceImage,
+    SourceImageResponse,
 )
 
-# Configure root logger
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-)
-
-# Get the root logger
 logger = logging.getLogger(__name__)
 
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline]
+pipelines: list[type[Pipeline]] = [RandomPipeline, ConstantPipeline]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
@@ -42,8 +37,11 @@ async def root():
 @app.get("/info", tags=["services"])
 async def info() -> ProcessingServiceInfoResponse:
     info = ProcessingServiceInfoResponse(
-        name="Custom ML Backend",
-        description=("A template for running custom models locally."),
+        name="ML Backend Template",
+        description=(
+            "A template for an inference API that allows the user to run different sequences of machine learning "
+            "models and processing methods on images for the Antenna platform."
+        ),
         pipelines=[pipeline.config for pipeline in pipelines],
         # algorithms=list(algorithm_choices.values()),
     )
@@ -75,32 +73,34 @@ async def readyz():
 @app.post("/process", tags=["services"])
 async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
-    request_config = data.config
 
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
+    source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
+
+    start_time = time.time()
 
     try:
         Pipeline = pipeline_choices[pipeline_slug]
     except KeyError:
         raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
 
-    pipeline_request_config = PipelineRequestConfigParameters(**dict(request_config)) if request_config else {}
+    pipeline = Pipeline(source_images=source_images)
     try:
-        pipeline = Pipeline(
-            source_images=source_images,
-            request_config=pipeline_request_config,
-        )
-        pipeline.compile()
-    except Exception as e:
-        logger.error(f"Error compiling pipeline: {e}")
-        raise fastapi.HTTPException(status_code=422, detail=f"{e}")
-
-    try:
-        response = pipeline.run()
+        results = pipeline.run()
     except Exception as e:
         logger.error(f"Error running pipeline: {e}")
         raise fastapi.HTTPException(status_code=422, detail=f"{e}")
 
+    end_time = time.time()
+    seconds_elapsed = float(end_time - start_time)
+
+    response = PipelineResultsResponse(
+        pipeline=pipeline_slug,
+        algorithms={algorithm.key: algorithm for algorithm in pipeline.config.algorithms},
+        source_images=source_image_results,
+        detections=results,
+        total_time=seconds_elapsed,
+    )
     return response
 
 

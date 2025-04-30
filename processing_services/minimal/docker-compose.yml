@@ -1,0 +1,16 @@
+services:
+  ml_backend_minimal:
+    build:
+      context: .
+    volumes:
+      - ./:/app:z
+    ports:
+      - "2000:2000"
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - ml_network
+
+networks:
+  ml_network:
+    name: ml_network

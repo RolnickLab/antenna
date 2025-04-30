@@ -45,10 +45,10 @@ services:
 
   ml_backend:
     build:
-      context: ./processing_services/example
+      context: ./processing_services/minimal
     volumes:
-      - ./processing_services/example/:/app
+      - ./processing_services/minimal/:/app
     networks:
       default:
-          aliases:
-            - processing_service
+        aliases:
+          - processing_service
