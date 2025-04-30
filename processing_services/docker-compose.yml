@@ -9,7 +9,7 @@ services:
     extra_hosts:
       - minio:host-gateway
     networks:
-      - ml_network
+      - antenna_network
 
   ml_backend_example:
     build:
@@ -21,8 +21,8 @@ services:
     extra_hosts:
       - minio:host-gateway
     networks:
-      - ml_network
+      - antenna_network
 
 networks:
-  ml_network:
-    name: ml_network
+  antenna_network:
+    name: antenna_network
