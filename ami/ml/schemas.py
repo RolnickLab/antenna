@@ -106,6 +106,7 @@ class ClassificationResponse(pydantic.BaseModel):
     )
     scores: list[float] = []
     logits: list[float] | None = None
+    features: list[float] | None = None
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True

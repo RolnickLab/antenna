@@ -15,7 +15,10 @@ services:
     command: /start
 
   postgres:
-    image: postgres:13
+    build:
+      context: .
+      dockerfile: ./compose/local/postgres/Dockerfile
+
     env_file:
       - ./.envs/.ci/.postgres
 

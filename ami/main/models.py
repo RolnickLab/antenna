@@ -23,6 +23,7 @@ from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
+from pgvector.django import CosineDistance, L2Distance, VectorField
 
 import ami.tasks
 import ami.utils
@@ -1919,6 +1920,10 @@ class Classification(BaseModel):
     logits = ArrayField(
         models.FloatField(), null=True, help_text="The raw output of the last fully connected layer of the model"
     )
+    features_2048 = VectorField(
+        dimensions=2048, null=True, default=None, help_text="Feature embedding from the model backbone"
+    )
+
     scores = ArrayField(
         models.FloatField(),
         null=True,
@@ -2025,6 +2030,35 @@ class Classification(BaseModel):
             }
             for i, s in top_scored
         ]
+
+    def get_similar_classifications(self, distance_metric="cosine") -> models.QuerySet:
+        """
+        Return  most similar classifications based on feature_2048 embeddings.
+        Supports: 'cosine' and 'l2' distances
+        """
+        if self.features_2048 is None:
+            raise ValueError("This classification does not have a feature vector.")
+
+        if not self.algorithm:
+            raise ValueError("This classification is not associated with an algorithm.")
+        distance_metrics = {
+            "cosine": CosineDistance,
+            "l2": L2Distance,
+        }
+        distance_fn = distance_metrics.get(distance_metric)
+
+        if distance_fn is None:
+            raise ValueError(
+                f"""Unsupported distance metric: {distance_metric}.
+                Supported metrics are : {','.join(list(distance_metrics.keys()))}"""
+            )
+
+        return (
+            Classification.objects.exclude(features_2048=None)
+            .filter(algorithm=self.algorithm)
+            .annotate(distance=distance_fn("features_2048", self.features_2048))
+            .order_by("distance")
+        )
 
     def save(self, *args, **kwargs):
         """
