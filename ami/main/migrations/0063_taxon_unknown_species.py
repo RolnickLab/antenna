@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0061_classification_features_squashed_0062_remove_classification_features_and_more"),
+        ("main", "0062_classification_ood_score_and_more"),
     ]
 
     operations = [
