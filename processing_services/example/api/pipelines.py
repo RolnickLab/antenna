@@ -2,13 +2,7 @@ import datetime
 import logging
 from typing import final
 
-from .algorithms import (
-    Algorithm,
-    ConstantClassifier,
-    HFImageClassifier,
-    RandomSpeciesClassifier,
-    ZeroShotObjectDetector,
-)
+from .algorithms import Algorithm, HFImageClassifier, ZeroShotObjectDetector
 from .schemas import (
     Detection,
     DetectionResponse,
@@ -268,112 +262,6 @@ class ZeroShotObjectDetectorPipeline(Pipeline):
         logger.info("[1/1] Running the zero shot object detector...")
         detections_with_classifications: list[Detection] = self._get_detections(
             self.stages[0], self.source_images, self.batch_sizes[0]
-        )
-        end_time = datetime.datetime.now()
-        elapsed_time = (end_time - start_time).total_seconds()
-        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
-            detections_with_classifications, elapsed_time
-        )
-        logger.info(f"Successfully processed {len(detections_with_classifications)} detections.")
-
-        return pipeline_response
-
-
-class ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline(Pipeline):
-    """
-    A pipeline that uses the HuggingFace zero shot object detector and a random species classifier.
-    """
-
-    batch_sizes = [1, 1]
-    config = PipelineConfigResponse(
-        name="Zero Shot Object Detector With Random Species Classifier Pipeline",
-        slug="zero-shot-object-detector-with-random-species-classifier-pipeline",
-        description=("HF zero shot object detector with random species classifier."),
-        version=1,
-        algorithms=[
-            ZeroShotObjectDetector.algorithm_config_response,
-            RandomSpeciesClassifier.algorithm_config_response,
-        ],
-    )
-
-    def get_stages(self) -> list[Algorithm]:
-        zero_shot_object_detector = ZeroShotObjectDetector()
-        if "candidate_labels" in self.request_config:
-            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
-
-        self.config.algorithms = [
-            zero_shot_object_detector.algorithm_config_response,
-            RandomSpeciesClassifier.algorithm_config_response,
-        ]
-
-        return [zero_shot_object_detector, RandomSpeciesClassifier()]
-
-    def run(self) -> PipelineResultsResponse:
-        start_time = datetime.datetime.now()
-        detections: list[Detection] = []
-        if self.existing_detections:
-            logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections = self._process_existing_detections()
-        else:
-            logger.info("[1/2] No existing detections, generating detections...")
-            detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
-
-        logger.info("[2/2] Running the classifier...")
-        detections_with_classifications: list[Detection] = self._get_detections(
-            self.stages[1], detections, self.batch_sizes[1]
-        )
-        end_time = datetime.datetime.now()
-        elapsed_time = (end_time - start_time).total_seconds()
-        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
-            detections_with_classifications, elapsed_time
-        )
-        logger.info(f"Successfully processed {len(detections_with_classifications)} detections.")
-
-        return pipeline_response
-
-
-class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
-    """
-    A pipeline that uses the HuggingFace zero shot object detector and a constant classifier.
-    """
-
-    batch_sizes = [1, 1]
-    config = PipelineConfigResponse(
-        name="Zero Shot Object Detector With Constant Classifier Pipeline",
-        slug="zero-shot-object-detector-with-constant-classifier-pipeline",
-        description=("HF zero shot object detector with constant classifier."),
-        version=1,
-        algorithms=[
-            ZeroShotObjectDetector.algorithm_config_response,
-            ConstantClassifier.algorithm_config_response,
-        ],
-    )
-
-    def get_stages(self) -> list[Algorithm]:
-        zero_shot_object_detector = ZeroShotObjectDetector()
-        if "candidate_labels" in self.request_config:
-            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
-
-        self.config.algorithms = [
-            zero_shot_object_detector.algorithm_config_response,
-            ConstantClassifier.algorithm_config_response,
-        ]
-
-        return [zero_shot_object_detector, ConstantClassifier()]
-
-    def run(self) -> PipelineResultsResponse:
-        start_time = datetime.datetime.now()
-        detections: list[Detection] = []
-        if self.existing_detections:
-            logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections = self._process_existing_detections()
-        else:
-            logger.info("[1/2] No existing detections, generating detections...")
-            detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
-
-        logger.info("[2/2] Running the classifier...")
-        detections_with_classifications: list[Detection] = self._get_detections(
-            self.stages[1], detections, self.batch_sizes[1]
         )
         end_time = datetime.datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()

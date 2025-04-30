@@ -6,13 +6,7 @@ import logging
 
 import fastapi
 
-from .pipelines import (
-    Pipeline,
-    ZeroShotHFClassifierPipeline,
-    ZeroShotObjectDetectorPipeline,
-    ZeroShotObjectDetectorWithConstantClassifierPipeline,
-    ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
-)
+from .pipelines import Pipeline, ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline
 from .schemas import (
     AlgorithmConfigResponse,
     Detection,
@@ -34,12 +28,7 @@ logger = logging.getLogger(__name__)
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [
-    ZeroShotHFClassifierPipeline,
-    ZeroShotObjectDetectorPipeline,
-    ZeroShotObjectDetectorWithConstantClassifierPipeline,
-    ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
-]
+pipelines: list[type[Pipeline]] = [ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
