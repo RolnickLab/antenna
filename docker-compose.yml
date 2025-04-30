@@ -23,7 +23,6 @@ services:
       - postgres
       - redis
       - minio-init
-      - ml_backend
     volumes:
       - .:/app:z
     env_file:
@@ -34,6 +33,9 @@ services:
     ports:
       - "8000:8000"
     command: /start
+    networks:
+      - default
+      - antenna_network
 
   postgres:
     build:
@@ -144,12 +146,17 @@ services:
 
   ml_backend:
     build:
-      context: ./processing_services/example
+      context: ./processing_services/minimal
     volumes:
-      - ./processing_services/example/:/app
+      - ./processing_services/minimal/:/app
     ports:
       - "2005:2000"
     networks:
       default:
-          aliases:
-            - processing_service
+        aliases:
+          - processing_service
+
+networks:
+  antenna_network:
+    external: true
+    name: antenna_network
