@@ -605,9 +605,8 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
                 source_image_collection=collection,
                 job_type_key=DetectionClusteringJob.key,
                 params={
-                    "threshold": 1,
-                    "algorithm": "kmeans",
-                    "algorithm_kwargs": {"n_clusters": 5},
+                    "algorithm": "agglomerative",
+                    "algorithm_kwargs": {"distance_threshold": 0.5},
                 },
             )
             job.enqueue()

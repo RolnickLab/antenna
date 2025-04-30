@@ -648,6 +648,9 @@ class DetectionClusteringJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
+        job.progress.add_stage(name="Collecting Features", key="feature_collection")
+        job.progress.add_stage("Clustering", key="clustering")
+        job.progress.add_stage("Creating Unknown Taxa", key="create_unknown_taxa")
         job.save()
 
         if not job.source_image_collection:

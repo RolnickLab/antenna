@@ -757,10 +757,10 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             source_image_collection=collection,
             job_type_key=DetectionClusteringJob.key,
             params={
-                "threshold": request.data.get("threshold", 1),
-                "algorithm": request.data.get("algorithm", "kmeans"),
-                "algorithm_kwargs": request.data.get("algorithm_kwargs", {"n_clusters": 5}),
-                "pca_dim": request.data.get("pca_dim", 10),
+                "ood_threshold": request.data.get("ood_threshold", 1),
+                "algorithm": request.data.get("algorithm", "agglomerative"),
+                "algorithm_kwargs": request.data.get("algorithm_kwargs", {"distance_threshold": 0.5}),
+                "pca_dim": request.data.get("pca", 10),
             },
         )
         job.enqueue()
