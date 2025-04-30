@@ -42,6 +42,7 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.users.roles import Role
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -67,6 +68,7 @@ from ..models import (
     update_detection_counts,
 )
 from .serializers import (
+    AddMemberSerializer,
     ClassificationListSerializer,
     ClassificationSerializer,
     ClassificationWithTaxaSerializer,
@@ -196,6 +198,77 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @action(detail=True, methods=["get"], url_path="members")
+    def list_members(self, request, pk=None):
+        project = self.get_object()
+        members = project.members.all()
+        data = []
+        for user in members:
+            data.append(
+                {
+                    "user": {
+                        "id": user.id,
+                        "name": user.name,
+                        "email": user.email,
+                    }
+                }
+            )
+
+        return Response(data)
+
+    @action(detail=True, methods=["post"], url_path="members")
+    def add_member(self, request, pk=None):
+        ROLE_MAP = {role_class.__name__: role_class for role_class in Role.__subclasses__()}
+        project = self.get_object()
+
+        serializer = AddMemberSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user_id = serializer.validated_data["user_id"]
+        role_name = serializer.validated_data["role"]
+        role_class = ROLE_MAP.get(role_name)
+
+        if not role_class:
+            return Response({"detail": "Invalid role."}, status=400)
+
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            raise NotFound("User not found.")
+
+        # Add the user to the project.members M2M field if not already
+        project.members.add(user)
+
+        # Assign the role via group
+        role_class.assign_user(user, project)
+
+        return Response({"detail": f"User {user.name} added as {role_name}."}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path="members/(?P<user_id>[^/.]+)")
+    def remove_member(self, request, pk=None, user_id=None):
+        project = self.get_object()
+        ROLE_MAP = {role_class.__name__: role_class for role_class in Role.__subclasses__()}
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            raise NotFound("User not found.")
+
+        if not project.members.filter(id=user.id).exists():
+            raise NotFound("User is not a member of this project.")
+
+        # Unassign the user from any roles
+        for role_class in ROLE_MAP.values():
+            if role_class.has_role(user, project):
+                role_class.unassign_user(user, project)
+
+        # Remove the user from the project's members field
+        project.members.remove(user)
+
+        return Response({"detail": f"User {user.name} removed from project."}, status=status.HTTP_204_NO_CONTENT)
+
+
+class ProjectMemberViewSet(DefaultViewSet):
+    def list(self, request, project_pk=None):
+        return Response({"message": f"Listing members for project {project_pk} (dummy response)."})
 
 
 class DeploymentViewSet(DefaultViewSet, ProjectMixin):

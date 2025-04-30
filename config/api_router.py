@@ -3,6 +3,7 @@ from django.urls import path
 from django.urls.conf import include
 from djoser.views import UserViewSet
 from rest_framework.routers import DefaultRouter, SimpleRouter
+from rest_framework_nested.routers import NestedDefaultRouter
 
 from ami.exports import views as export_views
 from ami.jobs import views as job_views
@@ -18,6 +19,10 @@ else:
 router.register(r"users", UserViewSet)
 router.register(r"storage", views.StorageSourceViewSet)
 router.register(r"projects", views.ProjectViewSet)
+# Nested router for project-specific endpoints like /projects/{project_id}/members
+projects_router = NestedDefaultRouter(router, r"projects", lookup="project")
+projects_router.register(r"members", views.ProjectMemberViewSet, basename="project-members")
+
 router.register(r"deployments/devices", views.DeviceViewSet)
 router.register(r"deployments/sites", views.SiteViewSet)
 router.register(r"deployments", views.DeploymentViewSet)
@@ -64,3 +69,4 @@ urlpatterns = [
 
 
 urlpatterns += router.urls
+urlpatterns += projects_router.urls

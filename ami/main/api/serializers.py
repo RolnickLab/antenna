@@ -1515,3 +1515,8 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class AddMemberSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    role = serializers.ChoiceField(choices=["BasicMember", "Identifier", "ProjectManager"])
