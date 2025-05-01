@@ -26,9 +26,4 @@ export class SpeciesDetails extends Species {
           )})`,
     }
   }
-
-  get stationsLabel() {
-    // TODO: Replace dummy data
-    return 'AMI 2BD0E9C1, AMI BEF510C3, AMI E43B615A'
-  }
 }
