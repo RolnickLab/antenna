@@ -711,7 +711,6 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "duration_label",
             "first_appearance_timestamp",
             "last_appearance_timestamp",
-            "unknown_species",
             # "first_appearance",
             # "last_appearance",
         ]
