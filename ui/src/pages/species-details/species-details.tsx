@@ -89,17 +89,19 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                     <span>GBIF</span>
                     <ExternalLinkIcon className="w-4 h-4" />
                   </Link>
-                  <Link
-                    className={buttonVariants({
-                      size: 'small',
-                      variant: 'outline',
-                    })}
-                    to={species.fieldguideUrl}
-                    target="_blank"
-                  >
-                    <span>Fieldguide</span>
-                    <ExternalLinkIcon className="w-4 h-4" />
-                  </Link>
+                  {species.fieldguideUrl ? (
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.fieldguideUrl}
+                      target="_blank"
+                    >
+                      <span>Fieldguide</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  ) : null}
                 </div>
               </InfoBlockField>
             )}
@@ -125,18 +127,20 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                   </span>
                 </InfoBlockField>
               ) : null}
-              <InfoBlockField label="Reference image">
-                <a
-                  href={species.coverImage.url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <img src={species.coverImage.url} />
-                </a>
-                <span className="body-small text-muted-foreground">
-                  {species.coverImage.caption}
-                </span>
-              </InfoBlockField>
+              {species.coverImage ? (
+                <InfoBlockField label="Reference image">
+                  <a
+                    href={species.coverImage.url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <img src={species.coverImage.url} />
+                  </a>
+                  <span className="body-small text-muted-foreground">
+                    {species.coverImage.caption}
+                  </span>
+                </InfoBlockField>
+              ) : null}
             </BlueprintCollection>
           </div>
         </div>

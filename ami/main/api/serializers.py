@@ -457,6 +457,9 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
             "rank",
             "details",
             "gbif_taxon_key",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
 
@@ -514,6 +517,7 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences",
             "last_detected",
             "best_determination_score",
+            "cover_image_url",
             "created_at",
             "updated_at",
         ]
@@ -733,6 +737,9 @@ class TaxonSerializer(DefaultSerializer):
             "occurrences",
             "gbif_taxon_key",
             "last_detected",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
 

@@ -22,7 +22,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     renderCell: (item: Species) => {
       return (
         <ImageTableCell
-          images={[{ src: item.coverImage.url }]}
+          images={item.coverImage ? [{ src: item.coverImage.url }] : []}
           theme={ImageCellTheme.Light}
           to={APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id })}
         />
@@ -69,10 +69,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           filters: { taxon: item.id },
         })}
       >
-        <BasicTableCell
-          value={item.numOccurrences || 'View all'}
-          theme={CellTheme.Bubble}
-        />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },

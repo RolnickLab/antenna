@@ -8,7 +8,6 @@ export class SpeciesDetails extends Species {
     super(species)
   }
 
-  // TODO: Replace dummy data
   get exampleOccurrence() {
     const occurrence = this._species.occurrences?.[0]
 
@@ -20,7 +19,7 @@ export class SpeciesDetails extends Species {
       id: occurrence.id,
       image_url: occurrence.best_detection.url,
       caption: this.isUnknown
-        ? `Center of cluster`
+        ? 'Center of cluster'
         : `${occurrence.determination.name} (${_.round(
             occurrence.determination_score,
             4
@@ -31,10 +30,5 @@ export class SpeciesDetails extends Species {
   get stationsLabel() {
     // TODO: Replace dummy data
     return 'AMI 2BD0E9C1, AMI BEF510C3, AMI E43B615A'
-  }
-
-  get fieldguideUrl() {
-    // TODO: Replace dummy data
-    return 'https://leps.fieldguide.ai/figures?category=59bafb78929d3d10ea903ee9'
   }
 }

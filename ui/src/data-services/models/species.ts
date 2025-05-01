@@ -18,18 +18,29 @@ export class Species extends Taxon {
   }
 
   get coverImage() {
-    // TODO: Replace dummy data
+    if (!this._species.cover_image_url) {
+      return undefined
+    }
+
+    if (!this._species.cover_image_credit) {
+      return {
+        url: this._species.cover_image_url,
+        caption: this.isUnknown
+          ? `${this.name} (most similar known taxon)`
+          : this.name,
+      }
+    }
+
     return {
-      url: 'http://production-chroma.s3.amazonaws.com/photos/61883e24fe9c0e7e7bf2fa31/4b747bb37e644f8bbc71ef392ab2ee82.jpg',
+      url: this._species.cover_image_url,
       caption: this.isUnknown
-        ? `${this.name} (most similar known taxon), Josh Vandermeulen, some rights reserved (CC BY-NC-ND)`
-        : `${this.name}, Josh Vandermeulen, some rights reserved (CC BY-NC-ND)`,
+        ? `${this.name} (most similar known taxon), ${this._species.cover_image_credit}`
+        : `${this.name}, ${this._species.cover_image_credit}`,
     }
   }
 
-  // TODO: Replace dummy data
-  get isUnknown() {
-    return true
+  get isUnknown(): boolean {
+    return this._species.unknown_species
   }
 
   get lastSeenLabel() {
@@ -43,15 +54,23 @@ export class Species extends Taxon {
   }
 
   get numDetections(): number {
-    return this._species.detections_count || null
+    return this._species.detections_count ?? 0
   }
 
   get numOccurrences(): number {
-    return this._species.occurrences_count || null
+    return this._species.occurrences_count ?? 0
   }
 
   get gbifUrl(): string {
     return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
+  }
+
+  get fieldguideUrl(): string | undefined {
+    if (!this._species.fieldguide_id) {
+      return undefined
+    }
+
+    return `https://leps.fieldguide.ai/categories?category=${this._species.fieldguide_id}`
   }
 
   get score(): number {
