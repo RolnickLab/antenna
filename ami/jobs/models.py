@@ -400,7 +400,8 @@ class MLJob(JobType):
         total_classifications = 0
 
         config = job.pipeline.get_config(project_id=job.project.pk)
-        chunk_size = config.get("request_source_image_batch_size", 1)
+        chunk_size = config.get("request_source_image_batch_size", 2)
+        # @TODO Ensure only images of the same dimensions are processed in a batch
         chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
         request_failed_images = []
 
