@@ -518,6 +518,7 @@ class TaxonListSerializer(DefaultSerializer):
             "last_detected",
             "best_determination_score",
             "cover_image_url",
+            "unknown_species",
             "created_at",
             "updated_at",
         ]
@@ -710,6 +711,7 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "duration_label",
             "first_appearance_timestamp",
             "last_appearance_timestamp",
+            "unknown_species",
             # "first_appearance",
             # "last_appearance",
         ]
@@ -739,6 +741,8 @@ class TaxonSerializer(DefaultSerializer):
             "fieldguide_id",
             "cover_image_url",
             "cover_image_credit",
+            "unknown_species",
+            "last_detected",  # @TODO this has performance impact, review
         ]
 
 
