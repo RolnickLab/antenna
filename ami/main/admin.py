@@ -594,13 +594,33 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
         )
 
+    @admin.action(description="Create clustering job (but don't run it)")
+    @admin.action()
+    def create_clustering_job(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        from ami.jobs.models import DetectionClusteringJob, Job
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Clustering detections for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=DetectionClusteringJob.key,
+                params={
+                    "ood_threshold": 0.3,
+                    "algorithm": "agglomerative",
+                    "algorithm_kwargs": {"distance_threshold": 80},
+                    "pca": {"n_components": 384},
+                },
+            )
+            self.message_user(request, f"Created clustering job #{job.pk} for collection #{collection.pk}")
+
     @admin.action()
     def cluster_detections(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         for collection in queryset:
             from ami.jobs.models import DetectionClusteringJob, Job
 
             job = Job.objects.create(
-                name=f"Cluster detections for collection {collection.pk}",
+                name=f"Clustering detections for collection {collection.pk}",
                 project=collection.project,
                 source_image_collection=collection,
                 job_type_key=DetectionClusteringJob.key,
@@ -615,7 +635,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Clustered {queryset.count()} collection(s).")
 
-    actions = [populate_collection, populate_collection_async, cluster_detections]
+    actions = [populate_collection, populate_collection_async, cluster_detections, create_clustering_job]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
