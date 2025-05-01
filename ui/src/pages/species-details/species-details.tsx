@@ -1,13 +1,14 @@
-import {
-  BlueprintCollection,
-  BlueprintItem,
-} from 'components/blueprint-collection/blueprint-collection'
+import classNames from 'classnames'
+import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
-import { InfoBlock } from 'design-system/components/info-block/info-block'
-import { TaxonDetails } from 'nova-ui-kit'
-import { useMemo } from 'react'
+import {
+  InfoBlockField,
+  InfoBlockFieldValue,
+} from 'design-system/components/info-block/info-block'
+import { ExternalLinkIcon } from 'lucide-react'
+import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -17,51 +18,10 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
   const navigate = useNavigate()
 
-  const image = useMemo(() => {
-    if (species.occurrences.length) {
-      const occurrenceInfo = species.getOccurrenceInfo(species.occurrences[0])
-      return occurrenceInfo?.image.src
-    }
-  }, [species])
-
-  const blueprintItems = useMemo(
-    () =>
-      species.occurrences.length
-        ? species.occurrences
-            .map((id) => species.getOccurrenceInfo(id))
-            .filter((item): item is BlueprintItem => !!item)
-            .map((item) => ({
-              ...item,
-              to: APP_ROUTES.OCCURRENCE_DETAILS({
-                projectId: projectId as string,
-                occurrenceId: item.id,
-              }),
-            }))
-        : [],
-    [species]
-  )
-
-  const fields = [
-    {
-      label: translate(STRING.FIELD_LABEL_OCCURRENCES),
-      value:
-        species.numOccurrences !== null ? species.numOccurrences : 'View all',
-      to: getAppRoute({
-        to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
-        filters: { taxon: species.id },
-      }),
-    },
-    {
-      label: translate(STRING.FIELD_LABEL_TRAINING_IMAGES),
-      value: species.trainingImagesLabel,
-      to: species.trainingImagesUrl,
-    },
-  ].filter((field) => field.value !== null)
-
   return (
     <div className={styles.wrapper}>
       <Helmet>
-        <meta name="og:image" content={image} />
+        <meta name="og:image" content={species.exampleOccurrence?.image_url} />
       </Helmet>
       <div className={styles.header}>
         <TaxonDetails
@@ -78,18 +38,110 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           size="lg"
           taxon={species}
         />
+        {species.isUnknown ? (
+          <div className={classNames(styles.badge, 'no-print')}>
+            Unknown species
+          </div>
+        ) : null}
       </div>
       <div className={styles.content}>
-        <div className={styles.column}>
-          <div className={styles.info}>
-            <div className={styles.fields}>
-              <InfoBlock fields={fields} />
-            </div>
+        <div className={styles.info}>
+          <div className="grid gap-6">
+            <InfoBlockField label="Last seen">
+              <InfoBlockFieldValue value={species.lastSeenLabel} />
+            </InfoBlockField>
+            <InfoBlockField label="Stations">
+              <InfoBlockFieldValue value={undefined} />
+            </InfoBlockField>
+            <InfoBlockField label={translate(STRING.FIELD_LABEL_OCCURRENCES)}>
+              <InfoBlockFieldValue
+                value={
+                  species.numOccurrences !== null
+                    ? species.numOccurrences
+                    : 'View all'
+                }
+                to={getAppRoute({
+                  to: APP_ROUTES.OCCURRENCES({
+                    projectId: projectId as string,
+                  }),
+                  filters: { taxon: species.id },
+                })}
+              />
+            </InfoBlockField>
+            {species.isUnknown ? (
+              <InfoBlockField label="Most similar known taxon">
+                <InfoBlockFieldValue value={undefined} />
+              </InfoBlockField>
+            ) : (
+              <InfoBlockField
+                className="no-print"
+                label={translate(STRING.EXTERNAL_RESOURCES)}
+              >
+                <div className="py-1 flex items-center gap-3">
+                  <Link
+                    className={buttonVariants({
+                      size: 'small',
+                      variant: 'outline',
+                    })}
+                    to={species.gbifUrl}
+                    target="_blank"
+                  >
+                    <span>GBIF</span>
+                    <ExternalLinkIcon className="w-4 h-4" />
+                  </Link>
+                  {species.fieldguideUrl ? (
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.fieldguideUrl}
+                      target="_blank"
+                    >
+                      <span>Fieldguide</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  ) : null}
+                </div>
+              </InfoBlockField>
+            )}
           </div>
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection items={blueprintItems} />
+            <BlueprintCollection>
+              {species.exampleOccurrence ? (
+                <InfoBlockField label="Representative occurrence">
+                  <Link
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCE_DETAILS({
+                        projectId: projectId as string,
+                        occurrenceId: species.exampleOccurrence.id,
+                      }),
+                    })}
+                  >
+                    <img src={species.exampleOccurrence.image_url} />
+                  </Link>
+                  <span className="body-small text-muted-foreground">
+                    {species.exampleOccurrence.caption}
+                  </span>
+                </InfoBlockField>
+              ) : null}
+              {species.coverImage ? (
+                <InfoBlockField label="Reference image">
+                  <a
+                    href={species.coverImage.url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <img src={species.coverImage.url} />
+                  </a>
+                  <span className="body-small text-muted-foreground">
+                    {species.coverImage.caption}
+                  </span>
+                </InfoBlockField>
+              ) : null}
+            </BlueprintCollection>
           </div>
         </div>
       </div>

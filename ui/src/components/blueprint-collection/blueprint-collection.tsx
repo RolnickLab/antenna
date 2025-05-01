@@ -3,7 +3,7 @@ import { LicenseInfo } from 'components/license-info/license-info'
 import { Icon, IconType } from 'design-system/components/icon/icon'
 import { EyeIcon } from 'lucide-react'
 import { buttonVariants, Tooltip } from 'nova-ui-kit'
-import { useState } from 'react'
+import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './blueprint-collection.module.scss'
 
@@ -16,26 +16,35 @@ export interface BlueprintItem {
   to?: string
 }
 
-export const BlueprintCollection = ({ items }: { items: BlueprintItem[] }) => (
-  <div
-    className={classNames(styles.blueprint, {
-      [styles.empty]: items.length === 0,
-    })}
-  >
-    {items.length > 0 && (
+export const BlueprintCollection = ({
+  children,
+  showLicenseInfo,
+}: {
+  children: ReactNode
+  showLicenseInfo?: boolean
+}) => (
+  <div className={classNames(styles.blueprint)}>
+    {showLicenseInfo ? (
       <div className={styles.licenseInfoContent}>
         <LicenseInfo />
       </div>
-    )}
-    <div className={styles.blueprintContent}>
-      {items.map((item) => (
-        <BlueprintItem key={item.id} item={item} />
-      ))}
-    </div>
+    ) : null}
+    <div className={styles.blueprintContent}>{children}</div>
   </div>
 )
 
-const BlueprintItem = ({ item }: { item: BlueprintItem }) => {
+export const BlueprintItem = ({
+  item,
+}: {
+  item: {
+    id: string
+    image: { src: string; width: number; height: number }
+    label: string
+    timeLabel: string
+    countLabel: string
+    to?: string
+  }
+}) => {
   const [size, setSize] = useState({
     width: item.image.width,
     height: item.image.height,
