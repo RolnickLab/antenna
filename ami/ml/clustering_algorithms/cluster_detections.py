@@ -83,7 +83,7 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     taxa_list.projects.add(collection.project)
     taxa_to_add = []
     clustering_algorithm, _created = Algorithm.objects.get_or_create(
-        name=str(ClusteringAlgorithm),
+        name=ClusteringAlgorithm.__name__,
         task_type="clustering",
     )
     logging.info(f"Using clustering algorithm: {clustering_algorithm}")
