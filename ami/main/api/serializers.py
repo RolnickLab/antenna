@@ -1,5 +1,6 @@
 import datetime
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -13,7 +14,6 @@ from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
-from ami.utils.dates import get_image_timestamp_from_filename
 
 from ..models import (
     Classification,
@@ -32,6 +32,7 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
+    validate_filename_timestamp,
 )
 
 
@@ -697,6 +698,7 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "deployment",
             "event",
             "determination_score",
+            "determination_ood_score",
             "determination",
             "best_detection",
             "detections_count",
@@ -745,6 +747,7 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
             "details",
             "determination",
             "determination_score",
+            "determination_ood_score",
             "determination_algorithm",
         ]
 
@@ -759,6 +762,7 @@ class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
+    features_2048 = serializers.ListField(child=serializers.FloatField(), read_only=True)
 
     class Meta:
         model = Classification
@@ -770,6 +774,8 @@ class ClassificationSerializer(DefaultSerializer):
             "algorithm",
             "scores",
             "logits",
+            "ood_score",
+            "features_2048",
             "top_n",
             "created_at",
             "updated_at",
@@ -800,6 +806,7 @@ class ClassificationListSerializer(DefaultSerializer):
             "details",
             "taxon",
             "score",
+            "ood_score",
             "algorithm",
             "created_at",
             "updated_at",
@@ -818,6 +825,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "details",
             "taxon",
             "score",
+            "ood_score",
             "terminal",
             "algorithm",
             "created_at",
@@ -884,6 +892,23 @@ class DetectionNestedSerializer(DefaultSerializer):
             "bbox",
             "occurrence",
             "classifications",
+        ]
+
+
+class ClassificationSimilaritySerializer(ClassificationSerializer):
+    distance = serializers.FloatField(read_only=True)
+    detection = DetectionNestedSerializer(read_only=True)
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = [
+            "id",
+            "details",
+            "distance",
+            "detection",
+            "taxon",
+            "algorithm",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -1025,13 +1050,10 @@ class SourceImageUploadSerializer(DefaultSerializer):
 
     def validate_image(self, value):
         # Ensure that image filename contains a timestamp
-        timestamp = get_image_timestamp_from_filename(value.name)
-        if timestamp is None:
-            # @TODO bring back EXIF support
-            raise serializers.ValidationError(
-                "Image filename does not contain a timestamp in the format YYYYMMDDHHMMSS "
-                " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
-            )
+        try:
+            validate_filename_timestamp(value.name)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(str(e))
         return value
 
 
@@ -1101,8 +1123,6 @@ class SourceImageCollectionSerializer(DefaultSerializer):
         ]
 
     def get_permissions(self, instance, instance_data):
-        request = self.context.get("request")
-
         request: Request = self.context["request"]
         user = request.user
         project = instance.get_project()
@@ -1203,6 +1223,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detections_count",
             "detection_images",
             "determination_score",
+            "determination_ood_score",
             "determination_details",
             "identifications",
             "created_at",

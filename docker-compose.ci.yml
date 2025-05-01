@@ -15,7 +15,10 @@ services:
     command: /start
 
   postgres:
-    image: postgres:13
+    build:
+      context: .
+      dockerfile: ./compose/local/postgres/Dockerfile
+
     env_file:
       - ./.envs/.ci/.postgres
 
@@ -45,10 +48,10 @@ services:
 
   ml_backend:
     build:
-      context: ./processing_services/example
+      context: ./processing_services/minimal
     volumes:
-      - ./processing_services/example/:/app
+      - ./processing_services/minimal/:/app
     networks:
       default:
-          aliases:
-            - processing_service
+        aliases:
+          - processing_service
