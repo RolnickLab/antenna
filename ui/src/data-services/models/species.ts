@@ -53,12 +53,21 @@ export class Species extends Taxon {
     return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
   }
 
-  get fieldguideUrl(): string | undefined {
-    if (!this._species.fieldguide_id) {
-      return undefined
-    }
+  get fieldguideId(): string | null {
+    return this._species.fieldguide_id || null
+  }
 
-    return `https://leps.fieldguide.ai/categories?category=${this._species.fieldguide_id}`
+  get fieldguideUrl(): string | undefined {
+    if (!this.fieldguideId) return undefined
+    return `https://leps.fieldguide.ai/categories?category=${this.fieldguideId}`
+  }
+
+  get coverImageUrl(): string | null {
+    return this._species.cover_image_url || null
+  }
+
+  get coverImageCredit(): string | null {
+    return this._species.cover_image_credit || null
   }
 
   get score(): number | undefined {
