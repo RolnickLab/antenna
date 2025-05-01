@@ -82,14 +82,15 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     taxa_list = TaxaList.objects.create(name=f"Clusters from (Job {job.pk if job else 'unknown'})")
     taxa_list.projects.add(collection.project)
     taxa_to_add = []
-    clustering_algorithm = Algorithm.objects.get_or_create(
-        name=algorithm,
+    clustering_algorithm, _created = Algorithm.objects.get_or_create(
+        name=str(ClusteringAlgorithm),
         task_type="clustering",
     )
+    logging.info(f"Using clustering algorithm: {clustering_algorithm}")
     # Creating Unknown Taxa
     update_job_progress(job, stage_key="create_unknown_taxa", status=JobState.STARTED, progress=0.0)
     for idx, (cluster_id, cluster_detections) in enumerate(clusters.items()):
-        taxon = Taxon.objects.create(
+        taxon, _created = Taxon.objects.get_or_create(
             name=f"Cluster {cluster_id} (Collection {collection.pk}) (Job {job.pk if job else 'unknown'})",
             rank="SPECIES",
             notes=f"Auto-created cluster {cluster_id} for collection  {collection.pk}",
