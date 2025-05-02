@@ -6,6 +6,7 @@ from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
 from django.utils.formats import number_format
+from django.utils.html import format_html
 from guardian.admin import GuardedModelAdmin
 
 import ami.utils
@@ -262,6 +263,7 @@ class ClassificationInline(admin.TabularInline):
     model = Classification
     extra = 0
     fields = (
+        "view_classification",
         "taxon",
         "algorithm",
         "timestamp",
@@ -269,12 +271,18 @@ class ClassificationInline(admin.TabularInline):
         "created_at",
     )
     readonly_fields = (
+        "view_classification",
         "taxon",
         "algorithm",
         "timestamp",
         "terminal",
         "created_at",
     )
+
+    @admin.display(description="Classification")
+    def view_classification(self, obj):
+        url = f"/admin/main/classification/{obj.pk}/change/"
+        return format_html('<a href="{}">{}</a>', url, obj.pk)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -285,6 +293,7 @@ class DetectionInline(admin.TabularInline):
     model = Detection
     extra = 0
     fields = (
+        "view_detection",
         "detection_algorithm",
         "source_image",
         "timestamp",
@@ -292,12 +301,18 @@ class DetectionInline(admin.TabularInline):
         "occurrence",
     )
     readonly_fields = (
+        "view_detection",
         "detection_algorithm",
         "source_image",
         "timestamp",
         "created_at",
         "occurrence",
     )
+
+    @admin.display(description="Detection")
+    def view_detection(self, obj):
+        url = f"/admin/main/detection/{obj.pk}/change/"
+        return format_html('<a href="{}">{}</a>', url, obj.pk)
 
 
 @admin.register(Detection)
