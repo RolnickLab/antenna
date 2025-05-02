@@ -2298,6 +2298,22 @@ class Occurrence(BaseModel):
     )
     determination_score = models.FloatField(null=True, blank=True, help_text="Estimation of confidence")
     determination_ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
+    # Classifications are machine predictions
+    determination_classification = models.ForeignKey(
+        "Classification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrences",
+    )
+    # Identifications are human predictions
+    determination_identification = models.ForeignKey(
+        "Identification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrences",
+    )
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -2509,16 +2525,20 @@ def update_occurrence_determination(
         .get(pk=occurrence.pk)["determination"]
     )
     new_determination = None
+    new_classification = None
+    new_identification = None
     new_score = None
     new_ood_score = None
 
     top_identification = occurrence.best_identification
-    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
+    if top_identification and top_identification != occurrence.determination_identification:
+        new_identification = top_identification
         new_determination = top_identification.taxon
         new_score = top_identification.score
     elif not top_identification:
         top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
+        if top_prediction and top_prediction != occurrence.determination_classification:
+            new_classification = top_prediction
             new_determination = top_prediction.taxon
             new_score = top_prediction.score
 
@@ -2527,7 +2547,29 @@ def update_occurrence_determination(
         occurrence.determination = new_determination
         needs_update = True
 
-    if new_score and new_score != occurrence.determination_score:
+    if new_classification != occurrence.determination_classification:
+        """
+        This will be None if there are no predictions.
+        """
+        logger.debug(
+            f"Changing det. classification of {occurrence} from {occurrence.determination_classification} to "
+            "{new_classification}"
+        )
+        occurrence.determination_classification = new_classification  # type: ignore
+        needs_update = True
+
+    if new_identification != occurrence.determination_identification:
+        """
+        This will be None if there are no identifications.
+        """
+        logger.debug(
+            f"Changing det. identification of {occurrence} from {occurrence.determination_identification} to "
+            "{new_identification}"
+        )
+        occurrence.determination_identification = new_identification  # type: ignore
+        needs_update = True
+
+    if new_score is not None and new_score != occurrence.determination_score:
         logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
         needs_update = True

@@ -1125,6 +1125,26 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
+        # Get custom ordering param:
+        ordering = self.request.query_params.get("ordering", None)
+        if ordering in ["visual_similarity", "-visual_similarity"]:
+            from pgvector.django import CosineDistance
+
+            # seed_features = qs[0].determination_classification.features_2048
+            # Get first occurrence's features that are not None
+            seed_features_occ = qs.filter(determination_classification__features_2048__isnull=False)
+            if ordering.startswith("-"):
+                seed_features_occ = seed_features_occ.last()
+            else:
+                seed_features_occ = seed_features_occ.first()
+            if seed_features_occ:
+                seed_features = seed_features_occ.determination_classification.features_2048
+                qs = qs.annotate(
+                    visual_similarity=CosineDistance("determination_classification__features_2048", seed_features)
+                ).order_by(ordering)
+            else:
+                qs = qs.none()
+
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])

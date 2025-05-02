@@ -30,6 +30,7 @@ export const columns: (
 ) => [
   {
     id: 'snapshots',
+    sortField: 'visual_similarity',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
     styles: {
       textAlign: TextAlign.Center,
