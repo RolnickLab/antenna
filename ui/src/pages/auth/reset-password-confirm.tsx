@@ -2,7 +2,7 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useResetPasswordConfirm } from 'data-services/hooks/auth/useResetPasswordConfirm'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { useForm } from 'react-hook-form'
 import { Link, useSearchParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -81,14 +81,7 @@ export const ResetPasswordConfirm = () => {
               config={config}
               control={control}
             />
-            <Button
-              label={
-                isLoading ? translate(STRING.SAVED) : translate(STRING.SAVE)
-              }
-              type="submit"
-              theme={ButtonTheme.Success}
-              loading={isLoading}
-            />
+            <SaveButton isLoading={isLoading} />
           </>
         )}
         {isSuccess && (
