@@ -1,3 +1,4 @@
+import { Tags } from 'components/taxon-tags/tags'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -17,8 +18,8 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
   projectId: string
 ) => [
   {
-    id: 'reference-image',
-    name: 'Reference image',
+    id: 'selected-image',
+    name: 'Selected image',
     renderCell: (item: Species) => {
       return (
         <ImageTableCell
@@ -34,16 +35,19 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_TAXON),
     renderCell: (item: Species) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
-          keepSearchParams: true,
-        })}
-      >
-        <BasicTableCell>
-          <TaxonDetails compact taxon={item} />
-        </BasicTableCell>
-      </Link>
+      <BasicTableCell>
+        <div className="grid gap-4">
+          <Link
+            to={getAppRoute({
+              to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
+              keepSearchParams: true,
+            })}
+          >
+            <TaxonDetails compact taxon={item} />
+          </Link>
+          <Tags className="max-w-64" tags={item.tags} />
+        </div>
+      </BasicTableCell>
     ),
   },
   {
@@ -54,6 +58,14 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
+  },
+  {
+    id: 'last-seen',
+    sortField: 'last_detected',
+    name: 'Last seen',
+    renderCell: (item: Species) => (
+      <BasicTableCell value={item.lastSeenLabel} />
+    ),
   },
   {
     id: 'occurrences',
@@ -71,25 +83,6 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
-    ),
-  },
-  {
-    id: 'score',
-    sortField: 'best_determination_score',
-    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.scoreLabel} style={{ textAlign: 'right' }} />
-    ),
-  },
-  {
-    id: 'last-seen',
-    sortField: 'last_detected',
-    name: 'Last seen',
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.lastSeenLabel} />
     ),
   },
 ]
