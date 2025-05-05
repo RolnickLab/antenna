@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+from django.db.models import Count
 from django.utils.timezone import now
 
 from ami.ml.clustering_algorithms.utils import get_clusterer
@@ -26,13 +27,34 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
 
     ood_threshold = params.get("ood_threshold", 1)
-    algorithm = params.get("algorithm", "agglomerative")
+    feature_extraction_algorithm = params.get("feature_extraction_algorithm", None)
+    algorithm = params.get("clustering_algorithm", "agglomerative")
     task_logger.info(f"Clustering Parameters: {params}")
     job_save(job)
+    if feature_extraction_algorithm:
+        task_logger.info(f"Feature Extraction Algorithm: {feature_extraction_algorithm}")
+        # Check if the feature extraction algorithm is valid
+        if not Algorithm.objects.filter(key=feature_extraction_algorithm).exists():
+            raise ValueError(f"Invalid feature extraction algorithm key: {feature_extraction_algorithm}")
+    else:
+        # Fallback to the most used feature extraction algorithm in this collection
+        feature_extraction_algorithm_id = (
+            Classification.objects.filter(features_2048__isnull=False, detection__source_image__collections=collection)
+            .values("algorithm")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+            .values_list("algorithm", flat=True)
+            .first()
+        )
+        if feature_extraction_algorithm_id:
+            feature_extraction_algorithm = Algorithm.objects.get(pk=feature_extraction_algorithm_id)
+            task_logger.info(f"Using fallback feature extraction algorithm: {feature_extraction_algorithm.name}")
+
     detections = Detection.objects.filter(
         classifications__features_2048__isnull=False,
+        classifications__algorithm=feature_extraction_algorithm,
         source_image__collections=collection,
-        occurrence__determination_ood_score__gte=ood_threshold,
+        occurrence__determination_ood_score__gt=ood_threshold,
     )
 
     task_logger.info(f"Found {detections.count()} detections to process for clustering")
@@ -59,7 +81,8 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
         raise ValueError("No feature vectors found")
 
     features_np = np.array(features)
-
+    task_logger.info(f"Feature vectors shape: {features_np.shape}")
+    logger.info(f"First feature vector: {features_np[0]}, shape: {features_np[0].shape}")
     update_job_progress(job, stage_key="clustering", status=JobState.STARTED, progress=0.0)
     # Clustering Detections
     ClusteringAlgorithm = get_clusterer(algorithm)

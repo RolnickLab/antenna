@@ -221,7 +221,29 @@ class EventAdmin(admin.ModelAdmin[Event]):
         self.message_user(request, f"Updated {queryset.count()} events.")
 
     list_filter = ("deployment", "project", "start")
-    actions = [update_calculated_fields]
+
+    @admin.action()
+    def cluster_detections(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        for collection in queryset:
+            from ami.jobs.models import DetectionClusteringJob, Job
+
+            job = Job.objects.create(
+                name=f"Cluster detections for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=DetectionClusteringJob.key,
+                params={
+                    "ood_threshold": 0.3,
+                    "algorithm": "agglomerative",
+                    "algorithm_kwargs": {"distance_threshold": 80},
+                    "pca": {"n_components": 384},
+                },
+            )
+            job.enqueue()
+
+        self.message_user(request, f"Clustered {queryset.count()} collection(s).")
+
+    actions = [update_calculated_fields, cluster_detections]
 
 
 @admin.register(SourceImage)

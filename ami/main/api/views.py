@@ -757,10 +757,11 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             source_image_collection=collection,
             job_type_key=DetectionClusteringJob.key,
             params={
-                "ood_threshold": request.data.get("ood_threshold", 1),
+                "ood_threshold": request.data.get("ood_threshold", 0.3),
+                "feature_extraction_algorithm": request.data.get("feature_extraction_algorithm", None),
                 "algorithm": request.data.get("algorithm", "agglomerative"),
                 "algorithm_kwargs": request.data.get("algorithm_kwargs", {"distance_threshold": 0.5}),
-                "pca_dim": request.data.get("pca", {}).get("n_components", 384),
+                "pca": request.data.get("pca", {"n_components": 384}),
             },
         )
         job.enqueue()
