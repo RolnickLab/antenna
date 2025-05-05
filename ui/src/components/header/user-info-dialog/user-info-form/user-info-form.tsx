@@ -111,6 +111,15 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
                 </InputContent>
               )}
             />
+            {/* فیلد Read-Only برای نمایش Affiliation */}
+            <FormField
+              name="affiliation"
+              type="text"
+              label={translate(STRING.FIELD_LABEL_AFFILIATION)}
+              control={control}
+              defaultValue={userInfo.affiliation || ''}
+              disabled
+            />
           </form>
         </FormRow>
       </FormSection>
