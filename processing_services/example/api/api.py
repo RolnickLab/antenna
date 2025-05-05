@@ -9,6 +9,7 @@ import fastapi
 from .pipelines import Pipeline, ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline
 from .schemas import (
     AlgorithmConfigResponse,
+    Detection,
     PipelineRequest,
     PipelineRequestConfigParameters,
     PipelineResultsResponse,
@@ -77,6 +78,28 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
     request_config = data.config
 
+    # process detection and source image requests
+    detections = (
+        [
+            Detection(
+                source_image=SourceImage(
+                    id=detection.source_image.id,
+                    url=detection.source_image.url,
+                ),
+                bbox=detection.bbox,
+                id=(
+                    f"{detection.source_image.id}-crop-"
+                    f"{detection.bbox.x1}-{detection.bbox.y1}-"
+                    f"{detection.bbox.x2}-{detection.bbox.y2}"
+                ),
+                url=detection.crop_image_url,
+                algorithm=detection.algorithm,
+            )
+            for detection in data.detections
+        ]
+        if data.detections
+        else []
+    )
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
 
     try:
@@ -89,6 +112,7 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
         pipeline = Pipeline(
             source_images=source_images,
             request_config=pipeline_request_config,
+            existing_detections=detections,
         )
         pipeline.compile()
     except Exception as e:

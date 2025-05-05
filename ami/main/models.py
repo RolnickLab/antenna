@@ -29,6 +29,7 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
+from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
@@ -2101,6 +2102,17 @@ class Detection(BaseModel):
     classifications: models.QuerySet["Classification"]
     source_image_id: int
     detection_algorithm_id: int
+
+    def get_bbox(self):
+        if self.bbox:
+            return BoundingBox(
+                x1=self.bbox[0],
+                y1=self.bbox[1],
+                x2=self.bbox[2],
+                y2=self.bbox[3],
+            )
+        else:
+            return None
 
     # def bbox(self):
     #     return (

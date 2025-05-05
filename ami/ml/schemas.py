@@ -112,16 +112,6 @@ class ClassificationResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
 
 
-class DetectionResponse(pydantic.BaseModel):
-    source_image_id: str
-    bbox: BoundingBox
-    inference_time: float | None = None
-    algorithm: AlgorithmReference
-    timestamp: datetime.datetime
-    crop_image_url: str | None = None
-    classifications: list[ClassificationResponse] = []
-
-
 class SourceImageRequest(pydantic.BaseModel):
     # @TODO bring over new SourceImage & b64 validation from the lepsAI repo
     id: str
@@ -142,6 +132,23 @@ KnownPipelineChoices = typing.Literal[
     "quebec_vermont_moths_2023",
     "uk_denmark_moths_2023",
 ]
+
+
+class DetectionRequest(pydantic.BaseModel):
+    source_image: SourceImageRequest  # the 'original' image
+    bbox: BoundingBox
+    crop_image_url: str | None = None
+    algorithm: AlgorithmReference
+
+
+class DetectionResponse(pydantic.BaseModel):
+    source_image_id: str
+    bbox: BoundingBox
+    inference_time: float | None = None
+    algorithm: AlgorithmReference
+    timestamp: datetime.datetime
+    crop_image_url: str | None = None
+    classifications: list[ClassificationResponse] = []
 
 
 class PipelineRequestConfigParameters(dict):
@@ -166,6 +173,7 @@ class PipelineRequestConfigParameters(dict):
 class PipelineRequest(pydantic.BaseModel):
     pipeline: str
     source_images: list[SourceImageRequest]
+    detections: list[DetectionRequest] | None = None
     config: PipelineRequestConfigParameters | dict | None = None
 
 
