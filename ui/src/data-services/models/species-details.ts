@@ -19,7 +19,7 @@ export class SpeciesDetails extends Species {
       id: occurrence.id,
       image_url: occurrence.best_detection.url,
       caption: this.isUnknown
-        ? 'Center of cluster'
+        ? undefined
         : `${occurrence.determination.name} (${_.round(
             occurrence.determination_score,
             4

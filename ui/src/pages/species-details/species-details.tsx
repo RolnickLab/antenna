@@ -1,5 +1,6 @@
-import classNames from 'classnames'
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
+import { Tags } from 'components/taxon-tags/tags'
+import { TagsForm } from 'components/taxon-tags/tags-form'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import {
   InfoBlockField,
@@ -7,16 +8,20 @@ import {
 } from 'design-system/components/info-block/info-block'
 import { ExternalLinkIcon } from 'lucide-react'
 import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
+import { useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
   const navigate = useNavigate()
+  const [tags, setTags] = useState(species.tags)
+  const canUpdate = species.userPermissions.includes(UserPermission.Update)
 
   return (
     <div className={styles.wrapper}>
@@ -38,15 +43,20 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           size="lg"
           taxon={species}
         />
-        {species.isUnknown ? (
-          <div className={classNames(styles.badge, 'no-print')}>
-            Unknown species
-          </div>
-        ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>
           <div className="grid gap-6">
+            <InfoBlockField label="Tags" className="relative">
+              <div className="flex flex-col items-start gap-2 no-print">
+                <Tags tags={tags} />
+                {canUpdate ? (
+                  <div className="absolute top-[-9px] right-0">
+                    <TagsForm tags={tags} onTagsChange={setTags} />
+                  </div>
+                ) : null}
+              </div>
+            </InfoBlockField>
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
             </InfoBlockField>
@@ -111,7 +121,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           <div className={styles.blueprintContainer}>
             <BlueprintCollection>
               {species.exampleOccurrence ? (
-                <InfoBlockField label="Representative occurrence">
+                <InfoBlockField label="Selected occurrence">
                   <Link
                     to={getAppRoute({
                       to: APP_ROUTES.OCCURRENCE_DETAILS({
@@ -122,9 +132,11 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                   >
                     <img src={species.exampleOccurrence.image_url} />
                   </Link>
-                  <span className="body-small text-muted-foreground">
-                    {species.exampleOccurrence.caption}
-                  </span>
+                  {species.exampleOccurrence.caption ? (
+                    <span className="body-small text-muted-foreground">
+                      {species.exampleOccurrence.caption}
+                    </span>
+                  ) : null}
                 </InfoBlockField>
               ) : null}
               {species.coverImage ? (
