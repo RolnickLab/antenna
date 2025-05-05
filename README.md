@@ -23,7 +23,7 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
       docker compose logs -f django celeryworker ui
       # Ctrl+c to close the logs
       ```
-   2) Backend only: will use a pre-built version of the frontend that will not have hot-reloading enabled, but makes startup time faster when restarting the stack.
+   2) Backend only: will use a pre-built version of the frontend that will not have hot-reloading enabled, but will make startup time faster when restarting the stack.
       ```sh
       # Build the frontend (only needed the first time starting the stack, or if the frontend changed since your last build)
       (cd ui && yarn build)
