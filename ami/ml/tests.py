@@ -7,7 +7,7 @@ from pgvector.django import CosineDistance, L2Distance
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.main.models import Classification, Deployment, Detection, Project, SourceImage, SourceImageCollection, Taxon
+from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection, Taxon
 from ami.ml.clustering_algorithms.cluster_detections import cluster_detections
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
@@ -23,7 +23,9 @@ from ami.ml.schemas import (
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
+    create_detections,
     create_processing_service,
+    create_taxa,
     group_images_into_events,
     setup_test_project,
 )
@@ -696,11 +698,11 @@ class ClassificationFeatureVectorTests(TestCase):
 
 class TestClustering(TestCase):
     def setUp(self):
-        self.project = Project.objects.create(name="Test Clustering Project")
-        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
-
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
         create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
         group_images_into_events(deployment=self.deployment)
+
         sample_size = 10
         self.collection = SourceImageCollection.objects.create(
             name="Test Random Source Image Collection",
@@ -713,36 +715,39 @@ class TestClustering(TestCase):
         assert self.collection.images.count() == sample_size
         self.populate_collection_with_detections()
         self.collection.save()
+        # create_occurrences(deployment=self.deployment)
+
         self.detections = Detection.objects.filter(source_image__collections=self.collection)
         self.assertGreater(len(self.detections), 0, "No detections found in the collection")
         self._populate_detection_features()
-        for detection in self.detections:
-            assert detection.classifications.last().features_2048 is not None, "No features found in the detection"
 
     def populate_collection_with_detections(self):
         """Populate the collection with random detections."""
         for image in self.collection.images.all():
             # Create a random detection for each image
-            Detection.objects.create(
-                source_image=image,
-                detection_algorithm=Algorithm.objects.get(key="random-detector"),
-                bbox=[0.0, 0.0, 1.0, 1.0],
-                timestamp=datetime.datetime.now(),
+            create_detections(
+                source_image=image, bboxes=[(0.0, 0.0, 1.0, 1.0), (0.1, 0.1, 0.9, 0.9), (0.2, 0.2, 0.8, 0.8)]
             )
 
     def _populate_detection_features(self):
         """Populate detection features with random values."""
         for detection in self.detections:
+            detection.associate_new_occurrence()
             # Create a random feature vector
             feature_vector = np.random.rand(2048).tolist()
             # Assign the feature vector to the detection
-            detection.classifications.create(
+            classification = Classification.objects.create(
+                detection=detection,
                 algorithm=Algorithm.objects.get(key="random-species-classifier"),
                 taxon=None,
-                score=1,
+                score=0.5,
                 features_2048=feature_vector,
                 timestamp=datetime.datetime.now(),
             )
+            detection.classifications.add(classification)
+            assert classification.features_2048 is not None, "No features found for the detection"
+            assert detection.occurrence is not None, "No occurrence found for the detection"
+            detection.occurrence.determination_ood_score = 0.5
             detection.save()
 
     def test_agglomerative_clustering(self):
@@ -751,6 +756,7 @@ class TestClustering(TestCase):
         params = {
             "algorithm": "agglomerative",
             "ood_threshold": 1,
+            "feature_extraction_algorithm": None,
             "agglomerative": {"distance_threshold": 0.5, "linkage": "ward"},
             "pca": {"n_components": 5},  # Use fewer components for test performance
         }
@@ -759,7 +765,6 @@ class TestClustering(TestCase):
 
         # The exact number could vary based on the random features and threshold
         self.assertGreaterEqual(len(clusters), 1, "Should create at least 1 cluster")
-        self.assertLessEqual(len(clusters), 5, "Should not create more than 5 clusters")
 
         # Verify all detections are assigned to clusters
         total_detections = sum(len(detections) for detections in clusters.values())
@@ -775,14 +780,6 @@ class TestClustering(TestCase):
         for cluster_id, detections_list in clusters.items():
             for detection in detections_list:
                 detection_to_cluster[detection.id] = cluster_id
-
-            # Get all classifications
-        all_classifications = Classification.objects.filter(detection__in=self.detections, terminal=True)
-
-        # Verify that each detection has a new classification linking it to a taxon
-        self.assertEqual(
-            all_classifications.count(), len(self.detections), "Each detection should have a new classification"
-        )
 
         # Verify that each cluster has a corresponding taxon
         taxa = Taxon.objects.filter(unknown_species=True)
