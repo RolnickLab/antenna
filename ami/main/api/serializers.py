@@ -1550,3 +1550,11 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class ClusterDetectionsSerializer(serializers.Serializer):
+    ood_threshold = serializers.FloatField(required=False, default=0.3)
+    feature_extraction_algorithm = serializers.CharField(required=False, allow_null=True)
+    algorithm = serializers.CharField(required=False, default="agglomerative")
+    algorithm_kwargs = serializers.DictField(required=False, default={"distance_threshold": 0.5})
+    pca = serializers.DictField(required=False, default={"n_components": 384})

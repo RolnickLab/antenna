@@ -43,6 +43,7 @@ from ami.base.permissions import (
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.jobs.models import DetectionClusteringJob, Job
+from ami.main.api.serializers import ClusterDetectionsSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -750,19 +751,17 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         """
         Trigger a background job to cluster detections from this collection.
         """
+
         collection: SourceImageCollection = self.get_object()
+        serializer = ClusterDetectionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
         job = Job.objects.create(
             name=f"Clustering detections for collection {collection.pk}",
             project=collection.project,
             source_image_collection=collection,
             job_type_key=DetectionClusteringJob.key,
-            params={
-                "ood_threshold": request.data.get("ood_threshold", 0.3),
-                "feature_extraction_algorithm": request.data.get("feature_extraction_algorithm", None),
-                "algorithm": request.data.get("algorithm", "agglomerative"),
-                "algorithm_kwargs": request.data.get("algorithm_kwargs", {"distance_threshold": 0.5}),
-                "pca": request.data.get("pca", {"n_components": 384}),
-            },
+            params=params,
         )
         job.enqueue()
         logger.info(f"Triggered clustering job for collection {collection.pk}")
