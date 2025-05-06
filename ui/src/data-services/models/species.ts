@@ -17,41 +17,60 @@ export class Species extends Taxon {
     }
   }
 
-  get images(): { src: string }[] {
-    return this._images
+  get coverImage() {
+    if (!this._species.cover_image_url) {
+      return undefined
+    }
+
+    if (!this._species.cover_image_credit) {
+      return {
+        url: this._species.cover_image_url,
+        caption: this.isUnknown
+          ? `${this.name} (most similar known taxon)`
+          : this.name,
+      }
+    }
+
+    return {
+      url: this._species.cover_image_url,
+      caption: this.isUnknown
+        ? `${this.name} (most similar known taxon), ${this._species.cover_image_credit}`
+        : `${this.name}, ${this._species.cover_image_credit}`,
+    }
+  }
+
+  get isUnknown(): boolean {
+    return this._species.unknown_species
+  }
+
+  get lastSeenLabel() {
+    if (!this._species.last_detected) {
+      return undefined
+    }
+
+    const date = new Date(this._species.last_detected)
+
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
   }
 
   get numDetections(): number {
-    return this._species.detections_count || null
+    return this._species.detections_count ?? 0
   }
 
   get numOccurrences(): number {
-    return this._species.occurrences_count || null
+    return this._species.occurrences_count ?? 0
   }
 
-  get trainingImagesLabel(): string {
-    return 'GBIF'
-  }
-
-  get trainingImagesUrl(): string {
+  get gbifUrl(): string {
     return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
   }
 
-  get fieldguideId(): string | null {
-    return this._species.fieldguide_id || null
-  }
-
   get fieldguideUrl(): string | undefined {
-    if (!this.fieldguideId) return undefined
-    return `https://leps.fieldguide.ai/categories?category=${this.fieldguideId}`
-  }
+    if (!this._species.fieldguide_id) {
+      return undefined
+    }
 
-  get coverImageUrl(): string | null {
-    return this._species.cover_image_url || null
-  }
-
-  get coverImageCredit(): string | null {
-    return this._species.cover_image_credit || null
+    return `https://leps.fieldguide.ai/categories?category=${this._species.fieldguide_id}`
   }
 
   get score(): number {

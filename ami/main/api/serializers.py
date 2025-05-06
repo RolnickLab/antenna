@@ -737,6 +737,7 @@ class TaxonSerializer(DefaultSerializer):
             "events_count",
             "occurrences",
             "gbif_taxon_key",
+            "last_detected",
             "fieldguide_id",
             "cover_image_url",
             "cover_image_credit",
