@@ -1,4 +1,4 @@
-# AMI Data Companion UI
+# Antenna Data Platform UI
 
 Web interface to explore data from automated insect monitoring stations. We use React and TypeScript for the implementation. The project was setup using [Vite](https://vitejs.dev/).
 
@@ -23,14 +23,17 @@ Now you can navigate to the following URL: http://localhost:3000
 
 ## Code style
 
-We use [Prettier](https://prettier.io/) as a code formatter. You can setup your code editor to auto format the code you write, based on the project config. There is also an option to run the following command from terminal:
+We use [Prettier](https://prettier.io/) as a code formatter. The project preferences are specified in `prettierrc.json`. If you are using Visual Stuido Code, the extension [Prettier - Code formatter](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) is recommended for auto formating in editor. There is also an option to run the following commands from terminal:
 
 ```bash
-# Auto formats all code in folder src
-yarn format
+# Check format for all code in folder src
+yarn format --check
+
+# Auto format all code in folder src
+yarn format --write
 ```
 
-We use [ESLint](https://eslint.org/) to find issues in the code. You can setup your code editor to highlight such issues, based on the project config. There is also an option to run the following command from terminal:
+We use [ESLint](https://eslint.org/) to find issues in the code. The project preferences are specified in `eslintrc.json`. If you are using Visual Stuido Code, the extension [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) is recommended for highlighting lint issues in editor. There is also an option to run the following command from terminal:
 
 ```bash
 # Run linter for all code in folder src
@@ -55,29 +58,3 @@ yarn test
 ## Deployment
 
 We use [Netlify](https://www.netlify.com/) for deployment. Changes pushed to main branch are automatically deployed to https://app.preview.insectai.org/. When a pull request is opened, a preview version of the changes will be deployed. The URL to the preview deploy will be visible as a PR comment.
-
-## Storybook
-
-We use Storybook to document our design system in code. You can read more about Storybook [here](https://storybook.js.org/).
-
-To run Storybook locally:
-
-```bash
-# Install dependencies
-yarn install
-
-# Launch Storybook in development mode
-yarn storybook
-```
-
-Now you can navigate to the following URL: http://localhost:6006
-
-### Publish Storybook
-
-Build Storybook as a static web application:
-
-```bash
-yarn build-storybook
-```
-
-Read more about publishing Storybook [here](https://storybook.js.org/docs/react/sharing/publish-storybook).

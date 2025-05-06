@@ -1,10 +1,12 @@
 import { EntityFieldValues } from './types'
 
 export const convertToServerFieldValues = (fieldValues: EntityFieldValues) => {
+  const { description, name, projectId, customFields } = fieldValues
+
   return {
-    description: fieldValues.description,
-    name: fieldValues.name,
-    project: fieldValues.projectId,
-    ...(fieldValues.customFields ?? {}),
+    ...(description ? { description } : {}),
+    ...(name ? { name } : {}),
+    project: projectId,
+    ...(customFields ?? {}),
   }
 }

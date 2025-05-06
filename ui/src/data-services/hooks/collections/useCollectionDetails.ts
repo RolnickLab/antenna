@@ -1,4 +1,4 @@
-import { API_ROUTES, API_URL } from 'data-services/constants'
+import { API_ROUTES, API_URL, REFETCH_INTERVAL } from 'data-services/constants'
 import { Collection, ServerCollection } from 'data-services/models/collection'
 import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
@@ -17,6 +17,7 @@ export const useCollectionDetails = (
     {
       queryKey: [API_ROUTES.COLLECTIONS, id],
       url: `${API_URL}/${API_ROUTES.COLLECTIONS}/${id}/`,
+      refetchInterval: REFETCH_INTERVAL,
     }
   )
 

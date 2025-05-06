@@ -1,11 +1,18 @@
 import { Deployment, ServerDeployment } from './deployment'
 import { Entity } from './entity'
-import { Storage } from './storage'
+import { StorageSource } from './storage'
 
 export type ServerDeploymentDetails = ServerDeployment & any // TODO: Update this type
 
+export type ServerNestedCapture = {
+  id: number
+  url: string
+}
+
 export interface DeploymentFieldValues {
   dataSourceId?: string
+  dataSourceSubdir?: string
+  dataSourceRegex?: string
   description: string
   deviceId?: string
   name: string
@@ -18,17 +25,28 @@ export interface DeploymentFieldValues {
 
 export class DeploymentDetails extends Deployment {
   private readonly _exampleCaptures: { id: string; src: string }[] = []
+  private readonly _manuallyUploadedCaptures: { id: string; src: string }[] = []
 
   public constructor(deployment: ServerDeploymentDetails) {
     super(deployment)
 
     if (deployment.example_captures?.length) {
       this._exampleCaptures = deployment.example_captures?.map(
-        (capture: any) => ({
+        (capture: ServerNestedCapture) => ({
           id: `${capture.id}`,
           src: capture.url,
         })
       )
+    }
+
+    if (deployment.manually_uploaded_captures?.length) {
+      this._manuallyUploadedCaptures =
+        deployment.manually_uploaded_captures?.map(
+          (capture: ServerNestedCapture) => ({
+            id: `${capture.id}`,
+            src: capture.url,
+          })
+        )
     }
   }
 
@@ -46,10 +64,22 @@ export class DeploymentDetails extends Deployment {
     return this._exampleCaptures
   }
 
-  get dataSource(): Storage | undefined {
+  get manuallyUploadedCaptures(): { id: string; src: string }[] {
+    return this._manuallyUploadedCaptures
+  }
+
+  get dataSource(): StorageSource | undefined {
     if (this._deployment.data_source?.id) {
-      return new Storage(this._deployment.data_source)
+      return new StorageSource(this._deployment.data_source)
     }
+  }
+
+  get dataSourceSubdir(): string {
+    return this._deployment.data_source_subdir
+  }
+
+  get dataSourceRegex(): string {
+    return this._deployment.data_source_regex
   }
 
   get site(): Entity | undefined {

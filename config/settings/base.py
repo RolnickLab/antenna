@@ -23,6 +23,9 @@ if READ_DOT_ENV_FILE:
 
 # GENERAL
 # ------------------------------------------------------------------------------
+EXTERNAL_HOSTNAME = env("EXTERNAL_HOSTNAME", default="localhost:8000")  # type: ignore[no-untyped-call]
+EXTERNAL_BASE_URL = env("EXTERNAL_BASE_URL", default=f"http://{EXTERNAL_HOSTNAME}")  # type: ignore[no-untyped-call]
+
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)  # type: ignore[no-untyped-call]
 # Local time zone. Choices are
@@ -87,6 +90,8 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "anymail",
+    "cachalot",
+    "guardian",
 ]
 
 LOCAL_APPS = [
@@ -96,6 +101,7 @@ LOCAL_APPS = [
     "ami.jobs",
     "ami.ml",
     "ami.labelstudio",
+    "ami.exports",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -110,6 +116,7 @@ MIGRATION_MODULES = {"sites": "ami.contrib.sites.migrations"}
 # https://docs.djangoproject.com/en/dev/ref/settings/#authentication-backends
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
+    "guardian.backends.ObjectPermissionBackend",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
 AUTH_USER_MODEL = "users.User"
@@ -238,6 +245,22 @@ ANYMAIL = {
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
 
+# CACHES
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#caches
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": env("REDIS_URL", default=None),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # Mimicing memcache behavior.
+            # https://github.com/jazzband/django-redis#memcached-exceptions-behavior
+            "IGNORE_EXCEPTIONS": True,
+        },
+    }
+}
+
 # ADMIN
 # ------------------------------------------------------------------------------
 # Django Admin URL.
@@ -252,6 +275,7 @@ MANAGERS = ADMINS
 # https://docs.djangoproject.com/en/dev/ref/settings/#logging
 # See https://docs.djangoproject.com/en/dev/topics/logging for
 # more details on how to customize your logging configuration.
+LOG_LEVEL = env.str("DJANGO_LOG_LEVEL", default="INFO").upper()  # type: ignore[no-untyped-call]
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -262,12 +286,12 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "DEBUG",
+            "level": LOG_LEVEL,
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         }
     },
-    "root": {"level": "INFO", "handlers": ["console"]},
+    "root": {"level": LOG_LEVEL, "handlers": ["console"]},
 }
 
 # Celery
@@ -278,7 +302,7 @@ if USE_TZ:
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
-CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=env("REDIS_URL", default=None))
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
@@ -292,12 +316,14 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_serializer
 CELERY_RESULT_SERIALIZER = "json"
+CELERY_TASK_COMPRESSION = "gzip"
+CELERY_RESULT_COMPRESSION = "gzip"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_TIME_LIMIT = 5 * 60
+CELERY_TASK_TIME_LIMIT = 7 * 60 * 24
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_SOFT_TIME_LIMIT = 60
+CELERY_TASK_SOFT_TIME_LIMIT = 6 * 60 * 24
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
@@ -305,13 +331,39 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
 
+# Health checking and retries, specific to Redis
+CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
+CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
+CELERY_REDIS_SOCKET_KEEPALIVE = True
+CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
+
+# Help distribute long-running tasks
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-prefetch-multiplier
+# @TODO Review and test this setting
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
+
+# Connection settings to match Redis timeout and keepalive
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "visibility_timeout": 43200,  # 12 hours - default celery value
+    "socket_timeout": 120,  # Matches Redis timeout setting
+    "socket_connect_timeout": 30,  # Max time to establish connection
+    "socket_keepalive": True,  # Enable TCP keepalive
+    "retry_on_timeout": True,  # Retry operations if Redis times out
+    "max_connections": 20,  # Per process connection pool limit
+}
+
+CELERY_BROKER_CONNECTION_RETRY = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
+
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("ami.base.permissions.IsActiveStaffOrReadOnly",),
@@ -331,14 +383,15 @@ CSRF_TRUSTED_ORIGINS = env.list(
     default=[
         "https://api.dev.insectai.org",
         "http://api.dev.insectai.org",
+        EXTERNAL_BASE_URL,
     ],  # type: ignore[no-untyped-call]
 )
 
 # User authentication and registration via REST API endpoints
 # https://djoser.readthedocs.io/en/latest/settings.html
 DJOSER = {
-    # "PASSWORD_RESET_CONFIRM_URL": "#/password/reset/confirm/{uid}/{token}",
-    # "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
+    "PASSWORD_RESET_CONFIRM_URL": "auth/reset-password-confirm?uid={uid}&token={token}",
+    "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
     # "ACTIVATION_URL": "#/activate/{uid}/{token}",
     "SEND_CONFIRMATION_EMAIL": True,
     # "SEND_ACTIVATION_EMAIL": True,
@@ -347,7 +400,12 @@ DJOSER = {
         "user": "ami.users.api.serializers.UserSerializer",
         "current_user": "ami.users.api.serializers.CurrentUserSerializer",
     },
+    "PERMISSIONS": {
+        "user_create": ["rest_framework.permissions.IsAdminUser"],
+    },
 }
+# Django Guardian
+ANONYMOUS_USER_NAME = "anonymoususer"
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
 # See more configuration options at https://drf-spectacular.readthedocs.io/en/latest/settings.html#settings
@@ -361,4 +419,9 @@ SPECTACULAR_SETTINGS = {
 # Your stuff...
 # ------------------------------------------------------------------------------
 
-DEFAULT_CONFIDENCE_THRESHOLD = env.float("DEFAULT_CONFIDENCE_THRESHOLD", default=0.29)  # type: ignore[no-untyped-call]
+DEFAULT_CONFIDENCE_THRESHOLD = env.float("DEFAULT_CONFIDENCE_THRESHOLD", default=0.6)  # type: ignore[no-untyped-call]
+
+S3_TEST_ENDPOINT = env("MINIO_ENDPOINT", default="http://minio:9000")  # type: ignore[no-untyped-call]
+S3_TEST_KEY = env("MINIO_ROOT_USER", default=None)  # type: ignore[no-untyped-call]
+S3_TEST_SECRET = env("MINIO_ROOT_PASSWORD", default=None)  # type: ignore[no-untyped-call]
+S3_TEST_BUCKET = env("MINIO_TEST_BUCKET", default="ami-test")  # type: ignore[no-untyped-call]

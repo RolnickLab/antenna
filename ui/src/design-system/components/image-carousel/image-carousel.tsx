@@ -6,10 +6,12 @@ import {
 } from 'design-system/components/icon-button/icon-button'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { ReactNode, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { getTotalLabel } from 'utils/numberFormats'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
 import { getImageBoxStyles, getPlaceholderStyles } from './utils'
-import { Link } from 'react-router-dom'
+import { LicenseInfo } from 'components/license-info/license-info'
 
 interface ImageCarouselProps {
   autoPlay?: boolean
@@ -17,24 +19,34 @@ interface ImageCarouselProps {
     src: string
     alt?: string
   }[]
+  showLicenseInfo?: boolean
   size?: {
     width: string | number
     ratio: number
   }
   theme?: CarouselTheme
+  total?: number
   to?: string
 }
 
 export const ImageCarousel = ({
   autoPlay,
   images,
+  showLicenseInfo,
   size,
   theme = CarouselTheme.Default,
+  total,
   to,
 }: ImageCarouselProps) => {
   if (images.length <= 1) {
     return (
-      <BasicImageCarousel image={images[0]} size={size} theme={theme} to={to} />
+      <BasicImageCarousel
+        image={images[0]}
+        showLicenseInfo={showLicenseInfo}
+        size={size}
+        theme={theme}
+        to={to}
+      />
     )
   }
 
@@ -42,8 +54,10 @@ export const ImageCarousel = ({
     <MultiImageCarousel
       autoPlay={autoPlay}
       images={images}
+      showLicenseInfo={showLicenseInfo}
       size={size}
       theme={theme}
+      total={total}
       to={to}
     />
   )
@@ -51,6 +65,7 @@ export const ImageCarousel = ({
 
 const BasicImageCarousel = ({
   image,
+  showLicenseInfo,
   size,
   theme,
   to,
@@ -59,6 +74,7 @@ const BasicImageCarousel = ({
     src: string
     alt?: string
   }
+  showLicenseInfo?: boolean
   size?: {
     width: string | number
     ratio: number
@@ -67,14 +83,14 @@ const BasicImageCarousel = ({
   to?: string
 }) => (
   <div className={styles.container}>
-    <div
-      className={classNames(styles.imageBox, {
-        [styles.light]: theme === CarouselTheme.Light,
-      })}
-      style={getImageBoxStyles(size?.width)}
-    >
-      <div style={getPlaceholderStyles(size?.ratio)} />
-      <ConditionalLink to={to}>
+    <ConditionalLink to={to}>
+      <div
+        className={classNames(styles.imageBox, {
+          [styles.light]: theme === CarouselTheme.Light,
+        })}
+        style={getImageBoxStyles(size?.width)}
+      >
+        <div style={getPlaceholderStyles(size?.ratio)} />
         <div className={classNames(styles.slide, styles.visible)}>
           {image ? (
             <img src={image.src} alt={image.alt} className={styles.image} />
@@ -86,8 +102,9 @@ const BasicImageCarousel = ({
             />
           )}
         </div>
-      </ConditionalLink>
-    </div>
+      </div>
+    </ConditionalLink>
+    {showLicenseInfo && <LicenseInfo style={{ marginTop: '32px' }} />}
   </div>
 )
 
@@ -96,8 +113,10 @@ const DURATION = 10000 // Change image every 10 second
 const MultiImageCarousel = ({
   autoPlay,
   images,
+  showLicenseInfo,
   size,
   theme,
+  total,
   to,
 }: ImageCarouselProps) => {
   const [paused, setPaused] = useState(false)
@@ -105,6 +124,8 @@ const MultiImageCarousel = ({
 
   const slideIndexRef = useRef(slideIndex)
   const pausedRef = useRef(paused)
+
+  const totalLabel = getTotalLabel(images.length, total)
 
   useEffect(() => {
     if (!autoPlay) {
@@ -214,17 +235,9 @@ const MultiImageCarousel = ({
         </div>
       </div>
       <span className={styles.info}>
-        <>
-          <Icon type={IconType.Detections} size={12} />
-          {paused ? (
-            <span>
-              {slideIndex + 1} / {images.length}
-            </span>
-          ) : (
-            <span>{images.length}</span>
-          )}
-        </>
+        {slideIndex + 1} / {totalLabel}
       </span>
+      {showLicenseInfo && <LicenseInfo style={{ marginTop: '32px' }} />}
     </div>
   )
 }

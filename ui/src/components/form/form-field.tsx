@@ -9,14 +9,18 @@ export const FormField = <
   TFieldValues extends FieldValues,
   TName extends FieldPath<TFieldValues>
 >({
-  config,
-  control,
   name,
+  control,
+  config,
   type,
+  step,
+  noArrows,
   onBlur,
 }: Pick<ControllerProps<TFieldValues, TName>, 'name' | 'control'> & {
   config: FormConfig
   type?: 'number' | 'text' | 'password'
+  step?: number
+  noArrows?: boolean
   onBlur?: (e: FocusEvent<HTMLInputElement>) => void
 }) => {
   const fieldConfig = config[name]
@@ -30,9 +34,15 @@ export const FormField = <
         <Input
           {...field}
           type={type}
-          label={fieldConfig.label}
-          error={fieldState.error?.message}
+          label={
+            fieldConfig.rules?.required
+              ? `${fieldConfig.label} *`
+              : fieldConfig.label
+          }
           description={fieldConfig.description}
+          error={fieldState.error?.message}
+          step={step}
+          noArrows={noArrows}
           onBlur={(e) => {
             onBlur?.(e)
             field.onBlur()

@@ -12,11 +12,27 @@
   }
 }
 
+.sectionHeader {
+  margin: 0 0 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .sectionTitle {
   @include paragraph-large();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   font-weight: 600;
-  margin: 0 0 32px;
+  margin: 0;
+}
+
+.sectionDescription {
+  display: block;
+  @include paragraph-small();
+  color: $color-neutral-300;
+  font-style: italic;
+  word-break: break-word;
+  margin: 0;
 }
 
 .sectionContent {
@@ -64,7 +80,7 @@
     }
   }
 
-  .sectionTitle {
+  .sectionHeader {
     margin: 0 0 16px;
   }
 

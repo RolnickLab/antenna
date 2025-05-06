@@ -1,0 +1,28 @@
+services:
+  ml_backend_minimal:
+    build:
+      context: ./minimal
+    volumes:
+      - ./minimal/:/app:z
+    ports:
+      - "2000:2000"
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+
+  ml_backend_example:
+    build:
+      context: ./example
+    volumes:
+      - ./example/:/app:z
+    ports:
+      - "2003:2000"
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+
+networks:
+  antenna_network:
+    name: antenna_network

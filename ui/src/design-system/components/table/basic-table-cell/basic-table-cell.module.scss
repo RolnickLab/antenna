@@ -7,7 +7,7 @@
   .label {
     display: block;
     @include paragraph-medium();
-    color: $color-neutral-800;
+    color: $color-neutral-700;
   }
 
   .details {
@@ -19,6 +19,14 @@
   &.primary {
     .label {
       color: $color-primary-1-600;
+      font-weight: 600;
+    }
+  }
+
+  &.bubble {
+    .label {
+      @include bubble-label();
+      display: inline-flex;
     }
   }
 }

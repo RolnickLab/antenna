@@ -20,18 +20,9 @@ ALLOWED_HOSTS = [
     "localhost",
     "0.0.0.0",
     "127.0.0.1",
-    "api.dev.insectai.org",
-]
+    "django",
+] + env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
-# CACHES
-# ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#caches
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "",
-    }
-}
 
 # EMAIL
 # ------------------------------------------------------------------------------
@@ -40,8 +31,8 @@ EMAIL_HOST = env("EMAIL_HOST", default="mailhog")
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-port
 EMAIL_PORT = 1025
 
-# EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
-EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
     default="Automated Monitoring of Insects ML Platform <michael.bunsen@mila.quebec>",
@@ -59,6 +50,11 @@ EMAIL_SUBJECT_PREFIX = env(
 # http://whitenoise.evans.io/en/latest/django.html#using-whitenoise-in-development
 INSTALLED_APPS = ["whitenoise.runserver_nostatic"] + INSTALLED_APPS  # noqa: F405
 
+
+# Long queries can be a problem in development, this should stop them after 30s
+database_options = DATABASES["default"].get("OPTIONS", {})  # noqa: F405
+database_options["options"] = "-c statement_timeout=30s"
+DATABASES["default"]["OPTIONS"] = database_options  # noqa: F405
 
 # django-debug-toolbar
 # ------------------------------------------------------------------------------

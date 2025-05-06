@@ -1,18 +1,47 @@
 {
-    "python.formatting.provider": "none",
     "editor.formatOnSave": true,
-    "python.linting.enabled": true,
-    "python.linting.flake8Enabled": true,
-    "[python]": {
-        "editor.formatOnSave": true,
-        "diffEditor.codeLens": true,
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    },
+    "diffEditor.codeLens": true,
+    "eslint.enable": true,
     "editor.codeActionsOnSave": {
         "source.organizeImports": "explicit",
         "source.sortImports": "explicit",
         "source.fixAll.markdownlint": "explicit",
         "source.fixAll": "explicit"
     },
-    "files.trimTrailingWhitespace": true
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
+    "typescript.format.enable": true,
+    "prettier.requireConfig": true,
+    "[python]": {
+      "editor.defaultFormatter": "ms-python.black-formatter",
+      "editor.tabSize": 4,
+      "editor.rulers": [
+        119
+      ]
+    },
+    "black-formatter.args": ["--line-length", "119"],
+    "flake8.args": [
+        "--max-line-length", "119"
+    ],
+    "[javascript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[javascriptreact]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescriptreact]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[json]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "python.analysis.typeCheckingMode": "basic"
 }

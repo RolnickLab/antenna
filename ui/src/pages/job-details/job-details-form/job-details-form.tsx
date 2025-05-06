@@ -9,12 +9,12 @@ import {
 import { FormConfig } from 'components/form/types'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
+import { CollectionsPicker } from 'design-system/components/collections-picker'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
-import { CollectionsPicker } from './collections-picker'
 import { PipelinesPicker } from './pipelines-picker'
 
 interface JobFormValues {
@@ -144,9 +144,9 @@ export const JobDetailsForm = ({
               config={config.pipeline}
               render={({ field }) => (
                 <Checkbox
+                  checked={field.value ?? false}
                   id={field.name}
                   label={config[field.name].label}
-                  defaultChecked={field.value}
                   onCheckedChange={field.onChange}
                 />
               )}

@@ -1,6 +1,7 @@
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
+from ami.exports.models import DataExport
 from ami.main.api.serializers import (
     DefaultSerializer,
     DeploymentNestedSerializer,
@@ -11,7 +12,7 @@ from ami.main.models import Deployment, Project, SourceImage, SourceImageCollect
 from ami.ml.models import Pipeline
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobProgress
+from .models import Job, JobLogs, JobProgress, MLJob
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -24,6 +25,19 @@ class JobProjectNestedSerializer(DefaultSerializer):
         ]
 
 
+class DataExportNestedSerializer(serializers.ModelSerializer):
+    file_url = serializers.URLField(read_only=True)
+
+    class Meta:
+        model = DataExport
+        fields = ["id", "user", "project", "format", "filters", "file_url"]
+
+
+class JobTypeSerializer(serializers.Serializer):
+    name = serializers.CharField(read_only=True)
+    key = serializers.SlugField(read_only=True)
+
+
 class JobListSerializer(DefaultSerializer):
     delay = serializers.IntegerField()
     project = JobProjectNestedSerializer(read_only=True)
@@ -31,7 +45,13 @@ class JobListSerializer(DefaultSerializer):
     pipeline = PipelineNestedSerializer(read_only=True)
     source_image_collection = SourceImageCollectionNestedSerializer(read_only=True)
     source_image_single = SourceImageNestedSerializer(read_only=True)
+    data_export = DataExportNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
+    logs = SchemaField(schema=JobLogs, read_only=True)
+    job_type = JobTypeSerializer(read_only=True)
+    # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
+    # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
+    job_type_key = serializers.SlugField(write_only=True, default=MLJob.key)
 
     project_id = serializers.PrimaryKeyRelatedField(
         label="Project",
@@ -103,6 +123,10 @@ class JobListSerializer(DefaultSerializer):
             "finished_at",
             "duration",
             "progress",
+            "logs",
+            "job_type",
+            "job_type_key",
+            "data_export",
             # "duration",
             # "duration_label",
             # "progress_label",

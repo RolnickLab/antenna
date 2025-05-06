@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import classNames from 'classnames'
+import { ErrorState } from 'components/error-state/error-state'
 import { ReactNode } from 'react'
 import { Icon, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
@@ -28,12 +29,14 @@ const Content = ({
   children,
   isCompact,
   isLoading,
+  error,
   onOpenAutoFocus,
 }: {
   ariaCloselabel: string
   children: ReactNode
   isCompact?: boolean
   isLoading?: boolean
+  error?: any
   onOpenAutoFocus?: (event: Event) => void
 }) => (
   <Dialog.Portal>
@@ -46,12 +49,21 @@ const Content = ({
     </Dialog.Overlay>
     <Dialog.Content
       className={classNames(styles.dialog, {
-        [styles.compact]: isCompact,
+        [styles.compact]: isCompact || error,
         [styles.loading]: isLoading,
       })}
+      tabIndex={-1}
       onOpenAutoFocus={onOpenAutoFocus}
     >
-      <div className={styles.dialogContent}>{children}</div>
+      <div className={styles.dialogContent}>
+        {error ? (
+          <div className={styles.errorContent}>
+            <ErrorState error={error} />
+          </div>
+        ) : (
+          children
+        )}
+      </div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
         <Icon type={IconType.Close} size={12} />
       </Dialog.Close>

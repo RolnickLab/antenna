@@ -7,9 +7,11 @@ import { getAppRoute } from 'utils/getAppRoute'
 
 export const CaptureGallery = ({
   captures = [],
+  error,
   isLoading,
 }: {
   captures?: Capture[]
+  error?: any
   isLoading: boolean
 }) => {
   const { projectId } = useParams()
@@ -20,18 +22,20 @@ export const CaptureGallery = ({
         id: c.id,
         image: { src: c.src },
         title: c.dateTimeLabel,
-        to: getAppRoute({
-          to: APP_ROUTES.SESSION_DETAILS({
-            projectId: projectId as string,
-            sessionId: c.sessionId,
-          }),
-          filters: {
-            capture: c.id,
-          },
-        }),
+        to: c.sessionId
+          ? getAppRoute({
+              to: APP_ROUTES.SESSION_DETAILS({
+                projectId: projectId as string,
+                sessionId: c.sessionId,
+              }),
+              filters: {
+                capture: c.id,
+              },
+            })
+          : undefined,
       })),
     [captures, projectId]
   )
 
-  return <Gallery items={items} isLoading={isLoading} />
+  return <Gallery error={error} isLoading={isLoading} items={items} />
 }

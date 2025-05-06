@@ -1,44 +1,11 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-.infoWrapper {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  gap: 16px;
-  z-index: 1;
-}
-
-.tableContent {
-  padding: 16px 0;
-  position: relative;
-}
-
-.galleryContent {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px 0;
-}
-
-.settingsWrapper {
-  position: absolute;
-  top: 30px;
-  left: 0;
-  z-index: 1;
-  transform: rotate(90deg);
-}
-
 .taxonCell {
   .taxonCellContent {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    column-gap: 16px;
-    row-gap: 8px;
-    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .taxonActions {
@@ -50,13 +17,17 @@
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
-  .tableContent,
-  .galleryContent {
-    padding: 0;
+.scoreCell {
+  .scoreCellContent {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
   }
 
-  .settingsWrapper {
-    top: 14px;
+  .scoreCellLabel {
+    display: block;
+    @include paragraph-medium();
+    color: $color-neutral-700;
   }
 }

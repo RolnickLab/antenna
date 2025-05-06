@@ -1,7 +1,7 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-$loading-wrapper-size: 38px;
+$accessory-wrapper-size: 38px;
 
 .wrapper {
   position: relative;
@@ -22,6 +22,7 @@ $loading-wrapper-size: 38px;
 }
 
 .input {
+  all: unset;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -29,17 +30,13 @@ $loading-wrapper-size: 38px;
   border-radius: 4px;
   padding: 8px 12px;
   @include paragraph-small();
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
+  color: $color-neutral-700;
+  border: 1px solid $color-neutral-100;
   box-sizing: border-box;
-  margin-bottom: 8px;
-
-  &.loading {
-    padding-right: $loading-wrapper-size;
-  }
+  padding-right: $accessory-wrapper-size;
 
   &::placeholder {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     opacity: 1; /* For Firefox */
   }
 
@@ -49,15 +46,15 @@ $loading-wrapper-size: 38px;
   }
 }
 
-.loadingWrapper {
+.accessoryWrapper {
   position: absolute;
   display: flex;
   justify-content: center;
   align-items: center;
   top: 0;
   right: 0;
-  width: $loading-wrapper-size;
-  height: $loading-wrapper-size;
+  width: $accessory-wrapper-size;
+  height: $accessory-wrapper-size;
 }
 
 .item {
@@ -68,7 +65,7 @@ $loading-wrapper-size: 38px;
   padding: 8px 12px;
   border-radius: 4px;
   @include paragraph-small();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   box-sizing: border-box;
 
   &:not(.empty) {
@@ -108,7 +105,7 @@ $loading-wrapper-size: 38px;
 
   .details {
     @include paragraph-xx-small();
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     padding: 0 8px 0 32px;
   }
 }

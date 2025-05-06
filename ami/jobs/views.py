@@ -3,11 +3,15 @@ import logging
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ami.base.permissions import CanCancelJob, CanRetryJob, CanRunJob, JobCRUDPermission
+from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
+from ami.utils.requests import project_id_doc_param
 
 from .models import Job, JobState
 from .serializers import JobListSerializer, JobSerializer
@@ -15,7 +19,7 @@ from .serializers import JobListSerializer, JobSerializer
 logger = logging.getLogger(__name__)
 
 
-class JobViewSet(DefaultViewSet):
+class JobViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows jobs to be viewed or edited.
 
@@ -35,7 +39,6 @@ class JobViewSet(DefaultViewSet):
     """
 
     queryset = Job.objects.select_related(
-        "project",
         "deployment",
         "pipeline",
         "source_image_collection",
@@ -47,7 +50,9 @@ class JobViewSet(DefaultViewSet):
         "project",
         "deployment",
         "source_image_collection",
+        "source_image_single",
         "pipeline",
+        "job_type_key",
     ]
     ordering_fields = [
         "name",
@@ -61,6 +66,7 @@ class JobViewSet(DefaultViewSet):
         "source_image_collection",
         "pipeline",
     ]
+    permission_classes = [CanRunJob, CanRetryJob, CanCancelJob, JobCRUDPermission]
 
     def get_serializer_class(self):
         """
@@ -77,11 +83,26 @@ class JobViewSet(DefaultViewSet):
         Run a job (add it to the queue).
         """
         job: Job = self.get_object()
+
         no_async = url_boolean_param(request, "no_async", default=False)
         if no_async:
             job.run()
         else:
             job.enqueue()
+        job.refresh_from_db()
+        return Response(self.get_serializer(job).data)
+
+    @action(detail=True, methods=["post"], name="retry")
+    def retry(self, request, pk=None):
+        """
+        Re-run a job
+        """
+        job: Job = self.get_object()
+        no_async = url_boolean_param(request, "no_async", default=False)
+        if no_async:
+            job.retry(async_task=False)
+        else:
+            job.retry(async_task=True)
         job.refresh_from_db()
         return Response(self.get_serializer(job).data)
 
@@ -99,6 +120,12 @@ class JobViewSet(DefaultViewSet):
         """
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
+        # All jobs created from the Jobs UI are ML jobs.
+        # @TODO Remove this when the UI is updated pass a job type
+        # Get an instance for the model without saving
+        obj = serializer.Meta.model(**serializer.validated_data)
+        # Check permissions before saving
+        self.check_object_permissions(self.request, obj)
 
         job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):
@@ -107,7 +134,9 @@ class JobViewSet(DefaultViewSet):
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()
-
+        project = self.get_active_project()
+        if project:
+            jobs = jobs.filter(project=project)
         cutoff_hours = IntegerField(required=False, min_value=0).clean(
             self.request.query_params.get("cutoff_hours", Job.FAILED_CUTOFF_HOURS)
         )
@@ -117,3 +146,7 @@ class JobViewSet(DefaultViewSet):
             status=JobState.failed_states(),
             updated_at__lt=cutoff_datetime,
         )
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)

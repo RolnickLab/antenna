@@ -2,15 +2,19 @@
 @import 'src/design-system/variables/typography.scss';
 
 .tableCell {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
   padding: 12px 32px 12px 16px;
+
+  .content {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
 
   .label {
     display: block;
     @include paragraph-medium();
-    color: $color-neutral-800;
+    color: $color-neutral-700;
+    padding-top: 2px;
   }
 }

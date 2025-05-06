@@ -4,6 +4,7 @@ import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 export const useAuthorizedQuery = <T>({
+  enabled,
   onError,
   queryKey = [],
   refetchInterval,
@@ -11,6 +12,7 @@ export const useAuthorizedQuery = <T>({
   staleTime,
   url,
 }: {
+  enabled?: boolean
   onError?: (error: unknown) => void
   queryKey?: QueryKey
   refetchInterval?: number
@@ -19,8 +21,8 @@ export const useAuthorizedQuery = <T>({
   url: string
 }) => {
   const { user } = useUser()
-
   const { data, isLoading, isFetching, isSuccess, error } = useQuery({
+    enabled,
     onError,
     queryKey,
     queryFn: () =>

@@ -1,18 +1,39 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
-import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
+import { Pipeline } from './pipeline'
+
+export const SERVER_JOB_STATUS_CODES = [
+  'CANCELING',
+  'CREATED',
+  'FAILURE',
+  'PENDING',
+  'RECEIVED',
+  'RETRY',
+  'REVOKED',
+  'STARTED',
+  'SUCCESS',
+  'UNKNOWN',
+] as const
+
+export const SERVER_JOB_TYPES = [
+  'ml',
+  'data_storage_sync',
+  'populate_captures_collection',
+  'data_export',
+  'unknown',
+] as const
 
 export type ServerJob = any // TODO: Update this type
 
-export enum JobStatus {
-  Created = 'created',
-  Pending = 'pending',
-  Started = 'started',
-  Success = 'success',
-  Canceling = 'canceling',
-  Revoked = 'revoked',
-  Failed = 'failed',
-  Unknown = 'unknown',
+export type ServerJobStatusCode = (typeof SERVER_JOB_STATUS_CODES)[number]
+
+export type ServerJobType = (typeof SERVER_JOB_TYPES)[number]
+
+export enum JobStatusType {
+  Success,
+  Warning,
+  Error,
+  Neutral,
 }
 
 export class Job {
@@ -24,8 +45,8 @@ export class Job {
 
   get canCancel(): boolean {
     return (
-      this._job.user_permissions.includes(UserPermission.Update) &&
-      this.status === JobStatus.Started
+      this._job.user_permissions.includes(UserPermission.Cancel) &&
+      (this.status.code === 'STARTED' || this.status.code === 'PENDING')
     )
   }
 
@@ -35,8 +56,17 @@ export class Job {
 
   get canQueue(): boolean {
     return (
-      this._job.user_permissions.includes(UserPermission.Update) &&
-      this.status === JobStatus.Created
+      this._job.user_permissions.includes(UserPermission.Run) &&
+      this.status.code === 'CREATED'
+    )
+  }
+
+  get canRetry(): boolean {
+    return (
+      this._job.user_permissions.includes(UserPermission.Retry) &&
+      this.status.code !== 'CREATED' &&
+      this.status.code !== 'STARTED' &&
+      this.status.code !== 'PENDING'
     )
   }
 
@@ -47,6 +77,11 @@ export class Job {
 
     return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
   }
+
+  get export(): { id: string; format: string } | undefined {
+    return this._job.data_export
+  }
+
   get finishedAt(): string | undefined {
     if (!this._job.finished_at) {
       return
@@ -71,65 +106,121 @@ export class Job {
     return this._job.name
   }
 
+  get pipeline(): Pipeline | undefined {
+    return this._job.pipeline ? new Pipeline(this._job.pipeline) : undefined
+  }
+
+  get progress(): {
+    label: string | undefined
+    value: number
+  } {
+    return {
+      label: this._job.progress?.summary.status_label,
+      value: this._job.progress?.summary.progress ?? 0,
+    }
+  }
   get project(): string {
     return this._job.project.name
   }
 
-  get status(): JobStatus {
-    return this.getStatus(this._job.status)
+  get type(): {
+    key: ServerJobType
+    label: string
+  } {
+    return Job.getJobTypeInfo(this._job.job_type.key)
   }
 
-  get statusDetails(): string {
-    return this._job.progress?.summary.status_label
+  get deployment(): { id: string; name: string } | undefined {
+    const deployment = this._job.deployment
+
+    return deployment
+      ? { id: `${deployment.id}`, name: deployment.name }
+      : undefined
   }
 
-  get statusValue(): number {
-    return this._job.progress?.summary.progress ?? this._job.status
+  get sourceImage() {
+    const capture = this._job.source_image_single
+
+    return capture
+      ? {
+          id: `${capture.id}`,
+          label: `#${capture.id}`,
+          sessionId: capture.event_id ? `${capture.event_id}` : undefined,
+        }
+      : undefined
   }
 
-  get statusLabel(): string {
-    return this.getStatusLabel(this.status)
+  get sourceImages(): { id: string; name: string } | undefined {
+    const collection = this._job.source_image_collection
+
+    return collection
+      ? { id: `${collection.id}`, name: collection.name }
+      : undefined
   }
 
-  protected getStatus(status: string): JobStatus {
-    switch (status) {
-      case 'CREATED':
-        return JobStatus.Created
-      case 'PENDING':
-        return JobStatus.Pending
-      case 'STARTED':
-        return JobStatus.Started
-      case 'SUCCESS':
-        return JobStatus.Success
-      case 'CANCELING':
-        return JobStatus.Canceling
-      case 'REVOKED':
-        return JobStatus.Revoked
-      case 'FAILURE':
-        return JobStatus.Failed
-      default:
-        return JobStatus.Unknown
+  get status(): {
+    code: ServerJobStatusCode
+    label: string
+    type: JobStatusType
+    color: string
+  } {
+    return Job.getStatusInfo(
+      this._job.status ?? this._job.progress.summary.status
+    )
+  }
+
+  get updatedAt(): string | undefined {
+    if (!this._job.updated_at) {
+      return
+    }
+
+    return getFormatedDateTimeString({ date: new Date(this._job.updated_at) })
+  }
+
+  static getJobTypeInfo(key: ServerJobType) {
+    const label = {
+      ml: 'ML pipeline',
+      data_storage_sync: 'Data storage sync',
+      populate_captures_collection: 'Populate captures collection',
+      data_export: 'Data export',
+      unknown: 'Unknown',
+    }[key]
+
+    return {
+      key,
+      label,
     }
   }
 
-  protected getStatusLabel(status: JobStatus): string {
-    switch (status) {
-      case JobStatus.Created:
-        return translate(STRING.CREATED)
-      case JobStatus.Pending:
-        return translate(STRING.PENDING)
-      case JobStatus.Started:
-        return translate(STRING.RUNNING)
-      case JobStatus.Success:
-        return translate(STRING.DONE)
-      case JobStatus.Canceling:
-        return translate(STRING.CANCELING)
-      case JobStatus.Revoked:
-        return translate(STRING.REVOKED)
-      case JobStatus.Failed:
-        return translate(STRING.FAILED)
-      default:
-        return translate(STRING.UNKNOWN)
+  static getStatusInfo(code: ServerJobStatusCode) {
+    const label =
+      String(code).charAt(0).toUpperCase() + String(code).toLowerCase().slice(1)
+
+    const type = {
+      CANCELING: JobStatusType.Warning,
+      CREATED: JobStatusType.Neutral,
+      FAILURE: JobStatusType.Error,
+      PENDING: JobStatusType.Warning,
+      RECEIVED: JobStatusType.Neutral,
+      RETRY: JobStatusType.Warning,
+      REVOKED: JobStatusType.Error,
+      STARTED: JobStatusType.Warning,
+      SUCCESS: JobStatusType.Success,
+      UNKNOWN: JobStatusType.Neutral,
+    }[code]
+
+    const color = {
+      [JobStatusType.Error]: '#ef4444', // color-destructive-500,
+      [JobStatusType.Neutral]: '#78777f', // color-neutral-300
+      [JobStatusType.Success]: '#09af8a', // color-success-500
+      [JobStatusType.Warning]: '#f59e0b', // color-warning-500
+    }[type]
+
+    return {
+      code,
+      label,
+      type,
+      color,
     }
   }
 }

@@ -66,7 +66,9 @@ export const NavigationBar = ({
                       />
                     )}
                     {item.count !== undefined && (
-                      <span className={styles.itemCount}>{item.count}</span>
+                      <span className={styles.itemCount}>
+                        {item.count.toLocaleString()}
+                      </span>
                     )}
                   </div>
                   <span className={styles.itemTitle}>{item.title}</span>

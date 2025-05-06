@@ -12,7 +12,6 @@ on:
       - "!./**"
       - "ui/**"
 
-
   push:
     branches: ["master", "main"]
     paths:
@@ -41,7 +40,10 @@ jobs:
       - name: Install Dependencies
         run: yarn install
 
-      - name: Run ESLint
+      - name: Check Format
+        run: yarn format --check
+
+      - name: Run Linter
         run: yarn lint
 
   test:
@@ -61,5 +63,5 @@ jobs:
       - name: Install Dependencies
         run: yarn install
 
-      - name: Run tests
+      - name: Run Tests
         run: yarn test --watchAll=false

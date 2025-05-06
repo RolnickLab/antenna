@@ -1,0 +1,161 @@
+volumes:
+  ami_local_postgres_data: {}
+  ami_local_postgres_data_backups:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/db/snapshots
+      o: bind
+  minio_data:
+    driver: local
+  node_modules:
+
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: ami_local_django
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+      - redis
+      - minio-init
+    volumes:
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+      - path: .env
+        required: false
+    ports:
+      - "8000:8000"
+    command: /start
+    networks:
+      - default
+      - antenna_network
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/local/postgres/Dockerfile
+    ports:
+      - "5444:5432"
+    volumes:
+      - ami_local_postgres_data:/var/lib/postgresql/data
+      - ami_local_postgres_data_backups:/backups
+    env_file:
+      - ./.envs/.local/.postgres
+
+  ui:
+    image: ami_local_ui
+    build:
+      context: ./ui
+      dockerfile: ../compose/local/ui/Dockerfile
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./.git:/app/.git:ro
+      - ./ui:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      - django
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - API_PROXY_TARGET=http://django:8000
+
+  docs:
+    image: ami_local_docs
+    build:
+      context: .
+      dockerfile: ./compose/local/docs/Dockerfile
+    env_file:
+      - ./.envs/.local/.django
+    volumes:
+      - ./docs:/docs:z
+      - ./config:/app/config:z
+      - ./ami:/app/ami:z
+    ports:
+      - "9025:9000"
+    command: /start-docs
+
+  redis:
+    image: redis:6
+    container_name: ami_local_redis
+
+  celeryworker:
+    <<: *django
+    image: ami_local_celeryworker
+    scale: 1
+    ports: []
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: ami_local_celerybeat
+    ports: []
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: ami_local_flower
+    ports:
+      - "5555:5555"
+    command: /start-flower
+    volumes:
+      - ./data/flower/:/data/
+
+  minio:
+    image: minio/minio:latest
+    command: minio server --console-address ":9001" /data
+    volumes:
+      - "minio_data:/data"
+    env_file:
+      - ./.envs/.local/.django
+    environment:
+      - CONSOLE_SECURE_TLS_REDIRECT=off
+    ports:
+      - "9001:9001"
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-proxy:
+    image: nginx:alpine
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./compose/local/minio/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - minio
+
+  minio-init:
+    image: minio/mc
+    env_file:
+      - ./.envs/.local/.django
+    depends_on:
+      - minio
+      - minio-proxy
+    volumes:
+      - ./compose/local/minio/init.sh:/etc/minio/init.sh
+    entrypoint: /etc/minio/init.sh
+
+  ml_backend:
+    build:
+      context: ./processing_services/minimal
+    volumes:
+      - ./processing_services/minimal/:/app
+    ports:
+      - "2005:2000"
+    networks:
+      default:
+        aliases:
+          - processing_service
+
+networks:
+  antenna_network:
+    name: antenna_network

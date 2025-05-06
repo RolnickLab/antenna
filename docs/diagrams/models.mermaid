@@ -1,0 +1,21 @@
+classDiagram
+Project -- Deployment
+Site -- Deployment
+DeviceType -- Deployment
+Deployment -- Event
+Project -- Site
+Event -- SourceImage
+Event -- SourceImageCollection
+SourceImageCollection -- SourceImage
+User -- Identification
+Identification -- Determination
+Pipeline -- Algorithms
+Job --> Detections : bbox, image embedding
+Job --> Predictions : classification scores
+Detections --> Occurrence : tracking
+Occurrence -- Determination
+Job <-- SourceImageCollection
+Job <-- Pipeline
+Project -- TaxaList
+TaxaList -- Determination
+Predictions -- Determination

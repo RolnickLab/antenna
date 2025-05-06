@@ -16,26 +16,12 @@ DEBUG = env.bool("DJANGO_DEBUG", default=False)
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["*"])
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
 # DATABASES
 # ------------------------------------------------------------------------------
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("CONN_MAX_AGE", default=60)  # noqa: F405
 
-# CACHES
-# ------------------------------------------------------------------------------
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": env("REDIS_URL"),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            # Mimicing memcache behavior.
-            # https://github.com/jazzband/django-redis#memcached-exceptions-behavior
-            "IGNORE_EXCEPTIONS": True,
-        },
-    }
-}
 
 # SECURITY
 # ------------------------------------------------------------------------------
@@ -116,6 +102,8 @@ COLLECTFAST_STRATEGY = "collectfast.strategies.boto3.Boto3Strategy"
 # EMAIL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#default-from-email
+EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
+
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
     default="Automated Monitoring of Insects ML Platform <noreply@app.insectai.org>",

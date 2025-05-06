@@ -1,4 +1,4 @@
-import { API_ROUTES, API_URL } from 'data-services/constants'
+import { API_ROUTES, API_URL, REFETCH_INTERVAL } from 'data-services/constants'
 import {
   CaptureDetails,
   ServerCaptureDetails,
@@ -10,7 +10,8 @@ const convertServerRecord = (record: ServerCaptureDetails) =>
   new CaptureDetails(record)
 
 export const useCaptureDetails = (
-  id: string
+  id?: string,
+  poll?: boolean
 ): {
   capture?: CaptureDetails
   isLoading: boolean
@@ -19,7 +20,9 @@ export const useCaptureDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<CaptureDetails>({
+      enabled: !!id,
       queryKey: [API_ROUTES.CAPTURES, id],
+      refetchInterval: poll ? REFETCH_INTERVAL : undefined,
       url: `${API_URL}/${API_ROUTES.CAPTURES}/${id}/`,
     })
 

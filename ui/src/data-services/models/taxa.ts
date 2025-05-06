@@ -1,10 +1,24 @@
 export type ServerTaxon = {
-  id: number
+  id: string
   name: string
   rank: string
   parent?: ServerTaxon
+  parents?: ServerTaxon[]
 }
 
+const SORTED_RANKS = [
+  'Unknown',
+  'ORDER',
+  'SUBORDER',
+  'SUPERFAMILY',
+  'FAMILY',
+  'SUBFAMILY',
+  'TRIBE',
+  'SUBTRIBE',
+  'GENUS',
+  'SPECIES',
+  'SUBSPECIES',
+]
 export class Taxon {
   readonly id: string
   readonly name: string
@@ -17,22 +31,26 @@ export class Taxon {
     this.name = taxon.name
     this.parentId = taxon.parent ? `${taxon.parent?.id}` : undefined
     this.rank = taxon.rank
-    this.ranks = this._getRanks(taxon)
-  }
 
-  private _getRanks(taxon: ServerTaxon) {
-    const ranks = []
-
-    let current: ServerTaxon | undefined = taxon.parent
-    while (current) {
-      ranks.push({
-        id: `${current.id}`,
-        name: current.name,
-        rank: current.rank,
-      })
-      current = current.parent
+    if (taxon.parents) {
+      this.ranks = taxon.parents
+    } else if (taxon.parent?.parents) {
+      // TODO: Update this when species list is returning parents similar to other endpoints
+      this.ranks = [taxon.parent, ...taxon.parent.parents]
+    } else {
+      this.ranks = []
     }
 
-    return ranks.reverse()
+    // TODO: Perhaps sorting should happen backend side? If so, let's remove this later.
+    this.ranks.sort((r1, r2) => {
+      const value1 = SORTED_RANKS.indexOf(r1.rank)
+      const value2 = SORTED_RANKS.indexOf(r2.rank)
+
+      return value1 - value2
+    })
+  }
+
+  get parents() {
+    return this.ranks
   }
 }

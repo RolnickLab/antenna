@@ -14,6 +14,8 @@ export interface Identification {
   taxon: Taxon
   comment?: string
   algorithm?: Algorithm
+  score?: number
+  terminal?: boolean
   userPermissions: UserPermission[]
   createdAt: string
 }
@@ -21,7 +23,7 @@ export interface Identification {
 export interface HumanIdentification extends Identification {
   comment: string
   user: {
-    id: string
+    id?: string
     name: string
     image?: string
   }
@@ -30,6 +32,7 @@ export interface HumanIdentification extends Identification {
 export interface MachinePrediction extends Identification {
   algorithm: Algorithm
   score: number
+  terminal: boolean
 }
 
 export class OccurrenceDetails extends Occurrence {
@@ -61,7 +64,13 @@ export class OccurrenceDetails extends Occurrence {
           applied,
           overridden,
           taxon,
-          user: { id: `${i.user.id}`, name: i.user.name, image: i.user.image },
+          user: i.user
+            ? {
+                id: `${i.user.id}`,
+                name: i.user.name?.length ? i.user.name : 'Anonymous user',
+                image: i.user.image,
+              }
+            : { name: 'Unknown user' },
           comment: i.comment,
           userPermissions: i.user_permissions,
           createdAt: i.created_at,
@@ -83,6 +92,7 @@ export class OccurrenceDetails extends Occurrence {
           overridden,
           taxon,
           score: p.score,
+          terminal: p.terminal,
           algorithm: p.algorithm,
           userPermissions: p.user_permissions,
           createdAt: p.created_at,
@@ -90,6 +100,10 @@ export class OccurrenceDetails extends Occurrence {
 
         return prediction
       })
+  }
+
+  get endpointURL(): string {
+    return this._occurrence.details
   }
 
   get detections(): string[] {
@@ -102,6 +116,10 @@ export class OccurrenceDetails extends Occurrence {
 
   get machinePredictions(): MachinePrediction[] {
     return this._machinePredictions
+  }
+
+  get rawData(): string {
+    return JSON.stringify(this._occurrence, null, 4)
   }
 
   getDetectionInfo(id: string) {
@@ -133,6 +151,7 @@ export class OccurrenceDetails extends Occurrence {
       label: label,
       timeLabel: getFormatedTimeString({
         date: new Date(detection.timestamp),
+        options: { second: true },
       }),
     }
   }

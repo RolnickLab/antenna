@@ -16,12 +16,13 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
+  white-space: nowrap;
 }
 
 .error {
   display: block;
-  @include paragraph-x-small();
+  @include paragraph-xx-small();
   color: $color-destructive-600;
   text-align: right;
   margin-left: 32px;
@@ -34,27 +35,33 @@
 .value {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   white-space: pre-wrap;
 
   &.link {
     color: $color-primary-1-600;
+    font-weight: 600;
   }
 }
 
 .description {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-500;
+  color: $color-neutral-300;
   font-style: italic;
   word-break: break-word;
 }
 
 .inputContainer {
   position: relative;
+
+  &:not(:last-child) {
+    margin-bottom: 8px;
+  }
 }
 
 .input {
+  all: unset;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -63,20 +70,16 @@
   padding: 8px 12px;
   @include paragraph-small();
   background-color: $color-generic-white;
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
+  color: $color-neutral-700;
+  border: 1px solid $color-neutral-100;
   box-sizing: border-box;
 
   &.password {
     padding-right: 36px; /* To leave room for show/hide password button */
   }
 
-  &:not(:last-child) {
-    margin-bottom: 8px;
-  }
-
   &::placeholder {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
     opacity: 1; /* For Firefox */
   }
 
@@ -100,6 +103,20 @@
   &:disabled {
     opacity: 0.5;
   }
+
+  &.noArrows {
+    /* Chrome, Safari, Edge, Opera */
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    /* Firefox */
+    &[type='number'] {
+      -moz-appearance: textfield;
+    }
+  }
 }
 
 .passwordButtonContainer {
@@ -113,4 +130,18 @@
   &:not(:last-child) {
     margin-bottom: 8px;
   }
+}
+
+.lockedInputContainer {
+  position: relative;
+}
+
+.editButtonContainer {
+  position: absolute;
+  top: -8px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }

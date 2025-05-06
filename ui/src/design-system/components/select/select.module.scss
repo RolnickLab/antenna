@@ -9,7 +9,7 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   margin-bottom: 4px;
 }
 
@@ -30,6 +30,7 @@
 }
 
 .selectTrigger {
+  outline: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -38,13 +39,22 @@
   border-radius: 4px;
   padding: 8px 12px;
   @include paragraph-small();
-  color: $color-neutral-800;
-  border: 1px solid $color-neutral-300;
+  color: $color-neutral-700;
+  border: 1px solid $color-neutral-100;
   box-sizing: border-box;
-  margin-bottom: 8px;
+
+  &:not(:last-child) {
+    margin-bottom: 8px;
+  }
+
+  span {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
 
   &[data-placeholder] {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
 
   &:not(.disabled) {
@@ -92,7 +102,7 @@
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  z-index: 2;
+  z-index: 3;
 }
 
 .selectViewport {
@@ -107,7 +117,7 @@
   align-items: center;
   justify-content: space-between;
   @include paragraph-small();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
   cursor: pointer;
 
   &[data-highlighted],
@@ -122,4 +132,6 @@
 
 .itemIndicator {
   margin-left: 32px;
+  display: inline-flex;
+  align-items: center;
 }

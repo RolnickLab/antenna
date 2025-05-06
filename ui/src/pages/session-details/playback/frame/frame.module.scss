@@ -1,5 +1,6 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
+@import 'src/design-system/variables/variables.scss';
 
 .wrapper {
   position: relative;
@@ -34,17 +35,27 @@
 .detection {
   position: absolute;
   box-sizing: border-box;
+  outline: 2px solid $color-success-500;
+  border-radius: 2px;
+
+
+
+  &.warning {
+    outline-color: $color-warning-500;
+  }
+
+  &.alert {
+    outline-color: $color-destructive-500;
+  }
+
+  &.active {
+    outline: 2px solid $color-primary-2-500;
+  }
 
   &.clickable {
     &:hover {
       cursor: pointer;
-      opacity: 1;
     }
-  }
-
-  &.active {
-    opacity: 1;
-    outline: 1px solid $color-success-500;
   }
 }
 
@@ -52,4 +63,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .wrapper {
+    grid-column: span 2;
+  }
 }

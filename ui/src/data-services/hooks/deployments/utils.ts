@@ -5,6 +5,8 @@ export const convertToFormData = (fieldValues: DeploymentFieldValues) => {
 
   Object.entries({
     data_source_id: fieldValues.dataSourceId,
+    data_source_subdir: fieldValues.dataSourceSubdir,
+    data_source_regex: fieldValues.dataSourceRegex,
     description: fieldValues.description,
     device_id: fieldValues.deviceId,
     name: fieldValues.name,

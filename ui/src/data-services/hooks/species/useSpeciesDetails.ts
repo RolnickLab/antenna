@@ -11,8 +11,8 @@ const convertServerRecord = (record: ServerSpeciesDetails) =>
   new SpeciesDetails(record)
 
 export const useSpeciesDetails = (
-  id: string,
-  projectId: string | undefined,
+  id: string | undefined,
+  projectId: string | undefined
 ): {
   species?: SpeciesDetails
   isLoading: boolean
@@ -21,8 +21,11 @@ export const useSpeciesDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<SpeciesDetails>({
+      enabled: !!id,
       queryKey: [API_ROUTES.SPECIES, id],
-      url: `${API_URL}/${API_ROUTES.SPECIES}/${id}/?project=${projectId || ''}`,
+      url: `${API_URL}/${API_ROUTES.SPECIES}/${id}/?project_id=${
+        projectId || ''
+      }`,
     })
 
   const species = useMemo(

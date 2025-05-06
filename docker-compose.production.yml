@@ -1,0 +1,55 @@
+# This is a transitional production configuration.
+# Traffic or NGINX may or may not be used in the final production configuration
+# but the Django container will not expose its port to the host (there will be more than one container).
+
+services:
+  django: &django
+    build:
+      context: .
+      # This is the most important setting to test the production configuration of Django.
+      dockerfile: ./compose/production/django/Dockerfile
+    image: insectai/ami_backend
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.production/.postgres
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "5001:5000"
+    extra_hosts:
+      - "db:${DATABASE_IP}"
+      - "redis:${REDIS_IP}"
+    command: /start
+    scale: 1  # Can't scale until the load balancer is within the compose config
+    restart: always
+
+  celeryworker:
+    <<: *django
+    scale: 1
+    ports: []
+    command: /start-celeryworker
+    restart: always
+
+  celerybeat:
+    <<: *django
+    ports: []
+    command: /start-celerybeat
+    restart: always
+
+  flower:
+    <<: *django
+    ports:
+      - "5550:5555"
+    command: /start-flower
+    restart: always
+    volumes:
+      - ./data/flower/:/data/
+
+  awscli:
+    build:
+      context: .
+      dockerfile: ./compose/production/aws/Dockerfile
+    env_file:
+      - ./.envs/.production/.django
+    volumes:
+      - ./backups/production/postgres:/backups:z

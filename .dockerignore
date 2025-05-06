@@ -12,6 +12,9 @@ ui
 ami/media
 backups
 venv
+.venv
 .env
 .envs
 .envs/*
+node_modules
+data

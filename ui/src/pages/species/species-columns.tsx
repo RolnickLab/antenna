@@ -1,12 +1,11 @@
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
-  ImageCellTheme,
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { TaxonDetails } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -16,40 +15,19 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
   projectId: string
 ) => [
   {
-    id: 'snapshots',
-    sortField: 'updated_at',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    styles: {
-      padding: '16px 32px 16px 50px',
-    },
-    renderCell: (item: Species, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
-      const detailsRoute = getAppRoute({
-        to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
-        keepSearchParams: true,
-      })
-
-      return (
-        <ImageTableCell
-          images={item.images}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
-          to={detailsRoute}
-        />
-      )
-    },
-  },
-  {
     id: 'name',
     sortField: 'name',
-    name: translate(STRING.FIELD_LABEL_NAME),
+    name: translate(STRING.FIELD_LABEL_TAXON),
     renderCell: (item: Species) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES_DETAILS({ projectId, speciesId: item.id }),
+          to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell>
+          <TaxonDetails compact taxon={item} />
+        </BasicTableCell>
       </Link>
     ),
   },
@@ -64,10 +42,13 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { determination: item.id },
+          filters: { taxon: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.numOccurrences || 'View all'}
+          theme={CellTheme.Bubble}
+        />
       </Link>
     ),
   },
@@ -79,8 +60,17 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => (
-      <BasicTableCell value={item.score.toFixed(2)} />
+      <BasicTableCell value={item.scoreLabel} style={{ textAlign: 'right' }} />
     ),
+  },
+  {
+    id: 'rank',
+    sortField: 'rank',
+    name: 'Taxon rank',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
   },
   {
     id: 'training-images',

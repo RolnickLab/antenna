@@ -50,7 +50,7 @@ coverage.xml
 *.mo
 *.pot
 
-# Django stuff:
+# Django stuff
 staticfiles/
 
 # Sphinx documentation
@@ -78,7 +78,6 @@ ENV/
 
 # mypy
 .mypy_cache/
-
 
 ### Node template
 # Logs
@@ -134,7 +133,6 @@ typings/
 # Yarn Integrity file
 .yarn-integrity
 
-
 ### Linux template
 *~
 
@@ -150,7 +148,6 @@ typings/
 # .nfs files are created when an open file is removed but is still being accessed
 .nfs*
 
-
 ### VisualStudioCode template
 .vscode/*
 !.vscode/settings.json
@@ -161,10 +158,6 @@ typings/
 
 # Local History for Visual Studio Code
 .history/
-
-
-
-
 
 ### Windows template
 # Windows thumbnail cache files
@@ -189,7 +182,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-
 
 ### macOS template
 # General
@@ -218,7 +210,6 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
-
 
 ### SublimeText template
 # Cache files for Sublime Text
@@ -252,7 +243,6 @@ bh_unicode_properties.cache
 # https://packagecontrol.io/packages/sublime-github
 GitHub.sublime-settings
 
-
 ### Vim template
 # Swap
 [._]*.s[a-v][a-z]
@@ -281,4 +271,8 @@ ami/media/
 .envs/*
 !.envs/.local/
 backups/
+data/
 sandbox/
+
+# Other
+flower

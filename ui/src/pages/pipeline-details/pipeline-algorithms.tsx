@@ -5,18 +5,30 @@ import {
   Table,
   TableBackgroundTheme,
 } from 'design-system/components/table/table/table'
-import { TableColumn } from 'design-system/components/table/types'
+import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: TableColumn<Algorithm>[] = [
+export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
+  projectId: string
+) => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     renderCell: (item: Algorithm) => (
-      <BasicTableCell
-        value={item.name}
-        style={{ width: '240px', whiteSpace: 'normal' }}
-      />
+      <Link
+        to={APP_ROUTES.ALGORITHM_DETAILS({
+          projectId: projectId,
+          algorithmId: item.id,
+        })}
+      >
+        <BasicTableCell
+          style={{ width: '240px', whiteSpace: 'normal' }}
+          theme={CellTheme.Primary}
+          value={item.name}
+        />
+      </Link>
     ),
   },
   {
@@ -24,27 +36,21 @@ export const columns: TableColumn<Algorithm>[] = [
     name: translate(STRING.FIELD_LABEL_DESCRIPTION),
     renderCell: (item: Algorithm) => (
       <BasicTableCell
+        style={{ width: '320px', whiteSpace: 'normal' }}
         value={item.description}
-        style={{ width: '240px', whiteSpace: 'normal' }}
       />
     ),
   },
-  {
-    id: 'created-at',
-    name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.createdAt} />,
-  },
-  {
-    id: 'updated-at',
-    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.updatedAt} />,
-  },
 ]
 
-export const PipelineAlgorithms = ({ pipeline }: { pipeline: Pipeline }) => (
-  <Table
-    backgroundTheme={TableBackgroundTheme.White}
-    items={pipeline.algorithms}
-    columns={columns}
-  />
-)
+export const PipelineAlgorithms = ({ pipeline }: { pipeline: Pipeline }) => {
+  const { projectId } = useParams()
+
+  return (
+    <Table
+      backgroundTheme={TableBackgroundTheme.White}
+      items={pipeline.algorithms}
+      columns={columns(projectId as string)}
+    />
+  )
+}

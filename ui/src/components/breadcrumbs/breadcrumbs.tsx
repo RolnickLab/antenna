@@ -1,16 +1,17 @@
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { ChevronRightIcon } from 'lucide-react'
 import { Fragment, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Breadcrumb, BreadcrumbContext } from 'utils/breadcrumbContext'
+import { STRING, translate } from 'utils/language'
 import styles from './breadcrumbs.module.scss'
 
 export const Breadcrumbs = ({
+  activeNavItem,
   navItems,
-  activeNavItemId,
 }: {
+  activeNavItem: { id: string; title: string; path?: string }
   navItems: { id: string; title: string; path?: string }[]
-  activeNavItemId: string
 }) => {
   const {
     pageBreadcrumb,
@@ -21,20 +22,16 @@ export const Breadcrumbs = ({
   } = useContext(BreadcrumbContext)
 
   useEffect(() => {
-    const activeNavItem =
-      activeNavItemId !== 'overview' &&
-      navItems.find((navItem) => navItem.id === activeNavItemId)
-
-    setMainBreadcrumb(
-      activeNavItem
-        ? { title: activeNavItem.title, path: activeNavItem.path }
-        : undefined
-    )
+    if (activeNavItem.id === 'project') {
+      setMainBreadcrumb(undefined)
+    } else {
+      setMainBreadcrumb(activeNavItem)
+    }
 
     return () => {
       setMainBreadcrumb(undefined)
     }
-  }, [navItems, activeNavItemId])
+  }, [navItems, activeNavItem])
 
   const breadcrumbs = [
     pageBreadcrumb,
@@ -47,25 +44,29 @@ export const Breadcrumbs = ({
     <div className={styles.breadcrumbs}>
       {breadcrumbs.map((breadcrumb, index) => {
         const isLast = index === breadcrumbs.length - 1
+        const title = breadcrumb.title.length
+          ? breadcrumb.title
+          : `${translate(STRING.LOADING_DATA)}...`
+        const compactTitle = '...'
 
         return (
           <Fragment key={index}>
             {isLast || !breadcrumb.path ? (
-              <span className={styles.breadcrumb}>{breadcrumb.title}</span>
+              <span className={styles.breadcrumb}>
+                <span>{title}</span>
+                <span>{compactTitle}</span>
+              </span>
             ) : (
               <Link
                 to={breadcrumb.path}
                 className={classNames(styles.breadcrumb, styles.link)}
               >
-                <span>{breadcrumb.title}</span>
+                <span>{title}</span>
+                <span>{compactTitle}</span>
               </Link>
             )}
             {!isLast && (
-              <Icon
-                type={IconType.ToggleRight}
-                theme={IconTheme.Neutral}
-                size={8}
-              />
+              <ChevronRightIcon className="w-3 h-3 text-muted-foreground/50" />
             )}
           </Fragment>
         )

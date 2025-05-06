@@ -88,11 +88,13 @@ export const SignUp = () => {
             {errorMessage}
           </p>
         )}
+      </form>
+      <div className={styles.outro}>
         <p className={styles.text}>
           {isSuccess ? (
             <>
               <Icon
-                type={IconType.Checkmark}
+                type={IconType.RadixCheck}
                 size={12}
                 theme={IconTheme.Success}
               />
@@ -100,7 +102,7 @@ export const SignUp = () => {
             </>
           ) : (
             <span>{translate(STRING.MESSAGE_HAS_ACCOUNT)}</span>
-          )}
+          )}{' '}
           <Link
             to={APP_ROUTES.LOGIN}
             state={isSuccess ? { email: signedUpEmail } : undefined}
@@ -117,7 +119,7 @@ export const SignUp = () => {
           theme={ButtonTheme.Default}
           onClick={() => navigate(APP_ROUTES.HOME)}
         />
-      </form>
+      </div>
     </>
   )
 }

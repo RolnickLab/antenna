@@ -1,0 +1,54 @@
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: ami_ci_django
+    depends_on:
+      - postgres
+      - redis
+      - minio-init
+      - ml_backend
+    env_file:
+      - ./.envs/.ci/.django
+      - ./.envs/.ci/.postgres
+    command: /start
+
+  postgres:
+    image: postgres:13
+    env_file:
+      - ./.envs/.ci/.postgres
+
+  redis:
+    image: redis:6
+
+  celeryworker:
+    <<: *django
+    image: ami_ci_celeryworker
+    command: /start-celeryworker
+
+  minio:
+    image: minio/minio:latest
+    command: minio server --console-address ":9001" /data
+    env_file:
+      - ./.envs/.ci/.django
+
+  minio-init:
+    image: minio/mc
+    env_file:
+      - ./.envs/.ci/.django
+    depends_on:
+      - minio
+    volumes:
+      - ./compose/local/minio/init.sh:/etc/minio/init.sh
+    entrypoint: /etc/minio/init.sh
+
+  ml_backend:
+    build:
+      context: ./processing_services/minimal
+    volumes:
+      - ./processing_services/minimal/:/app
+    networks:
+      default:
+        aliases:
+          - processing_service

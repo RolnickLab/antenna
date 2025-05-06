@@ -22,30 +22,15 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
-  get pixelArea(): number {
-    return this._occurrence.pixel_area
-  }
-
-  get firstAppearanceTimestamp(): string {
-    // Return the timestamp of the first image where this occurrence appeared, in ISO format
-    return this._occurrence.first_appearance_timestamp
+  get createdAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._occurrence.created_at),
+    })
   }
 
   get dateLabel(): string {
     return getFormatedDateString({
       date: new Date(this.firstAppearanceTimestamp),
-    })
-  }
-
-  get timeLabel(): string {
-    return getFormatedTimeString({
-      date: new Date(this.firstAppearanceTimestamp),
-    })
-  }
-
-  get createdAtLabel(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._occurrence.created_at),
     })
   }
 
@@ -87,24 +72,43 @@ export class Occurrence {
     return _.round(this._occurrence.determination_score, 4)
   }
 
+  get determinationScoreLabel(): string {
+    return this.determinationScore.toFixed(2)
+  }
+
   get determinationTaxon(): Taxon {
     return this._determinationTaxon
   }
 
-  get determinationVerifiedBy(): string | undefined {
-    return this._occurrence.determination_details.identification?.user?.name
-  }
-
   get determinationVerified(): boolean {
-    return !!this._occurrence.determination_details.identification?.user
+    return !!this._occurrence.determination_details.identification
   }
 
-  get durationLabel(): string {
-    return this._occurrence.duration_label
+  get determinationVerifiedBy() {
+    const verifiedBy =
+      this._occurrence.determination_details.identification?.user
+
+    return verifiedBy
+      ? {
+          id: `${verifiedBy.id}`,
+          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous user',
+        }
+      : { name: 'Unknown user' }
+  }
+
+  get durationLabel(): string | undefined {
+    return this._occurrence.duration_label?.length
+      ? this._occurrence.duration_label
+      : undefined
   }
 
   get displayName(): string {
     return `${this.determinationTaxon.name} #${this.id}`
+  }
+
+  get firstAppearanceTimestamp(): string {
+    // Return the timestamp of the first image where this occurrence appeared, in ISO format
+    return this._occurrence.first_appearance_timestamp
   }
 
   get id(): string {
@@ -119,15 +123,58 @@ export class Occurrence {
     return this._occurrence.detections_count
   }
 
-  get sessionId(): string {
+  get sessionId(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return `${this._occurrence.event.id}`
   }
 
-  get sessionLabel(): string {
+  get sessionLabel(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return this._occurrence.event.name
+  }
+
+  get timeLabel(): string {
+    return getFormatedTimeString({
+      date: new Date(this.firstAppearanceTimestamp),
+      options: { second: true },
+    })
+  }
+
+  get pixelArea(): number {
+    return this._occurrence.pixel_area
   }
 
   get userPermissions(): UserPermission[] {
     return this._occurrence.user_permissions
+  }
+
+  userAgreed(userId: string, taxonId?: string): boolean {
+    return this._occurrence.identifications?.some((identification: any) => {
+      if (!identification.user) {
+        return false
+      }
+
+      if (identification.withdrawn) {
+        return false
+      }
+
+      const identificationTaxonId = `${identification.taxon.id}`
+      const identificationUserId = `${identification.user.id}`
+
+      if (taxonId && taxonId !== identificationTaxonId) {
+        return false
+      }
+
+      return (
+        identificationTaxonId === this.determinationTaxon.id &&
+        identificationUserId === userId
+      )
+    })
   }
 }

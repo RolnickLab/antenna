@@ -44,7 +44,7 @@ export const EditableMap = ({
       maxBounds={MAX_BOUNDS}
       minZoom={MIN_ZOOM}
       ref={mapRef}
-      scrollWheelZoom={false}
+      scrollWheelZoom
       zoom={DEFAULT_ZOOM}
     >
       <MapContent

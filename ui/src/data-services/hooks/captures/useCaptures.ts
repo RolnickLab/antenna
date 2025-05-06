@@ -1,4 +1,4 @@
-import { API_ROUTES } from 'data-services/constants'
+import { API_ROUTES, REFETCH_INTERVAL } from 'data-services/constants'
 import { Capture, ServerCapture } from 'data-services/models/capture'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
@@ -24,6 +24,7 @@ export const useCaptures = (
   }>({
     queryKey: [API_ROUTES.CAPTURES, params],
     url: fetchUrl,
+    refetchInterval: REFETCH_INTERVAL,
   })
 
   const captures = useMemo(() => data?.results.map(convertServerRecord), [data])

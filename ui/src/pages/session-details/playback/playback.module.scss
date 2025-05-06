@@ -1,35 +1,102 @@
 @import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
 @import 'src/design-system/variables/variables.scss';
 
 .wrapper {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.playbackFrame {
-  width: 80%;
-}
-
-.capturePicker {
-  width: 20%;
-  min-width: 320px;
-  background-color: $color-neutral-800;
+.sidebar {
+  background-color: $color-neutral-700;
+  border-bottom: 1px solid $color-neutral-600;
   position: relative;
 }
 
+.sidebarContent {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.sidebarSection {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+
+  .title {
+    display: block;
+    @include label();
+    color: $color-generic-white;
+  }
+
+  .label {
+    display: block;
+    @include paragraph-xx-small();
+    text-transform: uppercase;
+    font-weight: 600;
+    color: $color-neutral-300;
+  }
+}
+
+.captureNavigationWrapper {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.licenseInfoWrapper {
+  flex: 1;
+  text-align: right;
+
+  p a {
+    color: $color-generic-white;
+  }
+}
+
+.bottomBar {
+  grid-column: span 2;
+  background-color: $color-neutral-700;
+  padding: 32px;
+}
+
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .wrapper {
+  .sidebar {
+    grid-column: span 2;
+  }
+
+  .sidebarContent {
+    position: static;
+  }
+
+  .sidebarSection:last-child {
+    display: none;
+  }
+
+  .bottomBar {
+    display: flex;
     flex-direction: column;
+    padding: 16px;
   }
 
-  .playbackFrame {
-    width: 100%;
+  .captureNavigationWrapper {
+    margin-bottom: 32px;
+    gap: 32px;
+    flex-direction: column-reverse;
+    justify-content: flex-start;
   }
 
-  .capturePicker {
-    width: 100%;
-    min-width: auto;
-    height: 240px;
+  .licenseInfoWrapper {
+    text-align: left;
   }
 }

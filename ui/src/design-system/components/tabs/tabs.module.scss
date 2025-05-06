@@ -6,7 +6,11 @@
 }
 
 .tabsList {
-  margin-bottom: 16px;
+  padding: 2px 0;
+
+  &:not(:last-child) {
+    margin-bottom: 16px;
+  }
 
   :not(:last-child) {
     margin-right: 4px;
@@ -20,7 +24,8 @@
   @include paragraph-small();
   font-weight: 600;
   background-color: transparent;
-  padding: 6px 16px;
+  height: 28px;
+  padding: 0 16px;
   border-radius: 16px;
 
   :not(:last-child) {
@@ -49,10 +54,6 @@
   }
 }
 
-.tabsContent {
-  outline: none;
-
-  &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
-  }
+.label {
+  padding-top: 2px;
 }

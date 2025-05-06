@@ -27,45 +27,63 @@
   box-sizing: border-box;
 }
 
+.intro,
+.form,
+.outro {
+  width: 320px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+
+  &.form {
+    align-items: stretch;
+    gap: 32px;
+  }
+}
+
 .title {
   @include heading-4-italic();
   color: $color-primary-1-600;
   margin: 0;
-  text-align: center;
 }
 
 .text {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin: 0;
   @include paragraph-small();
-  color: $color-neutral-800;
+  color: $color-neutral-700;
+  text-align: center;
+  margin: 0;
 
   a {
     color: $color-primary-1-600;
     border-bottom: 1px dashed $color-primary-1-600;
   }
 
-  &.error {
-    @include paragraph-x-small();
-    color: $color-destructive-600;
+  strong {
+    font-weight: 600;
   }
 
   &.divider {
-    color: $color-neutral-500;
+    color: $color-neutral-300;
   }
-}
 
-.form {
-  width: 320px;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 24px;
+  &.error {
+    @include paragraph-x-small();
+    padding: 8px 32px;
+    border-radius: 4px;
+    background-color: $color-destructive-100;
+    color: $color-destructive-600;
+  }
+
+  &.success {
+    @include paragraph-x-small();
+    padding: 8px 32px;
+    border-radius: 4px;
+    background-color: $color-success-100;
+    color: $color-success-700;
+  }
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

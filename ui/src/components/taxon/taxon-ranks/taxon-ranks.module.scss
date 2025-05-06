@@ -5,7 +5,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  column-gap: 6px;
+  margin-top: 8px;
+
+  &.compact {
+    flex-wrap: nowrap;
+  }
 }
 
 .rank {
@@ -13,4 +18,8 @@
   @include paragraph-x-small();
   color: $color-neutral-600;
   white-space: nowrap;
+
+  &.divider {
+    color: $color-neutral-300;
+  }
 }

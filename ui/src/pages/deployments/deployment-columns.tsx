@@ -1,6 +1,7 @@
 import { Deployment } from 'data-services/models/deployment'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
+import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
   CellTheme,
   ImageCellTheme,
@@ -19,10 +20,8 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
 ) => [
   {
     id: 'snapshot',
-    sortField: 'createdAt',
-    name: translate(STRING.FIELD_LABEL_MOST_RECENT),
-    renderCell: (item: Deployment, rowIndex: number) => {
-      const isOddRow = rowIndex % 2 == 0
+    name: translate(STRING.FIELD_LABEL_IMAGE),
+    renderCell: (item: Deployment) => {
       const detailsRoute = getAppRoute({
         to: APP_ROUTES.DEPLOYMENT_DETAILS({ projectId, deploymentId: item.id }),
         keepSearchParams: true,
@@ -31,7 +30,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
       return (
         <ImageTableCell
           images={item.image ? [{ src: item.image }] : []}
-          theme={isOddRow ? ImageCellTheme.Default : ImageCellTheme.Light}
+          theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
       )
@@ -56,6 +55,40 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
+    id: 'status',
+    name: 'Latest job status',
+    renderCell: (item: Deployment) => {
+      if (!item.currentJob) {
+        return <></>
+      }
+
+      return (
+        <StatusTableCell
+          color={item.currentJob.status.color}
+          details={item.currentJob.type.label}
+          label={item.currentJob.status.label}
+        />
+      )
+    },
+  },
+  {
+    id: 'jobs',
+    name: translate(STRING.FIELD_LABEL_JOBS),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.JOBS({ projectId }),
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
     id: 'sessions',
     name: translate(STRING.FIELD_LABEL_SESSIONS),
     sortField: 'numEvents',
@@ -69,7 +102,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numEvents} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numEvents} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -96,25 +129,25 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
   {
-    id: 'species',
-    name: translate(STRING.FIELD_LABEL_SPECIES),
-    sortField: 'numSpecies',
+    id: 'taxa',
+    name: translate(STRING.FIELD_LABEL_TAXA),
+    sortField: 'numTaxa',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => (
       <Link
         to={getAppRoute({
-          to: APP_ROUTES.SPECIES({ projectId }),
-          filters: { occurrences__deployment: item.id },
+          to: APP_ROUTES.TAXA({ projectId }),
+          filters: { deployment: item.id },
         })}
       >
-        <BasicTableCell value={item.numSpecies} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.numTaxa} theme={CellTheme.Bubble} />
       </Link>
     ),
   },
@@ -125,7 +158,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.firstDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.firstDateLabel} />
+    ),
   },
   {
     id: 'lastDate',
@@ -134,7 +169,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.lastDate} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.lastDateLabel} />
+    ),
   },
   {
     id: 'actions',

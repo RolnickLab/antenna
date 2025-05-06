@@ -17,6 +17,7 @@ describe('useUserInfo', () => {
     axios.get.mockImplementation(() =>
       Promise.resolve({ data: { id: 1, email: 'user@insectai.org' } })
     )
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'example-token') // Simulate logged in user
 
     // Run
     const { result } = renderHook(() => useUserInfo(), { wrapper: AppMock })
@@ -39,7 +40,7 @@ describe('useUserInfo', () => {
 
     // Run
     const { result } = renderHook(() => useUserInfo(), { wrapper: AppMock })
-    await waitFor(() => expect(result.current.error).not.toBeNull())
+    await waitFor(() => expect(result.current.userInfo).toBeUndefined())
 
     // Check
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull()
