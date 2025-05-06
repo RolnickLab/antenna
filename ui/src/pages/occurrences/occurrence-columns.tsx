@@ -140,6 +140,12 @@ export const columns: (
     sortField: 'created_at',
     renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
   },
+  {
+    id: 'pixel_area',
+    name: 'Pixel Area',
+    sortField: 'pixel_area',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.pixelArea} />,
+  },
 ]
 
 const TaxonCell = ({

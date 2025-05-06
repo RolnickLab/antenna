@@ -2256,6 +2256,8 @@ class Occurrence(BaseModel):
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
     determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
     determination_score = models.FloatField(null=True, blank=True)
+    # best_detection / determination_detection
+    # best_detection_pixel_area
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -2334,6 +2336,9 @@ class Occurrence(BaseModel):
             Detection.objects.filter(occurrence=self).exclude(path=None).values_list("path", flat=True)[:limit]
         ):
             yield get_media_url(path)
+
+    def pixel_area(self) -> float:
+        return 0
 
     @functools.cached_property
     def best_detection(self):

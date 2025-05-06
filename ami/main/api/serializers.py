@@ -1199,6 +1199,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "pixel_area",
             "identifications",
             "created_at",
             "updated_at",

@@ -1060,6 +1060,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination_score",
         "event",
         "detections_count",
+        "pixel_area",
         "created_at",
     ]
 
@@ -1077,6 +1078,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = super().get_queryset().valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
+        from django.db.models.expressions import RawSQL
+
+        detections_with_area = Detection.objects.annotate(
+            area=RawSQL("((bbox->>2)::float - (bbox->>0)::float) * ((bbox->>3)::float - (bbox->>1)::float)", [])
+        )
         qs = qs.select_related(
             "determination",
             "deployment",
@@ -1084,6 +1090,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
+        qs = qs.annotate(
+            pixel_area=models.Subquery(
+                detections_with_area.filter(occurrence=models.OuterRef("pk")).order_by("-area").values("area")[:1]
+            ),
+        )
 
         if self.action == "list":
             qs = (
