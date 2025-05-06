@@ -2955,6 +2955,18 @@ class TaxaList(BaseModel):
 
 
 @final
+class Tag(BaseModel):
+    """A tag for taxa"""
+
+    name = models.CharField(max_length=255)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags")
+    taxa = models.ManyToManyField(Taxon, related_name="tags", blank=True)
+
+    class Meta:
+        unique_together = ("name", "project")
+
+
+@final
 class BlogPost(BaseModel):
     """
     This model is used just as an example.

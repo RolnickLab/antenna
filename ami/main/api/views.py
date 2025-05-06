@@ -42,6 +42,7 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.serializers import TagSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -61,6 +62,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    Tag,
     TaxaList,
     Taxon,
     User,
@@ -1272,6 +1274,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if project:
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
+            qs = self.attach_tags_by_project(qs, project)
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
@@ -1351,6 +1354,18 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             )
         return qs
 
+    def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
+        """
+        Prefetch and override the `.tags` attribute on each Taxon
+        with only the tags belonging to the given project.
+        """
+        tag_prefetch = Prefetch(
+            "tags",
+            queryset=Tag.objects.filter(project=project),
+            to_attr="tags",
+        )
+        return qs.prefetch_related(tag_prefetch)
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -1363,10 +1378,25 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         qs = super().get_queryset()
         project = self.get_active_project()
         if project:
-            return qs.filter(projects=project)
+            # Filter by project and exclude taxa lists that are meant for storing tags
+            return qs.filter(projects=project, tag=False)
         return qs
 
     serializer_class = TaxaListSerializer
+
+
+class TagViewSet(DefaultViewSet, ProjectMixin):
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+    filterset_fields = ["taxa"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        project = self.get_active_project()
+        if project:
+            # Filter by project
+            return qs.filter(projects=project)
+        return qs
 
 
 class ClassificationViewSet(DefaultViewSet, ProjectMixin):
