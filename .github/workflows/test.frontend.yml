@@ -7,13 +7,13 @@ env:
 
 on:
   pull_request:
-    branches: ["master", "main"]
+    branches: ["main", "deployments/*", "releases/*"]
     paths:
       - "!./**"
       - "ui/**"
 
   push:
-    branches: ["master", "main"]
+    branches: ["main", "deployments/*", "releases/*"]
     paths:
       - "!./**"
       - "ui/**"
