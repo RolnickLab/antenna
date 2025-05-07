@@ -14,4 +14,4 @@ ENV BROWSER=none
 EXPOSE 4000
 
 # Check for changed app dependencies on every start
-CMD ["sh", "-c", "yarn install && yarn start --debug --host 0.0.0.0 --port 4000"]
+CMD ["sh", "-c", "yarn preview --debug --host 0.0.0.0 --port 4000"]
