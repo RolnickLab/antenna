@@ -2,4 +2,8 @@
 
 services:
   ui:
+    volumes:
+      - ./.git:/app/.git:ro
+      - ./ui:/app
+      - node_modules:/app/node_modules
     entrypoint: ["sh", "-c", "yarn install && yarn start --debug --host 0.0.0.0 --port 4000"]
