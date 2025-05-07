@@ -20,5 +20,4 @@ services:
 
 networks:
   antenna_network:
-    external: true
     name: antenna_network
