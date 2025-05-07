@@ -12,7 +12,7 @@ try {
         .toString()
 } catch (error) {
     console.warn('Could not get git commit hash:', error)
-    temporaryCommitHash = '- Local docker image: please ensure this is latest version -'
+    temporaryCommitHash = '- Local docker image: please ensure this is the latest version -'
 }
 
 const commitHash = temporaryCommitHash
