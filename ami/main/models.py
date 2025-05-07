@@ -2299,6 +2299,31 @@ class Occurrence(BaseModel):
     determination_score = models.FloatField(null=True, blank=True, help_text="Estimation of confidence")
     determination_ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
 
+    best_detection = models.ForeignKey(
+        "Detection",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrence_representing",
+    )
+
+    # Classifications are machine predictions
+    best_prediction = models.ForeignKey(
+        "Classification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrences",
+    )
+    # Identifications are human predictions
+    best_identification = models.ForeignKey(
+        "Identification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrences",
+    )
+
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -2377,23 +2402,50 @@ class Occurrence(BaseModel):
         ):
             yield get_media_url(path)
 
-    @functools.cached_property
-    def best_detection(self):
-        return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
+    def get_best_detection(self) -> Detection | None:
+        """
+        Pick the detection to represent the occurrence, for example which image to show in the UI.
+        """
+        # First look for any detections marked as favorite:
+        best_detection = self.detections.filter(favorite=True).first()
 
-    @functools.cached_property
-    def best_prediction(self):
+        # If there are no favorites, look for the best detection by confidence score
+        if not best_detection:
+            best_prediction = self.get_best_prediction()
+            if best_prediction:
+                best_detection = best_prediction.detection
+
+        # If there are no predictions, use the largest detection by bbox area
+        # if not best_detection:
+        #     best_detection = (
+        #         self.detections.annotate(
+        #             bbox_area=models.F("bbox__width") * models.F("bbox__height")
+        #         )
+        #         .order_by("-bbox_area")
+        #         .first()
+        #     )
+
+        return best_detection
+
+    def get_best_prediction(self) -> Classification | None:
         """
         Use the best prediction as the best identification if there are no human identifications.
 
-        Uses the highest scoring classification (from any algorithm) as the best prediction.
-        Considers terminal classifications first, then non-terminal ones.
+        Uses the highest scoring terminal classification (from any algorithm) as the best prediction.
+        Terminal classifications are preferred over non-terminal ones - even if they have a lower score.
         (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
         """
-        return self.predictions().order_by("-terminal", "-score").first()
+        predictions = Classification.objects.filter(detection__occurrence=self)
 
-    @functools.cached_property
-    def best_identification(self):
+        # First try to get a terminal classification
+        terminal_classification = predictions.filter(terminal=True).order_by("-score", "-created_at").first()
+        if terminal_classification:
+            return terminal_classification
+
+        # If no terminal classification exists, fall back to non-terminal
+        return predictions.filter(terminal=False).order_by("-score").first()
+
+    def get_best_identification(self) -> Identification | None:
         """
         The most recent human identification is used as the best identification.
 
@@ -2424,22 +2476,6 @@ class Occurrence(BaseModel):
             models.Avg("ood_score"),
         )["ood_score__avg"]
         return mean_ood_score
-
-    def predictions(self):
-        # Retrieve the classification with the max score for each algorithm
-        classifications = (
-            Classification.objects.filter(detection__occurrence=self)
-            .filter(
-                score__in=models.Subquery(
-                    Classification.objects.filter(detection__occurrence=self)
-                    .values("algorithm")
-                    .annotate(max_score=models.Max("score"))
-                    .values("max_score")
-                )
-            )
-            .order_by("-created_at")
-        )
-        return classifications
 
     def context_url(self):
         detection = self.best_detection
@@ -2477,7 +2513,10 @@ class Occurrence(BaseModel):
 
 
 def update_occurrence_determination(
-    occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
+    occurrence: Occurrence,
+    current_determination: typing.Optional["Taxon"] = None,
+    save=True,
+    task_logger: logging.Logger | None = None,
 ) -> bool:
     """
     Update the determination of the occurrence based on the identifications & predictions.
@@ -2489,68 +2528,97 @@ def update_occurrence_determination(
     The `occurrence` object may already have a different un-saved determination set
     so it is necessary to retrieve the current determination from the database, but
     this can also be passed in as an argument to avoid an extra database query.
-
-    @TODO Add tests for this important method!
     """
-    needs_update = False
+    task_logger = task_logger or logger
+    fields_to_update = set()
 
-    # Invalidate the cached properties so they will be re-calculated
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
-    if hasattr(occurrence, "best_prediction"):
-        del occurrence.best_prediction
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
-
-    current_determination = (
-        current_determination
-        or Occurrence.objects.select_related("determination")
-        .values("determination")
-        .get(pk=occurrence.pk)["determination"]
-    )
-    new_determination = None
-    new_score = None
-    new_ood_score = None
-
-    top_identification = occurrence.best_identification
-    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
-        new_determination = top_identification.taxon
-        new_score = top_identification.score
-    elif not top_identification:
-        top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
-            new_determination = top_prediction.taxon
-            new_score = top_prediction.score
-
-    if new_determination and new_determination != current_determination:
-        logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
-        occurrence.determination = new_determination
-        needs_update = True
-
-    if new_score and new_score != occurrence.determination_score:
-        logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
-        occurrence.determination_score = new_score
-        needs_update = True
-
-    new_ood_score = occurrence.get_determination_ood_score()
-    if new_ood_score is not None and new_ood_score != occurrence.determination_ood_score:
-        logger.debug(
-            f"Changing det. OOD score of {occurrence} from {occurrence.determination_ood_score} to {new_ood_score}"
-        )
-        occurrence.determination_ood_score = new_ood_score
-        needs_update = True
-
-    if not needs_update:
-        if logger.getEffectiveLevel() <= logging.DEBUG:
-            all_predictions = occurrence.predictions()
-            all_preds_print = ", ".join([str(p) for p in all_predictions])
-            logger.debug(
-                f"No update needed for determination of {occurrence}. Best prediction: {occurrence.best_prediction}. "
-                f"All preds: {all_preds_print}"
+    # Get the current determination from the database if not passed in
+    if current_determination is None:
+        try:
+            current_determination = (
+                Occurrence.objects.select_related("determination").get(pk=occurrence.pk).determination
             )
+        except Occurrence.DoesNotExist:
+            current_determination = None
 
-    if save and needs_update:
-        occurrence.save(update_determination=False)
+    # Always check the best identification and best prediction
+    best_identification = occurrence.get_best_identification()
+    best_prediction = occurrence.get_best_prediction() if not best_identification else None
+    new_determination = None
+
+    # Identifications take precedence over machine predictions
+    if best_identification:
+        if best_identification != occurrence.best_identification:
+            occurrence.best_identification = best_identification
+            fields_to_update.add("best_identification")
+
+        # Always use the identification's taxon for the determination
+        new_determination = best_identification.taxon
+        if occurrence.best_prediction is not None:
+            occurrence.best_prediction = None
+            fields_to_update.add("best_prediction")
+
+        if occurrence.determination_score != best_identification.score:
+            occurrence.determination_score = best_identification.score
+            fields_to_update.add("determination_score")
+
+    # If there are no identifications, use the best prediction
+    elif best_prediction:
+        if best_prediction != occurrence.best_prediction:
+            occurrence.best_prediction = best_prediction
+            fields_to_update.add("best_prediction")
+
+        # Use the prediction's taxon for the determination if it exists
+        new_determination = best_prediction.taxon
+
+        # Clear withdrawn or removed identifications
+        if occurrence.best_identification is not None:
+            occurrence.best_identification = None
+            fields_to_update.add("best_identification")
+
+        if occurrence.determination_score != best_prediction.score:
+            occurrence.determination_score = best_prediction.score
+            fields_to_update.add("determination_score")
+
+    # If both identification and prediction are gone, clear everything
+    else:
+        if occurrence.best_identification is not None:
+            occurrence.best_identification = None
+            fields_to_update.add("best_identification")
+
+        if occurrence.best_prediction is not None:
+            occurrence.best_prediction = None
+            fields_to_update.add("best_prediction")
+
+        if occurrence.determination_score is not None:
+            occurrence.determination_score = None
+            fields_to_update.add("determination_score")
+
+    # Check if determination needs to be updated
+    if new_determination != current_determination:
+        task_logger.info(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
+        occurrence.determination = new_determination
+        fields_to_update.add("determination")
+
+    # Update OOD score correctly by calculating the average from all classifications
+    if new_determination is not None:
+        classifications = Classification.objects.filter(
+            detection__occurrence=occurrence,
+            ood_score__isnull=False,
+        )
+
+        if classifications.exists():
+            avg_ood_score = classifications.aggregate(models.Avg("ood_score"))["ood_score__avg"]
+
+            if avg_ood_score != occurrence.determination_ood_score:
+                occurrence.determination_ood_score = avg_ood_score
+                fields_to_update.add("determination_ood_score")
+
+    needs_update = bool(fields_to_update)
+    if needs_update:
+        task_logger.info(f"Occurrence {occurrence} needs update of: {fields_to_update}")
+        if save:
+            occurrence.save(update_determination=False)
 
     return needs_update
 
@@ -3253,7 +3321,7 @@ class SourceImageCollection(BaseModel):
                 "pca": {"n_components": 384},
             }
 
-        cluster_detections(collection=self, params=params, job=job, task_logger=task_logger)
+        cluster_detections(collection=self, params=params or {}, job=job, task_logger=task_logger)
 
     def sample_random(self, size: int = 100):
         """Create a random sample of source images"""
