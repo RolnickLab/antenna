@@ -1,7 +1,7 @@
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { REJECT_OPTIONS } from './constants'
 
-const DISPLAY_LIST_SIZE = 1 // Limit how many identifications are displayed
+const DISPLAY_LIST_SIZE = 5 // Limit how many identifications are displayed
 const STORAGE_LIST_SIZE = 5 // Limit how many identifications are stored
 
 export const useRecentIdentifications = () => {
