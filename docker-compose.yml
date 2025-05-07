@@ -66,21 +66,6 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - API_PROXY_TARGET=http://django:8000
 
-  docs:
-    image: ami_local_docs
-    build:
-      context: .
-      dockerfile: ./compose/local/docs/Dockerfile
-    env_file:
-      - ./.envs/.local/.django
-    volumes:
-      - ./docs:/docs:z
-      - ./config:/app/config:z
-      - ./ami:/app/ami:z
-    ports:
-      - "9025:9000"
-    command: /start-docs
-
   redis:
     image: redis:6
     container_name: ami_local_redis

@@ -16,23 +16,39 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
     127.0.0.1 minio
     127.0.0.1 django
 ```
+3) The following commands will build all services, run them in the background, and then stream the logs.
+   1) Standard development: will use a pre-built version of the frontend that will not have hot-reloading enabled, but will make startup time faster when restarting the stack.
+      ```sh
+      # Build the frontend (only needed the first time starting the stack and after modification to the frontend component)
+      (cd ui && yarn install && yarn build)
+      ```
+      ```sh
+      # Start the whole compose stack
+      docker compose up -d
 
-2) The following commands will build all services, run them in the background, and then stream the logs.
+      # To stream the logs
+      docker compose logs -f django celeryworker ui
+      # Ctrl+c to close the logs
+      ```
+      If there's a need to update the frontend while using this override, simply re-build the frontend to load the new changes.
+      ```sh
+      (cd ui && yarn build)
+      ```
 
-```sh
-    docker compose up -d
-    docker compose logs -f django celeryworker ui
-    # Ctrl+c to close the logs
-```
+   2) With Hot Reload UI: Hot reload is enabled for frontend development, but the primary web interface will be slow to load at startup and later restarts.
+      ```sh
+      # Run docker compose with the override config
+      docker compose -f docker-compose.yml -f docker-compose-frontend-dev.override.yml up -d
+      ```
 
-3) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
+4) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
 
 ```
 docker compose -f processing_services/example/docker-compose.yml up -d
 # Once running, in Antenna register a new processing service called: http://ml_backend_example:2000
 ```
 
-4) Access the platform the following URLs:
+5) Access the platform the following URLs:
 
 - Primary web interface: http://localhost:4000
 - API browser: http://localhost:8000/api/v2/
@@ -44,7 +60,7 @@ A default user will be created with the following credentials. Use these to log 
 - Email: `antenna@insectai.org`
 - Password: `localadmin`
 
-5) Stop all services with:
+6) Stop all services with:
 
     $ docker compose down
 
