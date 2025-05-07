@@ -1,10 +1,15 @@
 import logging
+import typing
 
 import numpy as np
 from django.db.models import Count
 from django.utils.timezone import now
 
 from ami.ml.clustering_algorithms.utils import get_clusterer
+
+if typing.TYPE_CHECKING:
+    from ami.main.models import SourceImageCollection
+    from ami.ml.models import Algorithm
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +23,38 @@ def update_job_progress(job, stage_key, status, progress):
 def job_save(job):
     if job:
         job.save()
+
+
+def get_most_used_algorithm(collection: "SourceImageCollection", task_logger=None) -> "Algorithm | None":
+    from ami.main.models import Classification
+    from ami.ml.models import Algorithm
+
+    task_logger = task_logger or logger
+
+    qs = Classification.objects.filter(
+        features_2048__isnull=False,
+        detection__source_image__collections=collection,
+        # @TODO if we have a dedicated task type for feature extraction, we can filter by that
+        # task_type="feature_extraction",
+    )
+
+    # Log the number of classifications per algorithm, if debug is enabled
+    if task_logger.isEnabledFor(logging.DEBUG):
+        algorithm_stats = qs.values("algorithm__pk", "algorithm__name").annotate(count=Count("id")).order_by("-count")
+        task_logger.debug(f"Algorithm stats: {algorithm_stats}")
+
+    feature_extraction_algorithm_id = (
+        qs.values("algorithm")
+        .annotate(count=Count("id"))
+        .order_by("-count")
+        .values_list("algorithm", flat=True)
+        .first()
+    )
+    if feature_extraction_algorithm_id:
+        algorithm = Algorithm.objects.get(pk=feature_extraction_algorithm_id)
+        task_logger.info(f"Using feature extraction algorithm: {algorithm.name}")
+        return algorithm
+    return None
 
 
 def cluster_detections(collection, params: dict, task_logger: logging.Logger = logger, job=None):
@@ -38,17 +75,7 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
             raise ValueError(f"Invalid feature extraction algorithm key: {feature_extraction_algorithm}")
     else:
         # Fallback to the most used feature extraction algorithm in this collection
-        feature_extraction_algorithm_id = (
-            Classification.objects.filter(features_2048__isnull=False, detection__source_image__collections=collection)
-            .values("algorithm")
-            .annotate(count=Count("id"))
-            .order_by("-count")
-            .values_list("algorithm", flat=True)
-            .first()
-        )
-        if feature_extraction_algorithm_id:
-            feature_extraction_algorithm = Algorithm.objects.get(pk=feature_extraction_algorithm_id)
-            task_logger.info(f"Using fallback feature extraction algorithm: {feature_extraction_algorithm.name}")
+        feature_extraction_algorithm = get_most_used_algorithm(collection, task_logger=task_logger)
 
     detections = Detection.objects.filter(
         classifications__features_2048__isnull=False,
