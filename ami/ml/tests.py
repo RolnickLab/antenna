@@ -7,7 +7,7 @@ from pgvector.django import CosineDistance, L2Distance
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection, Taxon
+from ami.main.models import Classification, Detection, Occurrence, Project, SourceImage, SourceImageCollection, Taxon
 from ami.ml.clustering_algorithms.cluster_detections import cluster_detections
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
@@ -731,6 +731,7 @@ class TestClustering(TestCase):
 
     def _populate_detection_features(self):
         """Populate detection features with random values."""
+        classifier = Algorithm.objects.get(key="random-species-classifier")
         for detection in self.detections:
             detection.associate_new_occurrence()
             # Create a random feature vector
@@ -738,25 +739,28 @@ class TestClustering(TestCase):
             # Assign the feature vector to the detection
             classification = Classification.objects.create(
                 detection=detection,
-                algorithm=Algorithm.objects.get(key="random-species-classifier"),
+                algorithm=classifier,
                 taxon=None,
                 score=0.5,
+                ood_score=0.5,
                 features_2048=feature_vector,
                 timestamp=datetime.datetime.now(),
             )
-            detection.classifications.add(classification)
+            detection.classifications.add(classification)  # type: ignore
             assert classification.features_2048 is not None, "No features found for the detection"
             assert detection.occurrence is not None, "No occurrence found for the detection"
-            detection.occurrence.determination_ood_score = 0.5
             detection.save()
+        # Call save once on all occurrences
+        for occurrence in Occurrence.objects.filter(detections__in=self.detections).distinct():
+            occurrence.save()
 
     def test_agglomerative_clustering(self):
         """Test agglomerative clustering with real implementation."""
         # Call with agglomerative clustering parameters
         params = {
             "algorithm": "agglomerative",
-            "ood_threshold": 1,
-            "feature_extraction_algorithm": None,
+            "ood_threshold": 0.4,
+            "feature_extraction_algorithm": None,  # None will select most used algorithm
             "agglomerative": {"distance_threshold": 0.5, "linkage": "ward"},
             "pca": {"n_components": 5},  # Use fewer components for test performance
         }

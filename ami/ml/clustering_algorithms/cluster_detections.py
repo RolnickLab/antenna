@@ -25,7 +25,9 @@ def job_save(job):
         job.save()
 
 
-def get_most_used_algorithm(collection: "SourceImageCollection", task_logger=None) -> "Algorithm | None":
+def get_most_used_algorithm(
+    collection: "SourceImageCollection", task_logger: logging.Logger | None = None
+) -> "Algorithm | None":
     from ami.main.models import Classification
     from ami.ml.models import Algorithm
 
@@ -34,6 +36,7 @@ def get_most_used_algorithm(collection: "SourceImageCollection", task_logger=Non
     qs = Classification.objects.filter(
         features_2048__isnull=False,
         detection__source_image__collections=collection,
+        algorithm__isnull=False,
         # @TODO if we have a dedicated task type for feature extraction, we can filter by that
         # task_type="feature_extraction",
     )
