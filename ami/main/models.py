@@ -2132,6 +2132,8 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    favorite = models.BooleanField(default=False, help_text="Use this detection to represent the occurrence")
+
     # For type hints
     classifications: models.QuerySet["Classification"]
     source_image_id: int
@@ -2613,6 +2615,11 @@ def update_occurrence_determination(
             if avg_ood_score != occurrence.determination_ood_score:
                 occurrence.determination_ood_score = avg_ood_score
                 fields_to_update.add("determination_ood_score")
+
+    best_detection = occurrence.get_best_detection()
+    if best_detection != occurrence.best_detection:
+        occurrence.best_detection = best_detection
+        fields_to_update.add("best_detection")
 
     needs_update = bool(fields_to_update)
     if needs_update:
