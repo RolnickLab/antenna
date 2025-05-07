@@ -30,6 +30,7 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
+from ami.ml.clustering_algorithms.cluster_detections import cluster_detections
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
@@ -2816,7 +2817,7 @@ class Taxon(BaseModel):
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
-
+    unknown_species = models.BooleanField(default=False, help_text="Is this a clustering-generated taxon")
     objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
@@ -3236,6 +3237,23 @@ class SourceImageCollection(BaseModel):
             self.images.set(method(**kwargs))
             self.save()
             task_logger.info(f"Done sampling and saving captures to {self}")
+
+    def cluster_detections(self, job: "Job | None" = None):
+        if job:
+            task_logger = job.logger
+            params = job.params
+        else:
+            task_logger = logger
+            params = {
+                "algorithm": "agglomerative",
+                "ood_threshold": 0.5,
+                "algorithm_kwargs": {
+                    "distance_threshold": 0.5,
+                },
+                "pca": {"n_components": 384},
+            }
+
+        cluster_detections(collection=self, params=params, job=job, task_logger=task_logger)
 
     def sample_random(self, size: int = 100):
         """Create a random sample of source images"""

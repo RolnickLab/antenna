@@ -42,6 +42,8 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.jobs.models import DetectionClusteringJob, Job
+from ami.main.api.serializers import ClusterDetectionsSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -744,6 +746,27 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             }
         )
 
+    @action(detail=True, methods=["post"], name="cluster detections")
+    def cluster_detections(self, request, pk=None):
+        """
+        Trigger a background job to cluster detections from this collection.
+        """
+
+        collection: SourceImageCollection = self.get_object()
+        serializer = ClusterDetectionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
+        job = Job.objects.create(
+            name=f"Clustering detections for collection {collection.pk}",
+            project=collection.project,
+            source_image_collection=collection,
+            job_type_key=DetectionClusteringJob.key,
+            params=params,
+        )
+        job.enqueue()
+        logger.info(f"Triggered clustering job for collection {collection.pk}")
+        return Response({"job_id": job.pk, "project_id": collection.project.pk})
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -1273,8 +1296,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
 
         if project:
-            # Allow showing detail views for unobserved taxa
-            include_unobserved = True
+            include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)

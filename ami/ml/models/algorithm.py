@@ -137,6 +137,7 @@ class Algorithm(BaseModel):
             ("depth_estimation", "Depth Estimation"),
             ("pose_estimation", "Pose Estimation"),
             ("size_estimation", "Size Estimation"),
+            ("clustering", "Clustering"),
             ("other", "Other"),
             ("unknown", "Unknown"),
         ],
