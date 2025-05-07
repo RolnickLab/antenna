@@ -2326,6 +2326,22 @@ class Occurrence(BaseModel):
         related_name="occurrences",
     )
 
+    # mean_feature_vector = VectorField(
+    #     dimensions=2048,
+    #     null=True,
+    #     default=None,
+    #     help_text="Mean feature vector of all detections in this occurrence",
+    # )
+    # mean_feature_vector_algorithm = models.ForeignKey(
+    #     "ml.Algorithm",
+    #     on_delete=models.SET_NULL,
+    #     null=True,
+    #     blank=True,
+    #     related_name="occurrences",
+    # )
+
+    # favorite = models.BooleanField(default=False, help_text="Is this a good representative occurrence?")
+
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
