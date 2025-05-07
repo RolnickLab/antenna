@@ -5,9 +5,15 @@ import eslint from 'vite-plugin-eslint'
 import svgr from 'vite-plugin-svgr'
 import viteTsconfigPaths from 'vite-tsconfig-paths'
 
-const commitHash = childProcess
-  .execSync('git rev-parse --short HEAD')
-  .toString()
+let commitHash: string
+
+try {
+    commitHash = childProcess
+        .execSync('git rev-parse --short HEAD')
+        .toString()
+} catch (err) {
+    commitHash = 'Local docker image - please ensure this is latest version'
+}
 
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
