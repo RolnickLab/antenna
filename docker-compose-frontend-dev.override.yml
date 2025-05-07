@@ -1,5 +1,0 @@
-# This docker compose configuration should only be used to override the development compose file, docker-compose.yml
-
-services:
-  ui:
-    entrypoint: ["sh", "-c", "yarn install && yarn start --debug --host 0.0.0.0 --port 4000"]
