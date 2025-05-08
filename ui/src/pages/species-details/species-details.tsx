@@ -111,7 +111,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           <div className={styles.blueprintContainer}>
             <BlueprintCollection>
               {species.exampleOccurrence ? (
-                <InfoBlockField label="Representative occurrence">
+                <InfoBlockField label="Example occurrence">
                   <Link
                     to={getAppRoute({
                       to: APP_ROUTES.OCCURRENCE_DETAILS({
