@@ -111,6 +111,10 @@ export const AVAILABLE_FILTERS: {
     label: 'Verified by',
     field: 'verified_by_me',
   },
+  {
+    label: 'Show unobserved taxa',
+    field: 'include_unobserved',
+  },
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {

@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { LicenseInfo } from 'components/license-info/license-info'
 import {
   IconButton,
   IconButtonShape,
@@ -11,7 +12,6 @@ import { getTotalLabel } from 'utils/numberFormats'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
 import { getImageBoxStyles, getPlaceholderStyles } from './utils'
-import { LicenseInfo } from 'components/license-info/license-info'
 
 interface ImageCarouselProps {
   autoPlay?: boolean
@@ -93,7 +93,7 @@ const BasicImageCarousel = ({
         <div style={getPlaceholderStyles(size?.ratio)} />
         <div className={classNames(styles.slide, styles.visible)}>
           {image ? (
-            <img src={image.src} alt={image.alt} className={styles.image} />
+            <img src={image.src} alt={image.alt} />
           ) : (
             <Icon
               type={IconType.Photograph}
@@ -211,11 +211,7 @@ const MultiImageCarousel = ({
                     [styles.visible]: index === slideIndex,
                   })}
                 >
-                  <img
-                    src={image.src}
-                    alt={image.alt}
-                    className={styles.image}
-                  />
+                  <img src={image.src} alt={image.alt} />
                 </div>
               )
             })}

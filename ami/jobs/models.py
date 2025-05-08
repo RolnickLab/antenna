@@ -400,7 +400,8 @@ class MLJob(JobType):
         total_classifications = 0
 
         config = job.pipeline.get_config(project_id=job.project.pk)
-        chunk_size = config.get("request_source_image_batch_size", 1)
+        chunk_size = config.get("request_source_image_batch_size", 2)
+        # @TODO Ensure only images of the same dimensions are processed in a batch
         chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
         request_failed_images = []
 
@@ -639,6 +640,38 @@ class DataExportJob(JobType):
         job.update_status(JobState.SUCCESS, save=True)
 
 
+class DetectionClusteringJob(JobType):
+    name = "Detection Feature Clustering"
+    key = "detection_clustering"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.add_stage(name="Collecting Features", key="feature_collection")
+        job.progress.add_stage("Clustering", key="clustering")
+        job.progress.add_stage("Creating Unknown Taxa", key="create_unknown_taxa")
+        job.save()
+
+        if not job.source_image_collection:
+            raise ValueError("No source image collection provided")
+
+        job.logger.info(f"Clustering detections for collection {job.source_image_collection}")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.save()
+
+        # Call the clustering method
+        job.source_image_collection.cluster_detections(job=job)
+        job.logger.info(f"Finished clustering detections for collection {job.source_image_collection}")
+
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=False)
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -648,7 +681,14 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
-VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType, DataExportJob]
+VALID_JOB_TYPES = [
+    MLJob,
+    SourceImageCollectionPopulateJob,
+    DataStorageSyncJob,
+    UnknownJobType,
+    DataExportJob,
+    DetectionClusteringJob,
+]
 
 
 def get_job_type_by_key(key: str) -> type[JobType] | None:

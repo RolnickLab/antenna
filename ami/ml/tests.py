@@ -1,11 +1,14 @@
 import datetime
 import unittest
 
+import numpy as np
 from django.test import TestCase
+from pgvector.django import CosineDistance, L2Distance
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
+from ami.main.models import Classification, Detection, Occurrence, Project, SourceImage, SourceImageCollection, Taxon
+from ami.ml.clustering_algorithms.cluster_detections import cluster_detections
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.schemas import (
@@ -17,7 +20,15 @@ from ami.ml.schemas import (
     PipelineResultsResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_captures_from_files,
+    create_detections,
+    create_processing_service,
+    create_taxa,
+    group_images_into_events,
+    setup_test_project,
+)
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
 
@@ -628,3 +639,158 @@ class TestAlgorithmCategoryMaps(TestCase):
             # Ensure the full labels in the data match the simple, ordered list of labels
             sorted_data = sorted(algorithm.category_map.data, key=lambda x: x["index"])
             assert [category["label"] for category in sorted_data] == algorithm.category_map.labels
+
+
+class ClassificationFeatureVectorTests(TestCase):
+    def setUp(self):
+        self.dim = 2048
+        self.classifications = []
+        # Create a base vector pointing along first axis
+        base_vec = np.zeros(self.dim)
+        # Create 10 normalized vectors as lists
+        base_vec[0] = 1.0  # Unit vector
+        for i in range(10):
+            # Generate a perturbation in a new random direction
+            noise = np.random.randn(self.dim)
+            noise[0] = 0  # Ensure it's orthogonal to base vector
+            noise = noise / np.linalg.norm(noise)
+
+            # Blend with the base vector using different weights
+            alpha = 1 - (i * 0.1)  # Decreasing similarity
+            perturbed_vec = alpha * base_vec + (1 - alpha) * noise
+            perturbed_vec = perturbed_vec / np.linalg.norm(perturbed_vec)
+
+            classification = Classification.objects.create(
+                algorithm=Algorithm.objects.get(key="random-species-classifier"),
+                taxon=None,
+                score=0.5,
+                features_2048=perturbed_vec.tolist(),
+                timestamp=datetime.datetime.now(),
+                detection=None,
+            )
+            self.classifications.append(classification)
+
+    def test_cosine_distance(self):
+        ref_cls = self.classifications[5]
+        ref_vector = ref_cls.features_2048
+
+        qs = (
+            Classification.objects.exclude(features_2048=None)
+            .annotate(cosine_distance=CosineDistance("features_2048", ref_vector))
+            .order_by("cosine_distance")
+        )
+        most_similar = qs.first()
+        self.assertEqual(most_similar.pk, ref_cls.pk, "Most similar classification should be itself")
+
+    def test_l2_distance(self):
+        ref_cls = self.classifications[5]
+        ref_vector = ref_cls.features_2048
+
+        qs = (
+            Classification.objects.exclude(features_2048=None)
+            .annotate(l2_distance=L2Distance("features_2048", ref_vector))
+            .order_by("l2_distance")
+        )
+
+        most_similar = qs.first()
+        self.assertEqual(most_similar.pk, ref_cls.pk, "Most similar classification should be itself")
+
+
+class TestClustering(TestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
+        group_images_into_events(deployment=self.deployment)
+
+        sample_size = 10
+        self.collection = SourceImageCollection.objects.create(
+            name="Test Random Source Image Collection",
+            project=self.project,
+            method="random",
+            kwargs={"size": sample_size},
+        )
+        self.collection.save()
+        self.collection.populate_sample()
+        assert self.collection.images.count() == sample_size
+        self.populate_collection_with_detections()
+        self.collection.save()
+        # create_occurrences(deployment=self.deployment)
+
+        self.detections = Detection.objects.filter(source_image__collections=self.collection)
+        self.assertGreater(len(self.detections), 0, "No detections found in the collection")
+        self._populate_detection_features()
+
+    def populate_collection_with_detections(self):
+        """Populate the collection with random detections."""
+        for image in self.collection.images.all():
+            # Create a random detection for each image
+            create_detections(
+                source_image=image, bboxes=[(0.0, 0.0, 1.0, 1.0), (0.1, 0.1, 0.9, 0.9), (0.2, 0.2, 0.8, 0.8)]
+            )
+
+    def _populate_detection_features(self):
+        """Populate detection features with random values."""
+        classifier = Algorithm.objects.get(key="random-species-classifier")
+        for detection in self.detections:
+            detection.associate_new_occurrence()
+            # Create a random feature vector
+            feature_vector = np.random.rand(2048).tolist()
+            # Assign the feature vector to the detection
+            classification = Classification.objects.create(
+                detection=detection,
+                algorithm=classifier,
+                taxon=None,
+                score=0.5,
+                ood_score=0.5,
+                features_2048=feature_vector,
+                timestamp=datetime.datetime.now(),
+            )
+            detection.classifications.add(classification)  # type: ignore
+            assert classification.features_2048 is not None, "No features found for the detection"
+            assert detection.occurrence is not None, "No occurrence found for the detection"
+            detection.save()
+        # Call save once on all occurrences
+        for occurrence in Occurrence.objects.filter(detections__in=self.detections).distinct():
+            occurrence.save()
+
+    def test_agglomerative_clustering(self):
+        """Test agglomerative clustering with real implementation."""
+        # Call with agglomerative clustering parameters
+        params = {
+            "algorithm": "agglomerative",
+            "ood_threshold": 0.4,
+            "feature_extraction_algorithm": None,  # None will select most used algorithm
+            "agglomerative": {"distance_threshold": 0.5, "linkage": "ward"},
+            "pca": {"n_components": 5},  # Use fewer components for test performance
+        }
+        # Execute the clustering function
+        clusters = cluster_detections(self.collection, params)
+
+        # The exact number could vary based on the random features and threshold
+        self.assertGreaterEqual(len(clusters), 1, "Should create at least 1 cluster")
+
+        # Verify all detections are assigned to clusters
+        total_detections = sum(len(detections) for detections in clusters.values())
+        self.assertEqual(
+            total_detections,
+            len(self.detections),
+            f"All {len(self.detections)} detections should be assigned to clusters",
+        )
+
+        # Check if detections with similar features are in the same cluster
+        # Create a map of detection to cluster_id
+        detection_to_cluster = {}
+        for cluster_id, detections_list in clusters.items():
+            for detection in detections_list:
+                detection_to_cluster[detection.id] = cluster_id
+
+        # Verify that each cluster has a corresponding taxon
+        taxa = Taxon.objects.filter(unknown_species=True)
+        self.assertEqual(taxa.count(), len(clusters), f"Should create {len(clusters)} taxa for the clusters")
+
+        # Verify that each taxon is associated with the project
+        for taxon in taxa:
+            self.assertIn(
+                self.project, taxon.projects.all(), f"Taxon {taxon.name} should be associated with the project"
+            )

@@ -45,7 +45,7 @@ export const columns: (
 
       return (
         <ImageTableCell
-          images={item.images}
+          images={[item.images[0]]}
           theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
@@ -71,6 +71,14 @@ export const columns: (
     sortField: 'determination_score',
     renderCell: (item: Occurrence) => (
       <ScoreCell item={item} projectId={projectId} />
+    ),
+  },
+  {
+    id: 'ood-score',
+    name: 'OOD Score',
+    sortField: 'determination_ood_score',
+    renderCell: (item: Occurrence) => (
+      <OODScoreCell item={item} projectId={projectId} />
     ),
   },
   {
@@ -139,6 +147,12 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
     renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.updatedAt} />,
   },
 ]
 
@@ -258,6 +272,21 @@ const ScoreCell = ({
           </BasicTooltip>
           <span className={styles.scoreCellLabel}>
             {item.determinationScoreLabel}
+          </span>
+        </div>
+      </BasicTableCell>
+    </div>
+  )
+}
+
+const OODScoreCell = ({ item }: { item: Occurrence; projectId: string }) => {
+  return (
+    <div className={styles.scoreCell}>
+      <BasicTableCell>
+        <div className={styles.scoreCellContent}>
+          <IdentificationScore confidenceScore={item.determinationOODScore} />
+          <span className={styles.scoreCellLabel}>
+            {item.determinationOODScoreLabel}
           </span>
         </div>
       </BasicTableCell>

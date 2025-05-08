@@ -277,7 +277,11 @@ export const OccurrenceDetails = ({
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection items={blueprintItems} />
+            <BlueprintCollection showLicenseInfo={blueprintItems.length > 0}>
+              {blueprintItems.map((item) => (
+                <BlueprintItem key={item.id} item={item} />
+              ))}
+            </BlueprintCollection>
           </div>
         </div>
       </div>

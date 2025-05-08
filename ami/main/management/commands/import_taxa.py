@@ -9,6 +9,7 @@ import time
 from urllib.request import urlopen
 
 from django.core.management.base import BaseCommand, CommandError  # noqa
+from django.db.models import Q
 
 # import progress bar
 from tqdm import tqdm
@@ -309,13 +310,29 @@ class Command(BaseCommand):
             # Assume ranks are in order of rank
             if rank.name.lower() in taxon_data.keys() and taxon_data[rank.name.lower()]:
                 name = taxon_data[rank.name.lower()]
+                gbif_taxon_key = taxon_data.get("gbif_taxon_key", None)
                 rank = rank.name.upper()
-                logger.debug(f"Taxon found in incoming row {i}: {rank} {name}")
-                try:
-                    taxon, created = Taxon.objects.get_or_create(name=name, defaults={"rank": rank})
-                except (Taxon.MultipleObjectsReturned, Exception) as e:
-                    logger.error(f"Error creating taxon {name} {rank}: {e}")
-                    raise
+                logger.debug(f"Taxon found in incoming row {i}: {rank} {name} (GBIF: {gbif_taxon_key})")
+                # Look up existing taxon by name or gbif_taxon_key
+                # If the taxon already exists, use it and maybe update it
+                taxon = None
+                matches = Taxon.objects.filter(Q(name=name) | Q(gbif_taxon_key=gbif_taxon_key))
+                if len(matches) > 1:
+                    logger.error(f"Found multiple taxa with name {name} or gbif_taxon_key {gbif_taxon_key}")
+                    raise ValueError(f"Found multiple taxa with name {name} or gbif_taxon_key {gbif_taxon_key}")
+                else:
+                    taxon = matches.first()
+                    logger.info(f"Found existing taxon {taxon}")
+                    created = False
+
+                if not taxon:
+                    taxon = Taxon.objects.create(
+                        name=name,
+                        rank=rank,
+                        gbif_taxon_key=gbif_taxon_key,
+                        parent=parent_taxon,
+                    )
+                    created = True
 
                 taxa_in_row.append(taxon)
 
@@ -377,6 +394,9 @@ class Command(BaseCommand):
             "common_name_en",
             "notes",
             "sort_phylogeny",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
         is_new = specific_taxon in created_taxa

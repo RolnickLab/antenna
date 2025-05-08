@@ -42,6 +42,8 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.jobs.models import DetectionClusteringJob, Job
+from ami.main.api.serializers import ClusterDetectionsSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -69,6 +71,7 @@ from ..models import (
 from .serializers import (
     ClassificationListSerializer,
     ClassificationSerializer,
+    ClassificationSimilaritySerializer,
     ClassificationWithTaxaSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
@@ -743,6 +746,27 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             }
         )
 
+    @action(detail=True, methods=["post"], name="cluster detections")
+    def cluster_detections(self, request, pk=None):
+        """
+        Trigger a background job to cluster detections from this collection.
+        """
+
+        collection: SourceImageCollection = self.get_object()
+        serializer = ClusterDetectionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
+        job = Job.objects.create(
+            name=f"Clustering detections for collection {collection.pk}",
+            project=collection.project,
+            source_image_collection=collection,
+            job_type_key=DetectionClusteringJob.key,
+            params=params,
+        )
+        job.enqueue()
+        logger.info(f"Triggered clustering job for collection {collection.pk}")
+        return Response({"job_id": job.pk, "project_id": collection.project.pk})
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -1046,6 +1070,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "event",
         "deployment",
         "determination__rank",
+        "determination_ood_score",
     ]
     ordering_fields = [
         "created_at",
@@ -1058,6 +1083,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination",
         "determination__name",
         "determination_score",
+        "determination_ood_score",
         "event",
         "detections_count",
         "created_at",
@@ -1161,6 +1187,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "last_detected",
         "best_determination_score",
         "name",
+        "cover_image_url",
     ]
     search_fields = ["name", "parent__name"]
 
@@ -1270,8 +1297,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
 
         if project:
-            # Allow showing detail views for unobserved taxa
-            include_unobserved = True
+            include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
@@ -1408,6 +1434,17 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
             return ClassificationWithTaxaSerializer
         else:
             return ClassificationSerializer
+
+    @action(detail=True, methods=["get"])
+    def similar(self, request, pk=None):
+        try:
+            ref_classification = self.get_object()
+            similar_qs = ref_classification.get_similar_classifications(distance_metric="cosine")
+            serializer = ClassificationSimilaritySerializer(similar_qs, many=True, context={"request": request})
+            return Response(serializer.data)
+
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SummaryView(GenericAPIView, ProjectMixin):
