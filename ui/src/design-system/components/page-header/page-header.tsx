@@ -43,6 +43,6 @@ export const PageHeader = ({
         </div>
       </div>
     </div>
-    <div className={styles.row}>{children}</div>
+    <div className={classNames(styles.row, 'no-print')}>{children}</div>
   </div>
 )

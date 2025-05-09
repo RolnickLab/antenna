@@ -457,6 +457,9 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
             "rank",
             "details",
             "gbif_taxon_key",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
 
@@ -532,6 +535,8 @@ class TaxonListSerializer(DefaultSerializer):
             "tags",
             "last_detected",
             "best_determination_score",
+            "cover_image_url",
+            "unknown_species",
             "created_at",
             "updated_at",
         ]
@@ -716,6 +721,7 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "deployment",
             "event",
             "determination_score",
+            "determination_ood_score",
             "determination",
             "best_detection",
             "detections_count",
@@ -758,6 +764,11 @@ class TaxonSerializer(DefaultSerializer):
             "gbif_taxon_key",
             "tags",
             "project_tags",
+            "last_detected",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
+            "unknown_species",
         ]
 
 
@@ -772,6 +783,7 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
             "details",
             "determination",
             "determination_score",
+            "determination_ood_score",
             "determination_algorithm",
         ]
 
@@ -786,6 +798,7 @@ class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
+    features_2048 = serializers.ListField(child=serializers.FloatField(), read_only=True)
 
     class Meta:
         model = Classification
@@ -797,6 +810,8 @@ class ClassificationSerializer(DefaultSerializer):
             "algorithm",
             "scores",
             "logits",
+            "ood_score",
+            "features_2048",
             "top_n",
             "created_at",
             "updated_at",
@@ -827,6 +842,7 @@ class ClassificationListSerializer(DefaultSerializer):
             "details",
             "taxon",
             "score",
+            "ood_score",
             "algorithm",
             "created_at",
             "updated_at",
@@ -845,6 +861,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "details",
             "taxon",
             "score",
+            "ood_score",
             "terminal",
             "algorithm",
             "created_at",
@@ -911,6 +928,23 @@ class DetectionNestedSerializer(DefaultSerializer):
             "bbox",
             "occurrence",
             "classifications",
+        ]
+
+
+class ClassificationSimilaritySerializer(ClassificationSerializer):
+    distance = serializers.FloatField(read_only=True)
+    detection = DetectionNestedSerializer(read_only=True)
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = [
+            "id",
+            "details",
+            "distance",
+            "detection",
+            "taxon",
+            "algorithm",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -1225,6 +1259,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detections_count",
             "detection_images",
             "determination_score",
+            "determination_ood_score",
             "determination_details",
             "identifications",
             "created_at",
@@ -1542,3 +1577,11 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class ClusterDetectionsSerializer(serializers.Serializer):
+    ood_threshold = serializers.FloatField(required=False, default=0.0)
+    feature_extraction_algorithm = serializers.CharField(required=False, allow_null=True)
+    algorithm = serializers.CharField(required=False, default="agglomerative")
+    algorithm_kwargs = serializers.DictField(required=False, default={"distance_threshold": 0.5})
+    pca = serializers.DictField(required=False, default={"n_components": 384})

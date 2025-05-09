@@ -23,12 +23,14 @@ from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
+from pgvector.django import CosineDistance, L2Distance, VectorField
 
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
+from ami.ml.clustering_algorithms.cluster_detections import cluster_detections
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
@@ -1912,12 +1914,16 @@ class Classification(BaseModel):
 
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
+    ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
     timestamp = models.DateTimeField()
     terminal = models.BooleanField(
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
     )
     logits = ArrayField(
         models.FloatField(), null=True, help_text="The raw output of the last fully connected layer of the model"
+    )
+    features_2048 = VectorField(
+        dimensions=2048, null=True, default=None, help_text="Feature embedding from the model backbone"
     )
     scores = ArrayField(
         models.FloatField(),
@@ -2025,6 +2031,35 @@ class Classification(BaseModel):
             }
             for i, s in top_scored
         ]
+
+    def get_similar_classifications(self, distance_metric="cosine") -> models.QuerySet:
+        """
+        Return  most similar classifications based on feature_2048 embeddings.
+        Supports: 'cosine' and 'l2' distances
+        """
+        if self.features_2048 is None:
+            raise ValueError("This classification does not have a feature vector.")
+
+        if not self.algorithm:
+            raise ValueError("This classification is not associated with an algorithm.")
+        distance_metrics = {
+            "cosine": CosineDistance,
+            "l2": L2Distance,
+        }
+        distance_fn = distance_metrics.get(distance_metric)
+
+        if distance_fn is None:
+            raise ValueError(
+                f"""Unsupported distance metric: {distance_metric}.
+                Supported metrics are : {','.join(list(distance_metrics.keys()))}"""
+            )
+
+        return (
+            Classification.objects.exclude(features_2048=None)
+            .filter(algorithm=self.algorithm)
+            .annotate(distance=distance_fn("features_2048", self.features_2048))
+            .order_by("distance")
+        )
 
     def save(self, *args, **kwargs):
         """
@@ -2254,8 +2289,15 @@ class Occurrence(BaseModel):
 
     # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
-    determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
-    determination_score = models.FloatField(null=True, blank=True)
+    determination = models.ForeignKey(
+        "Taxon",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="occurrences",
+        help_text="The Taxon assigned to this occurrence",
+    )
+    determination_score = models.FloatField(null=True, blank=True, help_text="Estimation of confidence")
+    determination_ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
 
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -2369,6 +2411,20 @@ class Occurrence(BaseModel):
         else:
             return None
 
+    def get_determination_ood_score(self) -> float | None:
+        """
+        Calculate the OOD score for the whole occurrence.
+        Uses the average OOD score of all identifications.
+        """
+        if not self.determination:
+            return None
+        mean_ood_score = Classification.objects.filter(
+            detection__occurrence=self,
+        ).aggregate(
+            models.Avg("ood_score"),
+        )["ood_score__avg"]
+        return mean_ood_score
+
     def predictions(self):
         # Retrieve the classification with the max score for each algorithm
         classifications = (
@@ -2454,6 +2510,7 @@ def update_occurrence_determination(
     )
     new_determination = None
     new_score = None
+    new_ood_score = None
 
     top_identification = occurrence.best_identification
     if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
@@ -2473,6 +2530,14 @@ def update_occurrence_determination(
     if new_score and new_score != occurrence.determination_score:
         logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
+        needs_update = True
+
+    new_ood_score = occurrence.get_determination_ood_score()
+    if new_ood_score is not None and new_ood_score != occurrence.determination_ood_score:
+        logger.debug(
+            f"Changing det. OOD score of {occurrence} from {occurrence.determination_ood_score} to {new_ood_score}"
+        )
+        occurrence.determination_ood_score = new_ood_score
         needs_update = True
 
     if not needs_update:
@@ -2734,7 +2799,11 @@ class Taxon(BaseModel):
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
     inat_taxon_id = models.BigIntegerField("iNaturalist taxon ID", blank=True, null=True)
+    fieldguide_id = models.CharField(max_length=255, blank=True, null=True)
     # lepsai_id = models.BigIntegerField("LepsAI / Fieldguide ID", blank=True, null=True)
+
+    cover_image_url = models.URLField(max_length=255, blank=True, null=True)
+    cover_image_credit = models.CharField(max_length=255, blank=True, null=True)
 
     notes = models.TextField(blank=True)
 
@@ -2749,6 +2818,7 @@ class Taxon(BaseModel):
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
     tags = models.ManyToManyField("Tag", related_name="taxa", blank=True)
+    unknown_species = models.BooleanField(default=False, help_text="Is this a clustering-generated taxon")
     objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
@@ -3179,6 +3249,23 @@ class SourceImageCollection(BaseModel):
             self.images.set(method(**kwargs))
             self.save()
             task_logger.info(f"Done sampling and saving captures to {self}")
+
+    def cluster_detections(self, job: "Job | None" = None):
+        if job:
+            task_logger = job.logger
+            params = job.params
+        else:
+            task_logger = logger
+            params = {
+                "algorithm": "agglomerative",
+                "ood_threshold": 0.5,
+                "algorithm_kwargs": {
+                    "distance_threshold": 0.5,
+                },
+                "pca": {"n_components": 384},
+            }
+
+        cluster_detections(collection=self, params=params, job=job, task_logger=task_logger)
 
     def sample_random(self, size: int = 100):
         """Create a random sample of source images"""
