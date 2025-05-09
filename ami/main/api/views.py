@@ -42,9 +42,8 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.serializers import TagSerializer
 from ami.jobs.models import DetectionClusteringJob, Job
-from ami.main.api.serializers import ClusterDetectionsSerializer
+from ami.main.api.serializers import ClusterDetectionsSerializer, TagSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -1299,7 +1298,6 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
 
         if project:
-
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             qs = self.attach_tags_by_project(qs, project)
