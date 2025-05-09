@@ -26,6 +26,7 @@ from .models import (
     Site,
     SourceImage,
     SourceImageCollection,
+    Tag,
     TaxaList,
     Taxon,
 )
@@ -596,3 +597,10 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "project")
+    list_filter = ("project",)
+    search_fields = ("name",)
