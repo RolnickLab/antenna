@@ -1362,9 +1362,27 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         tag_prefetch = Prefetch(
             "tags",
             queryset=Tag.objects.filter(project=project),
-            to_attr="tags",
+            to_attr="project_tags",
         )
         return qs.prefetch_related(tag_prefetch)
+
+    @action(detail=True, methods=["post"])
+    def assign_tags(self, request, pk=None):
+        """
+        Assign tags to a taxon
+        """
+        taxon = self.get_object()
+        tag_ids = request.data.get("tag_ids")
+
+        if not isinstance(tag_ids, list):
+            return Response({"detail": "tag_ids must be a list of IDs."}, status=status.HTTP_400_BAD_REQUEST)
+
+        tags = Tag.objects.filter(id__in=tag_ids)
+        taxon.tags.set(tags)  # replaces all tags for this taxon
+        return Response(
+            {"taxon_id": taxon.id, "assigned_tag_ids": [tag.pk for tag in tags]},
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
@@ -1395,7 +1413,7 @@ class TagViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             # Filter by project
-            return qs.filter(projects=project)
+            return qs.filter(project=project)
         return qs
 
 
