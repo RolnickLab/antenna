@@ -2748,7 +2748,7 @@ class Taxon(BaseModel):
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
-
+    tags = models.ManyToManyField("Tag", related_name="taxa", blank=True)
     objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
@@ -2960,7 +2960,6 @@ class Tag(BaseModel):
 
     name = models.CharField(max_length=255)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags")
-    taxa = models.ManyToManyField(Taxon, related_name="tags", blank=True)
 
     class Meta:
         unique_together = ("name", "project")
