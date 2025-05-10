@@ -2808,6 +2808,7 @@ class Taxon(BaseModel):
     notes = models.TextField(blank=True)
 
     projects = models.ManyToManyField("Project", related_name="taxa")
+    observed_projects = models.ManyToManyField("Project", through="TaxonObserved", related_name="oberved_taxa")
     direct_children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
@@ -3006,6 +3007,22 @@ class Taxon(BaseModel):
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
+
+
+@final
+class TaxonObserved(BaseModel):
+    "Intermediate model to link taxa and projects"
+
+    taxon = models.ForeignKey("Taxon", on_delete=models.CASCADE)
+    project = models.ForeignKey("Project", on_delete=models.CASCADE)
+
+    # Representative occurrence for this taxon in this project
+    example_occurrence = models.ForeignKey(
+        "Occurrence", null=True, blank=True, on_delete=models.SET_NULL, related_name="taxon_observed"
+    )
+
+    class Meta:
+        unique_together = ("taxon", "project")
 
 
 @final
