@@ -23,7 +23,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami.base.filters import NullsLastOrderingFilter
+from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import (
     CanDeleteIdentification,
@@ -1048,6 +1048,9 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
+OccurrenceOODScoreFilter = ThresholdFilter.create("determination_ood_score")
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1065,12 +1068,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
+        OccurrenceOODScoreFilter,
     ]
     filterset_fields = [
         "event",
         "deployment",
         "determination__rank",
-        "determination_ood_score",
     ]
     ordering_fields = [
         "created_at",
@@ -1086,7 +1089,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination_ood_score",
         "event",
         "detections_count",
-        "created_at",
     ]
 
     def get_serializer_class(self):
