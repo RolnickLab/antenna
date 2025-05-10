@@ -27,7 +27,7 @@ class ThresholdFilter(BaseFilterBackend):
     Example:
 
     DeterminationScoreFilter = ThresholdFilter.create(
-        query_param="classification_treshold",
+        query_param="classification_threshold",
         filter_param="determination_score",
     )
     OODScoreFilter = ThresholdFilter.create("determination_ood_score")
