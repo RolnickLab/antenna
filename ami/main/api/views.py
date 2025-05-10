@@ -1048,6 +1048,9 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
+OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
+    query_param="classification_threshold", filter_param="determination_score"
+)
 OccurrenceOODScoreFilter = ThresholdFilter.create("determination_ood_score")
 
 
@@ -1068,6 +1071,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
+        OccurrenceDeterminationScoreFilter,
         OccurrenceOODScoreFilter,
     ]
     filterset_fields = [
@@ -1113,14 +1117,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
 
-        if self.action == "list":
-            qs = (
-                qs.all()
-                .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .order_by("-determination_score")
-            )
-
-        else:
+        if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
                     "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
