@@ -1126,7 +1126,36 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="classification_threshold",
+                description="Filter occurrences by minimum determination score.",
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="determination_ood_score",
+                description="Filter occurrences by minimum out-of-distribution score.",
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="taxon",
+                description="Filter occurrences by determination taxon ID. Shows occurrences determined as this taxon "
+                "or any of its child taxa.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="collection_id",
+                description="Filter occurrences by the collection their detections' source images belong to.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ]
+    )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
