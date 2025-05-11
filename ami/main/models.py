@@ -2445,6 +2445,28 @@ class Occurrence(BaseModel):
 
         return best_detection
 
+    def get_best_predictions(self, filters: dict = {}) -> models.QuerySet[Classification]:
+        """
+        Retrieve the classification with the max score for each algorithm
+        from any detection belonging to this occurrence.
+
+        This should be overriden in the viewset to use the pre-fetched
+        classifications instead of hitting the database for each occurrence (n+1 query problem).
+        """
+        classifications = (
+            Classification.objects.filter(detection__occurrence=self, **filters)
+            .filter(
+                score__in=models.Subquery(
+                    Classification.objects.filter(detection__occurrence=self)
+                    .values("algorithm")
+                    .annotate(max_score=models.Max("score"))
+                    .values("max_score")
+                )
+            )
+            .order_by("-created_at")
+        )
+        return classifications
+
     def get_best_prediction(self, filters: dict = {}) -> Classification | None:
         """
         Use the best prediction as the best identification if there are no human identifications.
@@ -2453,7 +2475,7 @@ class Occurrence(BaseModel):
         Terminal classifications are preferred over non-terminal ones - even if they have a lower score.
         (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
         """
-        predictions = Classification.objects.filter(detection__occurrence=self, **filters)
+        predictions = self.get_best_predictions(filters=filters)
 
         # First try to get a terminal classification
         terminal_classification = predictions.filter(terminal=True).order_by("-score", "-created_at").first()
