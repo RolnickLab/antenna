@@ -2445,7 +2445,7 @@ class Occurrence(BaseModel):
 
         return best_detection
 
-    def get_best_prediction(self) -> Classification | None:
+    def get_best_prediction(self, filters: dict = {}) -> Classification | None:
         """
         Use the best prediction as the best identification if there are no human identifications.
 
@@ -2453,7 +2453,7 @@ class Occurrence(BaseModel):
         Terminal classifications are preferred over non-terminal ones - even if they have a lower score.
         (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
         """
-        predictions = Classification.objects.filter(detection__occurrence=self)
+        predictions = Classification.objects.filter(detection__occurrence=self, **filters)
 
         # First try to get a terminal classification
         terminal_classification = predictions.filter(terminal=True).order_by("-score", "-created_at").first()
@@ -2484,15 +2484,21 @@ class Occurrence(BaseModel):
     def get_determination_ood_score(self) -> float | None:
         """
         Calculate the OOD score for the whole occurrence.
-        Uses the average OOD score of all identifications.
+        Uses the average OOD score of all detections belonging to this occurrence.
+        All OOD scores must come from the same algorithm
+        and they only apply to machine predictions, not human identifications.
         """
-        if not self.determination:
+        # Get the best prediction that has an OOD score
+        # this should be the last classification before the clustering algorithm
+        # @TODO copy the OOD score from the best classification to the clustering classification during clustering
+        best_prediction = self.get_best_prediction(filters={"ood_score__isnull": False})
+        if not best_prediction:
             return None
         mean_ood_score = Classification.objects.filter(
             detection__occurrence=self,
-        ).aggregate(
-            models.Avg("ood_score"),
-        )["ood_score__avg"]
+            ood_score__isnull=False,
+            algorithm=best_prediction.algorithm,
+        ).aggregate(models.Avg("ood_score"),)["ood_score__avg"]
         return mean_ood_score
 
     def context_url(self):
