@@ -2541,7 +2541,7 @@ def update_occurrence_determination(
     current_determination: typing.Optional["Taxon"] = None,
     save=True,
     task_logger: logging.Logger | None = None,
-) -> bool:
+) -> tuple[Occurrence, dict[str, typing.Any]]:
     """
     Update the determination of the occurrence based on the identifications & predictions.
 
@@ -2554,7 +2554,6 @@ def update_occurrence_determination(
     this can also be passed in as an argument to avoid an extra database query.
     """
     task_logger = task_logger or logger
-    fields_to_update = set()
 
     # Get the current determination from the database if not passed in
     if current_determination is None:
@@ -2565,91 +2564,67 @@ def update_occurrence_determination(
         except Occurrence.DoesNotExist:
             current_determination = None
 
-    # Always check the best identification and best prediction
+    # Collect all necessary values first
     best_identification = occurrence.get_best_identification()
     best_prediction = occurrence.get_best_prediction() if not best_identification else None
+
+    # Best detection is used as the representative image for the occurrence in either case
+    best_detection = occurrence.get_best_detection()
+
+    # Determine values for all attributes
     new_determination = None
+    new_determination_score = None
+    new_determination_ood_score = occurrence.get_determination_ood_score()
 
     # Identifications take precedence over machine predictions
     if best_identification:
-        if best_identification != occurrence.best_identification:
-            occurrence.best_identification = best_identification
-            fields_to_update.add("best_identification")
-
-        # Always use the identification's taxon for the determination
         new_determination = best_identification.taxon
-        if occurrence.best_prediction is not None:
-            occurrence.best_prediction = None
-            fields_to_update.add("best_prediction")
-
-        if occurrence.determination_score != best_identification.score:
-            occurrence.determination_score = best_identification.score
-            fields_to_update.add("determination_score")
-
-    # If there are no identifications, use the best prediction
+        new_determination_score = best_identification.score
     elif best_prediction:
-        if best_prediction != occurrence.best_prediction:
-            occurrence.best_prediction = best_prediction
-            fields_to_update.add("best_prediction")
-
-        # Use the prediction's taxon for the determination if it exists
         new_determination = best_prediction.taxon
+        new_determination_score = best_prediction.score
 
-        # Clear withdrawn or removed identifications
-        if occurrence.best_identification is not None:
-            occurrence.best_identification = None
-            fields_to_update.add("best_identification")
+    # Prepare fields that need to be updated (using a dictionary for bulk update)
+    update_fields = {}
 
-        if occurrence.determination_score != best_prediction.score:
-            occurrence.determination_score = best_prediction.score
-            fields_to_update.add("determination_score")
-
-    # If both identification and prediction are gone, clear everything
-    else:
-        if occurrence.best_identification is not None:
-            occurrence.best_identification = None
-            fields_to_update.add("best_identification")
-
-        if occurrence.best_prediction is not None:
-            occurrence.best_prediction = None
-            fields_to_update.add("best_prediction")
-
-        if occurrence.determination_score is not None:
-            occurrence.determination_score = None
-            fields_to_update.add("determination_score")
-
-    # Check if determination needs to be updated
+    # Check each field for changes
     if new_determination != current_determination:
         task_logger.info(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
-        occurrence.determination = new_determination
-        fields_to_update.add("determination")
+        update_fields["determination"] = new_determination
 
-    # Update OOD score correctly by calculating the average from all classifications
-    if new_determination is not None:
-        classifications = Classification.objects.filter(
-            detection__occurrence=occurrence,
-            ood_score__isnull=False,
-        )
+    if new_determination_score != occurrence.determination_score:
+        update_fields["determination_score"] = new_determination_score
 
-        if classifications.exists():
-            avg_ood_score = classifications.aggregate(models.Avg("ood_score"))["ood_score__avg"]
+    if new_determination_ood_score != occurrence.determination_ood_score:
+        update_fields["determination_ood_score"] = new_determination_ood_score
 
-            if avg_ood_score != occurrence.determination_ood_score:
-                occurrence.determination_ood_score = avg_ood_score
-                fields_to_update.add("determination_ood_score")
+    if best_identification != occurrence.best_identification:
+        update_fields["best_identification"] = best_identification
 
-    best_detection = occurrence.get_best_detection()
+    if best_prediction != occurrence.best_prediction:
+        update_fields["best_prediction"] = best_prediction
+
     if best_detection != occurrence.best_detection:
-        occurrence.best_detection = best_detection
-        fields_to_update.add("best_detection")
+        update_fields["best_detection"] = best_detection
 
-    needs_update = bool(fields_to_update)
+    # Save if there are changes and requested
+    needs_update = bool(update_fields)
     if needs_update:
-        task_logger.info(f"Occurrence {occurrence} needs update of: {fields_to_update}")
+        task_logger.debug(f"Occurrence {occurrence} needs update of: {list(update_fields.keys())}")
+        update_fields["updated_at"] = timezone.now()
         if save:
-            occurrence.save(update_determination=False)
+            # Update fields in the database and refresh the object
+            Occurrence.objects.filter(pk=occurrence.pk).update(**update_fields)
+            # Refresh the object to keep it in sync with the DB
+            occurrence.refresh_from_db()
+        else:
+            # If not saving, just update the fields in the object
+            for field, value in update_fields.items():
+                setattr(occurrence, field, value)
+    else:
+        task_logger.debug(f"Occurrence {occurrence} does not need update")
 
-    return needs_update
+    return occurrence, update_fields
 
 
 class TaxonQuerySet(models.QuerySet):
