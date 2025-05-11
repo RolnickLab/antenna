@@ -19,6 +19,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
   {
     id: 'reference-image',
     name: 'Reference image',
+    sortField: 'cover_image_url',
     renderCell: (item: Species) => {
       return (
         <ImageTableCell
