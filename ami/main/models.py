@@ -1850,8 +1850,6 @@ class Identification(BaseModel):
         """
         current_best: Identification | None = self.occurrence.best_identification
         if current_best and current_best == self:
-            # Invalidate the cached property so it will be re-calculated
-            del self.occurrence.best_identification
             if self.user:
                 previous_id = (
                     Identification.objects.filter(
