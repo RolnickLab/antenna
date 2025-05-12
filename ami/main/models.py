@@ -2808,7 +2808,7 @@ class Taxon(BaseModel):
     notes = models.TextField(blank=True)
 
     projects = models.ManyToManyField("Project", related_name="taxa")
-    observed_projects = models.ManyToManyField("Project", through="TaxonObserved", related_name="oberved_taxa")
+    observed_projects = models.ManyToManyField("Project", through="ProjectTaxon", related_name="project_taxa")
     direct_children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
@@ -3010,7 +3010,7 @@ class Taxon(BaseModel):
 
 
 @final
-class TaxonObserved(BaseModel):
+class ProjectTaxon(BaseModel):
     "Intermediate model to link taxa and projects"
 
     taxon = models.ForeignKey("Taxon", on_delete=models.CASCADE)
@@ -3019,6 +3019,17 @@ class TaxonObserved(BaseModel):
     # Representative occurrence for this taxon in this project
     example_occurrence = models.ForeignKey(
         "Occurrence", null=True, blank=True, on_delete=models.SET_NULL, related_name="taxon_observed"
+    )
+
+    mean_feature_vector = VectorField(
+        dimensions=2048, null=True, default=None, help_text="Cluster center for this taxon in this project"
+    )
+
+    mean_feature_vector_algorithm = models.ForeignKey(
+        "ml.Algorithm",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="taxa_observed",
     )
 
     class Meta:
