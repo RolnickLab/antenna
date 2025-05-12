@@ -50,30 +50,4 @@ class Migration(migrations.Migration):
                 to="main.classification",
             ),
         ),
-        migrations.AddField(
-            model_name="occurrence",
-            name="favorite",
-            field=models.BooleanField(default=False, help_text="Is this a good representative occurrence?"),
-        ),
-        migrations.AddField(
-            model_name="occurrence",
-            name="mean_feature_vector",
-            field=pgvector.django.vector.VectorField(
-                default=None,
-                dimensions=2048,
-                help_text="Mean feature vector of all detections in this occurrence",
-                null=True,
-            ),
-        ),
-        migrations.AddField(
-            model_name="occurrence",
-            name="mean_feature_vector_algorithm",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="occurrences",
-                to="ml.algorithm",
-            ),
-        ),
     ]
