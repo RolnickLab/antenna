@@ -5,6 +5,7 @@ import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { CollectionFilter } from './filters/collection-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
+import { OODScoreFilter } from './filters/ood-score-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
 import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
@@ -22,6 +23,7 @@ const ComponentMap: {
 } = {
   algorithm: AlgorithmFilter,
   classification_threshold: ScoreFilter,
+  determination_ood_score: OODScoreFilter,
   collection: CollectionFilter,
   date_end: DateFilter,
   date_start: DateFilter,
