@@ -70,7 +70,7 @@ export class Occurrence {
   get determinationScore(): number {
     const score = this._occurrence.determination_details.score
 
-    if (score === undefined) {
+    if (!score) {
       return 0
     }
 
@@ -80,7 +80,7 @@ export class Occurrence {
   get determinationOODScore(): number {
     const ood_score = this._occurrence.determination_ood_score
 
-    if (ood_score === undefined) {
+    if (!ood_score) {
       return 0
     }
 
