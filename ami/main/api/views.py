@@ -1160,6 +1160,16 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class TaxonTagFilterBackend(filters.BaseFilterBackend):
+    """FilterBackend that allows OR-based filtering of taxa by tag ID."""
+
+    def filter_queryset(self, request, queryset, view):
+        tag_ids = request.query_params.getlist("tag_id")
+        if tag_ids:
+            queryset = queryset.filter(tags__id__in=tag_ids).distinct()
+        return queryset
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1171,6 +1181,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         CustomTaxonFilter,
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
+        TaxonTagFilterBackend,
     ]
     filterset_fields = [
         "name",
