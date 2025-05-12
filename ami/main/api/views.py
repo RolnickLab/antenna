@@ -1296,11 +1296,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset()
         project = self.get_active_project()
+        qs = self.attach_tags_by_project(qs, project)
 
         if project:
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
-            qs = self.attach_tags_by_project(qs, project)
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
@@ -1385,11 +1385,15 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         Prefetch and override the `.tags` attribute on each Taxon
         with only the tags belonging to the given project.
         """
-        tag_prefetch = Prefetch(
-            "tags",
-            queryset=Tag.objects.filter(project=project),
-            to_attr="project_tags",
-        )
+        # Include all tags if no project is passed
+        if project is None:
+            tag_qs = Tag.objects.all()
+        else:
+            # Prefetch only the tags that belong to the project
+            tag_qs = Tag.objects.filter(models.Q(project=project))
+
+        tag_prefetch = Prefetch("tags", queryset=tag_qs, to_attr="prefetched_tags")
+
         return qs.prefetch_related(tag_prefetch)
 
     @action(detail=True, methods=["post"])
@@ -1399,12 +1403,15 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         taxon = self.get_object()
         tag_ids = request.data.get("tag_ids")
-
+        logger.info(f"Tag IDs: {tag_ids}")
         if not isinstance(tag_ids, list):
             return Response({"detail": "tag_ids must be a list of IDs."}, status=status.HTTP_400_BAD_REQUEST)
 
         tags = Tag.objects.filter(id__in=tag_ids)
+        logger.info(f"Tags: {tags}, len: {len(tags)}")
         taxon.tags.set(tags)  # replaces all tags for this taxon
+        taxon.save()
+        logger.info(f"Tags after assingment : {len(taxon.tags.all())}")
         return Response(
             {"taxon_id": taxon.id, "assigned_tag_ids": [tag.pk for tag in tags]},
             status=status.HTTP_200_OK,

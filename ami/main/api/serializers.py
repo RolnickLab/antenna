@@ -740,13 +740,12 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
-    tags = TagSerializer(many=True, read_only=True)
-    project_tags = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
 
-    def get_project_tags(self, obj):
-        request = self.context.get("request")
-        tags = getattr(obj, "project_tags", [])
-        return TagSerializer(tags, many=True, context={"request": request}).data
+    def get_tags(self, obj):
+        # Use prefetched tags
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
@@ -763,7 +762,6 @@ class TaxonSerializer(DefaultSerializer):
             "occurrences",
             "gbif_taxon_key",
             "tags",
-            "project_tags",
             "last_detected",
             "fieldguide_id",
             "cover_image_url",

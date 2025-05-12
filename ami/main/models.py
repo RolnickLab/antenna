@@ -3029,7 +3029,7 @@ class Tag(BaseModel):
     """A tag for taxa"""
 
     name = models.CharField(max_length=255)
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags", null=True, blank=True)
 
     class Meta:
         unique_together = ("name", "project")
