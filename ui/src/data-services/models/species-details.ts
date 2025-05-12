@@ -1,4 +1,3 @@
-import _ from 'lodash'
 import { ServerSpecies, Species } from './species'
 
 export type ServerSpeciesDetails = ServerSpecies & any // TODO: Update this type
@@ -20,10 +19,9 @@ export class SpeciesDetails extends Species {
       image_url: occurrence.best_detection.url,
       caption: this.isUnknown
         ? 'Center of cluster'
-        : `${occurrence.determination.name} (${_.round(
-            occurrence.determination_score,
-            4
-          )})`,
+        : `${
+            occurrence.determination.name
+          } (${occurrence.determination_score.toFixed(2)})`,
     }
   }
 }
