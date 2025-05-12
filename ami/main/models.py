@@ -3018,7 +3018,7 @@ class ProjectTaxon(BaseModel):
 
     # Representative occurrence for this taxon in this project
     example_occurrence = models.ForeignKey(
-        "Occurrence", null=True, blank=True, on_delete=models.SET_NULL, related_name="taxon_observed"
+        "Occurrence", null=True, blank=True, on_delete=models.SET_NULL, related_name="project_taxa"
     )
 
     mean_feature_vector = VectorField(
