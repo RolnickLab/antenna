@@ -50,9 +50,6 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
             </InfoBlockField>
-            <InfoBlockField label="Stations">
-              <InfoBlockFieldValue value={undefined} />
-            </InfoBlockField>
             <InfoBlockField label={translate(STRING.FIELD_LABEL_OCCURRENCES)}>
               <InfoBlockFieldValue
                 value={
