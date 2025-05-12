@@ -472,6 +472,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
         "rank",
         "parent",
         "parent_names",
+        "tag_list",
         "list_names",
         "created_at",
         "updated_at",
@@ -496,6 +497,10 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
         description="Occurrences",
         ordering="occurrence_count",
     )
+    @admin.display(description="Tags")
+    def tag_list(self, obj) -> str:
+        return ", ".join([tag.name for tag in obj.tags.all()])
+
     def occurrence_count(self, obj) -> int:
         return obj.occurrence_count
 
