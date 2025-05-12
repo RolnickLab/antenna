@@ -2432,40 +2432,53 @@ class Occurrence(BaseModel):
         Retrieve the classification with the max score for each algorithm
         from any detection belonging to this occurrence.
 
-        This should be overriden in the viewset to use the pre-fetched
-        classifications instead of hitting the database for each occurrence (n+1 query problem).
+        This data is for the list of predictions in the Identification tab of the Occurrence Detail view
+        in the UI. See the OccurrenceSerializer for the serializer method.
+
+        If this is need for a list view (multiple occurrenes) it should be overriden
+        in the viewset to use the pre-fetched classifications instead of hitting the database
+        for each occurrence (n+1 query problem).
         """
-        classifications = (
+        # Get the highest scoring classification for each algorithm
+        # Use a subquery to find the max score for each algorithm
+        subquery = (
             Classification.objects.filter(detection__occurrence=self, **filters)
-            .filter(
-                score__in=models.Subquery(
-                    Classification.objects.filter(detection__occurrence=self)
-                    .values("algorithm")
-                    .annotate(max_score=models.Max("score"))
-                    .values("max_score")
-                )
-            )
-            .order_by("-created_at")
+            .values("algorithm")
+            .annotate(max_score=models.Max("score"))
         )
+
+        # Join the subquery results to get the classifications with those max scores
+        # This ensures we get one classification per algorithm (the one with highest score)
+        classifications = Classification.objects.filter(
+            detection__occurrence=self,
+            **filters,
+            algorithm__in=models.Subquery(subquery.values("algorithm")),
+            score__in=models.Subquery(subquery.values("max_score")),
+        ).order_by("-created_at")
+
         return classifications
 
     def get_best_prediction(self, filters: dict = {}) -> Classification | None:
         """
         Use the best prediction as the best identification if there are no human identifications.
 
+        This is used to automatically determin the Taxon for the occurrence (the determination).
+        See `get_best_predictions` for the list of all predictions presented as choices in the UI to the user.
+
         Uses the highest scoring terminal classification (from any algorithm) as the best prediction.
         Terminal classifications are preferred over non-terminal ones - even if they have a lower score.
         (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
         """
-        predictions = self.get_best_predictions(filters=filters)
+        # Get all classifications for this occurrence to choose from
+        all_classifications = Classification.objects.filter(detection__occurrence=self, **filters)
 
         # First try to get a terminal classification
-        terminal_classification = predictions.filter(terminal=True).order_by("-score", "-created_at").first()
+        terminal_classification = all_classifications.filter(terminal=True).order_by("-score", "-created_at").first()
         if terminal_classification:
             return terminal_classification
 
         # If no terminal classification exists, fall back to non-terminal
-        return predictions.filter(terminal=False).order_by("-score").first()
+        return all_classifications.filter(terminal=False).order_by("-score").first()
 
     def get_best_identification(self) -> Identification | None:
         """

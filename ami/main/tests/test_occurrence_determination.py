@@ -219,6 +219,91 @@ class TestUpdateOccurrenceDetermination(TestCase):
         self.assertEqual(self.occurrence.determination_score, 0.9)
         self.assertEqual(self.occurrence.best_prediction, high_score_classification)
 
+    def test_multiple_detections_best_classification(self):
+        """Test occurrence with multiple detections and multiple algorithms per detection"""
+        # Create a second detection for the same occurrence
+        second_detection = Detection.objects.create(
+            source_image=self.source_image,
+            occurrence=self.occurrence,
+            timestamp=self.source_image.timestamp,
+        )
+
+        # Create a second algorithm
+        second_algorithm = Algorithm.objects.create(name="Second Algorithm", version=1)
+
+        # Add classifications from the first algorithm to both detections
+        Classification.objects.create(
+            detection=self.detection,
+            taxon=self.taxon1,  # Lepidoptera (ORDER)
+            score=0.8,
+            timestamp=self.source_image.timestamp,
+            algorithm=self.algorithm,
+            terminal=True,
+        )
+
+        Classification.objects.create(
+            detection=second_detection,
+            taxon=self.taxon2,  # (Nymphalidae (FAMILY)) - Better classification (more specific) but lower score
+            score=0.7,
+            timestamp=self.source_image.timestamp,
+            algorithm=self.algorithm,
+            terminal=True,
+        )
+
+        # Add classifications from the second algorithm to both detections
+        Classification.objects.create(
+            detection=self.detection,
+            taxon=self.taxon3,  # Vanessa atalanta (SPECIES)
+            score=0.6,
+            timestamp=self.source_image.timestamp,
+            algorithm=second_algorithm,
+            terminal=True,
+        )
+
+        cls4 = Classification.objects.create(
+            detection=second_detection,
+            taxon=self.taxon2,  # Nymphalidae (FAMILY)
+            score=0.9,  # Higher score
+            timestamp=self.source_image.timestamp,
+            algorithm=second_algorithm,
+            terminal=True,
+        )
+
+        # Update the occurrence determination
+        update_occurrence_determination(self.occurrence)
+
+        # Refresh the occurrence from the database
+        self.occurrence.refresh_from_db()
+
+        # Check that the highest scoring classification from any algorithm is used
+        # This should be cls4 since it has the highest score (0.9)
+        self.assertEqual(self.occurrence.determination, self.taxon2)  # Nymphalidae (FAMILY)
+        self.assertEqual(self.occurrence.determination_score, 0.9)
+        self.assertEqual(self.occurrence.best_prediction, cls4)
+
+        # Now add a non-terminal classification with an even higher score
+        # to verify that terminal status is prioritized over score
+        Classification.objects.create(
+            detection=second_detection,
+            taxon=self.taxon1,  # Lepidoptera (ORDER)
+            score=0.95,  # Highest score
+            timestamp=self.source_image.timestamp,
+            algorithm=second_algorithm,
+            terminal=False,  # Non-terminal classification
+        )
+
+        # Update the occurrence determination
+        update_occurrence_determination(self.occurrence)
+
+        # Refresh the occurrence from the database
+        self.occurrence.refresh_from_db()
+
+        # The determination should still be cls4 (taxon2) even though cls5 has a higher score
+        # because cls5 is non-terminal and cls4 is terminal
+        self.assertEqual(self.occurrence.determination, self.taxon2)  # Nymphalidae (FAMILY)
+        self.assertEqual(self.occurrence.determination_score, 0.9)
+        self.assertEqual(self.occurrence.best_prediction, cls4)
+
     def test_terminal_classification_preferred_over_non_terminal(self):
         """Test that terminal classifications are preferred over non-terminal ones"""
         # Add a non-terminal classification with a higher score
