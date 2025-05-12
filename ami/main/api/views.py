@@ -1389,8 +1389,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if project is None:
             tag_qs = Tag.objects.all()
         else:
-            # Prefetch only the tags that belong to the project
-            tag_qs = Tag.objects.filter(models.Q(project=project))
+            # Prefetch only the tags that belong to the project or are global
+            tag_qs = Tag.objects.filter(models.Q(project=project) | models.Q(project__isnull=True))
 
         tag_prefetch = Prefetch("tags", queryset=tag_qs, to_attr="prefetched_tags")
 
