@@ -20,9 +20,10 @@ class TestUpdateOccurrenceDetermination(TestCase):
         self.project, self.deployment = setup_test_project()
 
         # Create an admin user for identifications
-        self.user = User.objects.create_user(
-            email="tester@example.com", password="password", is_staff=True
-        )  # noqa: E501
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser@insectai.org",
+            is_staff=True,
+        )
 
         # Create taxa to use for identifications and classifications
         create_taxa(project=self.project)
@@ -158,9 +159,10 @@ class TestUpdateOccurrenceDetermination(TestCase):
         # Verify the identification is being used
         self.assertEqual(self.occurrence.determination, self.taxon2)
 
-        # Now withdraw the identification
-        identification.withdrawn = True
-        identification.save()
+        # Now delete the identification
+        # this is the action taken when a user removes their identification
+        # from the occurrence
+        identification.delete()
 
         # Update the occurrence determination
         update_occurrence_determination(self.occurrence)
