@@ -22,15 +22,9 @@ export class Species extends Taxon {
       return undefined
     }
 
-    // Temporary workaround for invalid cert on https://production.chroma.s3.amazonaws.com
-    const coverImageUrl = this._species.cover_image_url.replace(
-      'https://production.chroma.s3.amazonaws.com',
-      'https://production-chroma.s3.amazonaws.com'
-    )
-
     if (!this._species.cover_image_credit) {
       return {
-        url: coverImageUrl,
+        url: this._species.cover_image_url,
         caption: this.isUnknown
           ? `${this.name} (most similar known taxon)`
           : this.name,
@@ -38,7 +32,7 @@ export class Species extends Taxon {
     }
 
     return {
-      url: coverImageUrl,
+      url: this._species.cover_image_url,
       caption: this.isUnknown
         ? `${this.name} (most similar known taxon), ${this._species.cover_image_credit}`
         : `${this.name}, ${this._species.cover_image_credit}`,
