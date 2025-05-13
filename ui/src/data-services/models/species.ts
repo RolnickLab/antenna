@@ -1,3 +1,4 @@
+import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
 export type ServerSpecies = any // TODO: Update this type
@@ -79,5 +80,9 @@ export class Species extends Taxon {
 
   get scoreLabel(): string {
     return this.score.toFixed(2)
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._species.user_permissions
   }
 }
