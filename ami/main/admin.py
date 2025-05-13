@@ -493,10 +493,6 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
 
         return qs.annotate(occurrence_count=models.Count("occurrences")).order_by("-occurrence_count")
 
-    @admin.display(
-        description="Occurrences",
-        ordering="occurrence_count",
-    )
     @admin.display(description="Tags")
     def tag_list(self, obj) -> str:
         return ", ".join([tag.name for tag in obj.tags.all()])
