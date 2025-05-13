@@ -5,7 +5,7 @@ import { Icon } from 'lucide-react'
 import { CONSTANTS, ProgressCircle } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
-const OOD_SCORE_THRESHOLD = 0.2
+const OOD_SCORE_THRESHOLD = 0.3
 
 export const OODScore = ({ occurrence }: { occurrence: Occurrence }) => {
   const color = (() => {
