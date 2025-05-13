@@ -85,11 +85,11 @@ export const AVAILABLE_FILTERS: {
   },
   {
     label: 'Include tag',
-    field: 'tag',
+    field: 'tag_id',
   },
   {
     label: 'Exclude tag',
-    field: 'not_tag',
+    field: 'not_tag_id',
   },
   {
     label: 'Taxon',

@@ -50,8 +50,8 @@ export const Species = () => {
           {taxaLists.length > 0 && (
             <FilterControl data={taxaLists} field="taxa_list_id" />
           )}
-          <FilterControl data={tags} field="tag" />
-          <FilterControl data={tags} field="not_tag" />
+          <FilterControl data={tags} field="tag_id" />
+          <FilterControl data={tags} field="not_tag_id" />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader
