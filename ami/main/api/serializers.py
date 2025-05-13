@@ -519,7 +519,11 @@ class TaxonListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     parents = TaxonNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
-    tags = TagSerializer(many=True, read_only=True)
+    tags = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
