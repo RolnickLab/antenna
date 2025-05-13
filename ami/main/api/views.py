@@ -58,6 +58,7 @@ from ..models import (
     Page,
     Project,
     ProjectQuerySet,
+    ProjectTaxon,
     S3StorageSource,
     Site,
     SourceImage,
@@ -1127,6 +1128,39 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
+    @action(detail=True, methods=["post"], url_path="set-as-representative")
+    def set_as_representative(self, request, pk=None):
+        """
+        Set this occurrence as the representative example for its taxon in the current project.
+        """
+        occurrence = self.get_object()
+
+        # Ensure the occurrence has a determination (taxon)
+        taxon = occurrence.determination
+        if not taxon:
+            return Response(
+                {"detail": "This occurrence has no taxon assigned (determination)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Ensure the occurrence is assigned to a project
+        project = occurrence.project or self.get_active_project()
+        if not project:
+            return Response(
+                {"detail": "This occurrence is not associated with any project."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get or create the ProjectTaxon entry
+        try:
+            project_taxon, _ = ProjectTaxon.objects.get_or_create(project=project, taxon=taxon)
+            project_taxon.example_occurrence = occurrence
+            project_taxon.save()
+
+            return Response({"detail": "Representative occurrence set successfully."}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"detail": f"Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -1298,6 +1332,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         if project:
             include_unobserved = True  # Show detail views for unobserved taxa instead of 404
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "projecttaxon_set",
+                    queryset=ProjectTaxon.objects.filter(project=project).select_related("example_occurrence"),
+                    to_attr="representative_occurrence",
+                )
+            )
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
