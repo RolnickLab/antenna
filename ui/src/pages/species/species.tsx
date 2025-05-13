@@ -3,6 +3,7 @@ import { FilterSection } from 'components/filtering/filter-section'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
+import { useTags } from 'data-services/hooks/taxa-tags/useTags'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -37,6 +38,7 @@ export const Species = () => {
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
+  const { tags = [] } = useTags({ projectId: projectId as string })
 
   return (
     <>
@@ -48,7 +50,8 @@ export const Species = () => {
           {taxaLists.length > 0 && (
             <FilterControl data={taxaLists} field="taxa_list_id" />
           )}
-          <FilterControl field="tag" />
+          <FilterControl data={tags} field="tag" />
+          <FilterControl data={tags} field="not_tag" />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader

@@ -1,5 +1,5 @@
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
-import { Tags } from 'components/taxon-tags/tags'
+import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import {
@@ -8,7 +8,6 @@ import {
 } from 'design-system/components/info-block/info-block'
 import { ExternalLinkIcon } from 'lucide-react'
 import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
-import { useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -20,7 +19,6 @@ import styles from './species-details.module.scss'
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
   const navigate = useNavigate()
-  const [tags, setTags] = useState(species.tags)
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
 
   return (
@@ -43,16 +41,30 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           size="lg"
           taxon={species}
         />
+        {species.isUnknown ? (
+          <Tag name="Unknown species" className="bg-success" />
+        ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>
           <div className="grid gap-6">
-            <InfoBlockField label="Tags" className="relative">
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_TAGS)}
+              className="relative"
+            >
               <div className="flex flex-col items-start gap-2 no-print">
-                <Tags tags={tags} />
+                {species.tags.length ? (
+                  <div className="flex flex-wrap gap-1">
+                    {species.tags.map((tag) => (
+                      <Tag key={tag.id} name={tag.name} />
+                    ))}
+                  </div>
+                ) : (
+                  <span>n/a</span>
+                )}
                 {canUpdate ? (
                   <div className="absolute top-[-9px] right-0">
-                    <TagsForm tags={tags} onTagsChange={setTags} />
+                    <TagsForm species={species} />
                   </div>
                 ) : null}
               </div>

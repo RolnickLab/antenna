@@ -1,4 +1,4 @@
-import { Tags } from 'components/taxon-tags/tags'
+import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -46,7 +46,14 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           >
             <TaxonDetails compact taxon={item} />
           </Link>
-          <Tags className="max-w-64" tags={item.tags} />
+          <div className="flex flex-wrap gap-1 w-64">
+            {item.isUnknown ? (
+              <Tag name="Unknown species" className="bg-success" />
+            ) : null}
+            {item.tags.map((tag) => (
+              <Tag key={tag.id} name={tag.name} />
+            ))}
+          </div>
         </div>
       </BasicTableCell>
     ),

@@ -3,6 +3,8 @@ import { Taxon } from './taxa'
 
 export type ServerSpecies = any // TODO: Update this type
 
+export type Tag = { id: number; name: string }
+
 export class Species extends Taxon {
   protected readonly _species: ServerSpecies
 
@@ -75,17 +77,9 @@ export class Species extends Taxon {
     return this.score.toFixed(2)
   }
 
-  get tags() {
-    /* TODO: Replace dummy data */
-    return [
-      ...(this.isUnknown
-        ? [
-            {
-              label: 'Unknown species',
-              value: 'unknown-species',
-            },
-          ]
-        : []),
-    ]
+  get tags(): Tag[] {
+    const tags = this._species.tags ?? []
+
+    return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
   }
 }

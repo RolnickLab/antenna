@@ -36,6 +36,7 @@ const ComponentMap: {
   source_image_single: ImageFilter,
   status: StatusFilter,
   tag: TagFilter,
+  not_tag: TagFilter,
   taxon: TaxonFilter,
   taxa_list_id: TaxaListFilter,
   verified_by_me: VerifiedByFilter,
