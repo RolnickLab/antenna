@@ -1,20 +1,20 @@
+import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
 export type ServerSpecies = any // TODO: Update this type
 
+export type Tag = { id: number; name: string }
+
 export class Species extends Taxon {
   protected readonly _species: ServerSpecies
-  private readonly _images: { src: string }[] = []
 
   public constructor(species: ServerSpecies) {
     super(species)
     this._species = species
+  }
 
-    if (species.occurrence_images?.length) {
-      this._images = species.occurrence_images.map((image: any) => ({
-        src: image,
-      }))
-    }
+  get userPermissions(): UserPermission[] {
+    return this._species.user_permissions
   }
 
   get coverImage() {
@@ -25,17 +25,13 @@ export class Species extends Taxon {
     if (!this._species.cover_image_credit) {
       return {
         url: this._species.cover_image_url,
-        caption: this.isUnknown
-          ? `${this.name} (most similar known taxon)`
-          : this.name,
+        caption: this.name,
       }
     }
 
     return {
       url: this._species.cover_image_url,
-      caption: this.isUnknown
-        ? `${this.name} (most similar known taxon), ${this._species.cover_image_credit}`
-        : `${this.name}, ${this._species.cover_image_credit}`,
+      caption: this.name,
     }
   }
 
@@ -79,5 +75,11 @@ export class Species extends Taxon {
 
   get scoreLabel(): string {
     return this.score.toFixed(2)
+  }
+
+  get tags(): Tag[] {
+    const tags = this._species.tags ?? []
+
+    return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
   }
 }

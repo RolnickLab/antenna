@@ -84,6 +84,14 @@ export const AVAILABLE_FILTERS: {
     field: 'not_algorithm',
   },
   {
+    label: 'Include tag',
+    field: 'tag_id',
+  },
+  {
+    label: 'Exclude tag',
+    field: 'not_tag_id',
+  },
+  {
     label: 'Taxon',
     field: 'taxon',
   },
