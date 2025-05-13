@@ -6,6 +6,7 @@ from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
 from django.utils.formats import number_format
+from django.utils.html import format_html
 from guardian.admin import GuardedModelAdmin
 
 import ami.utils
@@ -26,6 +27,7 @@ from .models import (
     Site,
     SourceImage,
     SourceImageCollection,
+    Tag,
     TaxaList,
     Taxon,
 )
@@ -220,7 +222,6 @@ class EventAdmin(admin.ModelAdmin[Event]):
         self.message_user(request, f"Updated {queryset.count()} events.")
 
     list_filter = ("deployment", "project", "start")
-    actions = [update_calculated_fields]
 
 
 @admin.register(SourceImage)
@@ -262,6 +263,7 @@ class ClassificationInline(admin.TabularInline):
     model = Classification
     extra = 0
     fields = (
+        "view_classification",
         "taxon",
         "algorithm",
         "timestamp",
@@ -269,12 +271,18 @@ class ClassificationInline(admin.TabularInline):
         "created_at",
     )
     readonly_fields = (
+        "view_classification",
         "taxon",
         "algorithm",
         "timestamp",
         "terminal",
         "created_at",
     )
+
+    @admin.display(description="Classification")
+    def view_classification(self, obj):
+        url = f"/admin/main/classification/{obj.pk}/change/"
+        return format_html('<a href="{}">{}</a>', url, obj.pk)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -285,6 +293,7 @@ class DetectionInline(admin.TabularInline):
     model = Detection
     extra = 0
     fields = (
+        "view_detection",
         "detection_algorithm",
         "source_image",
         "timestamp",
@@ -292,12 +301,18 @@ class DetectionInline(admin.TabularInline):
         "occurrence",
     )
     readonly_fields = (
+        "view_detection",
         "detection_algorithm",
         "source_image",
         "timestamp",
         "created_at",
         "occurrence",
     )
+
+    @admin.display(description="Detection")
+    def view_detection(self, obj):
+        url = f"/admin/main/detection/{obj.pk}/change/"
+        return format_html('<a href="{}">{}</a>', url, obj.pk)
 
 
 @admin.register(Detection)
@@ -457,11 +472,12 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
         "rank",
         "parent",
         "parent_names",
+        "tag_list",
         "list_names",
         "created_at",
         "updated_at",
     )
-    list_filter = ("lists", "rank", TaxonParentFilter)
+    list_filter = ("unknown_species", "lists", "rank", TaxonParentFilter)
     search_fields = ("name",)
     autocomplete_fields = (
         "parent",
@@ -481,6 +497,10 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
         description="Occurrences",
         ordering="occurrence_count",
     )
+    @admin.display(description="Tags")
+    def tag_list(self, obj) -> str:
+        return ", ".join([tag.name for tag in obj.tags.all()])
+
     def occurrence_count(self, obj) -> int:
         return obj.occurrence_count
 
@@ -594,7 +614,55 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
         )
 
-    actions = [populate_collection, populate_collection_async]
+    @admin.action(description="Create clustering job (but don't run it)")
+    @admin.action()
+    def create_clustering_job(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        from ami.jobs.models import DetectionClusteringJob, Job
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Clustering detections for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=DetectionClusteringJob.key,
+                params={
+                    "ood_threshold": 0.3,
+                    "algorithm": "agglomerative",
+                    "algorithm_kwargs": {"distance_threshold": 80},
+                    "pca": {"n_components": 384},
+                },
+            )
+            self.message_user(request, f"Created clustering job #{job.pk} for collection #{collection.pk}")
+
+    @admin.action()
+    def cluster_detections(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        for collection in queryset:
+            from ami.jobs.models import DetectionClusteringJob, Job
+
+            job = Job.objects.create(
+                name=f"Clustering detections for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=DetectionClusteringJob.key,
+                params={
+                    "ood_threshold": 0.3,
+                    "algorithm": "agglomerative",
+                    "algorithm_kwargs": {"distance_threshold": 80},
+                    "pca": {"n_components": 384},
+                },
+            )
+            job.enqueue()
+
+        self.message_user(request, f"Clustered {queryset.count()} collection(s).")
+
+    actions = [populate_collection, populate_collection_async, cluster_detections, create_clustering_job]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "project")
+    list_filter = ("project",)
+    search_fields = ("name",)

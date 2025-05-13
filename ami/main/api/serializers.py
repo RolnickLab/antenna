@@ -9,7 +9,7 @@ from rest_framework.request import Request
 from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import create_source_image_from_upload
+from ami.main.models import Tag, create_source_image_from_upload
 from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
@@ -498,11 +498,32 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
         ]
 
 
+class TagSerializer(DefaultSerializer):
+    project = ProjectNestedSerializer(read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), source="project", write_only=True)
+    taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(), many=True, source="taxa", write_only=True, required=False
+    )
+    taxa = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tag
+        fields = ["id", "name", "project", "project_id", "taxa_ids", "taxa"]
+
+    def get_taxa(self, obj):
+        return [{"id": taxon.id, "name": taxon.name} for taxon in obj.taxa.all()]
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
     parents = TaxonNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
+    tags = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
@@ -515,9 +536,11 @@ class TaxonListSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "occurrences",
+            "tags",
             "last_detected",
             "best_determination_score",
             "cover_image_url",
+            "unknown_species",
             "created_at",
             "updated_at",
         ]
@@ -721,6 +744,12 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
+    tags = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        # Use prefetched tags
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
@@ -736,10 +765,12 @@ class TaxonSerializer(DefaultSerializer):
             "events_count",
             "occurrences",
             "gbif_taxon_key",
+            "tags",
             "last_detected",
             "fieldguide_id",
             "cover_image_url",
             "cover_image_credit",
+            "unknown_species",
         ]
 
 
@@ -1548,3 +1579,11 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class ClusterDetectionsSerializer(serializers.Serializer):
+    ood_threshold = serializers.FloatField(required=False, default=0.0)
+    feature_extraction_algorithm = serializers.CharField(required=False, allow_null=True)
+    algorithm = serializers.CharField(required=False, default="agglomerative")
+    algorithm_kwargs = serializers.DictField(required=False, default={"distance_threshold": 0.5})
+    pca = serializers.DictField(required=False, default={"n_components": 384})
