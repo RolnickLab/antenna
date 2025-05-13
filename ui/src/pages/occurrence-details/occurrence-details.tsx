@@ -2,8 +2,12 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import { OODScore } from 'components/ood-score'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { InfoBlock } from 'design-system/components/info-block/info-block'
+import {
+  InfoBlockField,
+  InfoBlockFieldValue,
+} from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { SearchIcon } from 'lucide-react'
@@ -151,7 +155,7 @@ export const OccurrenceDetails = ({
                     name: occurrence.determinationVerifiedBy?.name,
                   })
                 : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: occurrence.determinationScore,
+                    score: `${occurrence.determinationScore}`,
                   })
             }
           >
@@ -228,7 +232,23 @@ export const OccurrenceDetails = ({
                   <Tabs.Trigger value={TABS.RAW} label="Raw" />
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
-                  <InfoBlock fields={fields} />
+                  <div className="grid gap-6">
+                    <InfoBlockField
+                      label={translate(STRING.FIELD_LABEL_OOD_SCORE)}
+                    >
+                      <div>
+                        <OODScore occurrence={occurrence} />
+                      </div>
+                    </InfoBlockField>
+                    {fields.map((field, index) => (
+                      <InfoBlockField key={index} label={field.label}>
+                        <InfoBlockFieldValue
+                          value={field.value}
+                          to={field.to}
+                        />
+                      </InfoBlockField>
+                    ))}
+                  </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>

@@ -49,7 +49,6 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
   },
   {
     id: 'rank',
-    sortField: 'rank',
     name: 'Taxon rank',
     styles: {
       textAlign: TextAlign.Right,
