@@ -1170,6 +1170,19 @@ class TaxonTagFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class TagInverseFilter(filters.BaseFilterBackend):
+    """
+    Exclude taxa that have any of the specified tag IDs using `not_tag_id`.
+    Example: /api/v2/taxa/?not_tag_id=1&not_tag_id=2
+    """
+
+    def filter_queryset(self, request, queryset, view):
+        not_tag_ids = request.query_params.getlist("not_tag_id")
+        if not_tag_ids:
+            queryset = queryset.exclude(tags__id__in=not_tag_ids)
+        return queryset.distinct()
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1182,6 +1195,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
         TaxonTagFilter,
+        TagInverseFilter,
     ]
     filterset_fields = [
         "name",
