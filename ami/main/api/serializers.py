@@ -25,6 +25,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectTaxon,
     S3StorageSource,
     Site,
     SourceImage,
@@ -448,6 +449,16 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
+class ProjectTaxonNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = ProjectTaxon
+        fields = [
+            "id",
+            # "project_id",
+            # "featured_occcurence_id",
+        ]
+
+
 class TaxonNoParentNestedSerializer(DefaultSerializer):
     class Meta:
         model = Taxon
@@ -503,18 +514,6 @@ class TaxonListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     parents = TaxonNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
-    representative_occurrence = serializers.SerializerMethodField()
-
-    def get_representative_occurrence(self, obj):
-        """
-        Return the serialized representative occurrence from the  prefetched 'representative_occurrence'.
-        """
-        project_taxon_list = getattr(obj, "representative_occurrence", [])
-        if project_taxon_list:
-            project_taxon = project_taxon_list[0]
-            if project_taxon.example_occurrence:
-                return OccurrenceListSerializer(project_taxon.example_occurrence, context=self.context).data
-        return None
 
     class Meta:
         model = Taxon
@@ -527,7 +526,6 @@ class TaxonListSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "occurrences",
-            "representative_occurrence",
             "last_detected",
             "best_determination_score",
             "cover_image_url",
@@ -754,6 +752,8 @@ class TaxonSerializer(DefaultSerializer):
             "fieldguide_id",
             "cover_image_url",
             "cover_image_credit",
+            "featured_occurrences",
+            # "featured_detection_image_url",
             "unknown_species",
             "last_detected",  # @TODO this has performance impact, review
         ]
