@@ -2,13 +2,13 @@ import { FormField } from 'components/form/form-field'
 import { FormError } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserPassword } from 'data-services/hooks/auth/useUpdateUserPassword'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { SaveButton } from 'design-system/components/button/save-button'
 import {
   EditableInput,
   InputContent,
   InputValue,
 } from 'design-system/components/input/input'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -99,19 +99,10 @@ const UpdatePasswordForm = ({ onCancel }: { onCancel: () => void }) => {
           control={control}
         />
         <div className={styles.miniFormActions}>
-          <Button
-            label={translate(STRING.CANCEL)}
-            theme={ButtonTheme.Plain}
-            onClick={() => onCancel()}
-          />
-          <Button
-            label={translate(STRING.SAVE)}
-            icon={isSuccess ? IconType.RadixCheck : undefined}
-            type="submit"
-            theme={ButtonTheme.Success}
-            loading={isLoading}
-            disabled={isLoading || isSuccess}
-          />
+          <Button size="small" variant="ghost" onClick={() => onCancel()}>
+            <span>{translate(STRING.CANCEL)}</span>
+          </Button>
+          <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
         </div>
       </div>
     </form>

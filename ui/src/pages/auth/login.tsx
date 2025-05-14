@@ -2,9 +2,9 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useLogin } from 'data-services/hooks/auth/useLogin'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import buttonStyles from 'design-system/components/button/button.module.scss'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { Loader2Icon } from 'lucide-react'
+import { Button, buttonVariants } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { APP_ROUTES, LANDING_PAGE_WAITLIST_URL } from 'utils/constants'
@@ -70,12 +70,12 @@ export const Login = () => {
           config={config}
           control={control}
         />
-        <Button
-          label={translate(STRING.LOGIN)}
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        <Button variant="success" type="submit">
+          <span>{translate(STRING.LOGIN)}</span>
+          {isLoading ? (
+            <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+          ) : null}
+        </Button>
         {errorMessage && (
           <p className={classNames(styles.text, styles.error)}>
             {errorMessage}
@@ -92,24 +92,22 @@ export const Login = () => {
             {translate(STRING.RESET)}
           </Link>
         </p>
-        {/* TODO: Add link to join waitlist */}
         <p className={classNames(styles.text, styles.divider)}>
           {translate(STRING.OR).toUpperCase()}
         </p>
-        <Link className={buttonStyles.button} to={APP_ROUTES.HOME}>
-          <span className={buttonStyles.label}>
-            {translate(STRING.VIEW_PUBLIC_PROJECTS)}
-          </span>
+        <Link
+          className={buttonVariants({ size: 'small', variant: 'outline' })}
+          to={APP_ROUTES.HOME}
+        >
+          <span>{translate(STRING.VIEW_PUBLIC_PROJECTS)}</span>
         </Link>
         <a
           href={LANDING_PAGE_WAITLIST_URL}
           rel="noreferrer"
           target="_blank"
-          className={buttonStyles.button}
+          className={buttonVariants({ size: 'small', variant: 'outline' })}
         >
-          <span className={buttonStyles.label}>
-            {translate(STRING.SIGN_UP)}
-          </span>
+          <span>{translate(STRING.SIGN_UP)}</span>
           <Icon
             type={IconType.ExternalLink}
             theme={IconTheme.Primary}
