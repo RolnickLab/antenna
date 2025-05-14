@@ -1850,8 +1850,6 @@ class Identification(BaseModel):
         """
         current_best: Identification | None = self.occurrence.best_identification
         if current_best and current_best == self:
-            # Invalidate the cached property so it will be re-calculated
-            del self.occurrence.best_identification
             if self.user:
                 previous_id = (
                     Identification.objects.filter(
@@ -2132,6 +2130,8 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    favorite = models.BooleanField(default=False, help_text="Use this detection to represent the occurrence")
+
     # For type hints
     classifications: models.QuerySet["Classification"]
     source_image_id: int
@@ -2299,6 +2299,31 @@ class Occurrence(BaseModel):
     determination_score = models.FloatField(null=True, blank=True, help_text="Estimation of confidence")
     determination_ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
 
+    best_detection = models.ForeignKey(
+        "Detection",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrence_representing",
+    )
+
+    # Classifications are machine predictions
+    best_prediction = models.ForeignKey(
+        "Classification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrences",
+    )
+    # Identifications are human predictions
+    best_identification = models.ForeignKey(
+        "Identification",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="occurrences",
+    )
+
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -2377,23 +2402,85 @@ class Occurrence(BaseModel):
         ):
             yield get_media_url(path)
 
-    @functools.cached_property
-    def best_detection(self):
-        return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
+    def get_best_detection(self) -> Detection | None:
+        """
+        Pick the detection to represent the occurrence, for example which image to show in the UI.
+        """
+        # First look for any detections marked as favorite:
+        best_detection = self.detections.filter(favorite=True).first()
 
-    @functools.cached_property
-    def best_prediction(self):
+        # If there are no favorites, look for the best detection by confidence score
+        if not best_detection:
+            best_prediction = self.get_best_prediction()
+            if best_prediction:
+                best_detection = best_prediction.detection
+
+        # If there are no predictions, use the largest detection by bbox area
+        # if not best_detection:
+        #     best_detection = (
+        #         self.detections.annotate(
+        #             bbox_area=models.F("bbox__width") * models.F("bbox__height")
+        #         )
+        #         .order_by("-bbox_area")
+        #         .first()
+        #     )
+
+        return best_detection
+
+    def get_best_predictions(self, filters: dict = {}) -> models.QuerySet[Classification]:
+        """
+        Retrieve the classification with the max score for each algorithm
+        from any detection belonging to this occurrence.
+
+        This data is for the list of predictions in the Identification tab of the Occurrence Detail view
+        in the UI. See the OccurrenceSerializer for the serializer method.
+
+        If this is need for a list view (multiple occurrenes) it should be overriden
+        in the viewset to use the pre-fetched classifications instead of hitting the database
+        for each occurrence (n+1 query problem).
+        """
+        # Get the highest scoring classification for each algorithm
+        # Use a subquery to find the max score for each algorithm
+        subquery = (
+            Classification.objects.filter(detection__occurrence=self, **filters)
+            .values("algorithm")
+            .annotate(max_score=models.Max("score"))
+        )
+
+        # Join the subquery results to get the classifications with those max scores
+        # This ensures we get one classification per algorithm (the one with highest score)
+        classifications = Classification.objects.filter(
+            detection__occurrence=self,
+            **filters,
+            algorithm__in=models.Subquery(subquery.values("algorithm")),
+            score__in=models.Subquery(subquery.values("max_score")),
+        ).order_by("-created_at")
+
+        return classifications
+
+    def get_best_prediction(self, filters: dict = {}) -> Classification | None:
         """
         Use the best prediction as the best identification if there are no human identifications.
 
-        Uses the highest scoring classification (from any algorithm) as the best prediction.
-        Considers terminal classifications first, then non-terminal ones.
+        This is used to automatically determin the Taxon for the occurrence (the determination).
+        See `get_best_predictions` for the list of all predictions presented as choices in the UI to the user.
+
+        Uses the highest scoring terminal classification (from any algorithm) as the best prediction.
+        Terminal classifications are preferred over non-terminal ones - even if they have a lower score.
         (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
         """
-        return self.predictions().order_by("-terminal", "-score").first()
+        # Get all classifications for this occurrence to choose from
+        all_classifications = Classification.objects.filter(detection__occurrence=self, **filters)
 
-    @functools.cached_property
-    def best_identification(self):
+        # First try to get a terminal classification
+        terminal_classification = all_classifications.filter(terminal=True).order_by("-score", "-created_at").first()
+        if terminal_classification:
+            return terminal_classification
+
+        # If no terminal classification exists, fall back to non-terminal
+        return all_classifications.filter(terminal=False).order_by("-score").first()
+
+    def get_best_identification(self) -> Identification | None:
         """
         The most recent human identification is used as the best identification.
 
@@ -2414,32 +2501,22 @@ class Occurrence(BaseModel):
     def get_determination_ood_score(self) -> float | None:
         """
         Calculate the OOD score for the whole occurrence.
-        Uses the average OOD score of all identifications.
+        Uses the average OOD score of all detections belonging to this occurrence.
+        All OOD scores must come from the same algorithm
+        and they only apply to machine predictions, not human identifications.
         """
-        if not self.determination:
+        # Get the best prediction that has an OOD score
+        # this should be the last classification before the clustering algorithm
+        # @TODO copy the OOD score from the best classification to the clustering classification during clustering
+        best_prediction = self.get_best_prediction(filters={"ood_score__isnull": False})
+        if not best_prediction:
             return None
         mean_ood_score = Classification.objects.filter(
             detection__occurrence=self,
-        ).aggregate(
-            models.Avg("ood_score"),
-        )["ood_score__avg"]
+            ood_score__isnull=False,
+            algorithm=best_prediction.algorithm,
+        ).aggregate(models.Avg("ood_score"),)["ood_score__avg"]
         return mean_ood_score
-
-    def predictions(self):
-        # Retrieve the classification with the max score for each algorithm
-        classifications = (
-            Classification.objects.filter(detection__occurrence=self)
-            .filter(
-                score__in=models.Subquery(
-                    Classification.objects.filter(detection__occurrence=self)
-                    .values("algorithm")
-                    .annotate(max_score=models.Max("score"))
-                    .values("max_score")
-                )
-            )
-            .order_by("-created_at")
-        )
-        return classifications
 
     def context_url(self):
         detection = self.best_detection
@@ -2477,8 +2554,11 @@ class Occurrence(BaseModel):
 
 
 def update_occurrence_determination(
-    occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
-) -> bool:
+    occurrence: Occurrence,
+    current_determination: typing.Optional["Taxon"] = None,
+    save=True,
+    task_logger: logging.Logger | None = None,
+) -> tuple[Occurrence, dict[str, typing.Any]]:
     """
     Update the determination of the occurrence based on the identifications & predictions.
 
@@ -2489,70 +2569,79 @@ def update_occurrence_determination(
     The `occurrence` object may already have a different un-saved determination set
     so it is necessary to retrieve the current determination from the database, but
     this can also be passed in as an argument to avoid an extra database query.
-
-    @TODO Add tests for this important method!
     """
-    needs_update = False
+    task_logger = task_logger or logger
 
-    # Invalidate the cached properties so they will be re-calculated
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
-    if hasattr(occurrence, "best_prediction"):
-        del occurrence.best_prediction
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
-
-    current_determination = (
-        current_determination
-        or Occurrence.objects.select_related("determination")
-        .values("determination")
-        .get(pk=occurrence.pk)["determination"]
-    )
-    new_determination = None
-    new_score = None
-    new_ood_score = None
-
-    top_identification = occurrence.best_identification
-    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
-        new_determination = top_identification.taxon
-        new_score = top_identification.score
-    elif not top_identification:
-        top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
-            new_determination = top_prediction.taxon
-            new_score = top_prediction.score
-
-    if new_determination and new_determination != current_determination:
-        logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
-        occurrence.determination = new_determination
-        needs_update = True
-
-    if new_score and new_score != occurrence.determination_score:
-        logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
-        occurrence.determination_score = new_score
-        needs_update = True
-
-    new_ood_score = occurrence.get_determination_ood_score()
-    if new_ood_score is not None and new_ood_score != occurrence.determination_ood_score:
-        logger.debug(
-            f"Changing det. OOD score of {occurrence} from {occurrence.determination_ood_score} to {new_ood_score}"
-        )
-        occurrence.determination_ood_score = new_ood_score
-        needs_update = True
-
-    if not needs_update:
-        if logger.getEffectiveLevel() <= logging.DEBUG:
-            all_predictions = occurrence.predictions()
-            all_preds_print = ", ".join([str(p) for p in all_predictions])
-            logger.debug(
-                f"No update needed for determination of {occurrence}. Best prediction: {occurrence.best_prediction}. "
-                f"All preds: {all_preds_print}"
+    # Get the current determination from the database if not passed in
+    if current_determination is None:
+        try:
+            current_determination = (
+                Occurrence.objects.select_related("determination").get(pk=occurrence.pk).determination
             )
+        except Occurrence.DoesNotExist:
+            current_determination = None
 
-    if save and needs_update:
-        occurrence.save(update_determination=False)
+    # Collect all necessary values first
+    best_identification = occurrence.get_best_identification()
+    best_prediction = occurrence.get_best_prediction() if not best_identification else None
 
-    return needs_update
+    # Best detection is used as the representative image for the occurrence in either case
+    best_detection = occurrence.get_best_detection()
+
+    # Determine values for all attributes
+    new_determination = None
+    new_determination_score = None
+    new_determination_ood_score = occurrence.get_determination_ood_score()
+
+    # Identifications take precedence over machine predictions
+    if best_identification:
+        new_determination = best_identification.taxon
+        new_determination_score = best_identification.score
+    elif best_prediction:
+        new_determination = best_prediction.taxon
+        new_determination_score = best_prediction.score
+
+    # Prepare fields that need to be updated (using a dictionary for bulk update)
+    update_fields = {}
+
+    # Check each field for changes
+    if new_determination != current_determination:
+        task_logger.info(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
+        update_fields["determination"] = new_determination
+
+    if new_determination_score != occurrence.determination_score:
+        update_fields["determination_score"] = new_determination_score
+
+    if new_determination_ood_score != occurrence.determination_ood_score:
+        update_fields["determination_ood_score"] = new_determination_ood_score
+
+    if best_identification != occurrence.best_identification:
+        update_fields["best_identification"] = best_identification
+
+    if best_prediction != occurrence.best_prediction:
+        update_fields["best_prediction"] = best_prediction
+
+    if best_detection != occurrence.best_detection:
+        update_fields["best_detection"] = best_detection
+
+    # Save if there are changes and requested
+    needs_update = bool(update_fields)
+    if needs_update:
+        task_logger.debug(f"Occurrence {occurrence} needs update of: {list(update_fields.keys())}")
+        update_fields["updated_at"] = timezone.now()
+        if save:
+            # Update fields in the database and refresh the object
+            Occurrence.objects.filter(pk=occurrence.pk).update(**update_fields)
+            # Refresh the object to keep it in sync with the DB
+            occurrence.refresh_from_db()
+        else:
+            # If not saving, just update the fields in the object
+            for field, value in update_fields.items():
+                setattr(occurrence, field, value)
+    else:
+        task_logger.debug(f"Occurrence {occurrence} does not need update")
+
+    return occurrence, update_fields
 
 
 class TaxonQuerySet(models.QuerySet):
@@ -3281,7 +3370,7 @@ class SourceImageCollection(BaseModel):
                 "pca": {"n_components": 384},
             }
 
-        cluster_detections(collection=self, params=params, job=job, task_logger=task_logger)
+        cluster_detections(collection=self, params=params or {}, job=job, task_logger=task_logger)
 
     def sample_random(self, size: int = 100):
         """Create a random sample of source images"""
