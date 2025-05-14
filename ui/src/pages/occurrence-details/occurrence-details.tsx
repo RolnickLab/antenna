@@ -234,7 +234,7 @@ export const OccurrenceDetails = ({
                       <Box className="p-0 relative">
                         <StatusLabel label={translate(STRING.NEW_ID)} />
                         <SuggestId
-                          occurrenceId={occurrence.id}
+                          occurrenceIds={[occurrence.id]}
                           onCancel={() => setSuggestIdOpen(false)}
                         />
                       </Box>

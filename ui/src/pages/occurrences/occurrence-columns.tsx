@@ -184,7 +184,7 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <SuggestIdPopover occurrenceId={item.id} />
+              <SuggestIdPopover occurrenceIds={[item.id]} />
               <IdQuickActions
                 occurrenceIds={[item.id]}
                 occurrenceTaxons={[item.determinationTaxon]}

@@ -1,6 +1,6 @@
 import { FormError } from 'components/form/layout/layout'
 import { TaxonSelect } from 'components/taxon-search/taxon-select'
-import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
+import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Taxon } from 'data-services/models/taxa'
 import { Loader2Icon } from 'lucide-react'
 import { Button, Input } from 'nova-ui-kit'
@@ -10,15 +10,17 @@ import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { useRecentIdentifications } from '../reject-id/useRecentOptions'
 
 interface SuggestIdProps {
-  occurrenceId: string
+  occurrenceIds: string[]
   onCancel: () => void
 }
 
-export const SuggestId = ({ occurrenceId, onCancel }: SuggestIdProps) => {
+export const SuggestId = ({ occurrenceIds, onCancel }: SuggestIdProps) => {
   const [taxon, setTaxon] = useState<Taxon>()
   const [comment, setComment] = useState('')
-  const { createIdentification, isLoading, error } =
-    useCreateIdentification(onCancel)
+  const { createIdentifications, isLoading, error } = useCreateIdentifications(
+    occurrenceIds,
+    onCancel
+  )
   const { addRecentIdentification } = useRecentIdentifications()
   const formError = error ? parseServerError(error)?.message : undefined
 
@@ -33,7 +35,7 @@ export const SuggestId = ({ occurrenceId, onCancel }: SuggestIdProps) => {
             {translate(STRING.FIELD_LABEL_TAXON)}
           </span>
           <TaxonSelect
-            triggerLabel={taxon ? taxon.name : 'Select a value'}
+            triggerLabel={taxon ? taxon.name : 'Select a taxon'}
             taxon={taxon}
             onTaxonChange={setTaxon}
           />
@@ -65,11 +67,13 @@ export const SuggestId = ({ occurrenceId, onCancel }: SuggestIdProps) => {
                 details: taxon.rank,
                 value: taxon.id,
               })
-              createIdentification({
-                occurrenceId: occurrenceId,
-                taxonId: taxon.id,
-                comment: comment,
-              })
+              createIdentifications(
+                occurrenceIds.map((occurrenceId) => ({
+                  occurrenceId,
+                  taxonId: taxon.id,
+                  comment: comment,
+                }))
+              )
             }}
           >
             <span>{translate(STRING.SAVE)}</span>
