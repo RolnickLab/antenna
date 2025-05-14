@@ -154,7 +154,6 @@ const TaxonCell = ({
   showQuickActions?: boolean
 }) => {
   const { userInfo } = useUserInfo()
-  const navigate = useNavigate()
   const detailsRoute = getAppRoute({
     to: APP_ROUTES.OCCURRENCE_DETAILS({
       projectId,
