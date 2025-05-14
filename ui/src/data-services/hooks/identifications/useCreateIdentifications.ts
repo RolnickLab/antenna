@@ -5,7 +5,8 @@ import { IdentificationFieldValues } from './types'
 import { useCreateIdentification } from './useCreateIdentification'
 
 export const useCreateIdentifications = (
-  params: IdentificationFieldValues[]
+  occurrenceIds: string[],
+  onSuccess?: () => void
 ) => {
   const queryClient = useQueryClient()
   const [results, setResults] = useState<PromiseSettledResult<any>[]>()
@@ -28,13 +29,13 @@ export const useCreateIdentifications = (
 
   useEffect(() => {
     setResults(undefined)
-  }, [params.length])
+  }, [occurrenceIds.length])
 
   return {
     isLoading,
     isSuccess,
     error,
-    createIdentifications: async () => {
+    createIdentifications: async (params: IdentificationFieldValues[]) => {
       const promises = params
         .filter((_, index) => {
           if (error) {
@@ -51,6 +52,7 @@ export const useCreateIdentifications = (
       setResults(result)
       queryClient.invalidateQueries([API_ROUTES.IDENTIFICATIONS])
       queryClient.invalidateQueries([API_ROUTES.OCCURRENCES])
+      onSuccess?.()
     },
   }
 }
