@@ -12,6 +12,7 @@ import * as Tabs from 'design-system/components/tabs/tabs'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { SearchIcon } from 'lucide-react'
 import {
+  Box,
   Button,
   CodeBlock,
   IdentificationScore,
@@ -31,6 +32,7 @@ import { HumanIdentification } from './identification-card/human-identification'
 import { MachinePrediction } from './identification-card/machine-prediction'
 import styles from './occurrence-details.module.scss'
 import { IdQuickActions } from './reject-id/id-quick-actions'
+import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
 
 export const TABS = {
@@ -49,18 +51,15 @@ export const OccurrenceDetails = ({
   setSelectedTab: (selectedTab?: string) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const suggestIdInputRef = useRef<HTMLInputElement>(null)
   const {
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { state, pathname } = useLocation()
+  const { pathname } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const [suggestIdOpen, setSuggestIdOpen] = useState<boolean>(
-    state?.suggestIdOpen ?? false
-  )
+  const [suggestIdOpen, setSuggestIdOpen] = useState(false)
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
 
   const blueprintItems = useMemo(
@@ -180,7 +179,6 @@ export const OccurrenceDetails = ({
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
-                  suggestIdInputRef?.current?.focus()
                 }}
                 size="small"
                 variant="outline"
@@ -253,12 +251,13 @@ export const OccurrenceDetails = ({
                 <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>
                     {suggestIdOpen && (
-                      <SuggestId
-                        containerRef={containerRef}
-                        inputRef={suggestIdInputRef}
-                        occurrenceId={occurrence.id}
-                        onCancel={() => setSuggestIdOpen(false)}
-                      />
+                      <Box className="p-0 relative">
+                        <StatusLabel label={translate(STRING.NEW_ID)} />
+                        <SuggestId
+                          occurrenceIds={[occurrence.id]}
+                          onCancel={() => setSuggestIdOpen(false)}
+                        />
+                      </Box>
                     )}
 
                     {occurrence.humanIdentifications.map((i) => (

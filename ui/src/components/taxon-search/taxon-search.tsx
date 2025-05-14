@@ -36,7 +36,7 @@ export const TaxonSearch = ({
     <Command.Root shouldFilter={false}>
       <Command.Input
         loading={isLoading}
-        placeholder="Search taxon..."
+        placeholder="Search taxa..."
         value={searchString}
         onValueChange={setSearchString}
       />
