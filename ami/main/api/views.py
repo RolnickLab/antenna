@@ -23,7 +23,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami.base.filters import NullsLastOrderingFilter
+from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import (
     CanDeleteIdentification,
@@ -42,6 +42,8 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.jobs.models import DetectionClusteringJob, Job
+from ami.main.api.serializers import ClusterDetectionsSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -69,6 +71,7 @@ from ..models import (
 from .serializers import (
     ClassificationListSerializer,
     ClassificationSerializer,
+    ClassificationSimilaritySerializer,
     ClassificationWithTaxaSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
@@ -743,6 +746,27 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             }
         )
 
+    @action(detail=True, methods=["post"], name="cluster detections")
+    def cluster_detections(self, request, pk=None):
+        """
+        Trigger a background job to cluster detections from this collection.
+        """
+
+        collection: SourceImageCollection = self.get_object()
+        serializer = ClusterDetectionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
+        job = Job.objects.create(
+            name=f"Clustering detections for collection {collection.pk}",
+            project=collection.project,
+            source_image_collection=collection,
+            job_type_key=DetectionClusteringJob.key,
+            params=params,
+        )
+        job.enqueue()
+        logger.info(f"Triggered clustering job for collection {collection.pk}")
+        return Response({"job_id": job.pk, "project_id": collection.project.pk})
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -1024,6 +1048,12 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
+OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
+    query_param="classification_threshold", filter_param="determination_score"
+)
+OccurrenceOODScoreFilter = ThresholdFilter.create("determination_ood_score")
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1041,6 +1071,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
+        OccurrenceDeterminationScoreFilter,
+        OccurrenceOODScoreFilter,
     ]
     filterset_fields = [
         "event",
@@ -1058,9 +1090,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination",
         "determination__name",
         "determination_score",
+        "determination_ood_score",
         "event",
         "detections_count",
-        "created_at",
     ]
 
     def get_serializer_class(self):
@@ -1085,14 +1117,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
 
-        if self.action == "list":
-            qs = (
-                qs.all()
-                .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .order_by("-determination_score")
-            )
-
-        else:
+        if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
                     "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
@@ -1101,7 +1126,36 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="classification_threshold",
+                description="Filter occurrences by minimum determination score.",
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="determination_ood_score",
+                description="Filter occurrences by minimum out-of-distribution score.",
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="taxon",
+                description="Filter occurrences by determination taxon ID. Shows occurrences determined as this taxon "
+                "or any of its child taxa.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="collection_id",
+                description="Filter occurrences by the collection their detections' source images belong to.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ]
+    )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -1161,6 +1215,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "last_detected",
         "best_determination_score",
         "name",
+        "cover_image_url",
     ]
     search_fields = ["name", "parent__name"]
 
@@ -1270,8 +1325,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
 
         if project:
-            # Allow showing detail views for unobserved taxa
-            include_unobserved = True
+            include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
@@ -1408,6 +1462,17 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
             return ClassificationWithTaxaSerializer
         else:
             return ClassificationSerializer
+
+    @action(detail=True, methods=["get"])
+    def similar(self, request, pk=None):
+        try:
+            ref_classification = self.get_object()
+            similar_qs = ref_classification.get_similar_classifications(distance_metric="cosine")
+            serializer = ClassificationSimilaritySerializer(similar_qs, many=True, context={"request": request})
+            return Response(serializer.data)
+
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SummaryView(GenericAPIView, ProjectMixin):

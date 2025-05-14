@@ -1,5 +1,6 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
+import { STRING, translate } from './language'
 
 export const AVAILABLE_FILTERS: {
   label: string
@@ -14,8 +15,12 @@ export const AVAILABLE_FILTERS: {
     field: 'algorithm',
   },
   {
-    label: 'Score threshold',
+    label: translate(STRING.FIELD_LABEL_SCORE_THRESHOLD),
     field: 'classification_threshold',
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_OOD_SCORE_THRESHOLD),
+    field: 'determination_ood_score',
   },
   {
     label: 'Collection',
@@ -110,6 +115,10 @@ export const AVAILABLE_FILTERS: {
   {
     label: 'Verified by',
     field: 'verified_by_me',
+  },
+  {
+    label: 'Show unobserved taxa',
+    field: 'include_unobserved',
   },
 ]
 

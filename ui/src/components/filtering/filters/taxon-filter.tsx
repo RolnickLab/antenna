@@ -28,10 +28,12 @@ export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between px-4 text-muted-foreground font-normal"
+          className="w-full justify-between px-4 text-muted-foreground font-normal overflow-hidden"
         >
           <>
-            <span>{triggerLabel}</span>
+            <span className="overflow-hidden text-ellipsis">
+              {triggerLabel}
+            </span>
             {isLoading && value ? (
               <Loader2Icon className="h-4 w-4 ml-2 animate-spin" />
             ) : (

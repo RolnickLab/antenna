@@ -202,7 +202,9 @@ def create_taxa(project: Project) -> TaxaList:
     taxa_list.projects.add(project)
     root, _created = Taxon.objects.get_or_create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
     root.projects.add(project)
-    family_taxon, _ = Taxon.objects.get_or_create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
+    family_taxon, _ = Taxon.objects.get_or_create(
+        name="Nymphalidae", defaults={"parent": root, "rank": TaxonRank.FAMILY.name}
+    )
     family_taxon.projects.add(project)
     genus_taxon, _ = Taxon.objects.get_or_create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
     genus_taxon.projects.add(project)

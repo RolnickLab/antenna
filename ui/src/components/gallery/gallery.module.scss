@@ -8,7 +8,6 @@
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
   gap: 16px;
   width: 100%;
-  min-height: 320px;
   padding-top: 24px;
 
   &.loading {
@@ -28,7 +27,7 @@
   justify-content: center;
 }
 
-@media only screen and (max-width: $large-screen-breakpoint) {
+@media (max-width: $large-screen-breakpoint) {
   .gallery {
     grid-template-columns: 1fr 1fr 1fr !important;
   }
