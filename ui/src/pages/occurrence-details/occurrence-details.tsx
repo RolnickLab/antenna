@@ -45,7 +45,6 @@ export const OccurrenceDetails = ({
   setSelectedTab: (selectedTab?: string) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const suggestIdInputRef = useRef<HTMLInputElement>(null)
   const {
     user: { loggedIn },
   } = useUser()
@@ -176,7 +175,6 @@ export const OccurrenceDetails = ({
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
-                  suggestIdInputRef?.current?.focus()
                 }}
                 size="small"
                 variant="outline"
@@ -234,8 +232,6 @@ export const OccurrenceDetails = ({
                   <div className={styles.identifications}>
                     {suggestIdOpen && (
                       <SuggestId
-                        containerRef={containerRef}
-                        inputRef={suggestIdInputRef}
                         occurrenceId={occurrence.id}
                         onCancel={() => setSuggestIdOpen(false)}
                       />
