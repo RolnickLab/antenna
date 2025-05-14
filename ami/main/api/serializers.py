@@ -32,6 +32,7 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
+    get_media_url,
     validate_filename_timestamp,
 )
 
@@ -503,6 +504,7 @@ class TaxonListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     parents = TaxonNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
+    cover_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Taxon
@@ -526,6 +528,8 @@ class TaxonListSerializer(DefaultSerializer):
     def get_occurrences(self, obj):
         """
         Return URL to the occurrences endpoint filtered by this taxon.
+
+        Does not make a database query.
         """
 
         params = {}
@@ -537,6 +541,15 @@ class TaxonListSerializer(DefaultSerializer):
             request=self.context.get("request"),
             params=params,
         )
+
+    def get_cover_image_url(self, obj):
+        if obj.cover_image_url:
+            return obj.cover_image_url
+        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
+            # This attribute is added by an QuerySet annotation
+            return get_media_url(obj.best_detection_image_path)
+        else:
+            return None
 
 
 class TaxaListSerializer(serializers.ModelSerializer):
@@ -722,6 +735,7 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
+    cover_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Taxon
@@ -744,6 +758,15 @@ class TaxonSerializer(DefaultSerializer):
             "unknown_species",
             "last_detected",  # @TODO this has performance impact, review
         ]
+
+    def get_cover_image_url(self, obj):
+        if obj.cover_image_url:
+            return obj.cover_image_url
+        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
+            # This attribute is added by an QuerySet annotation
+            return get_media_url(obj.best_detection_image_path)
+        else:
+            return None
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):
