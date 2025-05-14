@@ -8,11 +8,11 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { SearchIcon } from 'lucide-react'
-import { Button, IdentificationScore, TaxonDetails } from 'nova-ui-kit'
+import { IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
+import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { Link, useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -184,22 +184,7 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <BasicTooltip asChild content={translate(STRING.SUGGEST_ID)}>
-                <Button
-                  onClick={() =>
-                    navigate(detailsRoute, {
-                      state: {
-                        defaultTab: TABS.IDENTIFICATION,
-                        suggestIdOpen: true,
-                      },
-                    })
-                  }
-                  size="icon"
-                  variant="outline"
-                >
-                  <SearchIcon className="w-4 h-4" />
-                </Button>
-              </BasicTooltip>
+              <SuggestIdPopover occurrenceId={item.id} />
               <IdQuickActions
                 occurrenceIds={[item.id]}
                 occurrenceTaxons={[item.determinationTaxon]}
