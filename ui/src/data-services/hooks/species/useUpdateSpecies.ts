@@ -9,11 +9,15 @@ export const useUpdateSpecies = (id: string, onSuccess?: () => void) => {
   const queryClient = useQueryClient()
 
   const { mutateAsync, isLoading, isSuccess, reset, error } = useMutation({
-    mutationFn: (fieldValues: { name?: string }) => {
+    mutationFn: (fieldValues: { name?: string; parentId?: string }) => {
       const data = new FormData()
 
       if (fieldValues.name) {
         data.append('name', fieldValues.name)
+      }
+
+      if (fieldValues.parentId) {
+        data.append('parent_id', fieldValues.parentId)
       }
 
       return axios.patch(`${API_URL}/${API_ROUTES.SPECIES}/${id}/`, data, {

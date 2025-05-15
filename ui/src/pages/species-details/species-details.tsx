@@ -15,6 +15,7 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
 import { SpeciesNameForm } from './species-name-form'
+import { SpeciesParentForm } from './species-parent-form'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
@@ -50,11 +51,25 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
       <div className={styles.content}>
         <div className={styles.info}>
           <div className="grid gap-6">
-            <InfoBlockField label="Name" className="relative no-print">
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_NAME)}
+              className="relative no-print"
+            >
               <InfoBlockFieldValue value={species.name} />
               {species.isUnknown && canUpdate ? (
                 <div className="absolute top-[-9px] right-0">
                   <SpeciesNameForm species={species} />
+                </div>
+              ) : null}
+            </InfoBlockField>
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_PARENT)}
+              className="relative no-print"
+            >
+              <InfoBlockFieldValue value={species.parentName} />
+              {species.isUnknown && canUpdate ? (
+                <div className="absolute top-[-9px] right-0">
+                  <SpeciesParentForm species={species} />
                 </div>
               ) : null}
             </InfoBlockField>

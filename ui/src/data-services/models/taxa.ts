@@ -23,13 +23,15 @@ export class Taxon {
   readonly id: string
   readonly name: string
   readonly parentId?: string
+  readonly parentName?: string
   readonly rank: string
   readonly ranks: { id: string; name: string; rank: string }[]
 
   public constructor(taxon: ServerTaxon) {
     this.id = `${taxon.id}`
     this.name = taxon.name
-    this.parentId = taxon.parent ? `${taxon.parent?.id}` : undefined
+    this.parentId = taxon.parent ? `${taxon.parent.id}` : undefined
+    this.parentName = taxon.parent ? taxon.parent.name : undefined
     this.rank = taxon.rank
 
     if (taxon.parents) {
