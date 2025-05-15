@@ -2437,6 +2437,9 @@ class Occurrence(BaseModel):
         If this is need for a list view (multiple occurrenes) it should be overriden
         in the viewset to use the pre-fetched classifications instead of hitting the database
         for each occurrence (n+1 query problem).
+
+        In the past, this was a more complext query that returned a single result
+        for each algorithm, but now it returns all classifications for the occurrence
         """
 
         classifications = Classification.objects.filter(
@@ -2857,6 +2860,7 @@ class TaxonParent(pydantic.BaseModel):
         # so we can sort by rank. The DRF serializer will convert it to a string.
         # just for the API responses.
         use_enum_values = False
+        frozen = True  # Allow hashing for use in a set
 
 
 @final
@@ -3091,6 +3095,60 @@ class Taxon(BaseModel):
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
+
+
+def find_common_ancestor_taxon(
+    taxa: list["Taxon"],
+    ignore_missing_parents: bool = True,
+) -> typing.Optional["Taxon"]:
+    """
+    Find the common ancestor taxon for a list of taxa.
+    Args:
+        taxa (list[Taxon]): A list of Taxon objects.
+        ignore_rootless (bool): If True, ignore taxa without parents. Defaults to True.
+    Returns:
+        Taxon | None: The common ancestor taxon, or None if no common ancestor exists.
+    """
+    if not taxa:
+        return None
+
+    # Filter taxa based on whether they have parents
+    valid_taxa = taxa
+    if ignore_missing_parents:
+        valid_taxa = [t for t in taxa if t.parents_json]
+        rootless_count = len(taxa) - len(valid_taxa)
+        if rootless_count:
+            logger.warning(f"Ignoring {rootless_count} rootless taxa")
+
+    if not valid_taxa:
+        logger.error("No taxa with parents found")
+        return None
+
+    # Build ancestor sets for each taxon
+    ancestor_sets = []
+    for taxon in valid_taxa:
+        ancestors = set(taxon.parents_json)
+        # Include the taxon itself
+        ancestors.add(TaxonParent(id=taxon.pk, name=taxon.name, rank=TaxonRank(taxon.rank)))
+        ancestor_sets.append(ancestors)
+
+    # Find common ancestors
+    common_ancestors = set.intersection(*ancestor_sets)
+
+    if not common_ancestors:
+        logger.info("No common ancestor found")
+        return None
+
+    # Find the most specific common ancestor (highest rank index)
+    best_ancestor = max(common_ancestors, key=lambda a: list(TaxonRank).index(a.rank))
+
+    logger.info(f"Common ancestor: {best_ancestor.name} ({best_ancestor.rank})")
+
+    # Return the actual Taxon object
+    from .models import Taxon
+
+    result = Taxon.objects.get(id=best_ancestor.id)
+    return result
 
 
 @final

@@ -9,6 +9,7 @@ from django.utils.timezone import now
 from ami.ml.clustering_algorithms.utils import get_clusterer
 
 if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
     from ami.main.models import Classification, Detection, SourceImageCollection
     from ami.ml.models import Algorithm
 
@@ -40,6 +41,8 @@ def get_most_used_algorithm(
         algorithm__isnull=False,
         # @TODO if we have a dedicated task type for feature extraction, we can filter by that
         # task_type="feature_extraction",
+    ).exclude(
+        algorithm__task_type="clustering",
     )
 
     # Log the number of classifications per algorithm, if debug is enabled
@@ -168,12 +171,31 @@ def cluster_detections(
     logging.info(f"Using clustering algorithm: {clustering_algorithm}")
     # Creating Unknown Taxa
     update_job_progress(job, stage_key="create_unknown_taxa", status=JobState.STARTED, progress=0.0)
+
+    def get_cluster_name(cluster_id: int, taxon: "Taxon | None" = None, job: "Job | None" = None) -> str:
+        parts = [
+            f"Cluster {cluster_id}",
+            f"(maybe {taxon.name})" if taxon else "",
+            f"(Job {job.pk})" if job else "",
+        ]
+
+        return " ".join(part for part in parts if part)
+
     for idx, (cluster_id, cluster_members) in enumerate(clusters.items()):
+        from ami.main.models import find_common_ancestor_taxon
+
+        predicted_taxa: set[Taxon] = {
+            member.classification.taxon for member in cluster_members if member.classification.taxon
+        }
+        common_taxon = find_common_ancestor_taxon(list(predicted_taxa))
+        # if common_taxon.rank <= TaxonRank.SPECIES:
+        # use in cluster name instead of parent
         taxon, _created = Taxon.objects.get_or_create(
-            name=f"Cluster {cluster_id} (Collection {collection.pk}) (Job {job.pk if job else 'unknown'})",
+            name=get_cluster_name(cluster_id, cluster_members, job=job),
             rank="SPECIES",
-            notes=f"Auto-created cluster {cluster_id} for collection  {collection.pk}",
+            notes=f"Auto-created cluster {cluster_id} for collection {collection.pk}",
             unknown_species=True,
+            parent=common_taxon or None,
         )
         taxon.projects.add(collection.project)
         taxa_to_add.append(taxon)
@@ -188,7 +210,8 @@ def cluster_detections(
                 score=cluster_member.score,
                 timestamp=now(),
                 logits=None,
-                features_2048=cluster_member.features,
+                # @TODO it would be nice to copy features here, but right now it confuses the queries
+                # when selecting detections & classifications for clustering
                 scores=None,
                 terminal=True,
                 category_map=None,
