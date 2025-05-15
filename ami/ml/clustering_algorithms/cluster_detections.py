@@ -161,7 +161,7 @@ def cluster_detections(
             progress=(idx + 1) / len(valid_detections),
         )
     update_job_progress(job, stage_key="clustering", status=JobState.SUCCESS, progress=1.0)
-    taxa_list = TaxaList.objects.create(name=f"Clusters from (Job {job.pk if job else 'unknown'})")
+    taxa_list, _created = TaxaList.objects.get_or_create(name=f"Clusters from (Job {job.pk if job else 'unknown'})")
     taxa_list.projects.add(collection.project)
     taxa_to_add = []
     clustering_algorithm, _created = Algorithm.objects.get_or_create(
@@ -173,10 +173,13 @@ def cluster_detections(
     update_job_progress(job, stage_key="create_unknown_taxa", status=JobState.STARTED, progress=0.0)
 
     def get_cluster_name(cluster_id: int, taxon: "Taxon | None" = None, job: "Job | None" = None) -> str:
+        # if taxon and taxon.rank >= TaxonRank.ORDER:
+        #     taxon = None  # don't use in cluster name if "Lepidoptera" or higher
+
         parts = [
             f"Cluster {cluster_id}",
-            f"(maybe {taxon.name})" if taxon else "",
             f"(Job {job.pk})" if job else "",
+            f"{taxon.name}?" if taxon else "",
         ]
 
         return " ".join(part for part in parts if part)
@@ -188,14 +191,14 @@ def cluster_detections(
             member.classification.taxon for member in cluster_members if member.classification.taxon
         }
         common_taxon = find_common_ancestor_taxon(list(predicted_taxa))
-        # if common_taxon.rank <= TaxonRank.SPECIES:
-        # use in cluster name instead of parent
         taxon, _created = Taxon.objects.get_or_create(
-            name=get_cluster_name(cluster_id, cluster_members, job=job),
-            rank="SPECIES",
-            notes=f"Auto-created cluster {cluster_id} for collection {collection.pk}",
-            unknown_species=True,
-            parent=common_taxon or None,
+            name=get_cluster_name(cluster_id, common_taxon, job=job),
+            defaults=dict(
+                rank="SPECIES",
+                notes=f"Auto-created cluster {cluster_id} for collection {collection.pk}",
+                unknown_species=True,
+                parent=common_taxon or None,
+            ),
         )
         taxon.projects.add(collection.project)
         taxa_to_add.append(taxon)
