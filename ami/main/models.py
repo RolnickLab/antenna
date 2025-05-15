@@ -2489,11 +2489,12 @@ class Occurrence(BaseModel):
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
     def get_determination_score(self) -> float | None:
+        """
+        Always return a score from an algorithm, even if a human has identified the occurrence.
+        """
         if not self.determination:
             return None
-        elif self.best_identification:
-            return self.best_identification.score
-        elif self.best_prediction:
+        if self.best_prediction:
             return self.best_prediction.score
         else:
             return None
@@ -2588,18 +2589,18 @@ def update_occurrence_determination(
     # Best detection is used as the representative image for the occurrence in either case
     best_detection = occurrence.get_best_detection()
 
-    # Determine values for all attributes
+    # Update the determination (Taxon) first
     new_determination = None
-    new_determination_score = None
-    new_determination_ood_score = occurrence.get_determination_ood_score()
 
     # Identifications take precedence over machine predictions
     if best_identification:
         new_determination = best_identification.taxon
-        new_determination_score = best_identification.score
     elif best_prediction:
         new_determination = best_prediction.taxon
-        new_determination_score = best_prediction.score
+
+    # Update scores, which may or may not come from the same source as the determination
+    new_determination_score = occurrence.get_determination_score()
+    new_determination_ood_score = occurrence.get_determination_ood_score()
 
     # Prepare fields that need to be updated (using a dictionary for bulk update)
     update_fields = {}
