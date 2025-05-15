@@ -2429,8 +2429,7 @@ class Occurrence(BaseModel):
 
     def get_best_predictions(self, filters: dict = {}) -> models.QuerySet[Classification]:
         """
-        Retrieve the classification with the max score for each algorithm
-        from any detection belonging to this occurrence.
+        Retrieve all classifications for this occurrence in chronological order.
 
         This data is for the list of predictions in the Identification tab of the Occurrence Detail view
         in the UI. See the OccurrenceSerializer for the serializer method.
@@ -2439,21 +2438,10 @@ class Occurrence(BaseModel):
         in the viewset to use the pre-fetched classifications instead of hitting the database
         for each occurrence (n+1 query problem).
         """
-        # Get the highest scoring classification for each algorithm
-        # Use a subquery to find the max score for each algorithm
-        subquery = (
-            Classification.objects.filter(detection__occurrence=self, **filters)
-            .values("algorithm")
-            .annotate(max_score=models.Max("score"))
-        )
 
-        # Join the subquery results to get the classifications with those max scores
-        # This ensures we get one classification per algorithm (the one with highest score)
         classifications = Classification.objects.filter(
             detection__occurrence=self,
             **filters,
-            algorithm__in=models.Subquery(subquery.values("algorithm")),
-            score__in=models.Subquery(subquery.values("max_score")),
         ).order_by("-created_at")
 
         return classifications
@@ -2504,18 +2492,19 @@ class Occurrence(BaseModel):
         """
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
-    def get_determination_score(self) -> float | None:
+    def get_determination_score(self, prediction: Classification | None = None) -> float | None:
         """
         Always return a score from an algorithm, even if a human has identified the occurrence.
         """
         if not self.determination:
             return None
-        if self.best_prediction:
-            return self.best_prediction.score
+        best_prediction = prediction or self.get_best_prediction()
+        if best_prediction:
+            return best_prediction.score
         else:
             return None
 
-    def get_determination_ood_score(self) -> float | None:
+    def get_determination_ood_score(self, prediction: Classification | None = None) -> float | None:
         """
         Calculate the OOD score for the whole occurrence.
         Uses the average OOD score of all detections belonging to this occurrence.
@@ -2525,7 +2514,7 @@ class Occurrence(BaseModel):
         # Get the best prediction that has an OOD score
         # this should be the last classification before the clustering algorithm
         # @TODO copy the OOD score from the best classification to the clustering classification during clustering
-        best_prediction = self.get_best_prediction(filters={"ood_score__isnull": False})
+        best_prediction = prediction or self.get_best_prediction(filters={"ood_score__isnull": False})
         if not best_prediction:
             return None
         mean_ood_score = Classification.objects.filter(
@@ -2555,16 +2544,6 @@ class Occurrence(BaseModel):
                 current_determination=self.determination,
                 save=True,
             )
-
-        if self.determination and not self.determination_score:
-            # This may happen for legacy occurrences that were created
-            # before the determination_score field was added
-            # @TODO remove
-            self.determination_score = self.get_determination_score()
-            if not self.determination_score:
-                logger.warning(f"Could not determine score for {self}")
-            else:
-                self.save(update_determination=False)
 
     class Meta:
         ordering = ["-determination_score"]
