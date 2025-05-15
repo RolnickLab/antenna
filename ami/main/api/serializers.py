@@ -502,7 +502,7 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    parents = TaxonNestedSerializer(read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     cover_image_url = serializers.SerializerMethodField()
 
