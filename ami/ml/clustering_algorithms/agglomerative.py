@@ -1,6 +1,5 @@
 import logging
 import os
-import typing
 
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
@@ -92,6 +91,9 @@ class AgglomerativeClusterer(BaseClusterer):
 
         try:
             silhouette_scores = silhouette_samples(features, cluster_ids)
+            silhouette_scores = np.asarray(silhouette_scores)
+            # Scale from -1 to 1 to 0 to 1
+            silhouette_scores = (silhouette_scores + 1) / 2
         except ValueError:
             # If silhouette scores cannot be computed, return an array of zeros
             logger.warning(
@@ -100,4 +102,4 @@ class AgglomerativeClusterer(BaseClusterer):
             )
             silhouette_scores = np.zeros(features.shape[0], dtype=np.float32)
 
-        return cluster_ids, typing.cast(np.ndarray, silhouette_scores)
+        return cluster_ids, silhouette_scores
