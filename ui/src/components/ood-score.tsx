@@ -8,6 +8,10 @@ import { STRING, translate } from 'utils/language'
 const OOD_SCORE_THRESHOLD = 0.3
 
 export const OODScore = ({ occurrence }: { occurrence: Occurrence }) => {
+  if (occurrence.determinationOODScore === undefined) {
+    return <span>{translate(STRING.VALUE_NOT_AVAILABLE)}</span>
+  }
+
   const color = (() => {
     if (occurrence.determinationOODScore >= OOD_SCORE_THRESHOLD) {
       return CONSTANTS.COLORS.secondary[500]
