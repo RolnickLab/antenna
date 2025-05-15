@@ -93,6 +93,10 @@ export const AVAILABLE_FILTERS: {
     field: 'taxon',
   },
   {
+    label: 'Known status',
+    field: 'unknown_species',
+  },
+  {
     label: 'Taxa list',
     field: 'taxa_list_id',
   },
