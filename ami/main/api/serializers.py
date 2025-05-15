@@ -515,6 +515,32 @@ class TaxonListSerializer(DefaultSerializer):
     parents = TaxonNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     featured_occurrences = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+
+    def get_images(self, obj):
+        def build_image_entry(url, title):
+            return {
+                "title": title,
+                "caption": None,
+                "sizes": {"original": url if url else None},
+            }
+
+        images = {
+            "external_reference": build_image_entry(
+                obj.cover_image_url,
+                "External reference image",
+            ),
+            "most_recently_featured": build_image_entry(
+                getattr(obj, "featured_detection_path", None),
+                "Selected occurrence",
+            ),
+            "highest_determination_score": build_image_entry(
+                getattr(obj, "highest_score_detection_path", None),
+                "Most confident prediction",
+            ),
+        }
+
+        return images
 
     def get_featured_occurrences(self, obj):
         """
@@ -541,6 +567,7 @@ class TaxonListSerializer(DefaultSerializer):
             "unknown_species",
             "created_at",
             "updated_at",
+            "images",
         ]
 
     def get_occurrences(self, obj):
@@ -746,23 +773,29 @@ class TaxonSerializer(DefaultSerializer):
     images = serializers.SerializerMethodField()
 
     def get_images(self, obj):
-        most_recent_occurrence = getattr(obj, "prefetched_featured_occurrences", []) or []
-        most_recent = most_recent_occurrence[0] if most_recent_occurrence else None
-        image_url = self._get_best_detection_image_url(most_recent)
-
-        if not image_url:
-            return {}
-
-        return {
-            "most_recently_featured": {
-                "url": image_url,
-                "title": "Selected occurrence",
+        def build_image_entry(url, title):
+            return {
+                "title": title,
                 "caption": None,
-                "sizes": {
-                    "original": image_url,
-                },
+                "sizes": {"original": url if url else None},
             }
+
+        images = {
+            "external_reference": build_image_entry(
+                obj.cover_image_url,
+                "External reference image",
+            ),
+            "most_recently_featured": build_image_entry(
+                getattr(obj, "featured_detection_path", None),
+                "Selected occurrence",
+            ),
+            "highest_determination_score": build_image_entry(
+                getattr(obj, "highest_score_detection_path", None),
+                "Most confident prediction",
+            ),
         }
+
+        return images
 
     def get_featured_occurrences(self, obj):
         """

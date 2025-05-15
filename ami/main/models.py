@@ -16,7 +16,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
-from django.db.models import Q
+from django.db.models import OuterRef, Q, Subquery
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -2695,17 +2695,34 @@ class TaxonQuerySet(models.QuerySet):
 
         return qs
 
-    def with_featured_image(self, project: Project) -> models.QuerySet["Taxon"]:
-        """
-        Annotate taxa with image path from the feature detection of the featured occurrence.
-
-        The full media url will be constructed in the serializer.
-        """
-        queryset = self.filter(project_taxa__project=project).annotate(
-            featured_image_path=models.F("project_taxa__featured_occurrence__best_detection__path")
+    def with_example_image_paths(self, project: Project):
+        # Subquery: Most recently featured best detection path
+        recent_featured_qs = (
+            Occurrence.objects.filter(
+                determination_id=OuterRef("pk"),
+                project=project,
+                featured=True,
+                best_detection__path__isnull=False,
+            )
+            .order_by("-featured_at", "-created_at")
+            .values("best_detection__path")[:1]
         )
 
-        return queryset
+        # Subquery: Highest scored best detection path
+        highest_score_qs = (
+            Occurrence.objects.filter(
+                determination_id=OuterRef("pk"),
+                project=project,
+                best_detection__path__isnull=False,
+            )
+            .order_by("-determination_score")
+            .values("best_detection__path")[:1]
+        )
+
+        return self.annotate(
+            featured_detection_path=Subquery(recent_featured_qs),
+            highest_score_detection_path=Subquery(highest_score_qs),
+        )
 
 
 @final

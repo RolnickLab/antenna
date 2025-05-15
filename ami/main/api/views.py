@@ -1370,6 +1370,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if project:
             include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             qs = qs.with_featured_occurrences(project=project)  # type: ignore
+            qs = qs.with_example_image_paths(project=project)
+
             # qs = qs.with_featured_image(project=project)  # type: ignore
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
