@@ -119,11 +119,11 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     if not ClusteringAlgorithm:
         raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
 
-    cluster_ids = ClusteringAlgorithm(params).cluster(features_np)
+    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np)
 
     task_logger.info(f"Clustering completed with {len(set(cluster_ids))} clusters")
     clusters = {}
-    for idx, (cluster_id, detection) in enumerate(zip(cluster_ids, valid_detections)):
+    for idx, (cluster_id, detection, score) in enumerate(zip(cluster_ids, valid_detections, cluster_scores)):
         clusters.setdefault(cluster_id, []).append(detection)
         update_job_progress(
             job,
