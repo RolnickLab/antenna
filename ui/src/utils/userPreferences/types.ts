@@ -1,5 +1,6 @@
 export interface UserPreferences {
   columnSettings: { [tableKey: string]: { [columnKey: string]: boolean } }
+  oodScoreThreshold: number
   recentIdentifications: {
     details?: string
     label: string

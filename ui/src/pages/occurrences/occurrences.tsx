@@ -51,11 +51,11 @@ export const Occurrences = () => {
       duration: false,
       detections: true,
       score: true,
-      ['created-at']: true,
+      ['updated-at']: true,
     }
   )
   const { sort, setSort } = useSort({
-    field: 'created_at',
+    field: 'updated_at',
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
@@ -101,6 +101,7 @@ export const Occurrences = () => {
               <FilterControl data={taxaLists} field="taxa_list_id" />
             )}
             <FilterControl clearable={false} field="classification_threshold" />
+            <FilterControl clearable={false} field="determination_ood_score" />
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
           </FilterSection>
