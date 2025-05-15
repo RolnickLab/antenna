@@ -17,11 +17,7 @@ export class SpeciesDetails extends Species {
     return {
       id: occurrence.id,
       image_url: occurrence.best_detection.url,
-      caption: this.isUnknown
-        ? 'Center of cluster'
-        : `${
-            occurrence.determination.name
-          } (${occurrence.determination_score.toFixed(2)})`,
+      caption: undefined,
     }
   }
 }
