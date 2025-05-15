@@ -21,7 +21,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   return (
     <div className={styles.wrapper}>
       <Helmet>
-        <meta name="og:image" content={species.exampleOccurrence?.image_url} />
+        <meta name="og:image" content={species.exampleOccurrence?.url} />
       </Helmet>
       <div className={styles.header}>
         <TaxonDetails
@@ -103,7 +103,8 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
             <BlueprintCollection>
-              {species.coverImage ? (
+              {species.coverImage &&
+              species.coverImage.url !== species.exampleOccurrence?.url ? (
                 <InfoBlockField label="Reference image">
                   <a
                     href={species.coverImage.url}
@@ -127,7 +128,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                       }),
                     })}
                   >
-                    <img src={species.exampleOccurrence.image_url} />
+                    <img src={species.exampleOccurrence.url} />
                   </Link>
                   {species.exampleOccurrence.caption ? (
                     <span className="body-small text-muted-foreground">

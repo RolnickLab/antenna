@@ -17,25 +17,14 @@ export class Species extends Taxon {
     }
   }
 
-  get coverImage() {
+  get coverImage(): { url: string; caption?: string } | undefined {
     if (!this._species.cover_image_url) {
       return undefined
     }
 
-    if (!this._species.cover_image_credit) {
-      return {
-        url: this._species.cover_image_url,
-        caption: this.isUnknown
-          ? `${this.name} (most similar known taxon)`
-          : this.name,
-      }
-    }
-
     return {
       url: this._species.cover_image_url,
-      caption: this.isUnknown
-        ? `${this.name} (most similar known taxon), ${this._species.cover_image_credit}`
-        : `${this.name}, ${this._species.cover_image_credit}`,
+      caption: this._species.cover_image_credit ?? undefined,
     }
   }
 
