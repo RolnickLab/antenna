@@ -514,6 +514,14 @@ class TaxonListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     parents = TaxonNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
+    featured_occurrences = serializers.SerializerMethodField()
+
+    def get_featured_occurrences(self, obj):
+        """
+        Return the prefetched featured occurrences attached via `to_attr="prefetched_featured_occurrences"`.
+        """
+        featured = getattr(obj, "prefetched_featured_occurrences", [])
+        return TaxonOccurrenceNestedSerializer(featured, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
@@ -526,6 +534,7 @@ class TaxonListSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "occurrences",
+            "featured_occurrences",
             "last_detected",
             "best_determination_score",
             "cover_image_url",
@@ -733,6 +742,43 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
+    featured_occurrences = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+
+    def get_images(self, obj):
+        most_recent_occurrence = getattr(obj, "prefetched_featured_occurrences", []) or []
+        most_recent = most_recent_occurrence[0] if most_recent_occurrence else None
+        image_url = self._get_best_detection_image_url(most_recent)
+
+        if not image_url:
+            return {}
+
+        return {
+            "most_recently_featured": {
+                "url": image_url,
+                "title": "Selected occurrence",
+                "caption": None,
+                "sizes": {
+                    "original": image_url,
+                },
+            }
+        }
+
+    def get_featured_occurrences(self, obj):
+        """
+        Return a list of featured occurrences from prefetched featured occurrences.
+        """
+        featured = [occ for occ in getattr(obj, "prefetched_featured_occurrences", [])]
+        return TaxonOccurrenceNestedSerializer(featured, many=True, context=self.context).data
+
+    def _get_best_detection_image_url(self, occurrence):
+        """
+        Given an occurrence, return the public URL of its best detection's source image.
+        """
+        detection = getattr(occurrence, "best_detection", None)
+        if detection and detection.source_image:
+            return detection.source_image.public_url
+        return None
 
     class Meta:
         model = Taxon
@@ -756,6 +802,7 @@ class TaxonSerializer(DefaultSerializer):
             # "featured_detection_image_url",
             "unknown_species",
             "last_detected",  # @TODO this has performance impact, review
+            "images",
         ]
 
 

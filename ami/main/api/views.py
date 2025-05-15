@@ -58,7 +58,6 @@ from ..models import (
     Page,
     Project,
     ProjectQuerySet,
-    ProjectTaxon,
     S3StorageSource,
     Site,
     SourceImage,
@@ -1133,18 +1132,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         Set this occurrence as the representative example for its taxon in the current project.
         """
         occurrence = self.get_object()
-
         if not occurrence:
             return Response({"detail": "This occurrence does not exist."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Feature or unfeature the occurrence based on the request method
-        if request.method == "DELETE":
-            # Unfeature the occurrence
-            occurrence.featured = False
-        else:
-            # Feature the occurrence
-            occurrence.featured = True
-        occurrence.save()
 
         # Ensure the occurrence has a determination (taxon)
         taxon = occurrence.determination
@@ -1155,7 +1144,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             )
 
         # Ensure the occurrence is assigned to a project
-        project = occurrence.project or self.get_active_project()
+        project = occurrence.project
         if not project:
             return Response(
                 {"detail": "This occurrence is not associated with any project."}, status=status.HTTP_400_BAD_REQUEST
@@ -1163,13 +1152,20 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
         # Get or create the ProjectTaxon entry
         try:
-            project_taxon, _ = ProjectTaxon.objects.get_or_create(project=project, taxon=taxon)
-            project_taxon.featured_occcurence = occurrence
-            project_taxon.save()
-
+            # Feature or unfeature the occurrence based on the request method
+            if request.method == "DELETE":
+                # Unfeature the occurrence
+                occurrence.featured = False
+            else:
+                # Feature the occurrence
+                occurrence.featured = True
+            # Set featured at to current date time
+            occurrence.featured_at = timezone.now()
+            occurrence.save(update_determination=False)
             return Response({"detail": "Representative occurrence updated successfully."}, status=status.HTTP_200_OK)
 
         except Exception as e:
+            raise e
             return Response({"detail": f"Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @extend_schema(parameters=[project_id_doc_param])

@@ -2685,16 +2685,14 @@ class TaxonQuerySet(models.QuerySet):
         """
         qs = self.prefetch_related(
             models.Prefetch(
-                "featured_occurrences",
-                queryset=Occurrence.objects.filter(
-                    featured=True,
-                    project=project,
-                )
+                "occurrences",
+                queryset=Occurrence.objects.filter(project=project, featured=True)
                 .order_by("-featured_at", "-created_at")
                 .select_related("best_detection"),
-                to_attr="featured_occurrences",
+                to_attr="prefetched_featured_occurrences",  # available on each Taxon instance
             )
         )
+
         return qs
 
     def with_featured_image(self, project: Project) -> models.QuerySet["Taxon"]:

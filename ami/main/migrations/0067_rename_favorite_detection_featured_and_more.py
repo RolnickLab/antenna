@@ -8,7 +8,7 @@ import pgvector.django.vector
 class Migration(migrations.Migration):
     dependencies = [
         ("ml", "0023_alter_algorithm_task_type"),
-        ("main", "0066_populate_cached_occurence_fields"),
+        ("main", "0065_detection_favorite_occurrence_best_detection_and_more"),
     ]
 
     operations = [

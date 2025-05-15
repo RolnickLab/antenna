@@ -1572,3 +1572,70 @@ class TestRolePermissions(APITestCase):
         self._test_sourceimageupload_permissions(
             user=self.project_manager, permission_map=self.PERMISSIONS_MAPS["project_manager"]["sourceimageupload"]
         )
+
+
+class TestOccurrenceFeatureAction(APITestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_occurrences(deployment=self.deployment, num=1)
+
+        self.occurrence = self.project.occurrences.first()
+        assert (
+            self.occurrence is not None and self.occurrence.determination is not None
+        ), "Occurrence missing determination"
+
+        # Create and authenticate superuser
+        self.user = User.objects.create_user(
+            email="testuser@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_feature_occurrence(self):
+        url = f"/api/v2/occurrences/{self.occurrence.pk}/feature/"
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.occurrence.refresh_from_db()
+        self.assertTrue(self.occurrence.featured)
+        self.assertIsNotNone(self.occurrence.featured_at)
+
+        taxon_id = self.occurrence.determination.pk
+        taxon_url = f"/api/v2/taxa/{taxon_id}/?project_id={self.project.pk}"
+
+        response = self.client.get(taxon_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        taxon_data = response.json()
+        logger.info(f"Taxon data response : {taxon_data.get('featured_occurrences', [])}")
+
+        # Get list of occurrence IDs in the featured_occurrences of this taxon
+        featured_ids = [occ["id"] for occ in taxon_data.get("featured_occurrences", [])]
+        self.assertIn(self.occurrence.pk, featured_ids)
+
+    def test_unfeature_occurrence(self):
+        # First feature it
+        self.occurrence.featured = True
+        self.occurrence.save()
+
+        url = f"/api/v2/occurrences/{self.occurrence.pk}/feature/"
+
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.occurrence.refresh_from_db()
+        self.assertFalse(self.occurrence.featured)
+        # Check the taxon's featured_occurrences no longer includes the occurrence
+        taxon_id = self.occurrence.determination.pk
+        taxon_url = f"/api/v2/taxa/{taxon_id}/?project_id={self.project.pk}"
+
+        response = self.client.get(taxon_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        taxon_data = response.json()
+
+        logger.info(f"Taxon data after unfeaturing: {taxon_data.get('featured_occurrences', [])}")
+
+        featured_ids = [occ["id"] for occ in taxon_data.get("featured_occurrences", [])]
+        self.assertNotIn(self.occurrence.pk, featured_ids)
