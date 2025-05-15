@@ -2472,6 +2472,22 @@ class Occurrence(BaseModel):
         # Get all classifications for this occurrence to choose from
         all_classifications = Classification.objects.filter(detection__occurrence=self, **filters)
 
+        # Prioritize derived classifications (e.g. clustering) regardless of score
+        derived_classification_task_types = (
+            "clustering",
+            "tracking",
+        )
+        derived_classification = (
+            all_classifications.filter(
+                algorithm__task_type__in=derived_classification_task_types,
+                terminal=True,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if derived_classification:
+            return derived_classification
+
         # First try to get a terminal classification
         terminal_classification = all_classifications.filter(terminal=True).order_by("-score", "-created_at").first()
         if terminal_classification:
