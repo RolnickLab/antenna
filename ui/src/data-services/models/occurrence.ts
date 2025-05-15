@@ -77,22 +77,26 @@ export class Occurrence {
     return this._occurrence.determination_score
   }
 
-  get determinationOODScore(): number {
+  get determinationOODScore(): number | undefined {
     const ood_score = this._occurrence.determination_ood_score
 
-    if (!ood_score) {
-      return 0
+    if (ood_score || ood_score === 0) {
+      return ood_score
     }
 
-    return ood_score
+    return undefined
   }
 
   get determinationScoreLabel(): string {
     return this.determinationScore.toFixed(2)
   }
 
-  get determinationOODScoreLabel(): string {
-    return this.determinationOODScore.toFixed(2)
+  get determinationOODScoreLabel(): string | undefined {
+    if (this.determinationOODScore !== undefined) {
+      return this.determinationOODScore.toFixed(2)
+    }
+
+    return undefined
   }
 
   get determinationTaxon(): Taxon {
