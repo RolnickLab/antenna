@@ -1127,6 +1127,49 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
+    @action(detail=True, methods=["post", "delete"], url_path="feature")
+    def feature(self, request, pk=None):
+        """
+        Set this occurrence as the representative example for its taxon in the current project.
+        """
+        occurrence = self.get_object()
+        if not occurrence:
+            return Response({"detail": "This occurrence does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Ensure the occurrence has a determination (taxon)
+        taxon = occurrence.determination
+        if not taxon:
+            return Response(
+                {"detail": "This occurrence has no taxon assigned (determination)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Ensure the occurrence is assigned to a project
+        project = occurrence.project
+        if not project:
+            return Response(
+                {"detail": "This occurrence is not associated with any project."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get or create the ProjectTaxon entry
+        try:
+            # Feature or unfeature the occurrence based on the request method
+            if request.method == "DELETE":
+                # Unfeature the occurrence
+                occurrence.featured = False
+            else:
+                # Feature the occurrence
+                occurrence.featured = True
+            # Set featured at to current date time
+            occurrence.featured_at = timezone.now()
+            occurrence.save(update_determination=False)
+            return Response({"detail": "Representative occurrence updated successfully."}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            raise e
+            return Response({"detail": f"Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @extend_schema(parameters=[project_id_doc_param])
     @extend_schema(
         parameters=[
             project_id_doc_param,
@@ -1372,7 +1415,10 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         if project:
             include_unobserved = True  # Show detail views for unobserved taxa instead of 404
-            # @TODO move to a QuerySet manager
+            qs = qs.with_featured_occurrences(project=project)  # type: ignore
+            qs = qs.with_example_image_paths(project=project)
+
+            # @TODO deprecated in favor of with_example_image_paths
             qs = qs.annotate(
                 best_detection_image_path=models.Subquery(
                     Occurrence.objects.filter(
@@ -1384,6 +1430,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                     output_field=models.TextField(),
                 )
             )
+
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)

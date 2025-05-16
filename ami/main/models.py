@@ -16,7 +16,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models
-from django.db.models import Q
+from django.db.models import OuterRef, Q, Subquery
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -2131,7 +2131,8 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
-    favorite = models.BooleanField(default=False, help_text="Use this detection to represent the occurrence")
+    featured = models.BooleanField(default=False, help_text="Use this detection to represent the occurrence")
+    featured_at = models.DateTimeField(null=True, blank=True)
 
     # For type hints
     classifications: models.QuerySet["Classification"]
@@ -2300,6 +2301,16 @@ class Occurrence(BaseModel):
     determination_score = models.FloatField(null=True, blank=True, help_text="Estimation of confidence")
     determination_ood_score = models.FloatField(null=True, blank=True, help_text="Out of distribution score")
 
+    featured = models.BooleanField(
+        default=False,
+        help_text="Use this occurrence to represent a Taxon in the UI",
+    )
+    featured_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="The date and time this occurrence was featured",
+    )
+
     best_detection = models.ForeignKey(
         "Detection",
         on_delete=models.SET_NULL,
@@ -2408,7 +2419,7 @@ class Occurrence(BaseModel):
         Pick the detection to represent the occurrence, for example which image to show in the UI.
         """
         # First look for any detections marked as favorite:
-        best_detection = self.detections.filter(favorite=True).first()
+        best_detection = self.detections.filter(featured=True).order_by("-featured_at", "-created_at").first()
 
         # If there are no favorites, look for the best detection by confidence score
         if not best_detection:
@@ -2529,6 +2540,18 @@ class Occurrence(BaseModel):
             ).aggregate(models.Avg("ood_score"),)["ood_score__avg"]
             return mean_ood_score
 
+    def update_featured_occurrence_on_project_taxon(self):
+        """
+        Update the featured image for the taxon based on the best detection.
+        This is used when the occurrence is featured.
+        """
+        project_taxon = ProjectTaxon.objects.filter(
+            taxon=self.determination,
+            project=self.project,
+        ).first()
+        if project_taxon:
+            project_taxon.update_calculated_fields(save=True)
+
     def context_url(self):
         detection = self.best_detection
         if detection and detection.source_image and detection.source_image.event:
@@ -2640,6 +2663,8 @@ def update_occurrence_determination(
             # If not saving, just update the fields in the object
             for field, value in update_fields.items():
                 setattr(occurrence, field, value)
+
+        occurrence.update_featured_occurrence_on_project_taxon()
     else:
         task_logger.debug(f"Occurrence {occurrence} does not need update")
 
@@ -2655,6 +2680,51 @@ class TaxonQuerySet(models.QuerySet):
         qs = qs.filter(occurrences__project=project)
 
         return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+
+    def with_featured_occurrences(self, project: Project):
+        """
+        Prefetch the featured occurrences for each taxon.
+        """
+        qs = self.prefetch_related(
+            models.Prefetch(
+                "occurrences",
+                queryset=Occurrence.objects.filter(project=project, featured=True)
+                .order_by("-featured_at", "-created_at")
+                .select_related("best_detection"),
+                to_attr="prefetched_featured_occurrences",  # available on each Taxon instance
+            )
+        )
+
+        return qs
+
+    def with_example_image_paths(self, project: Project):
+        # Subquery: Most recently featured best detection path
+        recent_featured_qs = (
+            Occurrence.objects.filter(
+                determination_id=OuterRef("pk"),
+                project=project,
+                featured=True,
+                best_detection__path__isnull=False,
+            )
+            .order_by("-featured_at", "-created_at")
+            .values("best_detection__path")[:1]
+        )
+
+        # Subquery: Highest scored best detection path
+        highest_score_qs = (
+            Occurrence.objects.filter(
+                determination_id=OuterRef("pk"),
+                project=project,
+                best_detection__path__isnull=False,
+            )
+            .order_by("-determination_score")
+            .values("best_detection__path")[:1]
+        )
+
+        return self.annotate(
+            featured_detection_path=Subquery(recent_featured_qs),
+            highest_score_detection_path=Subquery(highest_score_qs),
+        )
 
 
 @final
@@ -2899,7 +2969,8 @@ class Taxon(BaseModel):
 
     notes = models.TextField(blank=True)
 
-    projects = models.ManyToManyField("Project", related_name="taxa")
+    # projects = models.ManyToManyField("Project", related_name="taxa", through="ProjectTaxon", blank=True)
+    projects = models.ManyToManyField("Project", related_name="taxa", blank=True)
     direct_children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
@@ -3025,6 +3096,13 @@ class Taxon(BaseModel):
         # @TODO should this be done in the serializer?
         # @TODO better way to get distinct values from an annotated queryset?
         return [get_media_url(path) for path in detection_image_paths if path]
+
+    def featured_occurrences(self) -> models.QuerySet[Occurrence]:
+        """
+        This is set using a QuerySet annotation in the viewset, but the method
+        must exist here for the serializer to use it.
+        """
+        return models.QuerySet[Occurrence]()
 
     def list_names(self) -> str:
         return ", ".join(self.lists.values_list("name", flat=True))
@@ -3153,6 +3231,85 @@ def find_common_ancestor_taxon(
 
     result = Taxon.objects.get(id=best_ancestor.id)
     return result
+
+
+@final
+class ProjectTaxon(BaseModel):
+    "Intermediate model to link taxa and projects"
+
+    taxon = models.ForeignKey(
+        "Taxon",
+        on_delete=models.CASCADE,
+        related_name="project_taxa",
+    )
+    project = models.ForeignKey(
+        "Project",
+        on_delete=models.CASCADE,
+        related_name="project_taxa",
+    )
+
+    # # Representative occurrence for this taxon in this project
+    # featured_occcurrence = models.ForeignKey(
+    featured_occcurence = models.ForeignKey(
+        "Occurrence",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+    featured_detection = models.ForeignKey(
+        "Detection",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+
+    mean_feature_vector = VectorField(
+        dimensions=2048, null=True, default=None, help_text="Cluster center for this taxon in this project"
+    )
+
+    mean_feature_vector_algorithm = models.ForeignKey(
+        "ml.Algorithm",
+        on_delete=models.SET_NULL,
+        null=True,
+    )
+
+    # occurrence_count = models.IntegerField(default=0, help_text="Number of occurrences for this
+    # taxon in this project")
+    # occurrence_count_recursive = models.IntegerField(
+    #     default=0, help_text="Number of occurrences for this taxon and all its children in this project"
+    # )
+    # first_detection =
+    # last_detection =
+
+    def get_featured_occurrence(self) -> Occurrence | None:
+        """
+        Get the featured occurrence for this taxon in this project.
+
+        Priortize manual selection, then automatically select the best occurrence.
+        @TODO add method for automatic selection based on image similarity, confidence score, size etc.
+        """
+        return (
+            Occurrence.objects.filter(
+                determination=self.taxon,
+                project=self.project,
+                featured=True,
+            )
+            .order_by("-featured_at", "-created_at")
+            .first()
+        )
+
+    def update_calculated_fields(self, save=True, *args, **kwargs):
+        self.featured_occcurence = self.get_featured_occurrence()
+        if save:
+            self.save(update_calculated_fields=False, *args, **kwargs)
+
+    def save(self, update_calculated_fields=False, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if update_calculated_fields:
+            self.update_calculated_fields(save=True)
+
+    class Meta:
+        unique_together = [("taxon", "project")]
 
 
 @final

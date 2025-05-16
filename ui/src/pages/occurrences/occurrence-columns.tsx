@@ -11,6 +11,7 @@ import {
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
+import { FeatureControl } from 'pages/occurrence-details/feature-control/feature-control'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { Link } from 'react-router-dom'
@@ -44,11 +45,16 @@ export const columns: (
       })
 
       return (
-        <ImageTableCell
-          images={[item.images[0]]}
-          theme={ImageCellTheme.Light}
-          to={detailsRoute}
-        />
+        <div className="relative group">
+          <ImageTableCell
+            images={[item.images[0]]}
+            theme={ImageCellTheme.Light}
+            to={detailsRoute}
+          />
+          <div className="absolute bottom-4 right-5 hidden group-hover:block">
+            <FeatureControl occurrence={item} />
+          </div>
+        </div>
       )
     },
   },

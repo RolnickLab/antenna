@@ -9,7 +9,7 @@ from rest_framework.request import Request
 from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import Tag, create_source_image_from_upload
+from ami.main.models import Tag, create_source_image_from_upload, get_media_url
 from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
@@ -25,6 +25,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectTaxon,
     S3StorageSource,
     Site,
     SourceImage,
@@ -32,9 +33,17 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
-    get_media_url,
     validate_filename_timestamp,
 )
+
+
+def build_image_entry(path, title, caption=None):
+    url = get_media_url(path) if path else None
+    return {
+        "title": title,
+        "caption": caption,
+        "sizes": {"original": url if url else None},
+    }
 
 
 class ProjectNestedSerializer(DefaultSerializer):
@@ -449,6 +458,16 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
+class ProjectTaxonNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = ProjectTaxon
+        fields = [
+            "id",
+            # "project_id",
+            # "featured_occcurence_id",
+        ]
+
+
 class TaxonNoParentNestedSerializer(DefaultSerializer):
     class Meta:
         model = Taxon
@@ -521,8 +540,34 @@ class TaxonListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
-    cover_image_url = serializers.SerializerMethodField()
+    featured_occurrences = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    cover_image_url = serializers.SerializerMethodField()  # Deprecated, use images instead @TODO
     tags = serializers.SerializerMethodField()
+
+    def get_images(self, obj):
+        images = {
+            "external_reference": build_image_entry(
+                obj.cover_image_url, "External reference image", obj.cover_image_credit
+            ),
+            "most_recently_featured": build_image_entry(
+                getattr(obj, "featured_detection_path", None),
+                "Featured occurrence",
+            ),
+            "highest_determination_score": build_image_entry(
+                getattr(obj, "highest_score_detection_path", None),
+                "Most confident prediction",
+            ),
+        }
+
+        return images
+
+    def get_featured_occurrences(self, obj):
+        """
+        Return the prefetched featured occurrences attached via `to_attr="prefetched_featured_occurrences"`.
+        """
+        featured = getattr(obj, "prefetched_featured_occurrences", [])
+        return TaxonOccurrenceNestedSerializer(featured, many=True, context=self.context).data
 
     def get_tags(self, obj):
         tag_list = getattr(obj, "prefetched_tags", [])
@@ -539,6 +584,7 @@ class TaxonListSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "occurrences",
+            "featured_occurrences",
             "tags",
             "last_detected",
             "best_determination_score",
@@ -546,6 +592,7 @@ class TaxonListSerializer(DefaultSerializer):
             "unknown_species",
             "created_at",
             "updated_at",
+            "images",
         ]
 
     def get_occurrences(self, obj):
@@ -758,8 +805,43 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
-    cover_image_url = serializers.SerializerMethodField()
+    featured_occurrences = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    cover_image_url = serializers.SerializerMethodField()  # Deprecated, use images instead @TODO
     tags = serializers.SerializerMethodField()
+
+    def get_images(self, obj):
+        images = {
+            "external_reference": build_image_entry(
+                obj.cover_image_url, "External reference image", obj.cover_image_credit
+            ),
+            "most_recently_featured": build_image_entry(
+                getattr(obj, "featured_detection_path", None),
+                "Featured occurrence",
+            ),
+            "highest_determination_score": build_image_entry(
+                getattr(obj, "highest_score_detection_path", None),
+                "Most confident prediction",
+            ),
+        }
+
+        return images
+
+    def get_featured_occurrences(self, obj):
+        """
+        Return a list of featured occurrences from prefetched featured occurrences.
+        """
+        featured = [occ for occ in getattr(obj, "prefetched_featured_occurrences", [])]
+        return TaxonOccurrenceNestedSerializer(featured, many=True, context=self.context).data
+
+    def _get_best_detection_image_url(self, occurrence):
+        """
+        Given an occurrence, return the public URL of its best detection's source image.
+        """
+        detection = getattr(occurrence, "best_detection", None)
+        if detection and detection.source_image:
+            return detection.source_image.public_url
+        return None
 
     def get_tags(self, obj):
         # Use prefetched tags
@@ -785,7 +867,11 @@ class TaxonSerializer(DefaultSerializer):
             "fieldguide_id",
             "cover_image_url",
             "cover_image_credit",
+            "featured_occurrences",
+            # "featured_detection_image_url",
             "unknown_species",
+            "last_detected",  # @TODO this has performance impact, review
+            "images",
         ]
 
     def get_cover_image_url(self, obj):
@@ -1281,6 +1367,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "first_appearance_time",
             "duration",
             "duration_label",
+            "featured",
             "determination",
             "detections_count",
             "detection_images",

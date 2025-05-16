@@ -1572,3 +1572,133 @@ class TestRolePermissions(APITestCase):
         self._test_sourceimageupload_permissions(
             user=self.project_manager, permission_map=self.PERMISSIONS_MAPS["project_manager"]["sourceimageupload"]
         )
+
+
+class TestOccurrenceFeatureAction(APITestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_occurrences(deployment=self.deployment, num=1)
+
+        self.occurrence = self.project.occurrences.first()
+        assert (
+            self.occurrence is not None and self.occurrence.determination is not None
+        ), "Occurrence missing determination"
+
+        # Create and authenticate superuser
+        self.user = User.objects.create_user(
+            email="testuser@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_feature_occurrence(self):
+        url = f"/api/v2/occurrences/{self.occurrence.pk}/feature/"
+
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.occurrence.refresh_from_db()
+        self.assertTrue(self.occurrence.featured)
+        self.assertIsNotNone(self.occurrence.featured_at)
+
+        taxon_id = self.occurrence.determination.pk
+        taxon_url = f"/api/v2/taxa/{taxon_id}/?project_id={self.project.pk}"
+
+        response = self.client.get(taxon_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        taxon_data = response.json()
+        logger.info(f"Taxon data response : {taxon_data.get('featured_occurrences', [])}")
+
+        # Get list of occurrence IDs in the featured_occurrences of this taxon
+        featured_ids = [occ["id"] for occ in taxon_data.get("featured_occurrences", [])]
+        self.assertIn(self.occurrence.pk, featured_ids)
+
+    def test_unfeature_occurrence(self):
+        # First feature it
+        self.occurrence.featured = True
+        self.occurrence.save()
+
+        url = f"/api/v2/occurrences/{self.occurrence.pk}/feature/"
+
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.occurrence.refresh_from_db()
+        self.assertFalse(self.occurrence.featured)
+        # Check the taxon's featured_occurrences no longer includes the occurrence
+        taxon_id = self.occurrence.determination.pk
+        taxon_url = f"/api/v2/taxa/{taxon_id}/?project_id={self.project.pk}"
+
+        response = self.client.get(taxon_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        taxon_data = response.json()
+
+        logger.info(f"Taxon data after unfeaturing: {taxon_data.get('featured_occurrences', [])}")
+
+        featured_ids = [occ["id"] for occ in taxon_data.get("featured_occurrences", [])]
+        self.assertNotIn(self.occurrence.pk, featured_ids)
+
+
+class TestTaxonRepresentativeImages(APITestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_occurrences(deployment=self.deployment, num=3)
+
+        self.occurrences = list(self.project.occurrences.all())
+        assert all(o.determination for o in self.occurrences), "All occurrences must have determination"
+
+        self.taxon = self.occurrences[0].determination
+        self.taxon.cover_image_url = "https://dummy.url/cover.jpg"
+        self.taxon.cover_image_credit = "Test Credit"
+        self.taxon.save()
+
+        # Assign fake best detections with valid paths
+        for i, occ in enumerate(self.occurrences):
+            occ.best_detection = occ.detections.first()
+            occ.best_detection.path = f"cropped/image_{i}.jpg"
+            occ.best_detection.save()
+            occ.save(update_determination=False)
+
+        # Set highest score for 2nd occurrence
+        for oc in Occurrence.objects.filter(project=self.project, determination=self.taxon):
+            oc.determination_score = 0.2
+            oc.save(update_determination=False)
+
+        self.occurrences[1].determination_score = 0.99
+        self.occurrences[1].save(update_determination=False)
+        assert self.occurrences[1].determination_score == 0.99
+
+        # Feature 3rd occurrence
+        self.occurrences[2].featured = True
+        self.occurrences[2].save(update_determination=False)
+
+        self.user = User.objects.create_superuser(email="test@user.org")
+        self.client.force_authenticate(self.user)
+
+    def _get_images_field(self, taxon_id):
+        url = f"/api/v2/taxa/{taxon_id}/?project_id={self.project.id}"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return response.json().get("images", {})
+
+    def test_image_fields_in_detail(self):
+        images = self._get_images_field(self.taxon.id)
+
+        self.assertIn("external_reference", images)
+        self.assertIn("most_recently_featured", images)
+        self.assertIn("highest_determination_score", images)
+
+        # External reference should match taxon field
+        self.assertEqual(images["external_reference"]["sizes"]["original"], self.taxon.cover_image_url)
+        self.assertEqual(images["external_reference"]["caption"], self.taxon.cover_image_credit)
+
+        # Most recently featured should come from occ[2]
+        self.assertIn("cropped/image_2.jpg", images["most_recently_featured"]["sizes"]["original"])
+
+        # Highest score should come from occ[1]
+        self.assertIn("cropped/image_1.jpg", images["highest_determination_score"]["sizes"]["original"])
