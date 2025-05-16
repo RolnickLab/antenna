@@ -1,4 +1,3 @@
-import classNames from 'classnames'
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
@@ -45,35 +44,12 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           taxon={species}
         />
         {species.isUnknown ? (
-          <div className={classNames(styles.badge, 'no-print')}>
-            Unknown species
-          </div>
+          <Tag name="Unknown species" className="bg-success" />
         ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>
           <div className="grid gap-6">
-            <InfoBlockField
-              label={translate(STRING.FIELD_LABEL_TAGS)}
-              className="relative"
-            >
-              <div className="flex flex-col items-start gap-2 no-print">
-                {species.tags.length ? (
-                  <div className="flex flex-wrap gap-1">
-                    {species.tags.map((tag) => (
-                      <Tag key={tag.id} name={tag.name} />
-                    ))}
-                  </div>
-                ) : (
-                  <span>n/a</span>
-                )}
-                {canUpdate ? (
-                  <div className="absolute top-[-9px] right-0">
-                    <TagsForm species={species} />
-                  </div>
-                ) : null}
-              </div>
-            </InfoBlockField>
             <InfoBlockField
               label={translate(STRING.FIELD_LABEL_NAME)}
               className="relative no-print"
@@ -95,6 +71,27 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                   <SpeciesParentForm species={species} />
                 </div>
               ) : null}
+            </InfoBlockField>
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_TAGS)}
+              className="relative"
+            >
+              <div className="flex flex-col items-start gap-2 no-print">
+                {species.tags.length ? (
+                  <div className="flex flex-wrap gap-1">
+                    {species.tags.map((tag) => (
+                      <Tag key={tag.id} name={tag.name} />
+                    ))}
+                  </div>
+                ) : (
+                  <span>n/a</span>
+                )}
+                {canUpdate ? (
+                  <div className="absolute top-[-9px] right-0">
+                    <TagsForm species={species} />
+                  </div>
+                ) : null}
+              </div>
             </InfoBlockField>
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
