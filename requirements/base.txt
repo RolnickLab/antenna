@@ -88,7 +88,7 @@ django-debug-toolbar==4.1.0  # https://github.com/jazzband/django-debug-toolbar
 django-extensions==3.2.3  # https://github.com/django-extensions/django-extensions
 django-coverage-plugin==3.0.0  # https://github.com/nedbat/django_coverage_plugin
 pytest-django==4.5.2  # https://github.com/pytest-dev/pytest-django
-
+pgvector
 
 ## Formerly production-only dependencies
 # @TODO move to Python Poetry or pyproject.toml for dependencies
@@ -97,3 +97,6 @@ pytest-django==4.5.2  # https://github.com/pytest-dev/pytest-django
 newrelic==9.6.0
 gunicorn==20.1.0  # https://github.com/benoitc/gunicorn
 # psycopg[c]==3.1.9  # https://github.com/psycopg/psycopg
+# ML
+scikit-learn
+scipy

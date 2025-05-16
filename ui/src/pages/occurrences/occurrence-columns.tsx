@@ -1,3 +1,4 @@
+import { OODScore } from 'components/ood-score'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -10,10 +11,9 @@ import {
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
-import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -45,7 +45,7 @@ export const columns: (
 
       return (
         <ImageTableCell
-          images={item.images}
+          images={[item.images[0]]}
           theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
@@ -69,8 +69,16 @@ export const columns: (
     id: 'score',
     name: translate(STRING.FIELD_LABEL_SCORE),
     sortField: 'determination_score',
+    renderCell: (item: Occurrence) => <ScoreCell item={item} />,
+  },
+  {
+    id: 'ood-score',
+    name: translate(STRING.FIELD_LABEL_OOD_SCORE),
+    sortField: 'determination_ood_score',
     renderCell: (item: Occurrence) => (
-      <ScoreCell item={item} projectId={projectId} />
+      <BasicTableCell>
+        <OODScore occurrence={item} />
+      </BasicTableCell>
     ),
   },
   {
@@ -203,54 +211,30 @@ const TaxonCell = ({
   )
 }
 
-const ScoreCell = ({
-  item,
-  projectId,
-}: {
-  item: Occurrence
-  projectId: string
-}) => {
-  const navigate = useNavigate()
-  const detailsRoute = getAppRoute({
-    to: APP_ROUTES.OCCURRENCE_DETAILS({
-      projectId,
-      occurrenceId: item.id,
-    }),
-    keepSearchParams: true,
-  })
-
-  return (
-    <div className={styles.scoreCell}>
-      <BasicTableCell>
-        <div className={styles.scoreCellContent}>
-          <BasicTooltip
-            content={
-              item.determinationVerified
-                ? translate(STRING.VERIFIED_BY, {
-                    name: item.determinationVerifiedBy?.name,
-                  })
-                : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: item.determinationScore,
-                  })
-            }
-            onTriggerClick={() =>
-              navigate(detailsRoute, {
-                state: {
-                  defaultTab: TABS.IDENTIFICATION,
-                },
+const ScoreCell = ({ item }: { item: Occurrence }) => (
+  <div className={styles.scoreCell}>
+    <BasicTableCell>
+      <BasicTooltip
+        content={
+          item.determinationVerified
+            ? translate(STRING.VERIFIED_BY, {
+                name: item.determinationVerifiedBy?.name,
               })
-            }
-          >
-            <IdentificationScore
-              confirmed={item.determinationVerified}
-              confidenceScore={item.determinationScore}
-            />
-          </BasicTooltip>
+            : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                score: `${item.determinationScore}`,
+              })
+        }
+      >
+        <div className={styles.scoreCellContent}>
+          <IdentificationScore
+            confirmed={item.determinationVerified}
+            confidenceScore={item.determinationScore}
+          />
           <span className={styles.scoreCellLabel}>
             {item.determinationScoreLabel}
           </span>
         </div>
-      </BasicTableCell>
-    </div>
-  )
-}
+      </BasicTooltip>
+    </BasicTableCell>
+  </div>
+)
