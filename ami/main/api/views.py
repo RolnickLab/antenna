@@ -1470,8 +1470,8 @@ class TagViewSet(DefaultViewSet, ProjectMixin):
         qs = super().get_queryset()
         project = self.get_active_project()
         if project:
-            # Filter by project
-            return qs.filter(project=project)
+            # Filter by project, but also include global tags
+            return qs.filter(models.Q(project=project) | models.Q(project__isnull=True))
         return qs
 
 
