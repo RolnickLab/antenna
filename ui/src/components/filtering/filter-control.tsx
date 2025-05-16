@@ -16,6 +16,7 @@ import { TaxaListFilter } from './filters/taxa-list-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
 import { FilterProps } from './filters/types'
+import { UnknownSpeciesFilter } from './filters/unknown-species-filter'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
 import { VerifiedByFilter } from './filters/verified-by-filter'
 
@@ -43,6 +44,7 @@ const ComponentMap: {
   taxa_list_id: TaxaListFilter,
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
+  unknown_species: UnknownSpeciesFilter,
 }
 
 interface FilterControlProps {
