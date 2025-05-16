@@ -1320,6 +1320,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "first_appearance_time",
             "duration",
             "duration_label",
+            "featured",
             "determination",
             "detections_count",
             "detection_images",
