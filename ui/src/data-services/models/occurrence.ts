@@ -21,6 +21,10 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
+  get featured(): boolean {
+    return this._occurrence.featured
+  }
+
   get createdAt(): string {
     return getFormatedDateTimeString({
       date: new Date(this._occurrence.created_at),

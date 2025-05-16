@@ -36,17 +36,28 @@ export const columns: (
     styles: {
       textAlign: TextAlign.Center,
     },
-    renderCell: (item: Occurrence) => (
-      <div className="relative group">
-        <ImageTableCell
-          images={[item.images[0]]}
-          theme={ImageCellTheme.Light}
-        />
-        <div className="absolute bottom-4 right-5 hidden group-hover:block">
-          <FeatureControl occurrenceId={item.id} />
+    renderCell: (item: Occurrence) => {
+      const detailsRoute = getAppRoute({
+        to: APP_ROUTES.OCCURRENCE_DETAILS({
+          projectId,
+          occurrenceId: item.id,
+        }),
+        keepSearchParams: true,
+      })
+
+      return (
+        <div className="relative group">
+          <ImageTableCell
+            images={[item.images[0]]}
+            theme={ImageCellTheme.Light}
+            to={detailsRoute}
+          />
+          <div className="absolute bottom-4 right-5 hidden group-hover:block">
+            <FeatureControl occurrence={item} />
+          </div>
         </div>
-      </div>
-    ),
+      )
+    },
   },
   {
     id: 'id',
