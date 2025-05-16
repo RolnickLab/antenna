@@ -1639,3 +1639,64 @@ class TestOccurrenceFeatureAction(APITestCase):
 
         featured_ids = [occ["id"] for occ in taxon_data.get("featured_occurrences", [])]
         self.assertNotIn(self.occurrence.pk, featured_ids)
+
+
+class TestTaxonRepresentativeImages(APITestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_occurrences(deployment=self.deployment, num=3)
+
+        self.occurrences = list(self.project.occurrences.all())
+        assert all(o.determination for o in self.occurrences), "All occurrences must have determination"
+
+        self.taxon = self.occurrences[0].determination
+        self.taxon.cover_image_url = "https://dummy.url/cover.jpg"
+        self.taxon.save()
+
+        # Assign fake best detections with valid paths
+        for i, occ in enumerate(self.occurrences):
+            occ.best_detection = occ.detections.first()
+            occ.best_detection.path = f"cropped/image_{i}.jpg"
+            occ.best_detection.save()
+            occ.save(update_determination=False)
+
+        # Set highest score for 2nd occurrence
+        for oc in Occurrence.objects.filter(project=self.project, determination=self.taxon):
+            oc.determination_score = 0.2
+            oc.save(update_determination=False)
+
+        self.occurrences[1].determination_score = 0.99
+        self.occurrences[1].save(update_determination=False)
+        assert self.occurrences[1].determination_score == 0.99
+
+        # Feature 3rd occurrence
+        self.occurrences[2].featured = True
+        self.occurrences[2].save(update_determination=False)
+
+        self.user = User.objects.create_superuser(email="test@user.org")
+        self.client.force_authenticate(self.user)
+
+    def _get_images_field(self, taxon_id):
+        url = f"/api/v2/taxa/{taxon_id}/?project_id={self.project.id}"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return response.json().get("images", {})
+
+    def test_image_fields_in_detail(self):
+        images = self._get_images_field(self.taxon.id)
+
+        self.assertIn("external_reference", images)
+        self.assertIn("most_recently_featured", images)
+        self.assertIn("highest_determination_score", images)
+
+        # External reference should match taxon field
+        self.assertEqual(images["external_reference"]["sizes"]["original"], self.taxon.cover_image_url)
+
+        # Most recently featured should come from occ[2]
+        self.assertIn("cropped/image_2.jpg", images["most_recently_featured"]["sizes"]["original"])
+
+        # Highest score should come from occ[1]
+        self.assertIn("cropped/image_1.jpg", images["highest_determination_score"]["sizes"]["original"])
