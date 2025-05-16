@@ -3,6 +3,8 @@ import { Taxon } from './taxa'
 
 export type ServerSpecies = any // TODO: Update this type
 
+export type Tag = { id: number; name: string }
+
 export class Species extends Taxon {
   protected readonly _species: ServerSpecies
   private readonly _images: { src: string }[] = []
@@ -69,6 +71,12 @@ export class Species extends Taxon {
 
   get scoreLabel(): string {
     return this.score.toFixed(2)
+  }
+
+  get tags(): Tag[] {
+    const tags = this._species.tags ?? []
+
+    return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
   }
 
   get userPermissions(): UserPermission[] {
