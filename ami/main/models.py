@@ -2742,6 +2742,7 @@ class Taxon(BaseModel):
     direct_children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
+    identifications: models.QuerySet["Identification"]
     lists: models.QuerySet["TaxaList"]
 
     author = models.CharField(max_length=255, blank=True)
