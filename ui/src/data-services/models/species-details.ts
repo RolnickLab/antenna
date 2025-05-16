@@ -11,17 +11,13 @@ export class SpeciesDetails extends Species {
     const occurrence = this._species.occurrences?.[0]
 
     if (!occurrence?.best_detection) {
-      return
+      return undefined
     }
 
     return {
       id: occurrence.id,
-      image_url: occurrence.best_detection.url,
-      caption: this.isUnknown
-        ? 'Center of cluster'
-        : `${
-            occurrence.determination.name
-          } (${occurrence.determination_score.toFixed(2)})`,
+      url: occurrence.best_detection.url,
+      caption: undefined,
     }
   }
 }

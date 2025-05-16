@@ -1,3 +1,4 @@
+import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
 export type ServerSpecies = any // TODO: Update this type
@@ -17,25 +18,14 @@ export class Species extends Taxon {
     }
   }
 
-  get coverImage() {
+  get coverImage(): { url: string; caption?: string } | undefined {
     if (!this._species.cover_image_url) {
       return undefined
     }
 
-    if (!this._species.cover_image_credit) {
-      return {
-        url: this._species.cover_image_url,
-        caption: this.isUnknown
-          ? `${this.name} (most similar known taxon)`
-          : this.name,
-      }
-    }
-
     return {
       url: this._species.cover_image_url,
-      caption: this.isUnknown
-        ? `${this.name} (most similar known taxon), ${this._species.cover_image_credit}`
-        : `${this.name}, ${this._species.cover_image_credit}`,
+      caption: this._species.cover_image_credit ?? undefined,
     }
   }
 
@@ -79,5 +69,9 @@ export class Species extends Taxon {
 
   get scoreLabel(): string {
     return this.score.toFixed(2)
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._species.user_permissions
   }
 }
