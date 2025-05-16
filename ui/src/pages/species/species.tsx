@@ -47,6 +47,7 @@ export const Species = () => {
           <FilterControl field="event" readonly />
           <FilterControl field="deployment" />
           <FilterControl field="taxon" />
+          <FilterControl field="unknown_species" />
           {taxaLists.length > 0 && (
             <FilterControl data={taxaLists} field="taxa_list_id" />
           )}

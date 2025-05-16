@@ -1188,6 +1188,24 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class TaxonUnknownSpeciesFilter(filters.BaseFilterBackend):
+    """
+    Filter taxa that is or is not marked as "Unknown species".
+    """
+
+    query_param = "unknown_species"
+
+    def filter_queryset(self, request: Request, queryset, view):
+        if self.query_param in request.query_params:
+            unknown_species = BooleanField(required=False).clean(request.query_params.get(self.query_param))
+            if unknown_species:
+                queryset = queryset.filter(unknown_species=True)
+            else:
+                queryset = queryset.exclude(unknown_species=True)
+
+        return queryset
+
+
 class TaxonTagFilter(filters.BaseFilterBackend):
     """FilterBackend that allows OR-based filtering of taxa by tag ID."""
 
@@ -1222,6 +1240,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         CustomTaxonFilter,
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
+        TaxonUnknownSpeciesFilter,
         TaxonTagFilter,
         TagInverseFilter,
     ]
