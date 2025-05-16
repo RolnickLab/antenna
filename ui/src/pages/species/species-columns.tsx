@@ -17,13 +17,12 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
   projectId: string
 ) => [
   {
-    id: 'reference-image',
-    name: 'Reference image',
-    sortField: 'cover_image_url',
+    id: 'thumbnail',
+    name: 'Thumbnail',
     renderCell: (item: Species) => {
       return (
         <ImageTableCell
-          images={item.coverImage ? [{ src: item.coverImage.url }] : []}
+          images={item.thumbnailUrl ? [{ src: item.thumbnailUrl }] : []}
           theme={ImageCellTheme.Light}
           to={APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id })}
         />

@@ -21,7 +21,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   return (
     <div className={styles.wrapper}>
       <Helmet>
-        <meta name="og:image" content={species.exampleOccurrence?.image_url} />
+        <meta name="og:image" content={species.thumbnailUrl} />
       </Helmet>
       <div className={styles.header}>
         <TaxonDetails
@@ -107,37 +107,28 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
             <BlueprintCollection>
-              {species.exampleOccurrence ? (
-                <InfoBlockField label="Example occurrence">
-                  <Link
-                    to={getAppRoute({
-                      to: APP_ROUTES.OCCURRENCE_DETAILS({
-                        projectId: projectId as string,
-                        occurrenceId: species.exampleOccurrence.id,
-                      }),
-                    })}
-                  >
-                    <img src={species.exampleOccurrence.image_url} />
-                  </Link>
-                  <span className="body-small text-muted-foreground">
-                    {species.exampleOccurrence.caption}
-                  </span>
+              {Object.entries(species.images).map(([key, image]) => (
+                <InfoBlockField key={key} label={image.title}>
+                  {image.sizes.original ? (
+                    <>
+                      <a
+                        href={image.sizes.original}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        <img src={image.sizes.original} />
+                      </a>
+                      {image.caption ? (
+                        <span className="body-small text-muted-foreground">
+                          {image.caption}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <InfoBlockFieldValue />
+                  )}
                 </InfoBlockField>
-              ) : null}
-              {species.coverImage ? (
-                <InfoBlockField label="Reference image">
-                  <a
-                    href={species.coverImage.url}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <img src={species.coverImage.url} />
-                  </a>
-                  <span className="body-small text-muted-foreground">
-                    {species.coverImage.caption}
-                  </span>
-                </InfoBlockField>
-              ) : null}
+              ))}
             </BlueprintCollection>
           </div>
         </div>

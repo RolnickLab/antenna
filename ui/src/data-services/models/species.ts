@@ -17,28 +17,6 @@ export class Species extends Taxon {
     }
   }
 
-  get coverImage() {
-    if (!this._species.cover_image_url) {
-      return undefined
-    }
-
-    if (!this._species.cover_image_credit) {
-      return {
-        url: this._species.cover_image_url,
-        caption: this.isUnknown
-          ? `${this.name} (most similar known taxon)`
-          : this.name,
-      }
-    }
-
-    return {
-      url: this._species.cover_image_url,
-      caption: this.isUnknown
-        ? `${this.name} (most similar known taxon), ${this._species.cover_image_credit}`
-        : `${this.name}, ${this._species.cover_image_credit}`,
-    }
-  }
-
   get isUnknown(): boolean {
     return this._species.unknown_species
   }
@@ -73,11 +51,36 @@ export class Species extends Taxon {
     return `https://leps.fieldguide.ai/categories?category=${this._species.fieldguide_id}`
   }
 
+  get images(): {
+    [key: string]: {
+      caption: string | null
+      sizes: { original: string | null }
+      title: string
+    }
+  } {
+    return this._species.images
+  }
+
   get score(): number {
     return this._species.best_determination_score || 0
   }
 
   get scoreLabel(): string {
     return this.score.toFixed(2)
+  }
+
+  get thumbnailUrl() {
+    if (!this._species.images) {
+      return undefined
+    }
+
+    const getImageUrl = (key: string): string | undefined =>
+      this._species.images[key]?.sizes?.original
+
+    return (
+      getImageUrl('external_reference') ??
+      getImageUrl('most_recently_featured') ??
+      getImageUrl('highest_determination_score')
+    )
   }
 }

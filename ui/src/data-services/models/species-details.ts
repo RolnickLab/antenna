@@ -6,22 +6,4 @@ export class SpeciesDetails extends Species {
   public constructor(species: ServerSpeciesDetails) {
     super(species)
   }
-
-  get exampleOccurrence() {
-    const occurrence = this._species.occurrences?.[0]
-
-    if (!occurrence?.best_detection) {
-      return
-    }
-
-    return {
-      id: occurrence.id,
-      image_url: occurrence.best_detection.url,
-      caption: this.isUnknown
-        ? 'Center of cluster'
-        : `${
-            occurrence.determination.name
-          } (${occurrence.determination_score.toFixed(2)})`,
-    }
-  }
 }
