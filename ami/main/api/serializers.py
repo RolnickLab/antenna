@@ -531,7 +531,7 @@ class TaxonListSerializer(DefaultSerializer):
             ),
             "most_recently_featured": build_image_entry(
                 getattr(obj, "featured_detection_path", None),
-                "Selected occurrence",
+                "Featured occurrence",
             ),
             "highest_determination_score": build_image_entry(
                 getattr(obj, "highest_score_detection_path", None),
@@ -785,7 +785,7 @@ class TaxonSerializer(DefaultSerializer):
             ),
             "most_recently_featured": build_image_entry(
                 getattr(obj, "featured_detection_path", None),
-                "Selected occurrence",
+                "Featured occurrence",
             ),
             "highest_determination_score": build_image_entry(
                 getattr(obj, "highest_score_detection_path", None),
