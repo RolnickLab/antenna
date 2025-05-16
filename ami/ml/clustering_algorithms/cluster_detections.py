@@ -161,7 +161,7 @@ def cluster_detections(
             progress=(idx + 1) / len(valid_detections),
         )
     update_job_progress(job, stage_key="clustering", status=JobState.SUCCESS, progress=1.0)
-    taxa_list, _created = TaxaList.objects.get_or_create(name=f"Clusters from (Job {job.pk if job else 'unknown'})")
+    taxa_list, _created = TaxaList.objects.get_or_create(name=f"Clusters (Job {job.pk if job else 'unknown'})")
     taxa_list.projects.add(collection.project)
     taxa_to_add = []
     clustering_algorithm, _created = Algorithm.objects.get_or_create(
