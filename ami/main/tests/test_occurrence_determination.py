@@ -96,7 +96,7 @@ class TestUpdateOccurrenceDetermination(TestCase):
 
         # Check that the determination is set to the identification's taxon
         self.assertEqual(self.occurrence.determination, self.taxon2)
-        self.assertEqual(self.occurrence.determination_score, 1.0)  # Human identifications have score 1.0
+        self.assertEqual(self.occurrence.determination_score, None)  # Human identifications have no score
         self.assertEqual(self.occurrence.best_identification, identification)
 
     def test_identification_overrides_classification(self):

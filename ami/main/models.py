@@ -2430,8 +2430,7 @@ class Occurrence(BaseModel):
 
     def get_best_predictions(self, filters: dict = {}) -> models.QuerySet[Classification]:
         """
-        Retrieve the classification with the max score for each algorithm
-        from any detection belonging to this occurrence.
+        Retrieve all classifications for this occurrence in chronological order.
 
         This data is for the list of predictions in the Identification tab of the Occurrence Detail view
         in the UI. See the OccurrenceSerializer for the serializer method.
@@ -2439,22 +2438,14 @@ class Occurrence(BaseModel):
         If this is need for a list view (multiple occurrenes) it should be overriden
         in the viewset to use the pre-fetched classifications instead of hitting the database
         for each occurrence (n+1 query problem).
-        """
-        # Get the highest scoring classification for each algorithm
-        # Use a subquery to find the max score for each algorithm
-        subquery = (
-            Classification.objects.filter(detection__occurrence=self, **filters)
-            .values("algorithm")
-            .annotate(max_score=models.Max("score"))
-        )
 
-        # Join the subquery results to get the classifications with those max scores
-        # This ensures we get one classification per algorithm (the one with highest score)
+        In the past, this was a more complext query that returned a single result
+        for each algorithm, but now it returns all classifications for the occurrence
+        """
+
         classifications = Classification.objects.filter(
             detection__occurrence=self,
             **filters,
-            algorithm__in=models.Subquery(subquery.values("algorithm")),
-            score__in=models.Subquery(subquery.values("max_score")),
         ).order_by("-created_at")
 
         return classifications
@@ -2473,6 +2464,22 @@ class Occurrence(BaseModel):
         # Get all classifications for this occurrence to choose from
         all_classifications = Classification.objects.filter(detection__occurrence=self, **filters)
 
+        # Prioritize derived classifications (e.g. clustering) regardless of score
+        derived_classification_task_types = (
+            "clustering",
+            "tracking",
+        )
+        derived_classification = (
+            all_classifications.filter(
+                algorithm__task_type__in=derived_classification_task_types,
+                terminal=True,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if derived_classification:
+            return derived_classification
+
         # First try to get a terminal classification
         terminal_classification = all_classifications.filter(terminal=True).order_by("-score", "-created_at").first()
         if terminal_classification:
@@ -2480,6 +2487,9 @@ class Occurrence(BaseModel):
 
         # If no terminal classification exists, fall back to non-terminal
         return all_classifications.filter(terminal=False).order_by("-score").first()
+
+    def get_best_ood_prediction(self) -> Classification | None:
+        return self.get_best_prediction(filters={"ood_score__isnull": False})
 
     def get_best_identification(self) -> Identification | None:
         """
@@ -2489,17 +2499,17 @@ class Occurrence(BaseModel):
         """
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
-    def get_determination_score(self) -> float | None:
-        if not self.determination:
+    def get_determination_score(self, prediction: Classification | None = None) -> float | None:
+        """
+        Always return a score from an algorithm, even if a human has identified the occurrence.
+        """
+        best_prediction = prediction or self.get_best_prediction()
+        if not best_prediction:
             return None
-        elif self.best_identification:
-            return self.best_identification.score
-        elif self.best_prediction:
-            return self.best_prediction.score
         else:
-            return None
+            return best_prediction.score
 
-    def get_determination_ood_score(self) -> float | None:
+    def get_determination_ood_score(self, prediction: Classification | None = None) -> float | None:
         """
         Calculate the OOD score for the whole occurrence.
         Uses the average OOD score of all detections belonging to this occurrence.
@@ -2508,16 +2518,16 @@ class Occurrence(BaseModel):
         """
         # Get the best prediction that has an OOD score
         # this should be the last classification before the clustering algorithm
-        # @TODO copy the OOD score from the best classification to the clustering classification during clustering
-        best_prediction = self.get_best_prediction(filters={"ood_score__isnull": False})
+        best_prediction = prediction or self.get_best_ood_prediction()
         if not best_prediction:
             return None
-        mean_ood_score = Classification.objects.filter(
-            detection__occurrence=self,
-            ood_score__isnull=False,
-            algorithm=best_prediction.algorithm,
-        ).aggregate(models.Avg("ood_score"),)["ood_score__avg"]
-        return mean_ood_score
+        else:
+            mean_ood_score = Classification.objects.filter(
+                detection__occurrence=self,
+                ood_score__isnull=False,
+                algorithm=best_prediction.algorithm,
+            ).aggregate(models.Avg("ood_score"),)["ood_score__avg"]
+            return mean_ood_score
 
     def context_url(self):
         detection = self.best_detection
@@ -2539,16 +2549,6 @@ class Occurrence(BaseModel):
                 current_determination=self.determination,
                 save=True,
             )
-
-        if self.determination and not self.determination_score:
-            # This may happen for legacy occurrences that were created
-            # before the determination_score field was added
-            # @TODO remove
-            self.determination_score = self.get_determination_score()
-            if not self.determination_score:
-                logger.warning(f"Could not determine score for {self}")
-            else:
-                self.save(update_determination=False)
 
     class Meta:
         ordering = ["-determination_score"]
@@ -2584,23 +2584,24 @@ def update_occurrence_determination(
 
     # Collect all necessary values first
     best_identification = occurrence.get_best_identification()
-    best_prediction = occurrence.get_best_prediction() if not best_identification else None
+    best_prediction = occurrence.get_best_prediction()
+    best_ood_prediction = occurrence.get_best_ood_prediction()
 
     # Best detection is used as the representative image for the occurrence in either case
     best_detection = occurrence.get_best_detection()
 
-    # Determine values for all attributes
+    # Update the determination (Taxon) first
     new_determination = None
-    new_determination_score = None
-    new_determination_ood_score = occurrence.get_determination_ood_score()
 
     # Identifications take precedence over machine predictions
     if best_identification:
         new_determination = best_identification.taxon
-        new_determination_score = best_identification.score
     elif best_prediction:
         new_determination = best_prediction.taxon
-        new_determination_score = best_prediction.score
+
+    # Update scores, which may or may not come from the same source as the determination
+    new_determination_score = occurrence.get_determination_score(prediction=best_prediction)
+    new_determination_ood_score = occurrence.get_determination_ood_score(prediction=best_ood_prediction)
 
     # Prepare fields that need to be updated (using a dictionary for bulk update)
     update_fields = {}
@@ -2862,6 +2863,7 @@ class TaxonParent(pydantic.BaseModel):
         # so we can sort by rank. The DRF serializer will convert it to a string.
         # just for the API responses.
         use_enum_values = False
+        frozen = True  # Allow hashing for use in a set
 
 
 @final
@@ -3098,6 +3100,60 @@ class Taxon(BaseModel):
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
+
+
+def find_common_ancestor_taxon(
+    taxa: list["Taxon"],
+    ignore_missing_parents: bool = True,
+) -> typing.Optional["Taxon"]:
+    """
+    Find the common ancestor taxon for a list of taxa.
+    Args:
+        taxa (list[Taxon]): A list of Taxon objects.
+        ignore_rootless (bool): If True, ignore taxa without parents. Defaults to True.
+    Returns:
+        Taxon | None: The common ancestor taxon, or None if no common ancestor exists.
+    """
+    if not taxa:
+        return None
+
+    # Filter taxa based on whether they have parents
+    valid_taxa = taxa
+    if ignore_missing_parents:
+        valid_taxa = [t for t in taxa if t.parents_json]
+        rootless_count = len(taxa) - len(valid_taxa)
+        if rootless_count:
+            logger.warning(f"Ignoring {rootless_count} rootless taxa")
+
+    if not valid_taxa:
+        logger.error("No taxa with parents found")
+        return None
+
+    # Build ancestor sets for each taxon
+    ancestor_sets = []
+    for taxon in valid_taxa:
+        ancestors = set(taxon.parents_json)
+        # Include the taxon itself
+        ancestors.add(TaxonParent(id=taxon.pk, name=taxon.name, rank=TaxonRank(taxon.rank)))
+        ancestor_sets.append(ancestors)
+
+    # Find common ancestors
+    common_ancestors = set.intersection(*ancestor_sets)
+
+    if not common_ancestors:
+        logger.info("No common ancestor found")
+        return None
+
+    # Find the most specific common ancestor (highest rank index)
+    best_ancestor = max(common_ancestors, key=lambda a: list(TaxonRank).index(a.rank))
+
+    logger.info(f"Common ancestor: {best_ancestor.name} ({best_ancestor.rank})")
+
+    # Return the actual Taxon object
+    from .models import Taxon
+
+    result = Taxon.objects.get(id=best_ancestor.id)
+    return result
 
 
 @final

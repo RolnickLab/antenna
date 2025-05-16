@@ -1371,8 +1371,19 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         qs = self.attach_tags_by_project(qs, project)
 
         if project:
-            # Allow showing detail views for unobserved taxa
-            include_unobserved = True
+            include_unobserved = True  # Show detail views for unobserved taxa instead of 404
+            # @TODO move to a QuerySet manager
+            qs = qs.annotate(
+                best_detection_image_path=models.Subquery(
+                    Occurrence.objects.filter(
+                        self.get_occurrence_filters(project),
+                        determination_id=models.OuterRef("id"),
+                    )
+                    .order_by("-determination_score")
+                    .values("best_detection__path")[:1],
+                    output_field=models.TextField(),
+                )
+            )
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
