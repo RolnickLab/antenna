@@ -1654,6 +1654,7 @@ class TestTaxonRepresentativeImages(APITestCase):
 
         self.taxon = self.occurrences[0].determination
         self.taxon.cover_image_url = "https://dummy.url/cover.jpg"
+        self.taxon.cover_image_credit = "Test Credit"
         self.taxon.save()
 
         # Assign fake best detections with valid paths
@@ -1694,6 +1695,7 @@ class TestTaxonRepresentativeImages(APITestCase):
 
         # External reference should match taxon field
         self.assertEqual(images["external_reference"]["sizes"]["original"], self.taxon.cover_image_url)
+        self.assertEqual(images["external_reference"]["caption"], self.taxon.cover_image_credit)
 
         # Most recently featured should come from occ[2]
         self.assertIn("cropped/image_2.jpg", images["most_recently_featured"]["sizes"]["original"])

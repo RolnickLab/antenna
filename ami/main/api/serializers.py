@@ -518,17 +518,16 @@ class TaxonListSerializer(DefaultSerializer):
     images = serializers.SerializerMethodField()
 
     def get_images(self, obj):
-        def build_image_entry(url, title):
+        def build_image_entry(url, title, caption=None):
             return {
                 "title": title,
-                "caption": None,
+                "caption": caption,
                 "sizes": {"original": url if url else None},
             }
 
         images = {
             "external_reference": build_image_entry(
-                obj.cover_image_url,
-                "External reference image",
+                obj.cover_image_url, "External reference image", obj.cover_image_credit
             ),
             "most_recently_featured": build_image_entry(
                 getattr(obj, "featured_detection_path", None),
@@ -773,17 +772,16 @@ class TaxonSerializer(DefaultSerializer):
     images = serializers.SerializerMethodField()
 
     def get_images(self, obj):
-        def build_image_entry(url, title):
+        def build_image_entry(url, title, caption=None):
             return {
                 "title": title,
-                "caption": None,
+                "caption": caption,
                 "sizes": {"original": url if url else None},
             }
 
         images = {
             "external_reference": build_image_entry(
-                obj.cover_image_url,
-                "External reference image",
+                obj.cover_image_url, "External reference image", obj.cover_image_credit
             ),
             "most_recently_featured": build_image_entry(
                 getattr(obj, "featured_detection_path", None),
