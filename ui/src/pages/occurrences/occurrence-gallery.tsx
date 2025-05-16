@@ -50,7 +50,13 @@ export const OccurrenceGallery = ({
             />
           </Link>
           <div className="absolute top-1 right-1 hidden group-hover:block">
-            <FeatureControl occurrenceId={item.id} />
+            <FeatureControl
+              occurrence={
+                occurrences.find(
+                  (occurrence) => occurrence.id === item.id
+                ) as Occurrence
+              }
+            />
           </div>
         </div>
       )}

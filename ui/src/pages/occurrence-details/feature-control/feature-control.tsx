@@ -1,24 +1,30 @@
 import { useFeatureOccurrence } from 'data-services/hooks/occurrences/useFeatureOccurrence'
 import { useUnfeatureOccurrence } from 'data-services/hooks/occurrences/useUnfeatureOccurrence'
+import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { Loader2Icon, StarIcon } from 'lucide-react'
 import { Button, CONSTANTS } from 'nova-ui-kit'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface FeatureControlProps {
-  occurrenceId: string
+  occurrence: Occurrence
 }
 
-export const FeatureControl = ({ occurrenceId }: FeatureControlProps) => {
+export const FeatureControl = ({ occurrence }: FeatureControlProps) => {
   const [featured, setFeatured] =
     useState(false) /* TODO: Use backend status here when avaible */
   const { featureOccurrence, isLoading: featureIsLoading } =
-    useFeatureOccurrence(occurrenceId, () => setFeatured(true))
+    useFeatureOccurrence(occurrence.id, () => setFeatured(true))
   const { unfeatureOccurrence, isLoading: unfeatureIsLoading } =
-    useUnfeatureOccurrence(occurrenceId, () => setFeatured(false))
+    useUnfeatureOccurrence(occurrence.id, () => setFeatured(false))
+
+  useEffect(() => {
+    setFeatured(occurrence.featured)
+  }, [occurrence.featured])
 
   return (
     <BasicTooltip
+      asChild
       content={featured ? 'Unfeature occurrence' : 'Feature occurrence'}
     >
       <Button
