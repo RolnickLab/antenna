@@ -84,7 +84,7 @@ export const BlueprintItem = ({
                   to={item.to}
                   className={classNames(
                     buttonVariants({ size: 'icon', variant: 'outline' }),
-                    'hidden w-8 h-8 absolute right-2 bottom-2 group-hover:flex'
+                    'hidden w-8 h-8 absolute right-1 bottom-1 group-hover:flex'
                   )}
                 >
                   <EyeIcon className="w-4 h-4" />

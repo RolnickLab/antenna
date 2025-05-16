@@ -12,6 +12,7 @@ import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { SearchIcon } from 'lucide-react'
 import { Button, IdentificationScore, TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
+import { FeatureControl } from 'pages/occurrence-details/feature-control/feature-control'
 import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { Link, useNavigate } from 'react-router-dom'
@@ -35,23 +36,17 @@ export const columns: (
     styles: {
       textAlign: TextAlign.Center,
     },
-    renderCell: (item: Occurrence) => {
-      const detailsRoute = getAppRoute({
-        to: APP_ROUTES.OCCURRENCE_DETAILS({
-          projectId,
-          occurrenceId: item.id,
-        }),
-        keepSearchParams: true,
-      })
-
-      return (
+    renderCell: (item: Occurrence) => (
+      <div className="relative group">
         <ImageTableCell
           images={[item.images[0]]}
           theme={ImageCellTheme.Light}
-          to={detailsRoute}
         />
-      )
-    },
+        <div className="absolute bottom-4 right-5 hidden group-hover:block">
+          <FeatureControl occurrenceId={item.id} />
+        </div>
+      </div>
+    ),
   },
   {
     id: 'id',
