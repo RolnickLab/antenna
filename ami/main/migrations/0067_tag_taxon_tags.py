@@ -27,7 +27,7 @@ def add_inital_tags(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0064_taxon_cover_image_credit_taxon_cover_image_url_and_more"),
+        ("main", "0066_populate_cached_occurence_fields"),
     ]
 
     operations = [
