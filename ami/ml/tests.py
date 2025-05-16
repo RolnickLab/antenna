@@ -771,7 +771,7 @@ class TestClustering(TestCase):
         self.assertGreaterEqual(len(clusters), 1, "Should create at least 1 cluster")
 
         # Verify all detections are assigned to clusters
-        total_detections = sum(len(detections) for detections in clusters.values())
+        total_detections = sum(len(cluster_members) for cluster_members in clusters.values())
         self.assertEqual(
             total_detections,
             len(self.detections),
@@ -781,9 +781,9 @@ class TestClustering(TestCase):
         # Check if detections with similar features are in the same cluster
         # Create a map of detection to cluster_id
         detection_to_cluster = {}
-        for cluster_id, detections_list in clusters.items():
-            for detection in detections_list:
-                detection_to_cluster[detection.id] = cluster_id
+        for cluster_id, cluster_members in clusters.items():
+            for cluster_member in cluster_members:
+                detection_to_cluster[cluster_member.detection.pk] = cluster_id
 
         # Verify that each cluster has a corresponding taxon
         taxa = Taxon.objects.filter(unknown_species=True)
