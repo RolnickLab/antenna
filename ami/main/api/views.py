@@ -1418,7 +1418,19 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             qs = qs.with_featured_occurrences(project=project)  # type: ignore
             qs = qs.with_example_image_paths(project=project)
 
-            # qs = qs.with_featured_image(project=project)  # type: ignore
+            # @TODO deprecated in favor of with_example_image_paths
+            qs = qs.annotate(
+                best_detection_image_path=models.Subquery(
+                    Occurrence.objects.filter(
+                        self.get_occurrence_filters(project),
+                        determination_id=models.OuterRef("id"),
+                    )
+                    .order_by("-determination_score")
+                    .values("best_detection__path")[:1],
+                    output_field=models.TextField(),
+                )
+            )
+
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)

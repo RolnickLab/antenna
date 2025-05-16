@@ -4,6 +4,7 @@ import os
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
 from sklearn.cluster import AgglomerativeClustering
+from sklearn.metrics import silhouette_samples
 
 from .base_clusterer import BaseClusterer
 from .preprocessing_features import dimension_reduction, standardize
@@ -69,7 +70,7 @@ class AgglomerativeClusterer(BaseClusterer):
                     data_dict["val"]["feat_list"], data_dict["val"]["label_list"]
                 )
 
-    def cluster(self, features):
+    def cluster(self, features) -> tuple[np.ndarray, np.ndarray]:
         logger.info(f"distance threshold: {self.distance_threshold}")
         logger.info("features shape: %s", features.shape)
         logger.info(f"self.n_components: {self.n_components}")
@@ -84,8 +85,21 @@ class AgglomerativeClusterer(BaseClusterer):
         linkage = self.config.get("algorithm_kwargs", {}).get("linkage", "ward")
         logger.info(f" features shape after PCA: {features.shape}")
 
-        clusters = AgglomerativeClustering(
+        cluster_ids = AgglomerativeClustering(
             n_clusters=None, distance_threshold=self.distance_threshold, linkage=linkage
         ).fit_predict(features)
 
-        return clusters
+        try:
+            silhouette_scores = silhouette_samples(features, cluster_ids)
+            silhouette_scores = np.asarray(silhouette_scores)
+            # Scale from -1 to 1 to 0 to 1
+            silhouette_scores = (silhouette_scores + 1) / 2
+        except ValueError:
+            # If silhouette scores cannot be computed, return an array of zeros
+            logger.warning(
+                f"Returned {len(cluster_ids)} clusters for {len(features)} features. "
+                "Cannot compute silhouette scores so setting them to zero."
+            )
+            silhouette_scores = np.zeros(features.shape[0], dtype=np.float32)
+
+        return cluster_ids, silhouette_scores

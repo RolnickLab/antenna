@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import typing
 
@@ -8,7 +9,8 @@ from django.utils.timezone import now
 from ami.ml.clustering_algorithms.utils import get_clusterer
 
 if typing.TYPE_CHECKING:
-    from ami.main.models import SourceImageCollection
+    from ami.jobs.models import Job
+    from ami.main.models import Classification, Detection, SourceImageCollection, Taxon
     from ami.ml.models import Algorithm
 
 logger = logging.getLogger(__name__)
@@ -39,6 +41,8 @@ def get_most_used_algorithm(
         algorithm__isnull=False,
         # @TODO if we have a dedicated task type for feature extraction, we can filter by that
         # task_type="feature_extraction",
+    ).exclude(
+        algorithm__task_type="clustering",
     )
 
     # Log the number of classifications per algorithm, if debug is enabled
@@ -60,7 +64,31 @@ def get_most_used_algorithm(
     return None
 
 
-def cluster_detections(collection, params: dict, task_logger: logging.Logger = logger, job=None):
+@dataclasses.dataclass
+class ClusterMember:
+    cluster_id: int
+    detection: "Detection"
+    classification: "Classification"
+    score: float
+    features: np.ndarray
+
+
+def get_cluster_name(cluster_id: int, taxon: "Taxon | None" = None, job: "Job | None" = None) -> str:
+    # if taxon and taxon.rank >= TaxonRank.ORDER:
+    #     taxon = None  # don't use in cluster name if "Lepidoptera" or higher
+
+    parts = [
+        f"Cluster {cluster_id}",
+        f"(Job {job.pk})" if job else "",
+        f"{taxon.name}?" if taxon else "",
+    ]
+
+    return " ".join(part for part in parts if part)
+
+
+def cluster_detections(
+    collection, params: dict, task_logger: logging.Logger = logger, job=None
+) -> dict[int, list[ClusterMember]]:
     from ami.jobs.models import JobState
     from ami.main.models import Classification, Detection, TaxaList, Taxon
     from ami.ml.models import Algorithm
@@ -91,13 +119,18 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
 
     features = []
     valid_detections = []
+    valid_classifications = []
     update_job_progress(job, stage_key="feature_collection", status=JobState.STARTED, progress=0.0)
     # Collecting features for detections
     for idx, detection in enumerate(detections):
-        classification = detection.classifications.filter(features_2048__isnull=False).first()
+        classification = detection.classifications.filter(
+            features_2048__isnull=False,
+            algorithm=feature_extraction_algorithm,
+        ).first()
         if classification:
             features.append(classification.features_2048)
             valid_detections.append(detection)
+            valid_classifications.append(classification)
         update_job_progress(
             job,
             stage_key="feature_collection",
@@ -119,12 +152,21 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     if not ClusteringAlgorithm:
         raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
 
-    cluster_ids = ClusteringAlgorithm(params).cluster(features_np)
+    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np)
 
     task_logger.info(f"Clustering completed with {len(set(cluster_ids))} clusters")
-    clusters = {}
-    for idx, (cluster_id, detection) in enumerate(zip(cluster_ids, valid_detections)):
-        clusters.setdefault(cluster_id, []).append(detection)
+    clusters: dict[int, list[ClusterMember]] = {}
+    for idx, (cluster_id, score, member_features, detection, classification) in enumerate(
+        zip(cluster_ids, cluster_scores, features, valid_detections, valid_classifications)
+    ):
+        cluster_member = ClusterMember(
+            cluster_id=cluster_id,
+            detection=detection,
+            classification=classification,
+            score=score,
+            features=member_features,
+        )
+        clusters.setdefault(cluster_id, []).append(cluster_member)
         update_job_progress(
             job,
             stage_key="clustering",
@@ -132,7 +174,7 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
             progress=(idx + 1) / len(valid_detections),
         )
     update_job_progress(job, stage_key="clustering", status=JobState.SUCCESS, progress=1.0)
-    taxa_list = TaxaList.objects.create(name=f"Clusters from (Job {job.pk if job else 'unknown'})")
+    taxa_list, _created = TaxaList.objects.get_or_create(name=f"Clusters (Job {job.pk if job else 'unknown'})")
     taxa_list.projects.add(collection.project)
     taxa_to_add = []
     clustering_algorithm, _created = Algorithm.objects.get_or_create(
@@ -142,27 +184,45 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     logging.info(f"Using clustering algorithm: {clustering_algorithm}")
     # Creating Unknown Taxa
     update_job_progress(job, stage_key="create_unknown_taxa", status=JobState.STARTED, progress=0.0)
-    for idx, (cluster_id, cluster_detections) in enumerate(clusters.items()):
+
+    for idx, (cluster_id, cluster_members) in enumerate(clusters.items()):
+        from ami.main.models import find_common_ancestor_taxon
+
+        predicted_taxa: set[Taxon] = {
+            member.classification.taxon for member in cluster_members if member.classification.taxon
+        }
+        common_taxon = find_common_ancestor_taxon(list(predicted_taxa))
         taxon, _created = Taxon.objects.get_or_create(
-            name=f"Cluster {cluster_id} (Collection {collection.pk}) (Job {job.pk if job else 'unknown'})",
-            rank="SPECIES",
-            notes=f"Auto-created cluster {cluster_id} for collection  {collection.pk}",
-            unknown_species=True,
+            name=get_cluster_name(cluster_id=cluster_id, job=job),
+            defaults=dict(
+                rank="SPECIES",
+                notes=(
+                    f"Auto-created taxon representing cluster {cluster_id}, "
+                    "created by {job.pk if job else 'an unknown process'} "
+                    f"from {len(cluster_members)} detections in collection {collection.pk}."
+                    "Feature vector was from "
+                    f"{feature_extraction_algorithm.name if feature_extraction_algorithm else 'unknown algorithm'}."
+                    f" Common ancestor: {common_taxon.name if common_taxon else 'None'}"
+                ),
+                unknown_species=True,
+                parent=common_taxon or None,
+            ),
         )
         taxon.projects.add(collection.project)
         taxa_to_add.append(taxon)
 
-        for idx, detection in enumerate(cluster_detections):
+        for idx, cluster_member in enumerate(cluster_members):
             # Create a new Classification linking the detection to the new taxon
 
             Classification.objects.create(
-                detection=detection,
+                detection=cluster_member.detection,
                 taxon=taxon,
                 algorithm=clustering_algorithm,
-                score=1.0,
+                score=cluster_member.score,
                 timestamp=now(),
                 logits=None,
-                features_2048=None,
+                # @TODO it would be nice to copy features here, but right now it confuses the queries
+                # when selecting detections & classifications for clustering
                 scores=None,
                 terminal=True,
                 category_map=None,
