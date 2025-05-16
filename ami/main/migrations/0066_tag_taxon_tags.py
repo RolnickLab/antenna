@@ -27,7 +27,7 @@ def add_inital_tags(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0066_populate_cached_occurence_fields"),
+        ("main", "0065_detection_favorite_occurrence_best_detection_and_more"),
     ]
 
     operations = [
