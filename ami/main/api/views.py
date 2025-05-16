@@ -1454,8 +1454,7 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         qs = super().get_queryset()
         project = self.get_active_project()
         if project:
-            # Filter by project and exclude taxa lists that are meant for storing tags
-            return qs.filter(projects=project, tag=False)
+            return qs.filter(projects=project)
         return qs
 
     serializer_class = TaxaListSerializer
