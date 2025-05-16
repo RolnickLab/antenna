@@ -359,7 +359,7 @@ class Command(BaseCommand):
                         parent = None
                     if taxon.parent != parent:
                         if not created:
-                            logger.warn(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
+                            logger.warning(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
                         taxon.parent = parent
                         taxon.save(update_calculated_fields=False)
                         if not created:

@@ -2488,6 +2488,9 @@ class Occurrence(BaseModel):
         # If no terminal classification exists, fall back to non-terminal
         return all_classifications.filter(terminal=False).order_by("-score").first()
 
+    def get_best_ood_prediction(self) -> Classification | None:
+        return self.get_best_prediction(filters={"ood_score__isnull": False})
+
     def get_best_identification(self) -> Identification | None:
         """
         The most recent human identification is used as the best identification.
@@ -2500,13 +2503,11 @@ class Occurrence(BaseModel):
         """
         Always return a score from an algorithm, even if a human has identified the occurrence.
         """
-        if not self.determination:
-            return None
         best_prediction = prediction or self.get_best_prediction()
-        if best_prediction:
-            return best_prediction.score
-        else:
+        if not best_prediction:
             return None
+        else:
+            return best_prediction.score
 
     def get_determination_ood_score(self, prediction: Classification | None = None) -> float | None:
         """
@@ -2517,16 +2518,16 @@ class Occurrence(BaseModel):
         """
         # Get the best prediction that has an OOD score
         # this should be the last classification before the clustering algorithm
-        # @TODO copy the OOD score from the best classification to the clustering classification during clustering
-        best_prediction = prediction or self.get_best_prediction(filters={"ood_score__isnull": False})
+        best_prediction = prediction or self.get_best_ood_prediction()
         if not best_prediction:
             return None
-        mean_ood_score = Classification.objects.filter(
-            detection__occurrence=self,
-            ood_score__isnull=False,
-            algorithm=best_prediction.algorithm,
-        ).aggregate(models.Avg("ood_score"),)["ood_score__avg"]
-        return mean_ood_score
+        else:
+            mean_ood_score = Classification.objects.filter(
+                detection__occurrence=self,
+                ood_score__isnull=False,
+                algorithm=best_prediction.algorithm,
+            ).aggregate(models.Avg("ood_score"),)["ood_score__avg"]
+            return mean_ood_score
 
     def context_url(self):
         detection = self.best_detection
@@ -2583,7 +2584,8 @@ def update_occurrence_determination(
 
     # Collect all necessary values first
     best_identification = occurrence.get_best_identification()
-    best_prediction = occurrence.get_best_prediction() if not best_identification else None
+    best_prediction = occurrence.get_best_prediction()
+    best_ood_prediction = occurrence.get_best_ood_prediction()
 
     # Best detection is used as the representative image for the occurrence in either case
     best_detection = occurrence.get_best_detection()
@@ -2598,8 +2600,8 @@ def update_occurrence_determination(
         new_determination = best_prediction.taxon
 
     # Update scores, which may or may not come from the same source as the determination
-    new_determination_score = occurrence.get_determination_score()
-    new_determination_ood_score = occurrence.get_determination_ood_score()
+    new_determination_score = occurrence.get_determination_score(prediction=best_prediction)
+    new_determination_ood_score = occurrence.get_determination_ood_score(prediction=best_ood_prediction)
 
     # Prepare fields that need to be updated (using a dictionary for bulk update)
     update_fields = {}
