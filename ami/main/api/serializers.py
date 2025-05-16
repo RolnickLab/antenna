@@ -495,6 +495,7 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
             "name",
             "rank",
             "parent",
+            "cover_image_url",
         ]
 
 
