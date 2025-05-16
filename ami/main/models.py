@@ -142,6 +142,7 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
 
@@ -3030,6 +3031,8 @@ class Tag(BaseModel):
 
     name = models.CharField(max_length=255)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags", null=True, blank=True)
+
+    taxa: models.QuerySet[Taxon]
 
     class Meta:
         unique_together = ("name", "project")
