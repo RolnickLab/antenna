@@ -1,4 +1,3 @@
-import _ from 'lodash'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
@@ -71,27 +70,33 @@ export class Occurrence {
   get determinationScore(): number {
     const score = this._occurrence.determination_details.score
 
-    if (score === undefined) {
+    if (!score) {
       return 0
     }
 
-    return _.round(this._occurrence.determination_score, 4)
+    return this._occurrence.determination_score
   }
 
-  get determinationOODScore(): number {
+  get determinationOODScore(): number | undefined {
     const ood_score = this._occurrence.determination_ood_score
-    if (ood_score === undefined) {
-      return 0
+
+    if (ood_score || ood_score === 0) {
+      return ood_score
     }
-    return _.round(ood_score, 4)
+
+    return undefined
   }
 
   get determinationScoreLabel(): string {
     return this.determinationScore.toFixed(2)
   }
 
-  get determinationOODScoreLabel(): string {
-    return this.determinationOODScore.toFixed(2)
+  get determinationOODScoreLabel(): string | undefined {
+    if (this.determinationOODScore !== undefined) {
+      return this.determinationOODScore.toFixed(2)
+    }
+
+    return undefined
   }
 
   get determinationTaxon(): Taxon {

@@ -28,6 +28,7 @@ export const TaxonSearch = ({
         label: taxon.name,
         details: taxon.rank,
         parentId: taxon.parentId,
+        image: taxon.image,
       }))
     )
   }, [data])
@@ -36,7 +37,7 @@ export const TaxonSearch = ({
     <Command.Root shouldFilter={false}>
       <Command.Input
         loading={isLoading}
-        placeholder="Search taxon..."
+        placeholder="Search taxa..."
         value={searchString}
         onValueChange={setSearchString}
       />
@@ -76,13 +77,14 @@ const CommandTreeItem = ({
   onSelect: (treeItem: TreeItem) => void
 }) => (
   <>
-    <Command.Item onSelect={() => onSelect(treeItem)}>
+    <Command.Item className="h-16 pr-2" onSelect={() => onSelect(treeItem)}>
       <Command.Taxon
         hasChildren={treeItem.children.length > 0}
         label={treeItem.label}
         level={level}
         rank={treeItem.details ?? 'Unknown'}
         selected={treeItem.id === selectedId}
+        image={treeItem.image}
       />
     </Command.Item>
     {treeItem.children.map((child) => (

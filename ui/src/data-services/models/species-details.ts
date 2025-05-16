@@ -12,12 +12,12 @@ export class SpeciesDetails extends Species {
     const occurrence = this._species.occurrences?.[0]
 
     if (!occurrence?.best_detection) {
-      return
+      return undefined
     }
 
     return {
       id: occurrence.id,
-      image_url: occurrence.best_detection.url,
+      url: occurrence.best_detection.url,
       caption: this.isUnknown
         ? undefined
         : `${occurrence.determination.name} (${_.round(

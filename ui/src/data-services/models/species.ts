@@ -7,31 +7,27 @@ export type Tag = { id: number; name: string }
 
 export class Species extends Taxon {
   protected readonly _species: ServerSpecies
+  private readonly _images: { src: string }[] = []
 
   public constructor(species: ServerSpecies) {
     super(species)
     this._species = species
+
+    if (species.occurrence_images?.length) {
+      this._images = species.occurrence_images.map((image: any) => ({
+        src: image,
+      }))
+    }
   }
 
-  get userPermissions(): UserPermission[] {
-    return this._species.user_permissions
-  }
-
-  get coverImage() {
+  get coverImage(): { url: string; caption?: string } | undefined {
     if (!this._species.cover_image_url) {
       return undefined
     }
 
-    if (!this._species.cover_image_credit) {
-      return {
-        url: this._species.cover_image_url,
-        caption: this.name,
-      }
-    }
-
     return {
       url: this._species.cover_image_url,
-      caption: this.name,
+      caption: this._species.cover_image_credit ?? undefined,
     }
   }
 
@@ -81,5 +77,9 @@ export class Species extends Taxon {
     const tags = this._species.tags ?? []
 
     return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._species.user_permissions
   }
 }

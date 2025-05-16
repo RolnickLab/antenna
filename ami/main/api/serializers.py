@@ -495,6 +495,7 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
             "name",
             "rank",
             "parent",
+            "cover_image_url",
         ]
 
 
@@ -1302,7 +1303,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
-    predictions = ClassificationNestedSerializer(many=True, read_only=True)
+    predictions = ClassificationNestedSerializer(many=True, read_only=True, source="get_best_predictions")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)

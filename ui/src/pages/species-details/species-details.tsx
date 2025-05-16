@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
@@ -15,6 +16,8 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
+import { SpeciesNameForm } from './species-name-form'
+import { SpeciesParentForm } from './species-parent-form'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
@@ -24,7 +27,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   return (
     <div className={styles.wrapper}>
       <Helmet>
-        <meta name="og:image" content={species.exampleOccurrence?.image_url} />
+        <meta name="og:image" content={species.exampleOccurrence?.url} />
       </Helmet>
       <div className={styles.header}>
         <TaxonDetails
@@ -42,7 +45,9 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           taxon={species}
         />
         {species.isUnknown ? (
-          <Tag name="Unknown species" className="bg-success" />
+          <div className={classNames(styles.badge, 'no-print')}>
+            Unknown species
+          </div>
         ) : null}
       </div>
       <div className={styles.content}>
@@ -69,11 +74,30 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 ) : null}
               </div>
             </InfoBlockField>
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_NAME)}
+              className="relative no-print"
+            >
+              <InfoBlockFieldValue value={species.name} />
+              {species.isUnknown && canUpdate ? (
+                <div className="absolute top-[-9px] right-0">
+                  <SpeciesNameForm species={species} />
+                </div>
+              ) : null}
+            </InfoBlockField>
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_PARENT)}
+              className="relative no-print"
+            >
+              <InfoBlockFieldValue value={species.parentName} />
+              {species.isUnknown && canUpdate ? (
+                <div className="absolute top-[-9px] right-0">
+                  <SpeciesParentForm species={species} />
+                </div>
+              ) : null}
+            </InfoBlockField>
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
-            </InfoBlockField>
-            <InfoBlockField label="Stations">
-              <InfoBlockFieldValue value={undefined} />
             </InfoBlockField>
             <InfoBlockField label={translate(STRING.FIELD_LABEL_OCCURRENCES)}>
               <InfoBlockFieldValue
@@ -90,11 +114,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 })}
               />
             </InfoBlockField>
-            {species.isUnknown ? (
-              <InfoBlockField label="Most similar known taxon">
-                <InfoBlockFieldValue value={undefined} />
-              </InfoBlockField>
-            ) : (
+            {species.isUnknown ? null : (
               <InfoBlockField
                 className="no-print"
                 label={translate(STRING.EXTERNAL_RESOURCES)}
@@ -132,26 +152,8 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
             <BlueprintCollection>
-              {species.exampleOccurrence ? (
-                <InfoBlockField label="Selected occurrence">
-                  <Link
-                    to={getAppRoute({
-                      to: APP_ROUTES.OCCURRENCE_DETAILS({
-                        projectId: projectId as string,
-                        occurrenceId: species.exampleOccurrence.id,
-                      }),
-                    })}
-                  >
-                    <img src={species.exampleOccurrence.image_url} />
-                  </Link>
-                  {species.exampleOccurrence.caption ? (
-                    <span className="body-small text-muted-foreground">
-                      {species.exampleOccurrence.caption}
-                    </span>
-                  ) : null}
-                </InfoBlockField>
-              ) : null}
-              {species.coverImage ? (
+              {species.coverImage &&
+              species.coverImage.url !== species.exampleOccurrence?.url ? (
                 <InfoBlockField label="Reference image">
                   <a
                     href={species.coverImage.url}
@@ -163,6 +165,25 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                   <span className="body-small text-muted-foreground">
                     {species.coverImage.caption}
                   </span>
+                </InfoBlockField>
+              ) : null}
+              {species.exampleOccurrence ? (
+                <InfoBlockField label="Example occurrence">
+                  <Link
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCE_DETAILS({
+                        projectId: projectId as string,
+                        occurrenceId: species.exampleOccurrence.id,
+                      }),
+                    })}
+                  >
+                    <img src={species.exampleOccurrence.url} />
+                  </Link>
+                  {species.exampleOccurrence.caption ? (
+                    <span className="body-small text-muted-foreground">
+                      {species.exampleOccurrence.caption}
+                    </span>
+                  ) : undefined}
                 </InfoBlockField>
               ) : null}
             </BlueprintCollection>
