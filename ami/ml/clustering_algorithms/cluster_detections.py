@@ -10,7 +10,7 @@ from ami.ml.clustering_algorithms.utils import get_clusterer
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
-    from ami.main.models import Classification, Detection, SourceImageCollection
+    from ami.main.models import Classification, Detection, SourceImageCollection, Taxon
     from ami.ml.models import Algorithm
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,19 @@ class ClusterMember:
     classification: "Classification"
     score: float
     features: np.ndarray
+
+
+def get_cluster_name(cluster_id: int, taxon: "Taxon | None" = None, job: "Job | None" = None) -> str:
+    # if taxon and taxon.rank >= TaxonRank.ORDER:
+    #     taxon = None  # don't use in cluster name if "Lepidoptera" or higher
+
+    parts = [
+        f"Cluster {cluster_id}",
+        f"(Job {job.pk})" if job else "",
+        f"{taxon.name}?" if taxon else "",
+    ]
+
+    return " ".join(part for part in parts if part)
 
 
 def cluster_detections(
@@ -172,18 +185,6 @@ def cluster_detections(
     # Creating Unknown Taxa
     update_job_progress(job, stage_key="create_unknown_taxa", status=JobState.STARTED, progress=0.0)
 
-    def get_cluster_name(cluster_id: int, taxon: "Taxon | None" = None, job: "Job | None" = None) -> str:
-        # if taxon and taxon.rank >= TaxonRank.ORDER:
-        #     taxon = None  # don't use in cluster name if "Lepidoptera" or higher
-
-        parts = [
-            f"Cluster {cluster_id}",
-            f"(Job {job.pk})" if job else "",
-            f"{taxon.name}?" if taxon else "",
-        ]
-
-        return " ".join(part for part in parts if part)
-
     for idx, (cluster_id, cluster_members) in enumerate(clusters.items()):
         from ami.main.models import find_common_ancestor_taxon
 
@@ -192,10 +193,17 @@ def cluster_detections(
         }
         common_taxon = find_common_ancestor_taxon(list(predicted_taxa))
         taxon, _created = Taxon.objects.get_or_create(
-            name=get_cluster_name(cluster_id, common_taxon, job=job),
+            name=get_cluster_name(cluster_id=cluster_id, job=job),
             defaults=dict(
                 rank="SPECIES",
-                notes=f"Auto-created cluster {cluster_id} for collection {collection.pk}",
+                notes=(
+                    f"Auto-created taxon representing cluster {cluster_id}, "
+                    "created by {job.pk if job else 'an unknown process'} "
+                    f"from {len(cluster_members)} detections in collection {collection.pk}."
+                    "Feature vector was from "
+                    f"{feature_extraction_algorithm.name if feature_extraction_algorithm else 'unknown algorithm'}."
+                    f" Common ancestor: {common_taxon.name if common_taxon else 'None'}"
+                ),
                 unknown_species=True,
                 parent=common_taxon or None,
             ),
