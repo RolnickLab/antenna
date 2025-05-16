@@ -11,10 +11,12 @@ import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
+import { TagFilter } from './filters/tag-filter'
 import { TaxaListFilter } from './filters/taxa-list-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
 import { FilterProps } from './filters/types'
+import { UnknownSpeciesFilter } from './filters/unknown-species-filter'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
 import { VerifiedByFilter } from './filters/verified-by-filter'
 
@@ -36,10 +38,13 @@ const ComponentMap: {
   source_image_collection: CollectionFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,
+  tag_id: TagFilter,
+  not_tag_id: TagFilter,
   taxon: TaxonFilter,
   taxa_list_id: TaxaListFilter,
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
+  unknown_species: UnknownSpeciesFilter,
 }
 
 interface FilterControlProps {

@@ -5,6 +5,7 @@ import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
+import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
@@ -32,15 +33,18 @@ export const OccurrenceActions = ({
   }
 
   return (
-    <>
+    <div className="flex items-center justify-center gap-2">
       <Agree allAgreed={allAgreed} occurrences={occurrences} />
+      <SuggestIdPopover
+        occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
+      />
       <IdQuickActions
         occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
         occurrenceTaxons={occurrences.map(
           (occurrence) => occurrence.determinationTaxon
         )}
       />
-    </>
+    </div>
   )
 }
 
@@ -52,6 +56,8 @@ const Agree = ({
   allAgreed: boolean
 }) => {
   const { userInfo } = useUserInfo()
+
+  const occurrenceIds = occurrences.map((occurrence) => occurrence.id)
 
   const agreeParams: IdentificationFieldValues[] = useMemo(
     () =>
@@ -75,7 +81,7 @@ const Agree = ({
   )
 
   const { createIdentifications, isLoading, isSuccess, error } =
-    useCreateIdentifications(agreeParams)
+    useCreateIdentifications(occurrenceIds)
 
   if (isSuccess || allAgreed) {
     return (
@@ -88,7 +94,11 @@ const Agree = ({
 
   return (
     <BasicTooltip content={error}>
-      <Button size="small" variant="outline" onClick={createIdentifications}>
+      <Button
+        size="small"
+        variant="outline"
+        onClick={() => createIdentifications(agreeParams)}
+      >
         {error ? (
           <AlertCircleIcon className="w-4 h-4 mr-2 text-destructive" />
         ) : null}

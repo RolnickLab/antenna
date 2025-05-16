@@ -30,7 +30,7 @@ export const IdButton = ({
   )
 
   const { createIdentifications, isLoading, isSuccess, error } =
-    useCreateIdentifications(identificationParams)
+    useCreateIdentifications(occurrenceIds)
   const { addRecentIdentification } = useRecentIdentifications()
 
   return (
@@ -47,7 +47,7 @@ export const IdButton = ({
         theme={error ? ButtonTheme.Error : undefined}
         onClick={() => {
           addRecentIdentification({ label, details, value: taxonId })
-          createIdentifications()
+          createIdentifications(identificationParams)
         }}
       />
     </Tooltip>
