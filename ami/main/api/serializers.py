@@ -9,7 +9,7 @@ from rest_framework.request import Request
 from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import create_source_image_from_upload
+from ami.main.models import create_source_image_from_upload, get_media_url
 from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
@@ -35,6 +35,15 @@ from ..models import (
     Taxon,
     validate_filename_timestamp,
 )
+
+
+def build_image_entry(path, title, caption=None):
+    url = get_media_url(path) if path else None
+    return {
+        "title": title,
+        "caption": caption,
+        "sizes": {"original": url if url else None},
+    }
 
 
 class ProjectNestedSerializer(DefaultSerializer):
@@ -518,13 +527,6 @@ class TaxonListSerializer(DefaultSerializer):
     images = serializers.SerializerMethodField()
 
     def get_images(self, obj):
-        def build_image_entry(url, title, caption=None):
-            return {
-                "title": title,
-                "caption": caption,
-                "sizes": {"original": url if url else None},
-            }
-
         images = {
             "external_reference": build_image_entry(
                 obj.cover_image_url, "External reference image", obj.cover_image_credit
@@ -772,13 +774,6 @@ class TaxonSerializer(DefaultSerializer):
     images = serializers.SerializerMethodField()
 
     def get_images(self, obj):
-        def build_image_entry(url, title, caption=None):
-            return {
-                "title": title,
-                "caption": caption,
-                "sizes": {"original": url if url else None},
-            }
-
         images = {
             "external_reference": build_image_entry(
                 obj.cover_image_url, "External reference image", obj.cover_image_credit
