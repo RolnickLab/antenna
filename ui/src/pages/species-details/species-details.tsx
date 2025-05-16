@@ -1,5 +1,7 @@
 import classNames from 'classnames'
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
+import { Tag } from 'components/taxon-tags/tag'
+import { TagsForm } from 'components/taxon-tags/tags-form'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import {
   InfoBlockField,
@@ -12,11 +14,15 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
+import { SpeciesNameForm } from './species-name-form'
+import { SpeciesParentForm } from './species-parent-form'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
   const navigate = useNavigate()
+  const canUpdate = species.userPermissions.includes(UserPermission.Update)
 
   return (
     <div className={styles.wrapper}>
@@ -47,6 +53,49 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
       <div className={styles.content}>
         <div className={styles.info}>
           <div className="grid gap-6">
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_TAGS)}
+              className="relative"
+            >
+              <div className="flex flex-col items-start gap-2 no-print">
+                {species.tags.length ? (
+                  <div className="flex flex-wrap gap-1">
+                    {species.tags.map((tag) => (
+                      <Tag key={tag.id} name={tag.name} />
+                    ))}
+                  </div>
+                ) : (
+                  <span>n/a</span>
+                )}
+                {canUpdate ? (
+                  <div className="absolute top-[-9px] right-0">
+                    <TagsForm species={species} />
+                  </div>
+                ) : null}
+              </div>
+            </InfoBlockField>
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_NAME)}
+              className="relative no-print"
+            >
+              <InfoBlockFieldValue value={species.name} />
+              {species.isUnknown && canUpdate ? (
+                <div className="absolute top-[-9px] right-0">
+                  <SpeciesNameForm species={species} />
+                </div>
+              ) : null}
+            </InfoBlockField>
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_PARENT)}
+              className="relative no-print"
+            >
+              <InfoBlockFieldValue value={species.parentName} />
+              {species.isUnknown && canUpdate ? (
+                <div className="absolute top-[-9px] right-0">
+                  <SpeciesParentForm species={species} />
+                </div>
+              ) : null}
+            </InfoBlockField>
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
             </InfoBlockField>

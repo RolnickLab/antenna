@@ -142,6 +142,7 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
 
@@ -2906,6 +2907,7 @@ class Taxon(BaseModel):
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
+    tags = models.ManyToManyField("Tag", related_name="taxa", blank=True)
     unknown_species = models.BooleanField(default=False, help_text="Is this a clustering-generated taxon")
     objects: TaxonManager = TaxonManager()
 
@@ -3110,6 +3112,19 @@ class TaxaList(BaseModel):
     class Meta:
         ordering = ["-created_at"]
         verbose_name_plural = "Taxa Lists"
+
+
+@final
+class Tag(BaseModel):
+    """A tag for taxa"""
+
+    name = models.CharField(max_length=255)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags", null=True, blank=True)
+
+    taxa: models.QuerySet[Taxon]
+
+    class Meta:
+        unique_together = ("name", "project")
 
 
 @final

@@ -2,6 +2,7 @@ export type ServerTaxon = {
   id: string
   name: string
   rank: string
+  cover_image_url: string | null
   parent?: ServerTaxon
   parents?: ServerTaxon[]
 }
@@ -23,14 +24,18 @@ export class Taxon {
   readonly id: string
   readonly name: string
   readonly parentId?: string
+  readonly parentName?: string
   readonly rank: string
   readonly ranks: { id: string; name: string; rank: string }[]
+  readonly image?: string
 
   public constructor(taxon: ServerTaxon) {
     this.id = `${taxon.id}`
     this.name = taxon.name
-    this.parentId = taxon.parent ? `${taxon.parent?.id}` : undefined
+    this.parentId = taxon.parent ? `${taxon.parent.id}` : undefined
+    this.parentName = taxon.parent ? taxon.parent.name : undefined
     this.rank = taxon.rank
+    this.image = taxon.cover_image_url ?? undefined
 
     if (taxon.parents) {
       this.ranks = taxon.parents
