@@ -9,8 +9,8 @@ services:
     extra_hosts:
       - minio:host-gateway
     networks:
-      - ml_network
+      - antenna_network
 
 networks:
-  ml_network:
-    name: ml_network
+  antenna_network:
+    name: antenna_network

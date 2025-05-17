@@ -35,7 +35,7 @@ services:
     command: /start
     networks:
       - default
-      - ml_network
+      - antenna_network
 
   postgres:
     build:
@@ -157,6 +157,5 @@ services:
           - processing_service
 
 networks:
-  ml_network:
-    external: true
-    name: ml_network
+  antenna_network:
+    name: antenna_network

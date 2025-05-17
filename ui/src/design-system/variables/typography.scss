@@ -1,7 +1,7 @@
 @import 'src/design-system/variables/variables.scss';
 
 @mixin heading-6 {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 600;
   font-size: 20px;
@@ -14,7 +14,7 @@
 }
 
 @mixin heading-5 {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 600;
   font-size: 24px;
@@ -28,7 +28,7 @@
 }
 
 @mixin heading-4-italic {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 400;
   font-size: 28px;
@@ -42,7 +42,7 @@
 }
 
 @mixin paragraph-xx-small {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 400;
   font-size: 10px;
@@ -50,7 +50,7 @@
 }
 
 @mixin paragraph-x-small {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 400;
   font-size: 12px;
@@ -58,7 +58,7 @@
 }
 
 @mixin paragraph-small {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 400;
   font-size: 14px;
@@ -66,7 +66,7 @@
 }
 
 @mixin paragraph-medium {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 400;
   font-size: 16px;
@@ -74,7 +74,7 @@
 }
 
 @mixin paragraph-large {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 400;
   font-size: 18px;
@@ -83,7 +83,7 @@
 
 // Not present in Figma
 @mixin label {
-  font-family: 'Mazzard';
+  font-family: 'Mazzard', sans-serif;
   font-style: normal;
   font-weight: 600;
   font-size: 12px;
