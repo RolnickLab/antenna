@@ -16,6 +16,7 @@ from .pipelines import (
 from .schemas import (
     AlgorithmConfigResponse,
     Detection,
+    DetectionRequest,
     PipelineRequest,
     PipelineRequestConfigParameters,
     PipelineResultsResponse,
@@ -44,6 +45,10 @@ pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline fo
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
 }
+
+# -----------
+# API endpoints
+# -----------
 
 
 @app.get("/")
@@ -89,27 +94,8 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
     request_config = data.config
 
-    # process detection and source image requests
-    detections = (
-        [
-            Detection(
-                source_image=SourceImage(
-                    id=detection.source_image.id,
-                    url=detection.source_image.url,
-                ),
-                bbox=detection.bbox,
-                id=(
-                    f"{detection.source_image.id}-crop-"
-                    f"{detection.bbox.x1}-{detection.bbox.y1}-"
-                    f"{detection.bbox.x2}-{detection.bbox.y2}"
-                ),
-                url=detection.crop_image_url,
-                algorithm=detection.algorithm,
-            )
-            for detection in data.detections
-        ]
-        if data.detections
-        else []
+    detections = create_detections(
+        detection_requests=data.detections,
     )
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
 
@@ -137,6 +123,39 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
         raise fastapi.HTTPException(status_code=422, detail=f"{e}")
 
     return response
+
+
+# -----------
+# Helper functions
+# -----------
+
+
+def create_detections(
+    detection_requests: list[DetectionRequest] | None,
+):
+    detections = (
+        [
+            Detection(
+                source_image=SourceImage(
+                    id=detection.source_image.id,
+                    url=detection.source_image.url,
+                ),
+                bbox=detection.bbox,
+                id=(
+                    f"{detection.source_image.id}-crop-"
+                    f"{detection.bbox.x1}-{detection.bbox.y1}-"
+                    f"{detection.bbox.x2}-{detection.bbox.y2}"
+                ),
+                url=detection.crop_image_url,
+                algorithm=detection.algorithm,
+            )
+            for detection in detection_requests
+        ]
+        if detection_requests
+        else []
+    )
+
+    return detections
 
 
 if __name__ == "__main__":
