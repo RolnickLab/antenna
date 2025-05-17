@@ -7,9 +7,11 @@ import time
 
 import fastapi
 
-from .pipelines import ConstantPipeline, Pipeline, RandomPipeline
+from .pipelines import ConstantDetectionRandomSpeciesPipeline, ConstantPipeline, Pipeline
 from .schemas import (
     AlgorithmConfigResponse,
+    Detection,
+    DetectionRequest,
     PipelineRequest,
     PipelineResultsResponse,
     ProcessingServiceInfoResponse,
@@ -17,12 +19,18 @@ from .schemas import (
     SourceImageResponse,
 )
 
+# Configure root logger
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+
+# Get the root logger
 logger = logging.getLogger(__name__)
 
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [RandomPipeline, ConstantPipeline]
+pipelines: list[type[Pipeline]] = [ConstantPipeline, ConstantDetectionRandomSpeciesPipeline]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
@@ -74,6 +82,9 @@ async def readyz():
 async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
 
+    detections = create_detections(
+        detection_requests=data.detections,
+    )
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
     source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
 
@@ -84,8 +95,11 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     except KeyError:
         raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
 
-    pipeline = Pipeline(source_images=source_images)
     try:
+        pipeline = Pipeline(
+            source_images=source_images,
+            existing_detections=detections,
+        )
         results = pipeline.run()
     except Exception as e:
         logger.error(f"Error running pipeline: {e}")
@@ -102,6 +116,39 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
         total_time=seconds_elapsed,
     )
     return response
+
+
+# -----------
+# Helper functions
+# -----------
+
+
+def create_detections(
+    detection_requests: list[DetectionRequest] | None,
+):
+    detections = (
+        [
+            Detection(
+                source_image=SourceImage(
+                    id=detection.source_image.id,
+                    url=detection.source_image.url,
+                ),
+                bbox=detection.bbox,
+                id=(
+                    f"{detection.source_image.id}-crop-"
+                    f"{detection.bbox.x1}-{detection.bbox.y1}-"
+                    f"{detection.bbox.x2}-{detection.bbox.y2}"
+                ),
+                url=detection.crop_image_url,
+                algorithm=detection.algorithm,
+            )
+            for detection in detection_requests
+        ]
+        if detection_requests
+        else []
+    )
+
+    return detections
 
 
 if __name__ == "__main__":
