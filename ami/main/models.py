@@ -2899,7 +2899,7 @@ class Taxon(BaseModel):
 
     notes = models.TextField(blank=True)
 
-    projects = models.ManyToManyField("Project", related_name="taxa")
+    projects = models.ManyToManyField("Project", related_name="taxa", blank=True)
     direct_children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
