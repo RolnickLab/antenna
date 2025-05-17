@@ -49,6 +49,7 @@ export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
       >
         <TaxonSearch
           taxon={taxon}
+          projectId={projectId}
           onTaxonChange={(taxon) => {
             if (taxon) {
               onAdd(taxon.id)
