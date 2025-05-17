@@ -9,13 +9,15 @@ import { useTaxonSearch } from './useTaxonSearch'
 export const TaxonSearch = ({
   taxon,
   onTaxonChange,
+  projectId,
 }: {
   taxon?: Taxon
   onTaxonChange: (taxon?: Taxon) => void
+  projectId?: string
 }) => {
   const [searchString, setSearchString] = useState('')
   const debouncedSearchString = useDebounce(searchString, 200)
-  const { data, isLoading } = useTaxonSearch(debouncedSearchString)
+  const { data, isLoading } = useTaxonSearch(debouncedSearchString, projectId)
 
   const tree = useMemo(() => {
     if (!data?.length) {
