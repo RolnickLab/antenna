@@ -1278,8 +1278,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         if query and len(query) >= min_query_length:
             taxa = (
-                Taxon.objects.filter(active=True)
-                # .select_related("parent")
+                self.get_queryset()
                 .filter(models.Q(name__icontains=query) | models.Q(search_names__icontains=query))
                 .annotate(
                     # Calculate similarity for the name field
