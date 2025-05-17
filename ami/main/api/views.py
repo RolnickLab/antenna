@@ -1234,6 +1234,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows taxa to be viewed or edited.
     """
 
+    require_project = True  # Taxa are always associated with a project
+
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
     filter_backends = DefaultViewSetMixin.filter_backends + [
@@ -1367,13 +1369,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset().filter(active=True)
         project = self.get_active_project()
-        qs = self.attach_tags_by_project(qs, project)
-
-        # @TODO if taxa belongs to a project, ensure user has permission to view it
-        # taxa.projects
 
         if project:
-            qs = qs.filter(models.Q(project=project) | models.Q(project__isnull=True))
+            # Filter by project, but also include global taxa
+            # @TODO IMPORTANT: if taxa belongs to a project, ensure user has permission to view it
+            qs = qs.filter(models.Q(projects=project) | models.Q(projects__isnull=True))
+
+            qs = self.attach_tags_by_project(qs, project)
 
             include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             # @TODO move to a QuerySet manager
@@ -1516,7 +1518,9 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         qs = super().get_queryset()
         project = self.get_active_project()
         if project:
-            return qs.filter(models.Q(project=project) | models.Q(project__isnull=True))
+            # Filter by project, but also include global taxa
+            # @TODO IMPORTANT: if taxa belongs to a project, ensure user has permission to view it
+            return qs.filter(models.Q(projects=project) | models.Q(projects__isnull=True))
         return qs
 
     serializer_class = TaxaListSerializer
