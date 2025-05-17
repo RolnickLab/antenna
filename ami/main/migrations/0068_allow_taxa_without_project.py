@@ -3,6 +3,20 @@
 from django.db import migrations, models
 
 
+def clear_projects_for_existing_taxa(apps, schema_editor):
+    """
+    Clear the projects field for all existing Taxon instances.
+    Previously the admin required a project for taxa, but this was an error and
+    the current taxon-project assignments are mostly random.
+    This migration resets the project taxa to an acurate state.
+    """
+    Taxon = apps.get_model("main", "Taxon")
+
+    # Clear projects for all Taxon instances
+    for taxon in Taxon.objects.all():
+        taxon.projects.clear()
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("main", "0067_tag_taxon_tags"),
@@ -18,5 +32,9 @@ class Migration(migrations.Migration):
             model_name="taxon",
             name="projects",
             field=models.ManyToManyField(blank=True, related_name="taxa", to="main.project"),
+        ),
+        migrations.RunPython(
+            clear_projects_for_existing_taxa,
+            reverse_code=migrations.RunPython.noop,
         ),
     ]
