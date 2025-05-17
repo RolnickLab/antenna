@@ -1366,11 +1366,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         and add extra data about the occurrences.
         Otherwise return all taxa that are active.
         """
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(active=True)
         project = self.get_active_project()
         qs = self.attach_tags_by_project(qs, project)
 
+        # @TODO if taxa belongs to a project, ensure user has permission to view it
+        # taxa.projects
+
         if project:
+            qs = qs.filter(models.Q(project=project) | models.Q(project__isnull=True))
+
             include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             # @TODO move to a QuerySet manager
             qs = qs.annotate(
@@ -1512,7 +1517,7 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         qs = super().get_queryset()
         project = self.get_active_project()
         if project:
-            return qs.filter(projects=project)
+            return qs.filter(models.Q(project=project) | models.Q(project__isnull=True))
         return qs
 
     serializer_class = TaxaListSerializer

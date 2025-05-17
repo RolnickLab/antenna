@@ -3163,7 +3163,7 @@ class TaxaList(BaseModel):
     description = models.TextField(blank=True)
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
-    projects = models.ManyToManyField("Project", related_name="taxa_lists")
+    projects = models.ManyToManyField("Project", related_name="taxa_lists", blank=True)
 
     class Meta:
         ordering = ["-created_at"]
