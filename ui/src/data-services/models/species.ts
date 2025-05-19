@@ -1,3 +1,4 @@
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
@@ -29,6 +30,12 @@ export class Species extends Taxon {
       url: this._species.cover_image_url,
       caption: this._species.cover_image_credit ?? undefined,
     }
+  }
+
+  get createdAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._species.created_at),
+    })
   }
 
   get djangoAdminUrl(): string {
@@ -82,6 +89,12 @@ export class Species extends Taxon {
     const tags = this._species.tags ?? []
 
     return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
+  }
+
+  get updatedAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._species.updated_at),
+    })
   }
 
   get userPermissions(): UserPermission[] {
