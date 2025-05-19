@@ -31,6 +31,11 @@ export class Species extends Taxon {
     }
   }
 
+  get djangoAdminUrl(): string {
+    // TODO: Replace hard coded URL when available from API
+    return `https://api-ood.antenna.insectai.org/admin/main/taxon/${this._species.id}/`
+  }
+
   get isUnknown(): boolean {
     return this._species.unknown_species
   }
