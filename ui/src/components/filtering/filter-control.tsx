@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
+import { BooleanFilter } from './filters/boolean-filter'
 import { CollectionFilter } from './filters/collection-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
@@ -45,6 +46,7 @@ const ComponentMap: {
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
   unknown_species: UnknownSpeciesFilter,
+  include_unobserved: BooleanFilter,
 }
 
 interface FilterControlProps {
