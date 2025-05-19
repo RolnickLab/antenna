@@ -4,6 +4,7 @@ import { Button } from 'nova-ui-kit'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 
 export const NewUnknownSpeciesButton = () => {
   const navigate = useNavigate()
@@ -35,7 +36,11 @@ export const NewUnknownSpeciesButton = () => {
       variant="outline"
     >
       <PlusIcon className="w-4 h-4" />
-      <span>New unknown species</span>
+      <span>
+        {translate(STRING.ENTITY_CREATE, {
+          type: 'cluster',
+        })}
+      </span>
       {isLoading ? <Loader2Icon className="w-4 h-4 ml-2 animate-spin" /> : null}
     </Button>
   )
