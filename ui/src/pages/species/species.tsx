@@ -21,6 +21,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
@@ -31,15 +32,17 @@ export const Species = () => {
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
-  const { species, total, isLoading, isFetching, error } = useSpecies({
-    projectId,
-    sort,
-    pagination,
-    filters,
-  })
+  const { species, total, isLoading, isFetching, error, userPermissions } =
+    useSpecies({
+      projectId,
+      sort,
+      pagination,
+      filters,
+    })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
     <>
@@ -81,7 +84,7 @@ export const Species = () => {
               value={selectedView}
               onValueChange={setSelectedView}
             />
-            <NewUnknownSpeciesButton />
+            {canCreate ? <NewUnknownSpeciesButton /> : null}
           </PageHeader>
           {selectedView === 'table' && (
             <Table
