@@ -39,7 +39,7 @@ const useSearchParam = ({
   return { value, setValue, resetValue }
 }
 
-export const usePagination = ({ perPage }: { perPage?: number } = {}) => {
+const usePagination = ({ perPage }: { perPage?: number } = {}) => {
   const {
     value: page,
     setValue: setPage,
@@ -58,3 +58,5 @@ export const usePagination = ({ perPage }: { perPage?: number } = {}) => {
     setPage,
   }
 }
+
+export { SEARCH_PARAM_KEY_PAGE, usePagination }
