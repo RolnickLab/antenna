@@ -11,6 +11,7 @@ import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import { NewUnknownSpeciesButton } from 'pages/species-details/new-unknown-species-button'
 import { SpeciesDetails } from 'pages/species-details/species-details'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -80,6 +81,7 @@ export const Species = () => {
               value={selectedView}
               onValueChange={setSelectedView}
             />
+            <NewUnknownSpeciesButton />
           </PageHeader>
           {selectedView === 'table' && (
             <Table
