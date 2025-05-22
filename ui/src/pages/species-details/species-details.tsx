@@ -22,6 +22,8 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
   const navigate = useNavigate()
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
+  const hasResources =
+    !species.isUnknown || !!species.fieldguideUrl || canUpdate
 
   return (
     <div className={styles.wrapper}>
@@ -111,23 +113,25 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 })}
               />
             </InfoBlockField>
-            {species.isUnknown ? null : (
+            {hasResources ? (
               <InfoBlockField
-                className="no-print"
-                label={translate(STRING.EXTERNAL_RESOURCES)}
+                className={'no-print'}
+                label={translate(STRING.RESOURCES)}
               >
-                <div className="py-1 flex items-center gap-3">
-                  <Link
-                    className={buttonVariants({
-                      size: 'small',
-                      variant: 'outline',
-                    })}
-                    to={species.gbifUrl}
-                    target="_blank"
-                  >
-                    <span>GBIF</span>
-                    <ExternalLinkIcon className="w-4 h-4" />
-                  </Link>
+                <div className="py-1 flex flex-col items-start gap-3">
+                  {!species.isUnknown ? (
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.gbifUrl}
+                      target="_blank"
+                    >
+                      <span>GBIF</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  ) : null}
                   {species.fieldguideUrl ? (
                     <Link
                       className={buttonVariants({
@@ -141,9 +145,22 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                       <ExternalLinkIcon className="w-4 h-4" />
                     </Link>
                   ) : null}
+                  {canUpdate ? (
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.djangoAdminUrl}
+                      target="_blank"
+                    >
+                      <span>Django admin</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  ) : null}
                 </div>
               </InfoBlockField>
-            )}
+            ) : null}
           </div>
         </div>
         <div className={styles.blueprintWrapper}>
