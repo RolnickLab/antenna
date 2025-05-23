@@ -1,6 +1,7 @@
 import { Taxon } from 'data-services/models/taxa'
 import { Command } from 'nova-ui-kit'
 import { useMemo, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useDebounce } from 'utils/useDebounce'
 import { buildTree } from './buildTree'
 import { TreeItem } from './types'
@@ -9,15 +10,17 @@ import { useTaxonSearch } from './useTaxonSearch'
 export const TaxonSearch = ({
   taxon,
   onTaxonChange,
-  projectId,
 }: {
   taxon?: Taxon
   onTaxonChange: (taxon?: Taxon) => void
-  projectId?: string
 }) => {
+  const { projectId } = useParams()
   const [searchString, setSearchString] = useState('')
   const debouncedSearchString = useDebounce(searchString, 200)
-  const { data, isLoading } = useTaxonSearch(debouncedSearchString, projectId)
+  const { data, isLoading } = useTaxonSearch(
+    debouncedSearchString,
+    projectId as string
+  )
 
   const tree = useMemo(() => {
     if (!data?.length) {

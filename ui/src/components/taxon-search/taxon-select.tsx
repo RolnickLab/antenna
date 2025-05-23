@@ -9,13 +9,11 @@ export const TaxonSelect = ({
   onTaxonChange,
   taxon,
   triggerLabel,
-  projectId,
 }: {
   isLoading?: boolean
   onTaxonChange: (taxon?: Taxon) => void
   taxon?: Taxon
   triggerLabel: string
-  projectId?: string
 }) => {
   const [open, setOpen] = useState(false)
 
@@ -45,7 +43,6 @@ export const TaxonSelect = ({
       >
         <TaxonSearch
           taxon={taxon}
-          projectId={projectId}
           onTaxonChange={(taxon) => {
             onTaxonChange(taxon)
             setOpen(false)
