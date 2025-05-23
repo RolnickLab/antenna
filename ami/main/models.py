@@ -2899,7 +2899,7 @@ class Taxon(BaseModel):
 
     notes = models.TextField(blank=True)
 
-    projects = models.ManyToManyField("Project", related_name="taxa")
+    projects = models.ManyToManyField("Project", related_name="taxa", blank=True)
     direct_children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
@@ -3163,7 +3163,7 @@ class TaxaList(BaseModel):
     description = models.TextField(blank=True)
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
-    projects = models.ManyToManyField("Project", related_name="taxa_lists")
+    projects = models.ManyToManyField("Project", related_name="taxa_lists", blank=True)
 
     class Meta:
         ordering = ["-created_at"]
