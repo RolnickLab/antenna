@@ -77,12 +77,22 @@ export class Species extends Taxon {
     return `https://leps.fieldguide.ai/categories?category=${this._species.fieldguide_id}`
   }
 
-  get score(): number {
-    return this._species.best_determination_score || 0
+  get score(): number | undefined {
+    const score = this._species.best_determination_score
+
+    if (score || score === 0) {
+      return score
+    }
+
+    return undefined
   }
 
-  get scoreLabel(): string {
-    return this.score.toFixed(2)
+  get scoreLabel(): string | undefined {
+    if (this.score !== undefined) {
+      return this.score.toFixed(2)
+    }
+
+    return undefined
   }
 
   get tags(): Tag[] {

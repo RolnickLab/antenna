@@ -1,3 +1,4 @@
+import { DeterminationScore } from 'components/determination-score'
 import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -90,6 +91,22 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
       </Link>
+    ),
+  },
+  {
+    id: 'best_determination_score',
+    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    sortField: 'best_determination_score',
+    renderCell: (item: Species) => (
+      <BasicTableCell>
+        <DeterminationScore
+          score={item.score}
+          scoreLabel={item.scoreLabel}
+          tooltip={translate(STRING.MACHINE_PREDICTION_SCORE, {
+            score: `${item.score}`,
+          })}
+        />
+      </BasicTableCell>
     ),
   },
   {
