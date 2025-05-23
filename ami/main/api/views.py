@@ -1229,6 +1229,9 @@ class TagInverseFilter(filters.BaseFilterBackend):
         return queryset.distinct()
 
 
+TaxonBestScoreFilter = ThresholdFilter.create("best_determination_score")
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1241,6 +1244,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
         TaxonUnknownSpeciesFilter,
+        TaxonBestScoreFilter,
         TaxonTagFilter,
         TagInverseFilter,
     ]
