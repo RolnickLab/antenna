@@ -73,6 +73,7 @@ export const Species = () => {
           <FilterControl clearable={false} field="best_determination_score" />
           <FilterControl data={tags} field="include_unobserved" />
           <FilterControl field="unknown_species" />
+          <FilterControl data={tags} field="tag_id" />
           <FilterControl data={tags} field="not_tag_id" />
         </FilterSection>
         <div className="w-full overflow-hidden">
