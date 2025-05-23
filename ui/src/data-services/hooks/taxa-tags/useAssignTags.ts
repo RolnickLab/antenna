@@ -10,7 +10,7 @@ export const useAssignTags = (id: string, onSuccess?: () => void) => {
   const queryClient = useQueryClient()
 
   const { mutate, isLoading, error, isSuccess, reset } = useMutation({
-    mutationFn: (tags: Tag[]) => {
+    mutationFn: ({ projectId, tags }: { projectId: string; tags: Tag[] }) => {
       const data = new FormData()
       data.append('tag_ids', JSON.stringify(tags.map((tag) => tag.id)))
 
@@ -18,6 +18,7 @@ export const useAssignTags = (id: string, onSuccess?: () => void) => {
         `${API_URL}/${API_ROUTES.SPECIES}/${id}/assign_tags/`,
         JSON.stringify({
           tag_ids: tags.map((tag) => tag.id),
+          project_id: projectId,
         }),
         {
           headers: {
