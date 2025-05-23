@@ -46,7 +46,7 @@ export const Species = () => {
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters({
-    best_detection_score: `${userPreferences.scoreThreshold}`,
+    best_determination_score: `${userPreferences.scoreThreshold}`,
   })
   const { species, total, isLoading, isFetching, error, userPermissions } =
     useSpecies({
