@@ -94,7 +94,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     ),
   },
   {
-    id: 'best_determination_score',
+    id: 'best-determination-score',
     name: translate(STRING.FIELD_LABEL_BEST_SCORE),
     sortField: 'best_determination_score',
     renderCell: (item: Species) => (

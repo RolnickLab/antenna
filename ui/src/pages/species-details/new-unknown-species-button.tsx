@@ -1,6 +1,6 @@
 import { useCreateSpecies } from 'data-services/hooks/species/useCreateSpecies'
-import { Loader2Icon, PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button } from 'design-system/components/button/button'
+import { IconType } from 'design-system/components/icon/icon'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -24,6 +24,9 @@ export const NewUnknownSpeciesButton = () => {
 
   return (
     <Button
+      icon={IconType.Plus}
+      label={translate(STRING.ENTITY_CREATE, { type: 'cluster' })}
+      loading={isLoading}
       onClick={() =>
         createSpecies({
           projectId: projectId as string,
@@ -32,16 +35,6 @@ export const NewUnknownSpeciesButton = () => {
           unknownSpecies: true,
         })
       }
-      size="small"
-      variant="outline"
-    >
-      <PlusIcon className="w-4 h-4" />
-      <span>
-        {translate(STRING.ENTITY_CREATE, {
-          type: 'cluster',
-        })}
-      </span>
-      {isLoading ? <Loader2Icon className="w-4 h-4 ml-2 animate-spin" /> : null}
-    </Button>
+    />
   )
 }
