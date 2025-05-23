@@ -3007,7 +3007,7 @@ class Page(BaseModel):
 
 
 _SOURCE_IMAGE_SAMPLING_METHODS = [
-    "common_combined",
+    "common_combined",  # Deprecated
     "random",
     "stratified_random",
     "interval",
@@ -3017,6 +3017,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "last_and_random_from_each_event",
     "greatest_file_size_from_each_event",
     "detections_only",
+    "full",
 ]
 
 
@@ -3142,7 +3143,17 @@ class SourceImageCollection(BaseModel):
         # This should always be pre-populated using queryset annotations
         return None
 
-    def get_queryset(self):
+    def get_queryset(
+        self,
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+    ):
+
         return SourceImage.objects.filter(project=self.project)
 
     @classmethod
@@ -3169,23 +3180,9 @@ class SourceImageCollection(BaseModel):
             self.save()
             task_logger.info(f"Done sampling and saving captures to {self}")
 
-    def sample_random(self, size: int = 100):
-        """Create a random sample of source images"""
-
-        qs = self.get_queryset()
-        return qs.order_by("?")[:size]
-
-    def sample_manual(self, image_ids: list[int]):
-        """Create a sample of source images based on a list of source image IDs"""
-
-        qs = self.get_queryset()
-        return qs.filter(id__in=image_ids)
-
-    def sample_common_combined(
+    def _filter_sample(
         self,
-        minute_interval: int | None = None,
-        max_num: int | None = None,
-        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
+        qs: models.QuerySet,
         hour_start: int | None = None,
         hour_end: int | None = None,
         month_start: int | None = None,
@@ -3193,9 +3190,7 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
-    ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
-        qs = self.get_queryset()
-
+    ):
         if deployment_ids is not None:
             qs = qs.filter(deployment__in=deployment_ids)
         if date_start is not None:
@@ -3220,6 +3215,66 @@ class SourceImageCollection(BaseModel):
         elif hour_end is not None:
             qs = qs.filter(timestamp__hour__lte=hour_end)
 
+        return qs
+
+    def sample_random(
+        self,
+        size: int = 100,
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+    ):
+        """Create a random sample of source images"""
+
+        qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+        )
+        return qs.order_by("?")[:size]
+
+    def sample_manual(self, image_ids: list[int]):
+        """Create a sample of source images based on a list of source image IDs"""
+
+        qs = self.get_queryset()
+        return qs.filter(id__in=image_ids)
+
+    # Deprecated
+    def sample_common_combined(
+        self,
+        minute_interval: int | None = None,
+        max_num: int | None = None,
+        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+    ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
+        qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+        )
+
         if minute_interval is not None:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
@@ -3235,11 +3290,31 @@ class SourceImageCollection(BaseModel):
         return qs
 
     def sample_interval(
-        self, minute_interval: int = 10, exclude_events: list[int] = [], deployment_id: int | None = None
+        self,
+        minute_interval: int = 10,
+        exclude_events: list[int] = [],
+        deployment_id: int | None = None,  # Deprecated
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
     ):
         """Create a sample of source images based on a time interval"""
 
         qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+        )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
         if exclude_events:
@@ -3298,6 +3373,31 @@ class SourceImageCollection(BaseModel):
 
         qs = self.get_queryset()
         return qs.filter(detections__isnull=False).distinct()
+
+    def sample_full(
+        self,
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+    ):
+        """Sample all source images"""
+
+        qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+        )
+        return qs.all().distinct()
 
     @classmethod
     def get_or_create_starred_collection(cls, project: Project) -> "SourceImageCollection":
