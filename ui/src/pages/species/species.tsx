@@ -35,12 +35,12 @@ export const Species = () => {
   const { columnSettings, setColumnSettings } = useColumnSettings('species', {
     'cover-image': true,
     name: true,
-    rank: true,
+    rank: false,
     'last-seen': true,
     occurrences: true,
     'best-determination-score': true,
-    'created-at': true,
-    'updated-at': true,
+    'created-at': false,
+    'updated-at': false,
   })
   const { userPreferences } = useUserPreferences()
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
