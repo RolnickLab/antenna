@@ -2162,13 +2162,13 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
-    def width(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[2] - self.bbox[0]
+    def width(self) -> int:
+        assert self.bbox and len(self.bbox) == 4
+        return self.bbox[2] - self.bbox[0]
 
-    def height(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[3] - self.bbox[1]
+    def height(self) -> int:
+        assert self.bbox and len(self.bbox) == 4
+        return self.bbox[3] - self.bbox[1]
 
     class Meta:
         ordering = [

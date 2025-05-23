@@ -118,6 +118,7 @@ def cluster_detections(
     task_logger.info(f"Found {detections.count()} detections to process for clustering")
 
     features = []
+    sizes = []
     valid_detections = []
     valid_classifications = []
     update_job_progress(job, stage_key="feature_collection", status=JobState.STARTED, progress=0.0)
@@ -129,6 +130,12 @@ def cluster_detections(
         ).first()
         if classification:
             features.append(classification.features_2048)
+            bbox_width, bbox_height = detection.width(), detection.height()
+            img_width, img_height = detection.source_image.width, detection.source_image.height
+            detection.source_image.deployment
+            assert img_width and img_height
+            relative_size = (bbox_width * bbox_height) / (img_width * img_height)
+            sizes.append(relative_size)
             valid_detections.append(detection)
             valid_classifications.append(classification)
         update_job_progress(
@@ -144,6 +151,7 @@ def cluster_detections(
         raise ValueError("No feature vectors found")
 
     features_np = np.array(features)
+    size_np = np.array(sizes)
     task_logger.info(f"Feature vectors shape: {features_np.shape}")
     logger.info(f"First feature vector: {features_np[0]}, shape: {features_np[0].shape}")
     update_job_progress(job, stage_key="clustering", status=JobState.STARTED, progress=0.0)
@@ -152,7 +160,7 @@ def cluster_detections(
     if not ClusteringAlgorithm:
         raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
 
-    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np)
+    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np, size_np)
 
     task_logger.info(f"Clustering completed with {len(set(cluster_ids))} clusters")
     clusters: dict[int, list[ClusterMember]] = {}
