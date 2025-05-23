@@ -786,6 +786,7 @@ class TaxonSerializer(DefaultSerializer):
             "cover_image_url",
             "cover_image_credit",
             "unknown_species",
+            "best_determination_score",
         ]
 
     def get_cover_image_url(self, obj):
