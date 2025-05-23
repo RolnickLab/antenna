@@ -1,4 +1,5 @@
 import datetime
+import logging
 import math
 import random
 
@@ -8,60 +9,58 @@ from .schemas import (
     AlgorithmReference,
     BoundingBox,
     ClassificationResponse,
+    Detection,
     DetectionResponse,
     PipelineConfigResponse,
     SourceImage,
 )
+from .utils import get_image
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
-def make_random_bbox(source_image_width: int, source_image_height: int):
-    # Make a random box.
-    # Ensure that the box is within the image bounds and the bottom right corner is greater than the
-    # top left corner.
-    x1 = random.randint(0, source_image_width)
-    x2 = random.randint(0, source_image_width)
-    y1 = random.randint(0, source_image_height)
-    y2 = random.randint(0, source_image_height)
+def make_constant_detection(source_images: list[SourceImage]) -> list[Detection]:
+    """
+    For each source image, produce a fixed bounding box size and position relative to image size. No classification.
+    """
+    detector_responses: list[Detection] = []
+    for source_image in source_images:
+        source_image.open(raise_exception=True)
 
-    return BoundingBox(
-        x1=min(x1, x2),
-        y1=min(y1, y2),
-        x2=max(x1, x2),
-        y2=max(y1, y2),
-    )
+        if source_image.width and source_image.height and source_image._pil:
+            start_time = datetime.datetime.now()
+            # For each source image, produce a fixed bounding box size and position relative to image size
+            box_width, box_height = source_image.width // 4, source_image.height // 4
+            start_x, start_y = source_image.width // 8, source_image.height // 8
+            bbox = BoundingBox(
+                x1=start_x,
+                y1=start_y,
+                x2=start_x + box_width,
+                y2=start_y + box_height,
+            )
+            cropped_image_pil = source_image._pil.crop((bbox.x1, bbox.y1, bbox.x2, bbox.y2))
+            end_time = datetime.datetime.now()
+            elapsed_time = (end_time - start_time).total_seconds()
 
+            detector_responses.append(
+                Detection(
+                    id=f"{source_image.id}-crop-{bbox.x1}-{bbox.y1}-{bbox.x2}-{bbox.y2}",
+                    url=source_image.url,
+                    width=cropped_image_pil.width,
+                    height=cropped_image_pil.height,
+                    timestamp=datetime.datetime.now(),
+                    source_image=source_image,
+                    bbox=bbox,
+                    inference_time=elapsed_time,
+                    algorithm=AlgorithmReference(
+                        name=algorithms.CONSTANT_DETECTOR.name,
+                        key=algorithms.CONSTANT_DETECTOR.key,
+                    ),
+                )
+            )
 
-def generate_adaptive_grid_bounding_boxes(image_width: int, image_height: int, num_boxes: int) -> list[BoundingBox]:
-    # Estimate grid size based on num_boxes
-    grid_size: int = math.ceil(math.sqrt(num_boxes))
-
-    cell_width: float = image_width / grid_size
-    cell_height: float = image_height / grid_size
-
-    boxes: list[BoundingBox] = []
-
-    for _ in range(num_boxes):
-        # Select a random cell
-        row: int = random.randint(0, grid_size - 1)
-        col: int = random.randint(0, grid_size - 1)
-
-        # Calculate the cell's boundaries
-        cell_x1: float = col * cell_width
-        cell_y1: float = row * cell_height
-
-        # Generate a random box within the cell
-        # Ensure the box is between 50% and 100% of the cell size
-        box_width: float = random.uniform(cell_width * 0.5, cell_width)
-        box_height: float = random.uniform(cell_height * 0.5, cell_height)
-
-        x1: float = cell_x1 + random.uniform(0, cell_width - box_width)
-        y1: float = cell_y1 + random.uniform(0, cell_height - box_height)
-        x2: float = x1 + box_width
-        y2: float = y1 + box_height
-
-        boxes.append(BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2))
-
-    return boxes
+    return detector_responses
 
 
 def make_random_prediction(
@@ -69,6 +68,9 @@ def make_random_prediction(
     terminal: bool = True,
     max_labels: int = 2,
 ) -> ClassificationResponse:
+    """
+    Helper function to generate a random classification response.
+    """
     assert algorithm.category_map is not None
     category_labels = algorithm.category_map.labels
     logits = [random.random() for _ in category_labels]
@@ -85,80 +87,53 @@ def make_random_prediction(
     )
 
 
-def make_random_detections(source_image: SourceImage, num_detections: int = 10):
-    source_image.open(raise_exception=True)
-    assert source_image.width is not None and source_image.height is not None
-    bboxes = generate_adaptive_grid_bounding_boxes(source_image.width, source_image.height, num_detections)
-    timestamp = datetime.datetime.now()
-
-    return [
-        DetectionResponse(
-            source_image_id=source_image.id,
-            bbox=bbox,
-            timestamp=timestamp,
-            algorithm=AlgorithmReference(
-                name=algorithms.RANDOM_DETECTOR.name,
-                key=algorithms.RANDOM_DETECTOR.key,
+def make_classifications(detections: list[Detection], type: str) -> list[DetectionResponse]:
+    """
+    Given a list of detections, return a list of detection responses containing classifications.
+    The classification type can be either "constant" or "random".
+    """
+    if type == "constant":
+        assert algorithms.CONSTANT_CLASSIFIER.category_map is not None
+        labels = algorithms.CONSTANT_CLASSIFIER.category_map.labels
+        classifications = [
+            ClassificationResponse(
+                classification=labels[0],
+                labels=labels,
+                scores=[0.9],
+                timestamp=datetime.datetime.now(),
+                algorithm=AlgorithmReference(
+                    name=algorithms.CONSTANT_CLASSIFIER.name, key=algorithms.CONSTANT_CLASSIFIER.key
+                ),
+            )
+        ]
+    elif type == "random":
+        classifications = [
+            make_random_prediction(
+                algorithm=algorithms.RANDOM_BINARY_CLASSIFIER,
+                terminal=False,
             ),
-            classifications=[
-                make_random_prediction(
-                    algorithm=algorithms.RANDOM_BINARY_CLASSIFIER,
-                    terminal=False,
-                ),
-                make_random_prediction(
-                    algorithm=algorithms.RANDOM_SPECIES_CLASSIFIER,
-                    terminal=True,
-                ),
-            ],
-        )
-        for bbox in bboxes
-    ]
-
-
-def make_constant_detections(source_image: SourceImage, num_detections: int = 10):
-    source_image.open(raise_exception=True)
-    assert source_image.width is not None and source_image.height is not None
-
-    # Define a fixed bounding box size and position relative to image size
-    box_width, box_height = source_image.width // 4, source_image.height // 4
-    start_x, start_y = source_image.width // 8, source_image.height // 8
-    bboxes = [BoundingBox(x1=start_x, y1=start_y, x2=start_x + box_width, y2=start_y + box_height)]
-    timestamp = datetime.datetime.now()
-
-    assert algorithms.CONSTANT_CLASSIFIER.category_map is not None
-    labels = algorithms.CONSTANT_CLASSIFIER.category_map.labels
+            make_random_prediction(
+                algorithm=algorithms.RANDOM_SPECIES_CLASSIFIER,
+                terminal=True,
+            ),
+        ]
+    else:
+        raise ValueError(f"Classification type must be constant or random, not {type}.")
 
     return [
         DetectionResponse(
-            source_image_id=source_image.id,
-            bbox=bbox,
-            timestamp=timestamp,
-            algorithm=AlgorithmReference(name=algorithms.CONSTANT_DETECTOR.name, key=algorithms.CONSTANT_DETECTOR.key),
-            classifications=[
-                ClassificationResponse(
-                    classification=labels[0],
-                    labels=labels,
-                    scores=[0.9],  # Constant score for each detection
-                    timestamp=timestamp,
-                    algorithm=AlgorithmReference(
-                        name=algorithms.CONSTANT_CLASSIFIER.name, key=algorithms.CONSTANT_CLASSIFIER.key
-                    ),
-                )
-            ],
+            source_image_id=detection.source_image.id,
+            bbox=detection.bbox,
+            timestamp=datetime.datetime.now(),
+            inference_time=0.01,  # filler value of constant time
+            algorithm=detection.algorithm,
+            classifications=classifications,
         )
-        for bbox in bboxes
+        for detection in detections
     ]
 
 
 class Pipeline:
-    source_images: list[SourceImage]
-
-    def __init__(self, source_images: list[SourceImage]):
-        self.source_images = source_images
-
-    def run(self) -> list[DetectionResponse]:
-        raise NotImplementedError("Subclasses must implement the run method")
-
     config = PipelineConfigResponse(
         name="Base Pipeline",
         slug="base",
@@ -167,42 +142,73 @@ class Pipeline:
         algorithms=[],
     )
 
-
-class RandomPipeline(Pipeline):
-    """
-    A pipeline that returns detections in random positions within the image bounds with random classifications.
-    """
+    def __init__(
+        self,
+        source_images: list[SourceImage],
+        existing_detections: list[Detection],
+    ):
+        self.source_images = source_images
+        self.existing_detections = existing_detections
 
     def run(self) -> list[DetectionResponse]:
-        results = [make_random_detections(source_image) for source_image in self.source_images]
-        # Flatten the list of lists
-        return [item for sublist in results for item in sublist]
+        raise NotImplementedError("Subclasses must implement the run method")
 
-    config = PipelineConfigResponse(
-        name="Random Pipeline",
-        slug="random",
-        description=(
-            "A pipeline that returns detections in random positions within the image bounds "
-            "with random classifications."
-        ),
-        version=1,
-        algorithms=[
-            algorithms.RANDOM_DETECTOR,
-            algorithms.RANDOM_BINARY_CLASSIFIER,
-            algorithms.RANDOM_SPECIES_CLASSIFIER,
-        ],
-    )
+    def _process_existing_detections(self) -> list[Detection]:
+        """
+        Helper function for processing existing detections.
+        Opens the source and cropped images, and crops the source image if the cropped image URL is not valid.
+        """
+        processed_detections = self.existing_detections.copy()
+
+        for detection in processed_detections:
+            logger.info(f"Processing existing detection: {detection.id}")
+            detection.source_image.open(raise_exception=True)
+            assert detection.source_image._pil is not None, "Source image must be opened before cropping."
+
+            try:
+                # @TODO: Is this necessary? Should we always crop the image ourselves?
+                # The cropped image URL is typically a local file path.
+                # e.g. /media/detections/1/2018-06-15/session_2018-06-15_capture_20180615220800_detection_54.jpg
+                logger.info("Opening cropped image from the cropped image URL...")
+                detection._pil = get_image(
+                    url=detection.url,
+                    raise_exception=True,
+                )
+            except Exception as e:
+                logger.info(f"Failed to open cropped image from the URL: {detection.url}. Error: {e}")
+                logger.info("Falling back to cropping the source image...")
+                cropped_image_pil = detection.source_image._pil.crop(
+                    (
+                        min(detection.bbox.x1, detection.bbox.x2),
+                        min(detection.bbox.y1, detection.bbox.y2),
+                        max(detection.bbox.x1, detection.bbox.x2),
+                        max(detection.bbox.y1, detection.bbox.y2),
+                    )
+                )
+                detection._pil = cropped_image_pil
+            logger.info(f"Successfully processed existing detection: {detection.id}")
+        return processed_detections
 
 
 class ConstantPipeline(Pipeline):
     """
-    A pipeline that always returns a detection in the same position with a fixed classification.
+    A pipeline that always returns a detection with the same bounding box
+    and a fixed classification.
     """
 
     def run(self) -> list[DetectionResponse]:
-        results = [make_constant_detections(source_image) for source_image in self.source_images]
-        # Flatten the list of lists
-        return [item for sublist in results for item in sublist]
+        detections: list[Detection] = []
+        if self.existing_detections:
+            logger.info("[1/2] Skipping the localizer, use existing detections...")
+            detections: list[Detection] = self._process_existing_detections()
+        else:
+            logger.info("[1/2] No existing detections, generating detections...")
+            detections: list[Detection] = make_constant_detection(self.source_images)
+
+        logger.info("[2/2] Running the classifier...")
+        detections_with_classifications: list[DetectionResponse] = make_classifications(detections, "constant")
+
+        return detections_with_classifications
 
     config = PipelineConfigResponse(
         name="Constant Pipeline",
@@ -212,5 +218,38 @@ class ConstantPipeline(Pipeline):
         algorithms=[
             algorithms.CONSTANT_DETECTOR,
             algorithms.CONSTANT_CLASSIFIER,
+        ],
+    )
+
+
+class ConstantDetectionRandomSpeciesPipeline(Pipeline):
+    """
+    A pipeline that always returns a detection with the same bounding box
+    but with a random species classification.
+    """
+
+    def run(self) -> list[DetectionResponse]:
+        detections: list[Detection] = []
+        if self.existing_detections:
+            logger.info("[1/2] Skipping the localizer, use existing detections...")
+            detections: list[Detection] = self._process_existing_detections()
+        else:
+            logger.info("[1/2] No existing detections, generating detections...")
+            detections: list[Detection] = make_constant_detection(self.source_images)
+
+        logger.info("[2/2] Running the classifier...")
+        detections_with_classifications: list[DetectionResponse] = make_classifications(detections, "random")
+
+        return detections_with_classifications
+
+    config = PipelineConfigResponse(
+        name="Constant Detection Random Species Pipeline",
+        slug="constant-detection-random-species",
+        description="A pipeline that always returns a detection in the same position with a random classification.",
+        version=1,
+        algorithms=[
+            algorithms.CONSTANT_DETECTOR,
+            algorithms.RANDOM_BINARY_CLASSIFIER,
+            algorithms.RANDOM_SPECIES_CLASSIFIER,
         ],
     )

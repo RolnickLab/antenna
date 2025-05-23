@@ -6,9 +6,17 @@ import logging
 
 import fastapi
 
-from .pipelines import Pipeline, ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline
+from .pipelines import (
+    Pipeline,
+    ZeroShotHFClassifierPipeline,
+    ZeroShotObjectDetectorPipeline,
+    ZeroShotObjectDetectorWithConstantClassifierPipeline,
+    ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
+)
 from .schemas import (
     AlgorithmConfigResponse,
+    Detection,
+    DetectionRequest,
     PipelineRequest,
     PipelineRequestConfigParameters,
     PipelineResultsResponse,
@@ -27,11 +35,20 @@ logger = logging.getLogger(__name__)
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline]
+pipelines: list[type[Pipeline]] = [
+    ZeroShotHFClassifierPipeline,
+    ZeroShotObjectDetectorPipeline,
+    ZeroShotObjectDetectorWithConstantClassifierPipeline,
+    ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
+]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
 }
+
+# -----------
+# API endpoints
+# -----------
 
 
 @app.get("/")
@@ -77,6 +94,9 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
     request_config = data.config
 
+    detections = create_detections(
+        detection_requests=data.detections,
+    )
     source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
 
     try:
@@ -89,6 +109,7 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
         pipeline = Pipeline(
             source_images=source_images,
             request_config=pipeline_request_config,
+            existing_detections=detections,
         )
         pipeline.compile()
     except Exception as e:
@@ -102,6 +123,39 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
         raise fastapi.HTTPException(status_code=422, detail=f"{e}")
 
     return response
+
+
+# -----------
+# Helper functions
+# -----------
+
+
+def create_detections(
+    detection_requests: list[DetectionRequest] | None,
+):
+    detections = (
+        [
+            Detection(
+                source_image=SourceImage(
+                    id=detection.source_image.id,
+                    url=detection.source_image.url,
+                ),
+                bbox=detection.bbox,
+                id=(
+                    f"{detection.source_image.id}-crop-"
+                    f"{detection.bbox.x1}-{detection.bbox.y1}-"
+                    f"{detection.bbox.x2}-{detection.bbox.y2}"
+                ),
+                url=detection.crop_image_url,
+                algorithm=detection.algorithm,
+            )
+            for detection in detection_requests
+        ]
+        if detection_requests
+        else []
+    )
+
+    return detections
 
 
 if __name__ == "__main__":
