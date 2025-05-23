@@ -2081,6 +2081,7 @@ class Detection(BaseModel):
     )
 
     # @TODO use structured data for bbox
+    # [x1, y1, x2, y2]
     bbox = models.JSONField(null=True, blank=True)
 
     # @TODO shouldn't this be automatically set by the source image?
@@ -2161,13 +2162,14 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
-    def width(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[2] - self.bbox[0]
+    def width(self) -> int:
 
-    def height(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[3] - self.bbox[1]
+        assert self.bbox and len(self.bbox) == 4
+        return self.bbox[2] - self.bbox[0]
+
+    def height(self) -> int:
+        assert self.bbox and len(self.bbox) == 4
+        return self.bbox[3] - self.bbox[1]
 
     class Meta:
         ordering = [

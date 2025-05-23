@@ -69,7 +69,7 @@ class AgglomerativeClusterer(BaseClusterer):
                     data_dict["val"]["feat_list"], data_dict["val"]["label_list"]
                 )
 
-    def cluster(self, features):
+    def cluster(self, features, rel_sizes):
         logger.info(f"distance threshold: {self.distance_threshold}")
 
         # Get n_components and linkage from dictionary
@@ -79,8 +79,13 @@ class AgglomerativeClusterer(BaseClusterer):
             features = standardize(features)
             logger.info(f"Skipping PCA, n_components { self.n_components} is larger than features shape ")
 
+
+        rel_sizes = standardize(rel_sizes).reshape(-1, 1)
+
+        features = np.concatenate([features, rel_sizes], axis=1)
         # Get linkage parameter from config
         linkage = self.config.get("algorithm_kwargs", {}).get("linkage", "ward")
+
 
         clusters = AgglomerativeClustering(
             n_clusters=None, distance_threshold=self.distance_threshold, linkage=linkage

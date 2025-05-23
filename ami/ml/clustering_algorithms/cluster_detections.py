@@ -38,6 +38,7 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     task_logger.info(f"Found {detections.count()} detections to process for clustering")
 
     features = []
+    sizes = []
     valid_detections = []
     update_job_progress(job, stage_key="feature_collection", status=JobState.STARTED, progress=0.0)
     # Collecting features for detections
@@ -45,6 +46,12 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
         classification = detection.classifications.filter(features_2048__isnull=False).first()
         if classification:
             features.append(classification.features_2048)
+            bbox_width, bbox_height = detection.width(), detection.height()
+            img_width, img_height = detection.source_image.width, detection.source_image.height
+            detection.source_image.deployment
+            assert img_width and img_height
+            relative_size = (bbox_width * bbox_height) / (img_width * img_height)
+            sizes.append(relative_size)
             valid_detections.append(detection)
         update_job_progress(
             job,
@@ -59,6 +66,7 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
         raise ValueError("No feature vectors found")
 
     features_np = np.array(features)
+    size_np = np.array(sizes)
 
     update_job_progress(job, stage_key="clustering", status=JobState.STARTED, progress=0.0)
     # Clustering Detections
@@ -66,7 +74,7 @@ def cluster_detections(collection, params: dict, task_logger: logging.Logger = l
     if not ClusteringAlgorithm:
         raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
 
-    cluster_ids = ClusteringAlgorithm(params).cluster(features_np)
+    cluster_ids = ClusteringAlgorithm(params).cluster(features_np, size_np)
 
     task_logger.info(f"Clustering completed with {len(set(cluster_ids))} clusters")
     clusters = {}
