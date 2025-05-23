@@ -1,4 +1,5 @@
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
+import { DeterminationScore } from 'components/determination-score'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
@@ -111,6 +112,19 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                   }),
                   filters: { taxon: species.id },
                 })}
+              />
+            </InfoBlockField>
+            <InfoBlockField label={translate(STRING.FIELD_LABEL_BEST_SCORE)}>
+              <DeterminationScore
+                score={species.score}
+                scoreLabel={species.scoreLabel}
+                tooltip={
+                  species.score
+                    ? translate(STRING.MACHINE_PREDICTION_SCORE, {
+                        score: `${species.score}`,
+                      })
+                    : undefined
+                }
               />
             </InfoBlockField>
             {hasResources ? (

@@ -132,6 +132,10 @@ export const AVAILABLE_FILTERS: {
     label: 'Show unobserved taxa',
     field: 'include_unobserved',
   },
+  {
+    label: 'Best score threshold',
+    field: 'best_determination_score',
+  },
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {

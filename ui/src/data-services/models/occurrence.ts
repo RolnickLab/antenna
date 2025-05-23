@@ -67,14 +67,16 @@ export class Occurrence {
     return determinationPrediction ? `${determinationPrediction.id}` : undefined
   }
 
-  get determinationScore(): number {
+  get determinationScore(): number | undefined {
     const score = this._occurrence.determination_details.score
 
-    if (!score) {
-      return 0
+    if (score || score === 0) {
+      return score
     }
 
-    return this._occurrence.determination_score
+    if (!score) {
+      return undefined
+    }
   }
 
   get determinationOODScore(): number | undefined {
@@ -87,8 +89,12 @@ export class Occurrence {
     return undefined
   }
 
-  get determinationScoreLabel(): string {
-    return this.determinationScore.toFixed(2)
+  get determinationScoreLabel(): string | undefined {
+    if (this.determinationScore !== undefined) {
+      return this.determinationScore.toFixed(2)
+    }
+
+    return undefined
   }
 
   get determinationOODScoreLabel(): string | undefined {
