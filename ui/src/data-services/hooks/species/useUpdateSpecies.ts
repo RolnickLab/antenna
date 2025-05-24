@@ -9,7 +9,13 @@ export const useUpdateSpecies = (id: string, onSuccess?: () => void) => {
   const queryClient = useQueryClient()
 
   const { mutateAsync, isLoading, isSuccess, reset, error } = useMutation({
-    mutationFn: (fieldValues: { name?: string; parentId?: string }) => {
+    mutationFn: ({
+      fieldValues,
+      projectId,
+    }: {
+      fieldValues: { name?: string; parentId?: string }
+      projectId: string
+    }) => {
       const data = new FormData()
 
       if (fieldValues.name) {
@@ -20,12 +26,16 @@ export const useUpdateSpecies = (id: string, onSuccess?: () => void) => {
         data.append('parent_id', fieldValues.parentId)
       }
 
-      return axios.patch(`${API_URL}/${API_ROUTES.SPECIES}/${id}/`, data, {
-        headers: {
-          ...getAuthHeader(user),
-          'Content-Type': 'multipart/form-data',
-        },
-      })
+      return axios.patch(
+        `${API_URL}/${API_ROUTES.SPECIES}/${id}/?project_id=${projectId}`,
+        data,
+        {
+          headers: {
+            ...getAuthHeader(user),
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      )
     },
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.SPECIES])

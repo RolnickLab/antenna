@@ -15,10 +15,9 @@ export const useAssignTags = (id: string, onSuccess?: () => void) => {
       data.append('tag_ids', JSON.stringify(tags.map((tag) => tag.id)))
 
       return axios.post(
-        `${API_URL}/${API_ROUTES.SPECIES}/${id}/assign_tags/`,
+        `${API_URL}/${API_ROUTES.SPECIES}/${id}/assign_tags/?project_id=${projectId}`,
         JSON.stringify({
           tag_ids: tags.map((tag) => tag.id),
-          project_id: projectId,
         }),
         {
           headers: {
