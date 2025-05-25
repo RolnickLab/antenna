@@ -781,6 +781,9 @@ def create_and_update_occurrences_for_detections(
                 "determination",
                 "determination_score",
                 "determination_ood_score",
+                "best_detection",
+                "best_prediction",
+                "best_identification",
                 "updated_at",
             ],
         )
