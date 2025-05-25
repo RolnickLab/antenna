@@ -144,6 +144,12 @@ export const columns: (
     renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
   },
   {
+    id: 'pixel_area',
+    name: 'Pixel Area',
+    sortField: 'pixel_area',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.pixelArea} />,
+  },
+  {
     id: 'time',
     sortField: 'first_appearance_time',
     name: translate(STRING.FIELD_LABEL_TIME_OBSERVED),
@@ -170,12 +176,6 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: Occurrence) => <BasicTableCell value={item.updatedAt} />,
-  },
-  {
-    id: 'pixel_area',
-    name: 'Pixel Area',
-    sortField: 'pixel_area',
-    renderCell: (item: Occurrence) => <BasicTableCell value={item.pixelArea} />,
   },
 ]
 
