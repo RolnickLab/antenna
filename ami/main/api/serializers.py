@@ -4,12 +4,13 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.fields import Field
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import create_source_image_from_upload
+from ami.main.models import Tag, create_source_image_from_upload
 from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
@@ -32,6 +33,7 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
+    get_media_url,
     validate_filename_timestamp,
 )
 
@@ -448,7 +450,34 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
+class TaxonCoverImageField(Field):
+    """
+    A custom field for retrieving a taxon's cover image URL.
+
+    This field handles the logic for determining the appropriate cover image URL:
+    1. Uses the taxon's cover_image_url if available
+    2. Falls back to the best_detection_image_path (added by QuerySet annotation)
+    3. Returns None if no image is available
+    """
+
+    def __init__(self, **kwargs):
+        kwargs["source"] = "*"  # Use the entire object as the source
+        kwargs["read_only"] = True
+        super().__init__(**kwargs)
+
+    def to_representation(self, obj):
+        if obj.cover_image_url:
+            return obj.cover_image_url
+        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
+            # This attribute is added by a QuerySet annotation
+            return get_media_url(obj.best_detection_image_path)
+        else:
+            return None
+
+
 class TaxonNoParentNestedSerializer(DefaultSerializer):
+    cover_image_url = TaxonCoverImageField()
+
     class Meta:
         model = Taxon
         fields = [
@@ -457,6 +486,9 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
             "rank",
             "details",
             "gbif_taxon_key",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
 
@@ -485,6 +517,8 @@ class TaxonNestedSerializer(TaxonNoParentNestedSerializer):
 
 
 class TaxonSearchResultSerializer(TaxonNestedSerializer):
+    cover_image_url = TaxonCoverImageField()
+
     class Meta:
         model = Taxon
         fields = [
@@ -492,14 +526,37 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
             "name",
             "rank",
             "parent",
+            "cover_image_url",
         ]
+
+
+class TagSerializer(DefaultSerializer):
+    project = ProjectNestedSerializer(read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), source="project", write_only=True)
+    taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(), many=True, source="taxa", write_only=True, required=False
+    )
+    taxa = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tag
+        fields = ["id", "name", "project", "project_id", "taxa_ids", "taxa"]
+
+    def get_taxa(self, obj):
+        return [{"id": taxon.id, "name": taxon.name} for taxon in obj.taxa.all()]
 
 
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    parents = TaxonNestedSerializer(read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
+    cover_image_url = TaxonCoverImageField()
+    tags = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
@@ -512,8 +569,11 @@ class TaxonListSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "occurrences",
+            "tags",
             "last_detected",
             "best_determination_score",
+            "cover_image_url",
+            "unknown_species",
             "created_at",
             "updated_at",
         ]
@@ -521,6 +581,8 @@ class TaxonListSerializer(DefaultSerializer):
     def get_occurrences(self, obj):
         """
         Return URL to the occurrences endpoint filtered by this taxon.
+
+        Does not make a database query.
         """
 
         params = {}
@@ -698,6 +760,7 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
             "deployment",
             "event",
             "determination_score",
+            "determination_ood_score",
             "determination",
             "best_detection",
             "detections_count",
@@ -716,6 +779,13 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
+    cover_image_url = TaxonCoverImageField()
+    tags = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        # Use prefetched tags
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
@@ -731,6 +801,13 @@ class TaxonSerializer(DefaultSerializer):
             "events_count",
             "occurrences",
             "gbif_taxon_key",
+            "tags",
+            "last_detected",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
+            "unknown_species",
+            "best_determination_score",
         ]
 
 
@@ -745,6 +822,7 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
             "details",
             "determination",
             "determination_score",
+            "determination_ood_score",
             "determination_algorithm",
         ]
 
@@ -759,6 +837,7 @@ class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
+    features_2048 = serializers.ListField(child=serializers.FloatField(), read_only=True)
 
     class Meta:
         model = Classification
@@ -770,6 +849,8 @@ class ClassificationSerializer(DefaultSerializer):
             "algorithm",
             "scores",
             "logits",
+            "ood_score",
+            "features_2048",
             "top_n",
             "created_at",
             "updated_at",
@@ -800,6 +881,7 @@ class ClassificationListSerializer(DefaultSerializer):
             "details",
             "taxon",
             "score",
+            "ood_score",
             "algorithm",
             "created_at",
             "updated_at",
@@ -818,6 +900,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "details",
             "taxon",
             "score",
+            "ood_score",
             "terminal",
             "algorithm",
             "created_at",
@@ -884,6 +967,23 @@ class DetectionNestedSerializer(DefaultSerializer):
             "bbox",
             "occurrence",
             "classifications",
+        ]
+
+
+class ClassificationSimilaritySerializer(ClassificationSerializer):
+    distance = serializers.FloatField(read_only=True)
+    detection = DetectionNestedSerializer(read_only=True)
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = [
+            "id",
+            "details",
+            "distance",
+            "detection",
+            "taxon",
+            "algorithm",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -1198,6 +1298,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detections_count",
             "detection_images",
             "determination_score",
+            "determination_ood_score",
             "determination_details",
             "pixel_area",
             "identifications",
@@ -1239,7 +1340,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
-    predictions = ClassificationNestedSerializer(many=True, read_only=True)
+    predictions = ClassificationNestedSerializer(many=True, read_only=True, source="get_best_predictions")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
@@ -1516,3 +1617,11 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class ClusterDetectionsSerializer(serializers.Serializer):
+    ood_threshold = serializers.FloatField(required=False, default=0.0)
+    feature_extraction_algorithm = serializers.CharField(required=False, allow_null=True)
+    algorithm = serializers.CharField(required=False, default="agglomerative")
+    algorithm_kwargs = serializers.DictField(required=False, default={"distance_threshold": 0.5})
+    pca = serializers.DictField(required=False, default={"n_components": 384})

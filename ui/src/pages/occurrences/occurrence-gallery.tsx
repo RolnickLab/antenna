@@ -21,8 +21,7 @@ export const OccurrenceGallery = ({
       occurrences.map((o) => ({
         id: o.id,
         image: o.images[0],
-        subTitle: `(${o.determinationScore})`,
-        title: o.determinationTaxon.name,
+        title: `${o.determinationTaxon.name} (${o.determinationScore})`,
         to: getAppRoute({
           to: APP_ROUTES.OCCURRENCE_DETAILS({
             projectId: projectId as string,
