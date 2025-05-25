@@ -25,6 +25,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
   const hasResources =
     !species.isUnknown || !!species.fieldguideUrl || canUpdate
+  const hasChildren = species.rank !== 'SPECIES'
 
   return (
     <div className={styles.wrapper}>
@@ -99,13 +100,25 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
             </InfoBlockField>
-            <InfoBlockField label={translate(STRING.FIELD_LABEL_OCCURRENCES)}>
+            {hasChildren ? (
+              <InfoBlockField label="Child taxa">
+                <InfoBlockFieldValue
+                  value="View all"
+                  to={getAppRoute({
+                    to: APP_ROUTES.TAXA({
+                      projectId: projectId as string,
+                    }),
+                    filters: { taxon: species.id },
+                  })}
+                />
+              </InfoBlockField>
+            ) : null}
+            <InfoBlockField label="Occurrences">
               <InfoBlockFieldValue
-                value={
-                  species.numOccurrences !== null
-                    ? species.numOccurrences
-                    : 'View all'
-                }
+                value={`Direct: ${species.numOccurrences ?? 0}`}
+              />
+              <InfoBlockFieldValue
+                value="View all"
                 to={getAppRoute({
                   to: APP_ROUTES.OCCURRENCES({
                     projectId: projectId as string,
