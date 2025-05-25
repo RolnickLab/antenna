@@ -1300,6 +1300,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_score",
             "determination_ood_score",
             "determination_details",
+            "pixel_area",
             "identifications",
             "created_at",
             "updated_at",

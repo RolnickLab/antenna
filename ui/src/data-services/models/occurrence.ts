@@ -175,6 +175,10 @@ export class Occurrence {
     })
   }
 
+  get pixelArea(): number {
+    return this._occurrence.pixel_area
+  }
+
   get userPermissions(): UserPermission[] {
     return this._occurrence.user_permissions
   }
