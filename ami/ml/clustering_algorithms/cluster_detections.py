@@ -149,7 +149,7 @@ def cluster_detections(
     from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
 
     sharpness_threshold = 8
-    relative_size_threshold = 0.1 #  TODO: this should be updated
+    relative_size_threshold = 0.015 #  TODO: this should be updated
 
     ood_threshold = params.get("ood_threshold", 1)
     feature_extraction_algorithm = params.get("feature_extraction_algorithm", None)
