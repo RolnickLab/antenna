@@ -2235,6 +2235,12 @@ class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
     def valid(self):
         return self.exclude(detections__isnull=True)
 
+    def has_determination(self):
+        """
+        Filter out occurrences that are missing a determination.
+        """
+        return self.filter(determination__isnull=False)
+
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
