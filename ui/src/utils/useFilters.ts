@@ -1,5 +1,6 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
+import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
 export const AVAILABLE_FILTERS: {
@@ -15,8 +16,12 @@ export const AVAILABLE_FILTERS: {
     field: 'algorithm',
   },
   {
-    label: 'Score threshold',
+    label: translate(STRING.FIELD_LABEL_SCORE_THRESHOLD),
     field: 'classification_threshold',
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_OOD_SCORE_THRESHOLD),
+    field: 'determination_ood_score',
   },
   {
     label: 'Collection',
@@ -85,8 +90,20 @@ export const AVAILABLE_FILTERS: {
     field: 'not_algorithm',
   },
   {
+    label: 'Include tag',
+    field: 'tag_id',
+  },
+  {
+    label: 'Exclude tag',
+    field: 'not_tag_id',
+  },
+  {
     label: 'Taxon',
     field: 'taxon',
+  },
+  {
+    label: 'Known status',
+    field: 'unknown_species',
   },
   {
     label: 'Taxa list',
@@ -111,6 +128,14 @@ export const AVAILABLE_FILTERS: {
   {
     label: 'Verified by',
     field: 'verified_by_me',
+  },
+  {
+    label: 'Show unobserved taxa',
+    field: 'include_unobserved',
+  },
+  {
+    label: 'Best score threshold',
+    field: 'best_determination_score',
   },
 ]
 

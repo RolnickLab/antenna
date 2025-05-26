@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@lucide/lab": "^0.1.2",
     "@radix-ui/react-accordion": "^1.1.2",
     "@radix-ui/react-checkbox": "^1.0.3",
     "@radix-ui/react-dialog": "^1.0.4-rc.9",
@@ -29,7 +30,7 @@
     "leaflet": "^1.9.3",
     "lodash": "^4.17.21",
     "lucide-react": "^0.454.0",
-    "nova-ui-kit": "^1.1.30",
+    "nova-ui-kit": "^1.1.31",
     "plotly.js": "^2.25.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { ReactNode } from 'react'
 import styles from './page-footer.module.scss'
 
@@ -12,7 +13,7 @@ export const PageFooter = ({ hide, children }: PageFooterProps) => {
   }
 
   return (
-    <div className={styles.wrapper}>
+    <div className={classNames(styles.wrapper, 'no-print')}>
       <div className={styles.content}>{children}</div>
     </div>
   )

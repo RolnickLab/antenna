@@ -37,6 +37,10 @@ services:
       dockerfile: ./compose/local/postgres/Dockerfile
     # Share the local Postgres image with the staging configuration.
     # Production uses an external Postgres service.
+    command: >
+      postgres
+      -c max_connections=300
+      -c shared_preload_libraries=pg_stat_statements
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
       - ./data/db/snapshots:/backups

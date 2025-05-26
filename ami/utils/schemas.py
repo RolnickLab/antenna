@@ -51,6 +51,9 @@ class OrderedEnum(Enum):
         else:
             raise NotImplementedError(f"Cannot compare {self.__class__} to {other.__class__}")
 
+    def __hash__(self) -> int:
+        return hash(self.value)
+
     @classmethod
     def _missing_(cls, value: str):
         """Allow case-insensitive lookups."""
