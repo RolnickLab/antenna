@@ -24,7 +24,6 @@ from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
     create_detections,
-    create_processing_service,
     create_taxa,
     group_images_into_events,
     setup_test_project,
@@ -732,6 +731,7 @@ class TestClustering(TestCase):
     def _populate_detection_features(self):
         """Populate detection features with random values."""
         classifier = Algorithm.objects.get(key="random-species-classifier")
+        taxon = Taxon.objects.last()
         for detection in self.detections:
             detection.associate_new_occurrence()
             # Create a random feature vector
@@ -740,7 +740,7 @@ class TestClustering(TestCase):
             classification = Classification.objects.create(
                 detection=detection,
                 algorithm=classifier,
-                taxon=None,
+                taxon=taxon,
                 score=0.5,
                 ood_score=0.5,
                 features_2048=feature_vector,

@@ -70,6 +70,47 @@ class AgglomerativeClusterer(BaseClusterer):
                     data_dict["val"]["feat_list"], data_dict["val"]["label_list"]
                 )
 
+    def cluster_by_higher_taxon(self, features, rel_sizes, predictions, taxon_map, taxon_rank)-> tuple[np.ndarray, np.ndarray]:
+
+
+        # map labdls -> [species, genus, family]
+
+        # [1, 0, 4, 5, ...]
+        # [sp.1, sp.2, ...]
+        # [genus1, ]
+        # TODO: create taxon_mask based on predictions and taxon_map
+        taxons = taxon_map[predictions]
+
+        cluster_id_offset = 0
+
+        all_cluster_ids = []
+        all_silhouette_scores = []
+
+        for taxon in taxons:
+            taxon_features = features[predictions.isin(taxon)] #TODO: change this
+            taxon_rel_sizes = rel_sizes[predictions.isin(taxon)] #TODO: change this
+
+            cluster_ids, silhouette_scores = self.cluster(taxon_features, taxon_rel_sizes)
+            cluster_ids += cluster_id_offset
+
+            cluster_id_offset += len(np.unique(cluster_ids))
+
+            all_cluster_ids.append(cluster_ids)
+            all_silhouette_scores.append(silhouette_scores)
+
+        all_cluster_ids = np.concatenate(all_cluster_ids, axis=0)
+        all_silhouette_scores = np.concatenate(all_silhouette_scores, axis=0)
+
+        return all_cluster_ids, all_silhouette_scores
+
+
+
+
+
+
+
+
+
     def cluster(self, features, rel_sizes) -> tuple[np.ndarray, np.ndarray]:
         logger.info(f"distance threshold: {self.distance_threshold}")
         logger.info("features shape: %s", features.shape)
