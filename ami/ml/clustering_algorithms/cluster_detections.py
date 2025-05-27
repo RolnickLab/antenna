@@ -2,11 +2,13 @@ import dataclasses
 import logging
 import typing
 
+# import cv2
 import numpy as np
 from django.db.models import Count
 from django.utils.timezone import now
 
 from ami.ml.clustering_algorithms.utils import get_clusterer
+from ami.ml.utils import get_image
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -86,13 +88,76 @@ def get_cluster_name(cluster_id: int, taxon: "Taxon | None" = None, job: "Job | 
     return " ".join(part for part in parts if part)
 
 
+def remove_detection_on_edge(detection):
+    bbox = detection.bbox
+    img_width, img_height = detection.source_image.width, detection.source_image.height
+
+    # left
+    if bbox[0] < 1:
+        return True
+
+    # top
+    if bbox[1] < 1:
+        return True
+
+    # right
+    if bbox[2] > img_width - 2:
+        return True
+
+    if bbox[3] > img_height - 2:
+        return True
+
+    return False
+
+
+def get_relative_size(detection: "Detection"):
+    bbox_width, bbox_height = detection.width(), detection.height()
+    img_width, img_height = detection.source_image.width, detection.source_image.height
+    detection.source_image.deployment
+    assert img_width and img_height
+    relative_size = (bbox_width * bbox_height) / (img_width * img_height)
+    return relative_size
+
+
+def compute_sharpness(detection: "Detection", task_logger: logging.Logger | None = None) -> float | None:
+    image_url = detection.url()
+    task_logger = task_logger or logger
+    assert image_url, "Detection must have a valid image URL"
+    try:
+        image = get_image(image_url)
+    except Exception as e:
+        task_logger.warning(
+            f"Could not compute sharpness. Failed to load data image for detection {detection.pk}: {e}"
+        )
+        return None
+    image_array = np.array(image, dtype=np.float32)
+
+    # Define Laplacian kernel
+    kernel = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=np.float32)
+
+    padded = np.pad(image_array, pad_width=1, mode="reflect")
+    laplacian = np.zeros_like(image_array)
+
+    for i in range(image_array.shape[0]):
+        for j in range(image_array.shape[1]):
+            region = padded[i : i + 3, j : j + 3]
+            laplacian[i, j] = np.sum(region * kernel)
+
+    laplacian_std = np.std(laplacian)
+
+    return laplacian_std
+
+
 def cluster_detections(
-    collection, params: dict, task_logger: logging.Logger = logger, job=None
+    collection, params: dict, task_logger: logging.Logger = logger, filter_by_critera=True, job=None
 ) -> dict[int, list[ClusterMember]]:
     from ami.jobs.models import JobState
     from ami.main.models import Classification, Detection, TaxaList, Taxon
     from ami.ml.models import Algorithm
     from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
+
+    sharpness_threshold = params.get("sharpness_threshold", 8)
+    relative_size_threshold = params.get("relative_size_threshold", 0.0015)
 
     ood_threshold = params.get("ood_threshold", 1)
     feature_extraction_algorithm = params.get("feature_extraction_algorithm", None)
@@ -100,13 +165,15 @@ def cluster_detections(
     task_logger.info(f"Clustering Parameters: {params}")
     job_save(job)
     if feature_extraction_algorithm:
-        task_logger.info(f"Feature Extraction Algorithm: {feature_extraction_algorithm}")
         # Check if the feature extraction algorithm is valid
         if not Algorithm.objects.filter(key=feature_extraction_algorithm).exists():
             raise ValueError(f"Invalid feature extraction algorithm key: {feature_extraction_algorithm}")
     else:
         # Fallback to the most used feature extraction algorithm in this collection
         feature_extraction_algorithm = get_most_used_algorithm(collection, task_logger=task_logger)
+    task_logger.info(f"Feature Extraction Algorithm: {feature_extraction_algorithm}")
+    if not feature_extraction_algorithm:
+        raise ValueError("No feature extraction algorithm found for detections in collection.")
 
     detections = Detection.objects.filter(
         classifications__features_2048__isnull=False,
@@ -118,17 +185,37 @@ def cluster_detections(
     task_logger.info(f"Found {detections.count()} detections to process for clustering")
 
     features = []
+    sizes = []
     valid_detections = []
     valid_classifications = []
     update_job_progress(job, stage_key="feature_collection", status=JobState.STARTED, progress=0.0)
+
     # Collecting features for detections
     for idx, detection in enumerate(detections):
         classification = detection.classifications.filter(
             features_2048__isnull=False,
             algorithm=feature_extraction_algorithm,
         ).first()
+
         if classification:
+            relative_size = get_relative_size(detection)
+
+            if filter_by_critera:
+                if remove_detection_on_edge(detection):  # remove crops that are on the edge
+                    task_logger.info(f"Removing detection {detection.pk} on edge")
+                    continue
+
+                if relative_size < relative_size_threshold:  # remove small crops
+                    task_logger.info(f"Removing detection {detection.pk} with relative size {relative_size}")
+                    continue
+
+                sharpness = compute_sharpness(detection)  # remove blurry images
+                if sharpness is not None and sharpness < sharpness_threshold:
+                    task_logger.info(f"Removing detection {detection.pk} with sharpness {sharpness}")
+                    continue
+
             features.append(classification.features_2048)
+            sizes.append(relative_size)
             valid_detections.append(detection)
             valid_classifications.append(classification)
         update_job_progress(
@@ -141,9 +228,13 @@ def cluster_detections(
     logger.info(f"Clustering {len(features)} features from {len(valid_detections)} detections")
 
     if not features:
-        raise ValueError("No feature vectors found")
+        raise ValueError(
+            "No feature vectors found. All detections were filtered out based on the criteria, "
+            "or they are missing features."
+        )
 
     features_np = np.array(features)
+    size_np = np.array(sizes)
     task_logger.info(f"Feature vectors shape: {features_np.shape}")
     logger.info(f"First feature vector: {features_np[0]}, shape: {features_np[0].shape}")
     update_job_progress(job, stage_key="clustering", status=JobState.STARTED, progress=0.0)
@@ -152,7 +243,7 @@ def cluster_detections(
     if not ClusteringAlgorithm:
         raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
 
-    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np)
+    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np, size_np)  # TODO: change this
 
     task_logger.info(f"Clustering completed with {len(set(cluster_ids))} clusters")
     clusters: dict[int, list[ClusterMember]] = {}
