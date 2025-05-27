@@ -6,9 +6,9 @@ import typing
 import numpy as np
 from django.db.models import Count
 from django.utils.timezone import now
-from PIL import Image
 
 from ami.ml.clustering_algorithms.utils import get_clusterer
+from ami.ml.utils import get_image
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -110,7 +110,7 @@ def remove_detection_on_edge(detection):
     return False
 
 
-def get_relative_size(detection):
+def get_relative_size(detection: "Detection"):
     bbox_width, bbox_height = detection.width(), detection.height()
     img_width, img_height = detection.source_image.width, detection.source_image.height
     detection.source_image.deployment
@@ -119,8 +119,14 @@ def get_relative_size(detection):
     return relative_size
 
 
-def compute_sharpness(image_path):
-    image = Image.open(image_path).convert("L")
+def compute_sharpness(detection: "Detection"):
+    image_url = detection.url()
+    assert image_url, "Detection must have a valid image URL"
+    try:
+        image = get_image(image_url)
+    except Exception as e:
+        logger.warning(f"Could not compute sharpness. Failed to load data image for detection {detection.pk}: {e}")
+        return 1.0
     image_array = np.array(image, dtype=np.float32)
 
     # Define Laplacian kernel
@@ -140,15 +146,15 @@ def compute_sharpness(image_path):
 
 
 def cluster_detections(
-    collection, params: dict, task_logger: logging.Logger = logger, job=None
+    collection, params: dict, task_logger: logging.Logger = logger, filter_by_critera=True, job=None
 ) -> dict[int, list[ClusterMember]]:
     from ami.jobs.models import JobState
     from ami.main.models import Classification, Detection, TaxaList, Taxon
     from ami.ml.models import Algorithm
     from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
 
-    sharpness_threshold = 8
-    relative_size_threshold = 0.015  # @TODO: this should be updated
+    sharpness_threshold = params.get("sharpness_threshold", 8)
+    relative_size_threshold = params.get("relative_size_threshold", 0.015)
 
     ood_threshold = params.get("ood_threshold", 1)
     feature_extraction_algorithm = params.get("feature_extraction_algorithm", None)
@@ -187,16 +193,18 @@ def cluster_detections(
         ).first()
 
         if classification:
-            if remove_detection_on_edge(detection):  # remove crops that are on the edge
-                continue
             relative_size = get_relative_size(detection)
 
-            if relative_size < relative_size_threshold:  # remove small crops
-                continue
+            if filter_by_critera:
+                if remove_detection_on_edge(detection):  # remove crops that are on the edge
+                    continue
 
-            sharpness = compute_sharpness(detection.path)  # remove blurry images
-            if sharpness < sharpness_threshold:
-                continue
+                if relative_size < relative_size_threshold:  # remove small crops
+                    continue
+
+                sharpness = compute_sharpness(detection)  # remove blurry images
+                if sharpness < sharpness_threshold:
+                    continue
 
             features.append(classification.features_2048)
             sizes.append(relative_size)
