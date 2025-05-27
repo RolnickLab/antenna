@@ -16,18 +16,3 @@
     gap: 8px;
   }
 }
-
-.scoreCell {
-  .scoreCellContent {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-  }
-
-  .scoreCellLabel {
-    display: block;
-    @include paragraph-medium();
-    color: $color-neutral-700;
-  }
-}

@@ -1,4 +1,5 @@
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
+import { DeterminationScore } from 'components/determination-score'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
@@ -24,6 +25,7 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
   const hasResources =
     !species.isUnknown || !!species.fieldguideUrl || canUpdate
+  const hasChildren = species.rank !== 'SPECIES'
 
   return (
     <div className={styles.wrapper}>
@@ -98,19 +100,44 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
             </InfoBlockField>
-            <InfoBlockField label={translate(STRING.FIELD_LABEL_OCCURRENCES)}>
+            {hasChildren ? (
+              <InfoBlockField label="Child taxa">
+                <InfoBlockFieldValue
+                  value="View all"
+                  to={getAppRoute({
+                    to: APP_ROUTES.TAXA({
+                      projectId: projectId as string,
+                    }),
+                    filters: { taxon: species.id },
+                  })}
+                />
+              </InfoBlockField>
+            ) : null}
+            <InfoBlockField label="Occurrences">
               <InfoBlockFieldValue
-                value={
-                  species.numOccurrences !== null
-                    ? species.numOccurrences
-                    : 'View all'
-                }
+                value={`Direct: ${species.numOccurrences ?? 0}`}
+              />
+              <InfoBlockFieldValue
+                value="View all"
                 to={getAppRoute({
                   to: APP_ROUTES.OCCURRENCES({
                     projectId: projectId as string,
                   }),
                   filters: { taxon: species.id },
                 })}
+              />
+            </InfoBlockField>
+            <InfoBlockField label={translate(STRING.FIELD_LABEL_BEST_SCORE)}>
+              <DeterminationScore
+                score={species.score}
+                scoreLabel={species.scoreLabel}
+                tooltip={
+                  species.score
+                    ? translate(STRING.MACHINE_PREDICTION_SCORE, {
+                        score: `${species.score}`,
+                      })
+                    : undefined
+                }
               />
             </InfoBlockField>
             {hasResources ? (

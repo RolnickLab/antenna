@@ -1118,7 +1118,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
 
-        if self.action != "list":
+        if self.action == "list":
+            qs = qs.has_determination()  # type: ignore
+        else:
             qs = qs.prefetch_related(
                 Prefetch(
                     "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
@@ -1229,10 +1231,15 @@ class TagInverseFilter(filters.BaseFilterBackend):
         return queryset.distinct()
 
 
+TaxonBestScoreFilter = ThresholdFilter.create("best_determination_score")
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
     """
+
+    require_project = True  # Taxa are always associated with a project
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
@@ -1241,6 +1248,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
         TaxonUnknownSpeciesFilter,
+        TaxonBestScoreFilter,
         TaxonTagFilter,
         TagInverseFilter,
     ]
@@ -1278,8 +1286,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         if query and len(query) >= min_query_length:
             taxa = (
-                Taxon.objects.filter(active=True)
-                # .select_related("parent")
+                self.get_queryset()
                 .filter(models.Q(name__icontains=query) | models.Q(search_names__icontains=query))
                 .annotate(
                     # Calculate similarity for the name field
@@ -1366,11 +1373,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         and add extra data about the occurrences.
         Otherwise return all taxa that are active.
         """
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(active=True)
         project = self.get_active_project()
-        qs = self.attach_tags_by_project(qs, project)
 
         if project:
+            # Filter by project, but also include global taxa
+            # @TODO IMPORTANT: if taxa belongs to a project, ensure user has permission to view it
+            qs = qs.filter(models.Q(projects=project) | models.Q(projects__isnull=True))
+
+            qs = self.attach_tags_by_project(qs, project)
+
             include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             # @TODO move to a QuerySet manager
             qs = qs.annotate(
@@ -1512,7 +1524,9 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         qs = super().get_queryset()
         project = self.get_active_project()
         if project:
-            return qs.filter(projects=project)
+            # Filter by project, but also include global taxa
+            # @TODO IMPORTANT: if taxa belongs to a project, ensure user has permission to view it
+            return qs.filter(models.Q(projects=project) | models.Q(projects__isnull=True))
         return qs
 
     serializer_class = TaxaListSerializer

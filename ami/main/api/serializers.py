@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.fields import Field
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
@@ -449,7 +450,34 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
+class TaxonCoverImageField(Field):
+    """
+    A custom field for retrieving a taxon's cover image URL.
+
+    This field handles the logic for determining the appropriate cover image URL:
+    1. Uses the taxon's cover_image_url if available
+    2. Falls back to the best_detection_image_path (added by QuerySet annotation)
+    3. Returns None if no image is available
+    """
+
+    def __init__(self, **kwargs):
+        kwargs["source"] = "*"  # Use the entire object as the source
+        kwargs["read_only"] = True
+        super().__init__(**kwargs)
+
+    def to_representation(self, obj):
+        if obj.cover_image_url:
+            return obj.cover_image_url
+        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
+            # This attribute is added by a QuerySet annotation
+            return get_media_url(obj.best_detection_image_path)
+        else:
+            return None
+
+
 class TaxonNoParentNestedSerializer(DefaultSerializer):
+    cover_image_url = TaxonCoverImageField()
+
     class Meta:
         model = Taxon
         fields = [
@@ -489,6 +517,8 @@ class TaxonNestedSerializer(TaxonNoParentNestedSerializer):
 
 
 class TaxonSearchResultSerializer(TaxonNestedSerializer):
+    cover_image_url = TaxonCoverImageField()
+
     class Meta:
         model = Taxon
         fields = [
@@ -521,7 +551,7 @@ class TaxonListSerializer(DefaultSerializer):
     occurrences = serializers.SerializerMethodField()
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
-    cover_image_url = serializers.SerializerMethodField()
+    cover_image_url = TaxonCoverImageField()
     tags = serializers.SerializerMethodField()
 
     def get_tags(self, obj):
@@ -564,15 +594,6 @@ class TaxonListSerializer(DefaultSerializer):
             request=self.context.get("request"),
             params=params,
         )
-
-    def get_cover_image_url(self, obj):
-        if obj.cover_image_url:
-            return obj.cover_image_url
-        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
-            # This attribute is added by an QuerySet annotation
-            return get_media_url(obj.best_detection_image_path)
-        else:
-            return None
 
 
 class TaxaListSerializer(serializers.ModelSerializer):
@@ -758,7 +779,7 @@ class TaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
-    cover_image_url = serializers.SerializerMethodField()
+    cover_image_url = TaxonCoverImageField()
     tags = serializers.SerializerMethodField()
 
     def get_tags(self, obj):
@@ -786,16 +807,8 @@ class TaxonSerializer(DefaultSerializer):
             "cover_image_url",
             "cover_image_credit",
             "unknown_species",
+            "best_determination_score",
         ]
-
-    def get_cover_image_url(self, obj):
-        if obj.cover_image_url:
-            return obj.cover_image_url
-        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
-            # This attribute is added by an QuerySet annotation
-            return get_media_url(obj.best_detection_image_path)
-        else:
-            return None
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):

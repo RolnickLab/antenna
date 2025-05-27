@@ -2266,6 +2266,12 @@ class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
     def valid(self):
         return self.exclude(detections__isnull=True)
 
+    def has_determination(self):
+        """
+        Filter out occurrences that are missing a determination.
+        """
+        return self.filter(determination__isnull=False)
+
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
@@ -2930,7 +2936,7 @@ class Taxon(BaseModel):
 
     notes = models.TextField(blank=True)
 
-    projects = models.ManyToManyField("Project", related_name="taxa")
+    projects = models.ManyToManyField("Project", related_name="taxa", blank=True)
     direct_children: models.QuerySet["Taxon"]
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
@@ -3194,7 +3200,7 @@ class TaxaList(BaseModel):
     description = models.TextField(blank=True)
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
-    projects = models.ManyToManyField("Project", related_name="taxa_lists")
+    projects = models.ManyToManyField("Project", related_name="taxa_lists", blank=True)
 
     class Meta:
         ordering = ["-created_at"]

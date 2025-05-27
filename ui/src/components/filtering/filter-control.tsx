@@ -25,6 +25,7 @@ const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
   algorithm: AlgorithmFilter,
+  best_determination_score: ScoreFilter,
   classification_threshold: ScoreFilter,
   determination_ood_score: OODScoreFilter,
   collection: CollectionFilter,
