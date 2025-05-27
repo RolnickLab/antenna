@@ -87,8 +87,8 @@ def get_cluster_name(cluster_id: int, taxon: "Taxon | None" = None, job: "Job | 
 
     return " ".join(part for part in parts if part)
 
-def remove_detection_on_edge(detection):
 
+def remove_detection_on_edge(detection):
     bbox = detection.bbox
     img_width, img_height = detection.source_image.width, detection.source_image.height
 
@@ -104,8 +104,7 @@ def remove_detection_on_edge(detection):
     if bbox[2] > img_width - 2:
         return True
 
-
-    if bbox[3] > img_height -2 :
+    if bbox[3] > img_height - 2:
         return True
 
     return False
@@ -119,26 +118,26 @@ def get_relative_size(detection):
     relative_size = (bbox_width * bbox_height) / (img_width * img_height)
     return relative_size
 
+
 def compute_sharpness(image_path):
-    image = Image.open(image_path).convert('L')
+    image = Image.open(image_path).convert("L")
     image_array = np.array(image, dtype=np.float32)
 
     # Define Laplacian kernel
-    kernel = np.array([[0,  1, 0],
-                       [1, -4, 1],
-                       [0,  1, 0]], dtype=np.float32)
+    kernel = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=np.float32)
 
-    padded = np.pad(image_array, pad_width=1, mode='reflect')
+    padded = np.pad(image_array, pad_width=1, mode="reflect")
     laplacian = np.zeros_like(image_array)
 
     for i in range(image_array.shape[0]):
         for j in range(image_array.shape[1]):
-            region = padded[i:i+3, j:j+3]
+            region = padded[i : i + 3, j : j + 3]
             laplacian[i, j] = np.sum(region * kernel)
 
     laplacian_std = np.std(laplacian)
 
     return laplacian_std
+
 
 def cluster_detections(
     collection, params: dict, task_logger: logging.Logger = logger, job=None
@@ -149,7 +148,7 @@ def cluster_detections(
     from ami.ml.models.pipeline import create_and_update_occurrences_for_detections
 
     sharpness_threshold = 8
-    relative_size_threshold = 0.015 #  TODO: this should be updated
+    relative_size_threshold = 0.015  # @TODO: this should be updated
 
     ood_threshold = params.get("ood_threshold", 1)
     feature_extraction_algorithm = params.get("feature_extraction_algorithm", None)
@@ -179,25 +178,23 @@ def cluster_detections(
     valid_detections = []
     valid_classifications = []
     update_job_progress(job, stage_key="feature_collection", status=JobState.STARTED, progress=0.0)
+
     # Collecting features for detections
-
-
     for idx, detection in enumerate(detections):
-
         classification = detection.classifications.filter(
             features_2048__isnull=False,
             algorithm=feature_extraction_algorithm,
         ).first()
 
         if classification:
-            if remove_detection_on_edge(detection): # remove crops that are on the edge
+            if remove_detection_on_edge(detection):  # remove crops that are on the edge
                 continue
             relative_size = get_relative_size(detection)
 
-            if relative_size < relative_size_threshold: # remove small crops
+            if relative_size < relative_size_threshold:  # remove small crops
                 continue
 
-            sharpness = compute_sharpness(detection.path) # remove blurry images
+            sharpness = compute_sharpness(detection.path)  # remove blurry images
             if sharpness < sharpness_threshold:
                 continue
 
@@ -215,7 +212,10 @@ def cluster_detections(
     logger.info(f"Clustering {len(features)} features from {len(valid_detections)} detections")
 
     if not features:
-        raise ValueError("No feature vectors found")
+        raise ValueError(
+            "No feature vectors found. All detections were filtered out based on the criteria, "
+            "or they are missing features."
+        )
 
     features_np = np.array(features)
     size_np = np.array(sizes)
@@ -227,7 +227,7 @@ def cluster_detections(
     if not ClusteringAlgorithm:
         raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
 
-    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np, size_np) # TODO: change this
+    cluster_ids, cluster_scores = ClusteringAlgorithm(params).cluster(features_np, size_np)  # TODO: change this
 
     task_logger.info(f"Clustering completed with {len(set(cluster_ids))} clusters")
     clusters: dict[int, list[ClusterMember]] = {}

@@ -151,7 +151,7 @@ def create_captures(
                 timestamp=night_timestamp + datetime.timedelta(minutes=i * interval_minutes),
                 path=path,
                 width=4096,
-                height=2160
+                height=2160,
             )
             created.append(img)
 
