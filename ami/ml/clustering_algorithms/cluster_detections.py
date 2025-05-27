@@ -165,13 +165,15 @@ def cluster_detections(
     task_logger.info(f"Clustering Parameters: {params}")
     job_save(job)
     if feature_extraction_algorithm:
-        task_logger.info(f"Feature Extraction Algorithm: {feature_extraction_algorithm}")
         # Check if the feature extraction algorithm is valid
         if not Algorithm.objects.filter(key=feature_extraction_algorithm).exists():
             raise ValueError(f"Invalid feature extraction algorithm key: {feature_extraction_algorithm}")
     else:
         # Fallback to the most used feature extraction algorithm in this collection
         feature_extraction_algorithm = get_most_used_algorithm(collection, task_logger=task_logger)
+    task_logger.info(f"Feature Extraction Algorithm: {feature_extraction_algorithm}")
+    if not feature_extraction_algorithm:
+        raise ValueError("No feature extraction algorithm found for detections in collection.")
 
     detections = Detection.objects.filter(
         classifications__features_2048__isnull=False,
@@ -200,9 +202,11 @@ def cluster_detections(
 
             if filter_by_critera:
                 if remove_detection_on_edge(detection):  # remove crops that are on the edge
+                    task_logger.info(f"Removing detection {detection.pk} on edge")
                     continue
 
                 if relative_size < relative_size_threshold:  # remove small crops
+                    task_logger.info(f"Removing detection {detection.pk} with relative size {relative_size}")
                     continue
 
                 sharpness = compute_sharpness(detection)  # remove blurry images
