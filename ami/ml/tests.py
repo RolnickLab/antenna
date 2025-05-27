@@ -698,11 +698,9 @@ class TestClustering(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         create_taxa(project=self.project)
-        # create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
         self.test_images = [image for image, frame in self.captures]
         assert len(self.test_images) > 0, "No test images found. Please check the setup."
-        # create_occurrences(deployment=self.deployment)
         self.processing_service_instance = create_processing_service(self.project)
         self.processing_service = self.processing_service_instance
         assert self.processing_service_instance.pipelines.exists()
@@ -710,12 +708,9 @@ class TestClustering(TestCase):
         pipeline_response = self.pipeline.process_images(self.test_images, job_id=None, project_id=self.project.pk)
         created = save_results(pipeline_response, return_created=True, create_subtasks=False)
         assert created is not None, "Expected results to be returned in a PipelineSaveResults object"
-        # self.populate_collection_with_detections()
-        # self.detections = Detection.objects.filter(source_image__collections=self.collection)
         self.detections = created.detections
         self.collection = created.source_images[0].collections.all()[0]
         self.assertGreater(len(self.detections), 0, "No detections found in the collection")
-        # self._populate_detection_features()
 
     def populate_collection_with_detections(self):
         """Populate the collection with random detections."""
