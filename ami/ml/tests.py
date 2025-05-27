@@ -24,6 +24,7 @@ from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
     create_detections,
+    create_processing_service,
     create_taxa,
     group_images_into_events,
     setup_test_project,
@@ -724,8 +725,9 @@ class TestClustering(TestCase):
         """Populate the collection with random detections."""
         for image in self.collection.images.all():
             # Create a random detection for each image
+            # Ensure the detections are not on the edge of the image
             create_detections(
-                source_image=image, bboxes=[(0.0, 0.0, 1.0, 1.0), (0.1, 0.1, 0.9, 0.9), (0.2, 0.2, 0.8, 0.8)]
+                source_image=image, bboxes=[(0.2, 0.2, 0.9, 0.9), (0.1, 0.1, 0.6, 0.6), (0.2, 0.2, 0.7, 0.7)]
             )
 
     def _populate_detection_features(self):
