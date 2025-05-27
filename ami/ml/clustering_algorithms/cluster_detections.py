@@ -119,14 +119,17 @@ def get_relative_size(detection: "Detection"):
     return relative_size
 
 
-def compute_sharpness(detection: "Detection"):
+def compute_sharpness(detection: "Detection", task_logger: logging.Logger | None = None) -> float | None:
     image_url = detection.url()
+    task_logger = task_logger or logger
     assert image_url, "Detection must have a valid image URL"
     try:
         image = get_image(image_url)
     except Exception as e:
-        logger.warning(f"Could not compute sharpness. Failed to load data image for detection {detection.pk}: {e}")
-        return 1.0
+        task_logger.warning(
+            f"Could not compute sharpness. Failed to load data image for detection {detection.pk}: {e}"
+        )
+        return None
     image_array = np.array(image, dtype=np.float32)
 
     # Define Laplacian kernel
@@ -203,7 +206,8 @@ def cluster_detections(
                     continue
 
                 sharpness = compute_sharpness(detection)  # remove blurry images
-                if sharpness < sharpness_threshold:
+                if sharpness is not None and sharpness < sharpness_threshold:
+                    task_logger.info(f"Removing detection {detection.pk} with sharpness {sharpness}")
                     continue
 
             features.append(classification.features_2048)
