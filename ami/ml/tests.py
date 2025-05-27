@@ -708,7 +708,7 @@ class TestClustering(TestCase):
         assert self.processing_service_instance.pipelines.exists()
         self.pipeline: Pipeline = self.processing_service_instance.pipelines.all().get(slug="random")
         pipeline_response = self.pipeline.process_images(self.test_images, job_id=None, project_id=self.project.pk)
-        created = save_results(pipeline_response, return_created=True)
+        created = save_results(pipeline_response, return_created=True, create_subtasks=False)
         assert created is not None, "Expected results to be returned in a PipelineSaveResults object"
         # self.populate_collection_with_detections()
         # self.detections = Detection.objects.filter(source_image__collections=self.collection)
