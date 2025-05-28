@@ -887,6 +887,8 @@ def save_results(
     #     logger=job_logger,
     # )
     job_logger.info(f"Creating occurrences for {len(detections)} detections ")
+    job_logger.info("type logger: " + str(type(job_logger)))
+
     assign_occurrences_by_tracking(detections=detections, logger=job_logger)
 
     # Update precalculated counts on source images and events

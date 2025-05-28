@@ -1,4 +1,3 @@
-import logging
 import math
 from collections import defaultdict
 from collections.abc import Iterable
@@ -7,9 +6,7 @@ import numpy as np
 
 from ami.main.models import Detection, Occurrence
 
-logger = logging.getLogger(__name__)
-
-TRACKING_COST_THRESHOLD = 0.25
+TRACKING_COST_THRESHOLD = 2
 
 
 def cosine_similarity(v1: Iterable[float], v2: Iterable[float]) -> float:
@@ -60,48 +57,68 @@ def total_cost(f1, f2, bb1, bb2, diag):
     )
 
 
+def get_latest_feature_vector(detection: Detection):
+    return (
+        detection.classifications.filter(features_2048__isnull=False)
+        .order_by("-timestamp")
+        .values_list("features_2048", flat=True)
+        .first()
+    )
+
+
 def assign_occurrences_by_tracking(
     detections: list[Detection],
-    logger: logging.Logger,
+    logger,
 ) -> None:
     """
     Perform object tracking by assigning detections across multiple source images
-    to the same Occurrence if they are similar enough.
+    to the same Occurrence if they are similar enough, based on the latest classification feature vectors.
     """
-    logger.info(f"Starting to assign occurrences by tracking.{len(detections)} detections found.")
-    # Group detections by source image and sort
+    logger.info(f"Starting to assign occurrences by tracking. {len(detections)} detections found.")
+
+    # Group detections by source image timestamp
     image_to_dets = defaultdict(list)
     for det in detections:
         image_to_dets[det.source_image.timestamp].append(det)
-    sorted_images = sorted(image_to_dets.keys())
-    logger.info(f"Found {len(sorted_images)} source images with detections.")
+    sorted_timestamps = sorted(image_to_dets.keys())
+    logger.info(f"Found {len(sorted_timestamps)} source images with detections.")
+
     last_detections = []
 
-    for t in sorted_images:
-        current_detections = image_to_dets[t]
-        logger.info(f"Processing {len(current_detections)} detections at {t}")
+    for timestamp in sorted_timestamps:
+        current_detections = image_to_dets[timestamp]
+        logger.info(f"Processing {len(current_detections)} detections at {timestamp}")
+
         for det in current_detections:
+            det_vec = get_latest_feature_vector(det)
+            if det_vec is None:
+                logger.info(f"No features for detection {det.id}, skipping.")
+                continue
+
             best_match = None
             best_cost = float("inf")
 
             for prev in last_detections:
-                if prev.similarity_vector is None or det.similarity_vector is None:
+                prev_vec = get_latest_feature_vector(prev)
+                if prev_vec is None:
                     continue
 
                 cost = total_cost(
-                    det.similarity_vector,
-                    prev.similarity_vector,
+                    det_vec,
+                    prev_vec,
                     det.bbox,
                     prev.bbox,
                     image_diagonal(det.source_image.width, det.source_image.height),
                 )
 
+                logger.info(f"Comparing detection {det.id} with previous {prev.id}: cost = {cost:.4f}")
                 if cost < best_cost:
                     best_cost = cost
                     best_match = prev
 
             if best_match and best_cost < TRACKING_COST_THRESHOLD:
                 det.occurrence = best_match.occurrence
+                logger.info(f"Assigned detection {det.id} to existing occurrence {best_match.occurrence.pk}")
             else:
                 occurrence = Occurrence.objects.create(event=det.source_image.event)
                 det.occurrence = occurrence
