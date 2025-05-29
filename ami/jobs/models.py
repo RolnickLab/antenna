@@ -17,6 +17,7 @@ from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.tracking import perform_tracking_for_job
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -502,6 +503,7 @@ class MLJob(JobType):
             status=JobState.SUCCESS,
             progress=1,
         )
+        perform_tracking_for_job(job)
         job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
         job.save()
