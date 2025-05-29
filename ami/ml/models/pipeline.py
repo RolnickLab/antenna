@@ -47,7 +47,6 @@ from ami.ml.schemas import (
     SourceImageResponse,
 )
 from ami.ml.tasks import celery_app, create_detection_images
-from ami.ml.tracking import assign_occurrences_by_tracking
 from ami.utils.requests import create_session
 
 logger = logging.getLogger(__name__)
@@ -882,14 +881,14 @@ def save_results(
 
     # Create a new occurrence for each detection (no tracking yet)
     # @TODO remove when we implement tracking!
-    # create_and_update_occurrences_for_detections(
-    #     detections=detections,
-    #     logger=job_logger,
-    # )
-    job_logger.info(f"Creating occurrences for {len(detections)} detections ")
-    job_logger.info("type logger: " + str(type(job_logger)))
+    create_and_update_occurrences_for_detections(
+        detections=detections,
+        logger=job_logger,
+    )
+    # job_logger.info(f"Creating occurrences for {len(detections)} detections ")
+    # check if every image in the sessions in processed
 
-    assign_occurrences_by_tracking(detections=detections, logger=job_logger)
+    # assign_occurrences_by_tracking(detections=detections, logger=job_logger)
 
     # Update precalculated counts on source images and events
     source_images = list(source_images)

@@ -1,10 +1,11 @@
 import math
-from collections import defaultdict
 from collections.abc import Iterable
 
 import numpy as np
+from django.db.models import Count
 
-from ami.main.models import Detection, Occurrence
+from ami.main.models import Classification, Detection, Event, Occurrence
+from ami.ml.models import Algorithm
 
 TRACKING_COST_THRESHOLD = 2
 
@@ -57,75 +58,258 @@ def total_cost(f1, f2, bb1, bb2, diag):
     )
 
 
-def get_latest_feature_vector(detection: Detection):
+def get_most_common_algorithm_for_event(event):
+    """
+    Returns the most common Algorithm object (used in classifications with features_2048) for the given event.
+    """
+    most_common = (
+        Classification.objects.filter(
+            detection__source_image__event=event,
+            features_2048__isnull=False,
+        )
+        .values("algorithm_id")
+        .annotate(count=Count("id"))
+        .order_by("-count")
+        .first()
+    )
+
+    if most_common:
+        return Algorithm.objects.get(id=most_common["algorithm_id"])
+
+    return None
+
+
+def event_fully_processed(event, pipeline_algorithms, logger) -> bool:
+    """
+    with a classification from any of the pipeline algorithms and a non-null features_2048 vector.
+    """
+    total_captures = event.captures.count()
+    logger.info(f"Checking if event {event.pk} is fully processed... Total captures: {total_captures}")
+
+    processed_captures = (
+        event.captures.filter(
+            detections__classifications__algorithm__in=pipeline_algorithms,
+            detections__classifications__features_2048__isnull=False,
+        )
+        .distinct()
+        .count()
+    )
+
+    if processed_captures < total_captures:
+        logger.info(
+            f"Event {event.pk} is not fully processed. "
+            f"Only {processed_captures}/{total_captures} captures have processed detections."
+        )
+        return False
+
+    logger.info(f"Event {event.pk} is fully processed.")
+    return True
+
+
+def get_feature_vector(detection: Detection, algorithm: Algorithm):
+    """
+    Returns the latest non-null features_2048 vector from the given detection,
+    extracted by a specific algorithm.
+    """
     return (
-        detection.classifications.filter(features_2048__isnull=False)
+        detection.classifications.filter(features_2048__isnull=False, algorithm=algorithm)
         .order_by("-timestamp")
         .values_list("features_2048", flat=True)
         .first()
     )
 
 
-def assign_occurrences_by_tracking(
-    detections: list[Detection],
+def assign_occurrences_from_detection_chains(source_images, logger):
+    """
+    Walk detection chains across source images and assign a new occurrence to each chain.
+    """
+    visited = set()
+
+    for image in source_images:
+        for det in image.detections.all():
+            if det.id in visited or getattr(det, "previous_detection", None) is not None:
+                continue  # Already processed or this is not a chain start
+
+            chain = []
+            current = det
+            while current and current.id not in visited:
+                chain.append(current)
+                visited.add(current.id)
+                current = current.next_detection
+
+            if chain:
+                old_occurrences = {d.occurrence_id for d in chain if d.occurrence_id}
+
+                # Delete old occurrences (if any)
+                for occ_id in old_occurrences:
+                    try:
+                        Occurrence.objects.filter(id=occ_id).delete()
+                        logger.info(f"Deleted old occurrence {occ_id} before reassignment.")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete occurrence {occ_id}: {e}")
+
+                occurrence = Occurrence.objects.create(event=chain[0].source_image.event)
+                for d in chain:
+                    d.occurrence = occurrence
+                    d.save()
+                logger.info(f"Assigned occurrence {occurrence.pk} to chain of {len(chain)} detections")
+
+
+def assign_occurrences_by_tracking_images(
+    source_images,
+    logger,
+    cost_threshold: float = TRACKING_COST_THRESHOLD,
+) -> None:
+    """
+    Track detections across ordered source images and assign them to occurrences.
+    """
+    logger.info(f"Starting occurrence tracking over {len(source_images)} images")
+
+    for i in range(len(source_images) - 1):
+        current_image = source_images[i]
+        next_image = source_images[i + 1]
+
+        current_detections = list(current_image.detections.all())
+        next_detections = list(next_image.detections.all())
+
+        logger.info(
+            f"""Tracking: Processing image {i + 1}/{len(source_images)}:
+             {len(current_detections)} -> {len(next_detections)} detections"""
+        )
+        # Get the most common algorithm for the current event
+        most_common_algorithm = get_most_common_algorithm_for_event(current_image.event)
+        logger.info(
+            f"""Using most common algorithm for event {current_image.event.pk}:
+            {most_common_algorithm.name if most_common_algorithm else 'None'}"""
+        )
+
+        pair_detections(
+            current_detections,
+            next_detections,
+            image_width=current_image.width,
+            image_height=current_image.height,
+            cost_threshold=cost_threshold,
+            algorithm=most_common_algorithm,
+            logger=logger,
+        )
+
+    assign_occurrences_from_detection_chains(source_images, logger)
+
+
+def pair_detections(
+    current_detections: list,
+    next_detections: list,
+    image_width: int,
+    image_height: int,
+    cost_threshold: float,
+    algorithm,
     logger,
 ) -> None:
     """
-    Perform object tracking by assigning detections across multiple source images
-    to the same Occurrence if they are similar enough, based on the latest classification feature vectors.
+    Assigns next_detection for each detection in current_detections based on lowest cost match
+    from next_detections, ensuring unique assignments and no duplicates.
+
+    Only pairs with cost < threshold are considered.
     """
-    logger.info(f"Starting to assign occurrences by tracking. {len(detections)} detections found.")
+    logger.info(f"Pairing {len(current_detections)} - >{len(next_detections)} detections")
 
-    # Group detections by source image timestamp
-    image_to_dets = defaultdict(list)
-    for det in detections:
-        image_to_dets[det.source_image.timestamp].append(det)
-    sorted_timestamps = sorted(image_to_dets.keys())
-    logger.info(f"Found {len(sorted_timestamps)} source images with detections.")
+    potential_matches = []
 
-    last_detections = []
+    for det in current_detections:
+        det_vec = get_feature_vector(det, algorithm)
+        if det_vec is None:
+            logger.debug(f"Skipping detection {det.id} (no features)")
+            continue
 
-    for timestamp in sorted_timestamps:
-        current_detections = image_to_dets[timestamp]
-        logger.info(f"Processing {len(current_detections)} detections at {timestamp}")
-
-        for det in current_detections:
-            det_vec = get_latest_feature_vector(det)
-            if det_vec is None:
-                logger.info(f"No features for detection {det.id}, skipping.")
+        for next_det in next_detections:
+            next_vec = get_feature_vector(next_det, algorithm)
+            if next_vec is None:
+                logger.debug(f"Skipping next detection {next_det.id} (no features)")
                 continue
 
-            best_match = None
-            best_cost = float("inf")
+            cost = total_cost(
+                det_vec,
+                next_vec,
+                det.bbox,
+                next_det.bbox,
+                image_diagonal(image_width, image_height),
+            )
 
-            for prev in last_detections:
-                prev_vec = get_latest_feature_vector(prev)
-                if prev_vec is None:
-                    continue
+            if cost < cost_threshold:
+                potential_matches.append((det, next_det, cost))
 
-                cost = total_cost(
-                    det_vec,
-                    prev_vec,
-                    det.bbox,
-                    prev.bbox,
-                    image_diagonal(det.source_image.width, det.source_image.height),
-                )
+    # Sort by cost: lower is better
+    potential_matches.sort(key=lambda x: x[2])
 
-                logger.info(f"Comparing detection {det.id} with previous {prev.id}: cost = {cost:.4f}")
-                if cost < best_cost:
-                    best_cost = cost
-                    best_match = prev
+    assigned_current_ids = set()
+    assigned_next_ids = set()
 
-            if best_match and best_cost < TRACKING_COST_THRESHOLD:
-                det.occurrence = best_match.occurrence
-                logger.info(f"Assigned detection {det.id} to existing occurrence {best_match.occurrence.pk}")
-            else:
-                occurrence = Occurrence.objects.create(event=det.source_image.event)
-                det.occurrence = occurrence
-                logger.info(f"Created new occurrence {occurrence.pk} for detection {det.id}")
+    for det, next_det, cost in potential_matches:
+        if det.id in assigned_current_ids or next_det.id in assigned_next_ids:
+            continue
+        # check if next detection has a previous detection already assigned
+        if getattr(next_det, "previous_detection", None) is not None:
+            logger.info(f"{next_det.id} already has previous detection: {next_det.previous_detection.id}")
+            previous_detection = getattr(next_det, "previous_detection", None)
+            previous_detection.next_detection = None
+            previous_detection.save()
+            logger.info(f"Cleared previous detection {previous_detection.pk} -> {next_det.pk}  link")
 
-            det.save()
+        logger.info(f"Trying to link {det.id} => {next_det.id}")
+        det.next_detection = next_det
+        det.save()
+        logger.info(f"Linked detection {det.id} => {next_det.id} with cost {cost:.4f}")
 
-        last_detections = current_detections
+        assigned_current_ids.add(det.id)
+        assigned_next_ids.add(next_det.id)
 
-    logger.info("Finished assigning occurrences by tracking.")
+
+def perform_tracking_for_job(job):
+    """
+    Perform detection tracking for all events in the job's source image collection.
+    Runs tracking only if all images in an event have processed detections with features.
+    """
+    from ami.jobs.models import JobState
+
+    pipeline_algorithms = job.pipeline.algorithms.all()
+    job.logger.info("Tracking started")
+    job.progress.add_stage(name="Tracking", key="tracking")
+    job.progress.update_stage("tracking", status=JobState.STARTED, progress=0)
+    job.save()
+
+    collection = job.source_image_collection
+    if not collection:
+        job.logger.warning("Tracking: No source image collection found. Skipping tracking.")
+        return
+
+    events = (
+        Event.objects.filter(captures__collections=collection)
+        .distinct()
+        .prefetch_related("captures__detections__classifications")
+    )
+    total_events = events.count()
+    processed_events = 0
+
+    for event in events:
+        source_images = event.captures.order_by("timestamp")
+
+        if not event_fully_processed(event, pipeline_algorithms, logger=job.logger):
+            job.logger.info(
+                f"Tracking: Skipping tracking for event {event.pk}: not all detections are fully processed."
+            )
+            continue
+
+        job.logger.info(f"Tracking: Running tracking for event {event.pk}")
+        assign_occurrences_by_tracking_images(source_images, job.logger)
+        processed_events += 1
+
+        job.progress.update_stage(
+            "tracking",
+            status=JobState.STARTED,
+            progress=processed_events / total_events if total_events else 1,
+        )
+        job.save()
+
+    job.logger.info("Tracking: Finished tracking.")
+    job.progress.update_stage("tracking", status=JobState.SUCCESS, progress=1)
+    job.save()
