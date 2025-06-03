@@ -43,6 +43,16 @@ class IsActiveStaffOrReadOnly(permissions.BasePermission):
         )
 
 
+class IsProjectManager(permissions.BasePermission):
+    """
+    Allows access only to project managers for a specific project.
+    """
+
+    def has_object_permission(self, request, view, obj):
+        # `obj` is the Project instance
+        return ProjectManager.has_role(request.user, obj)
+
+
 def filter_permissions(permissions, model_name):
     """Filter and extract only the action part of `action_modelname`"""
 
