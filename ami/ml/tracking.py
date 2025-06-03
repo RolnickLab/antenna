@@ -298,6 +298,10 @@ def perform_tracking_for_job(job):
                 f"Tracking: Skipping tracking for event {event.pk}: not all detections are fully processed."
             )
             continue
+        # Check if there are human identifications in the event
+        if Occurrence.objects.filter(event=event, identifications__isnull=False).exists():
+            job.logger.info(f"Tracking: Skipping tracking for event {event.pk}: human identifications present.")
+            continue
 
         job.logger.info(f"Tracking: Running tracking for event {event.pk}")
         assign_occurrences_by_tracking_images(source_images, job.logger)
