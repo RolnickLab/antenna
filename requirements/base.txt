@@ -100,3 +100,6 @@ gunicorn==20.1.0  # https://github.com/benoitc/gunicorn
 # ML
 scikit-learn
 scipy
+
+transformers
+opencv-python

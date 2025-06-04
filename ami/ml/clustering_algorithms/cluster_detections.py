@@ -15,6 +15,9 @@ if typing.TYPE_CHECKING:
     from ami.main.models import Classification, Detection, SourceImageCollection, Taxon
     from ami.ml.models import Algorithm
 
+import cv2
+from transformers import pipeline
+
 logger = logging.getLogger(__name__)
 
 
@@ -148,6 +151,64 @@ def compute_sharpness(detection: "Detection", task_logger: logging.Logger | None
     return laplacian_std
 
 
+def preprocessing_binary_mask(binary_mask):
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    binary_clean = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel)
+    binary_clean = cv2.morphologyEx(binary_clean, cv2.MORPH_CLOSE, kernel)
+
+    return binary_clean
+
+
+def get_connected_component_mask(binary_mask: np.ndarray, min_area_threshold: int =20) -> int:
+    binary_mask = (binary_mask > 0).astype(np.int8)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary_mask, connectivity=8)
+
+    min_area = min_area_threshold
+    num_components = 0
+    for i in range(1, num_labels):  # Skip label 0 (background)
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area >= min_area:
+            num_components += 1
+
+    return num_components
+
+def segment_by_threshold(depth_map: np.ndarray, min_area_threshold: int) -> int:
+    depth_normalized = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX)
+    depth_uint8 = depth_normalized.astype(np.uint8)
+
+    num_components = []
+
+    threshold_list = [120, 180, 200]
+
+    for i, intensity_threshold in enumerate(threshold_list):
+        _, binary_mask = cv2.threshold(depth_uint8, thresh=intensity_threshold, maxval=255, type=cv2.THRESH_BINARY)
+        binary_clean = preprocessing_binary_mask(binary_mask)
+        num_comp = get_connected_component_mask(binary_clean, min_area_threshold=min_area_threshold)
+        num_components.append(num_comp)
+
+    return np.array(num_components).max()
+
+def count_objects_in_bbox(detection: "Detection", pipe, task_logger: logging.Logger | None = None) -> int | None:
+    image_url = detection.url()
+    task_logger = task_logger or logger
+    assert image_url, "Detection must have a valid image URL"
+    try:
+        image = get_image(image_url)
+    except Exception as e:
+        task_logger.warning(
+            f"Could not count objects in this detection. Failed to load data image for detection {detection.pk}: {e}"
+        )
+        return None
+
+    depth = pipe(image)["depth"]
+    depth_map = np.asarray(depth)
+    min_area_threshold = 10
+    num_components = segment_by_threshold(depth_map, min_area_threshold)
+
+    return num_components
+
+
+
 def cluster_detections(
     collection, params: dict, task_logger: logging.Logger = logger, filter_by_critera=True, job=None
 ) -> dict[int, list[ClusterMember]]:
@@ -191,6 +252,9 @@ def cluster_detections(
     update_job_progress(job, stage_key="feature_collection", status=JobState.STARTED, progress=0.0)
 
     # Collecting features for detections
+
+    depth_pipe = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
+
     for idx, detection in enumerate(detections):
         classification = detection.classifications.filter(
             features_2048__isnull=False,
@@ -212,6 +276,12 @@ def cluster_detections(
                 sharpness = compute_sharpness(detection)  # remove blurry images
                 if sharpness is not None and sharpness < sharpness_threshold:
                     task_logger.info(f"Removing detection {detection.pk} with sharpness {sharpness}")
+                    continue
+
+
+                num_objects = count_objects_in_bbox(detection, depth_pipe)
+
+                if num_objects is not None and num_objects > 1: # remove bbox with multi objects
                     continue
 
             features.append(classification.features_2048)
