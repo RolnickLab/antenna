@@ -811,6 +811,7 @@ def save_results(
     results_json: str | None = None,
     job_id: int | None = None,
     return_created=False,
+    create_subtasks: bool = True,
 ) -> PipelineSaveResults | None:
     """
     Save results from ML pipeline API.
@@ -892,10 +893,12 @@ def save_results(
     for source_image in source_images:
         source_image.save()
 
-    image_cropping_task = create_detection_images.delay(
-        source_image_ids=[source_image.pk for source_image in source_images],
-    )
-    job_logger.info(f"Creating detection images in sub-task {image_cropping_task.id}")
+    source_image_ids = [source_image.pk for source_image in source_images]
+    if create_subtasks:
+        image_cropping_task = create_detection_images.delay(source_image_ids=source_image_ids)
+        job_logger.info(f"Creating detection images in sub-task {image_cropping_task.id}")
+    else:
+        create_detection_images(source_image_ids=source_image_ids)
 
     event_ids = [img.event_id for img in source_images]  # type: ignore
     update_calculated_fields_for_events(pks=event_ids)
