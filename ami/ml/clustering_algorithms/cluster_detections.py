@@ -2,10 +2,10 @@ import dataclasses
 import logging
 import typing
 
-# import cv2
 import numpy as np
 from django.db.models import Count
 from django.utils.timezone import now
+from transformers import pipeline
 
 from ami.ml.clustering_algorithms.utils import get_clusterer
 from ami.ml.utils import get_image
@@ -16,7 +16,6 @@ if typing.TYPE_CHECKING:
     from ami.ml.models import Algorithm
 
 import cv2
-from transformers import pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -277,7 +276,6 @@ def cluster_detections(
                 if sharpness is not None and sharpness < sharpness_threshold:
                     task_logger.info(f"Removing detection {detection.pk} with sharpness {sharpness}")
                     continue
-
 
                 num_objects = count_objects_in_bbox(detection, depth_pipe)
 
