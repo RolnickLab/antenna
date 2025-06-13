@@ -209,7 +209,7 @@ def cluster_detections(
                     task_logger.info(f"Removing detection {detection.pk} with relative size {relative_size}")
                     continue
 
-                sharpness = compute_sharpness(detection)  # remove blurry images
+                sharpness = compute_sharpness(detection, task_logger=task_logger)  # remove blurry images
                 if sharpness is not None and sharpness < sharpness_threshold:
                     task_logger.info(f"Removing detection {detection.pk} with sharpness {sharpness}")
                     continue
