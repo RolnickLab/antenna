@@ -17,7 +17,7 @@ from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.tracking import perform_tracking_for_job
+from ami.ml.tracking import perform_tracking
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -317,6 +317,7 @@ class MLJob(JobType):
         """
         Procedure for an ML pipeline as a job.
         """
+        job.progress.add_stage(name="Tracking", key="tracking")
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -503,7 +504,7 @@ class MLJob(JobType):
             status=JobState.SUCCESS,
             progress=1,
         )
-        perform_tracking_for_job(job)
+        perform_tracking(job)
         job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
         job.save()
@@ -674,6 +675,34 @@ class DetectionClusteringJob(JobType):
         job.save()
 
 
+class TrackingJob(JobType):
+    name = "Occurrence Tracking"
+    key = "tracking"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        job.logger.info("Starting tracking job")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+
+        # Add tracking stage and save job
+        job.progress.add_stage(name="Tracking", key="tracking")
+        job.save()
+
+        perform_tracking(job)
+
+        job.progress.update_stage(
+            "tracking",
+            status=JobState.SUCCESS,
+            progress=1,
+        )
+        job.update_status(JobState.SUCCESS)
+        job.logger.info("Tracking job finished successfully.")
+        job.finished_at = datetime.datetime.now()
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -690,6 +719,7 @@ VALID_JOB_TYPES = [
     UnknownJobType,
     DataExportJob,
     DetectionClusteringJob,
+    TrackingJob,
 ]
 
 

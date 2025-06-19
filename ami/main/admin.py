@@ -651,7 +651,27 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Clustered {queryset.count()} collection(s).")
 
-    actions = [populate_collection, populate_collection_async, cluster_detections, create_clustering_job]
+    @admin.action(description="Run tracking job")
+    def run_tracking_job(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        from ami.jobs.models import Job, TrackingJob
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Tracking for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=TrackingJob.key,
+            )
+            job.enqueue()
+            self.message_user(request, f"Tracking job #{job.pk} started for collection #{collection.pk}")
+
+    actions = [
+        populate_collection,
+        populate_collection_async,
+        cluster_detections,
+        create_clustering_job,
+        run_tracking_job,
+    ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
