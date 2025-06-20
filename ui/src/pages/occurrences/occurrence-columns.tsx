@@ -139,10 +139,11 @@ export const columns: (
   },
   {
     id: 'date',
-    name: translate(STRING.FIELD_LABEL_DATE_OBSERVED),
-    sortField: 'first_appearance_timestamp',
-    renderCell: (item: Occurrence) => <BasicTableCell value={item.dateLabel} />,
-  },
+    name: '# Detections',
+    sortField: 'detections_count',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.numDetections} />,
+    },
+
   {
     id: 'time',
     sortField: 'first_appearance_time',
