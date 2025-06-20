@@ -661,6 +661,9 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
                 project=collection.project,
                 source_image_collection=collection,
                 job_type_key=TrackingJob.key,
+                params={
+                    "cost_threshold": 0.4,
+                },
             )
             job.enqueue()
             self.message_user(request, f"Tracking job #{job.pk} started for collection #{collection.pk}")
