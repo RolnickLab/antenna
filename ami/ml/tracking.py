@@ -123,7 +123,7 @@ def assign_occurrences_from_detection_chains(source_images, logger):
     Walk detection chains across source images and assign a new occurrence to each chain.
     """
     visited = set()
-
+    created_occurrences_count = 0
     for image in source_images:
         for det in image.detections.all():
             if det.id in visited or getattr(det, "previous_detection", None) is not None:
@@ -143,15 +143,16 @@ def assign_occurrences_from_detection_chains(source_images, logger):
                 for occ_id in old_occurrences:
                     try:
                         Occurrence.objects.filter(id=occ_id).delete()
-                        logger.info(f"Deleted old occurrence {occ_id} before reassignment.")
+                        logger.debug(f"Deleted old occurrence {occ_id} before reassignment.")
                     except Exception as e:
-                        logger.warning(f"Failed to delete occurrence {occ_id}: {e}")
+                        logger.info(f"Failed to delete occurrence {occ_id}: {e}")
 
                 occurrence = Occurrence.objects.create(
                     event=chain[0].source_image.event,
                     deployment=chain[0].source_image.deployment,
                     project=chain[0].source_image.project,
                 )
+                created_occurrences_count += 1
 
                 for d in chain:
                     d.occurrence = occurrence
@@ -159,18 +160,22 @@ def assign_occurrences_from_detection_chains(source_images, logger):
 
                 occurrence.save()
 
-                logger.info(f"Assigned occurrence {occurrence.pk} to chain of {len(chain)} detections")
+                logger.debug(f"Assigned occurrence {occurrence.pk} to chain of {len(chain)} detections")
+    logger.info(
+        f"Assigned {created_occurrences_count} occurrences from detection chains across {len(source_images)} images."
+    )
 
 
 def assign_occurrences_by_tracking_images(
-    source_images,
-    logger,
-    cost_threshold: float = TRACKING_COST_THRESHOLD,
+    event, logger, cost_threshold: float = TRACKING_COST_THRESHOLD, job=None
 ) -> None:
     """
     Track detections across ordered source images and assign them to occurrences.
     """
-    logger.info(f"Starting occurrence tracking over {len(source_images)} images")
+    from ami.jobs.models import JobState
+
+    source_images = event.captures.order_by("timestamp")
+    logger.info(f"Found {len(source_images)} source images for event {event.pk}")
     if len(source_images) < 2:
         logger.info("Not enough images to perform tracking. At least 2 images are required.")
         return
@@ -181,13 +186,10 @@ def assign_occurrences_by_tracking_images(
         current_detections = list(current_image.detections.all())
         next_detections = list(next_image.detections.all())
 
-        logger.info(
-            f"""Tracking: Processing image {i + 1}/{len(source_images)}:
-             {len(current_detections)} -> {len(next_detections)} detections"""
-        )
+        logger.debug(f"""Tracking: Processing image {i + 1}/{len(source_images)}""")
         # Get the most common algorithm for the current event
         most_common_algorithm = get_most_common_algorithm_for_event(current_image.event)
-        logger.info(
+        logger.debug(
             f"""Using most common algorithm for event {current_image.event.pk}:
             {most_common_algorithm.name if most_common_algorithm else 'None'}"""
         )
@@ -201,8 +203,21 @@ def assign_occurrences_by_tracking_images(
             algorithm=most_common_algorithm,
             logger=logger,
         )
+        if job:
+            job.progress.update_stage(
+                f"event_{event.pk}",
+                status=JobState.STARTED,
+                progress=(i + 1) / (len(source_images) - 1),
+            )
+            job.save()
 
     assign_occurrences_from_detection_chains(source_images, logger)
+    if job:
+        job.progress.update_stage(
+            f"event_{event.pk}",
+            progress=1.0,
+        )
+        job.save()
 
 
 def pair_detections(
@@ -220,7 +235,7 @@ def pair_detections(
 
     Only pairs with cost < threshold are considered.
     """
-    logger.info(f"Pairing {len(current_detections)} - >{len(next_detections)} detections")
+    logger.debug(f"Pairing {len(current_detections)} - >{len(next_detections)} detections")
 
     potential_matches = []
 
@@ -258,16 +273,16 @@ def pair_detections(
             continue
         # check if next detection has a previous detection already assigned
         if getattr(next_det, "previous_detection", None) is not None:
-            logger.info(f"{next_det.id} already has previous detection: {next_det.previous_detection.id}")
+            logger.debug(f"{next_det.id} already has previous detection: {next_det.previous_detection.id}")
             previous_detection = getattr(next_det, "previous_detection", None)
             previous_detection.next_detection = None
             previous_detection.save()
-            logger.info(f"Cleared previous detection {previous_detection.pk} -> {next_det.pk}  link")
+            logger.debug(f"Cleared previous detection {previous_detection.pk} -> {next_det.pk}  link")
 
-        logger.info(f"Trying to link {det.id} => {next_det.id}")
+        logger.debug(f"Trying to link {det.id} => {next_det.id}")
         det.next_detection = next_det
         det.save()
-        logger.info(f"Linked detection {det.id} => {next_det.id} with cost {cost:.4f}")
+        logger.debug(f"Linked detection {det.id} => {next_det.id} with cost {cost:.4f}")
 
         assigned_current_ids.add(det.id)
         assigned_next_ids.add(next_det.id)
@@ -278,27 +293,25 @@ def perform_tracking(job):
     Perform detection tracking for all events in the job's source image collection.
     Runs tracking only if all images in an event have processed detections with features.
     """
-    from ami.jobs.models import JobState
 
     cost_threshold = job.params.get("cost_threshold", TRACKING_COST_THRESHOLD)
     job.logger.info("Tracking started")
     job.logger.info(f"Using cost threshold: {cost_threshold}")
-    job.progress.update_stage("tracking", status=JobState.STARTED, progress=0)
-    job.save()
-    job.logger.info("Progresss updated and job saved")
     collection = job.source_image_collection
     if not collection:
-        job.logger.warning("Tracking: No source image collection found. Skipping tracking.")
+        job.logger.info("Tracking: No source image collection found. Skipping tracking.")
         return
     job.logger.info("Tracking: Fetching events for collection %s", collection.pk)
-    events_qs = Event.objects.filter(captures__collections=collection).distinct()
+    events_qs = Event.objects.filter(captures__collections=collection).order_by("created_at").distinct()
     total_events = events_qs.count()
     events = events_qs.iterator()
-    processed_events = 0
     job.logger.info("Tracking: Found %d events in collection %s", total_events, collection.pk)
-    for event in events:
-        job.logger.info("Tracking: Processing event %s", event.pk)
-        source_images = event.captures.order_by("timestamp")
+    for event in events_qs:
+        job.progress.add_stage(name=f"Event {event.pk}", key=f"event_{event.pk}")
+        job.save()
+    for idx, event in enumerate(events, start=1):
+        job.logger.info(f"Tracking: Processing event {idx}/{total_events} (Event ID: {event.pk})")
+
         # Check if there are human identifications in the event
         if Occurrence.objects.filter(event=event, identifications__isnull=False).exists():
             job.logger.info(f"Tracking: Skipping tracking for event {event.pk}: human identifications present.")
@@ -311,16 +324,7 @@ def perform_tracking(job):
             continue
 
         job.logger.info(f"Tracking: Running tracking for event {event.pk}")
-        assign_occurrences_by_tracking_images(source_images, job.logger, cost_threshold=cost_threshold)
-        processed_events += 1
-
-        job.progress.update_stage(
-            "tracking",
-            status=JobState.STARTED,
-            progress=processed_events / total_events if total_events else 1,
-        )
-        job.save()
+        assign_occurrences_by_tracking_images(event, job.logger, cost_threshold=cost_threshold, job=job)
 
     job.logger.info("Tracking: Finished tracking.")
-    job.progress.update_stage("tracking", status=JobState.SUCCESS, progress=1)
     job.save()

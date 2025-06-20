@@ -885,10 +885,6 @@ def save_results(
         detections=detections,
         logger=job_logger,
     )
-    # job_logger.info(f"Creating occurrences for {len(detections)} detections ")
-    # check if every image in the sessions in processed
-
-    # assign_occurrences_by_tracking(detections=detections, logger=job_logger)
 
     # Update precalculated counts on source images and events
     source_images = list(source_images)

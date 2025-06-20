@@ -57,7 +57,7 @@ class TestTracking(TestCase):
         Occurrence.objects.filter(event=self.event).delete()
 
         # Run the tracking algorithm to regenerate occurrences
-        assign_occurrences_by_tracking_images(self.source_images, logger)
+        assign_occurrences_by_tracking_images(self.event, logger)
 
         # Capture new tracking-generated occurrence groups
         new_groups = {

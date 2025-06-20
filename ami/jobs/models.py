@@ -684,17 +684,8 @@ class TrackingJob(JobType):
         job.started_at = datetime.datetime.now()
         job.finished_at = None
 
-        # Add tracking stage and save job
-        job.progress.add_stage(name="Tracking", key="tracking")
-        job.save()
-
         perform_tracking(job)
 
-        job.progress.update_stage(
-            "tracking",
-            status=JobState.SUCCESS,
-            progress=1,
-        )
         job.update_status(JobState.SUCCESS)
         job.logger.info("Tracking job finished successfully.")
         job.finished_at = datetime.datetime.now()
