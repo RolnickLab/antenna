@@ -141,8 +141,10 @@ export const columns: (
     id: 'date',
     name: '# Detections',
     sortField: 'detections_count',
-    renderCell: (item: Occurrence) => <BasicTableCell value={item.numDetections} />,
-    },
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell value={item.numDetections} />
+    ),
+  },
 
   {
     id: 'time',
