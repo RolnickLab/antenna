@@ -317,7 +317,6 @@ class MLJob(JobType):
         """
         Procedure for an ML pipeline as a job.
         """
-        job.progress.add_stage(name="Tracking", key="tracking")
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -504,7 +503,6 @@ class MLJob(JobType):
             status=JobState.SUCCESS,
             progress=1,
         )
-        perform_tracking(job)
         job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
         job.save()
