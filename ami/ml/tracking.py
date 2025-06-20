@@ -79,16 +79,15 @@ def get_most_common_algorithm_for_event(event):
     return None
 
 
-def event_fully_processed(event, pipeline_algorithms, logger) -> bool:
+def event_fully_processed(event, logger) -> bool:
     """
-    with a classification from any of the pipeline algorithms and a non-null features_2048 vector.
+    Checks if all captures in the event have processed detections with features_2048
     """
     total_captures = event.captures.count()
     logger.info(f"Checking if event {event.pk} is fully processed... Total captures: {total_captures}")
 
     processed_captures = (
         event.captures.filter(
-            detections__classifications__algorithm__in=pipeline_algorithms,
             detections__classifications__features_2048__isnull=False,
         )
         .distinct()
@@ -148,10 +147,18 @@ def assign_occurrences_from_detection_chains(source_images, logger):
                     except Exception as e:
                         logger.warning(f"Failed to delete occurrence {occ_id}: {e}")
 
-                occurrence = Occurrence.objects.create(event=chain[0].source_image.event)
+                occurrence = Occurrence.objects.create(
+                    event=chain[0].source_image.event,
+                    deployment=chain[0].source_image.deployment,
+                    project=chain[0].source_image.project,
+                )
+
                 for d in chain:
                     d.occurrence = occurrence
                     d.save()
+
+                occurrence.save()
+
                 logger.info(f"Assigned occurrence {occurrence.pk} to chain of {len(chain)} detections")
 
 
@@ -164,7 +171,9 @@ def assign_occurrences_by_tracking_images(
     Track detections across ordered source images and assign them to occurrences.
     """
     logger.info(f"Starting occurrence tracking over {len(source_images)} images")
-
+    if len(source_images) < 2:
+        logger.info("Not enough images to perform tracking. At least 2 images are required.")
+        return
     for i in range(len(source_images) - 1):
         current_image = source_images[i]
         next_image = source_images[i + 1]
@@ -264,47 +273,45 @@ def pair_detections(
         assigned_next_ids.add(next_det.id)
 
 
-def perform_tracking_for_job(job):
+def perform_tracking(job):
     """
     Perform detection tracking for all events in the job's source image collection.
     Runs tracking only if all images in an event have processed detections with features.
     """
     from ami.jobs.models import JobState
 
-    pipeline_algorithms = job.pipeline.algorithms.all()
+    cost_threshold = job.params.get("cost_threshold", TRACKING_COST_THRESHOLD)
     job.logger.info("Tracking started")
-    job.progress.add_stage(name="Tracking", key="tracking")
+    job.logger.info(f"Using cost threshold: {cost_threshold}")
     job.progress.update_stage("tracking", status=JobState.STARTED, progress=0)
     job.save()
-
+    job.logger.info("Progresss updated and job saved")
     collection = job.source_image_collection
     if not collection:
         job.logger.warning("Tracking: No source image collection found. Skipping tracking.")
         return
-
-    events = (
-        Event.objects.filter(captures__collections=collection)
-        .distinct()
-        .prefetch_related("captures__detections__classifications")
-    )
-    total_events = events.count()
+    job.logger.info("Tracking: Fetching events for collection %s", collection.pk)
+    events_qs = Event.objects.filter(captures__collections=collection).distinct()
+    total_events = events_qs.count()
+    events = events_qs.iterator()
     processed_events = 0
-
+    job.logger.info("Tracking: Found %d events in collection %s", total_events, collection.pk)
     for event in events:
+        job.logger.info("Tracking: Processing event %s", event.pk)
         source_images = event.captures.order_by("timestamp")
-
-        if not event_fully_processed(event, pipeline_algorithms, logger=job.logger):
-            job.logger.info(
-                f"Tracking: Skipping tracking for event {event.pk}: not all detections are fully processed."
-            )
-            continue
         # Check if there are human identifications in the event
         if Occurrence.objects.filter(event=event, identifications__isnull=False).exists():
             job.logger.info(f"Tracking: Skipping tracking for event {event.pk}: human identifications present.")
             continue
+        # Check if the all captures in the event have processed detections with features
+        if not event_fully_processed(event, logger=job.logger):
+            job.logger.info(
+                f"Tracking: Skipping tracking for event {event.pk}: not all detections are fully processed."
+            )
+            continue
 
         job.logger.info(f"Tracking: Running tracking for event {event.pk}")
-        assign_occurrences_by_tracking_images(source_images, job.logger)
+        assign_occurrences_by_tracking_images(source_images, job.logger, cost_threshold=cost_threshold)
         processed_events += 1
 
         job.progress.update_stage(
