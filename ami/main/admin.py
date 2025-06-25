@@ -651,6 +651,21 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Clustered {queryset.count()} collection(s).")
 
+    @admin.action(description="Create tracking job (but don't run it)")
+    def create_tracking_job(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        from ami.jobs.models import Job, TrackingJob
+        from ami.ml.tracking import DEFAULT_TRACKING_PARAMS
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Tracking for collection {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key=TrackingJob.key,
+                params=DEFAULT_TRACKING_PARAMS.__dict__,
+            )
+            self.message_user(request, f"Tracking job #{job.pk} created for collection #{collection.pk}")
+
     @admin.action(description="Run tracking job")
     def run_tracking_job(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         from ami.jobs.models import Job, TrackingJob
@@ -661,9 +676,6 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
                 project=collection.project,
                 source_image_collection=collection,
                 job_type_key=TrackingJob.key,
-                params={
-                    "cost_threshold": 0.4,
-                },
             )
             job.enqueue()
             self.message_user(request, f"Tracking job #{job.pk} started for collection #{collection.pk}")
@@ -673,6 +685,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
         populate_collection_async,
         cluster_detections,
         create_clustering_job,
+        create_tracking_job,
         run_tracking_job,
     ]
 

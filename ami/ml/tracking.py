@@ -1,14 +1,31 @@
+import dataclasses
 import math
+import typing
 from collections.abc import Iterable
 
 import numpy as np
 from django.db.models import Count
 
-from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Event, Occurrence
 from ami.ml.models import Algorithm
 
-TRACKING_COST_THRESHOLD = 2
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
+
+
+@dataclasses.dataclass
+class TrackingParams:
+    """
+    Parameters for the tracking job.
+    """
+
+    cost_threshold: float = 0.2
+    skip_if_human_identifications: bool = True
+    require_completely_processed_session: bool = True
+    feature_extraction_algorithm_id: int | None = None
+
+
+DEFAULT_TRACKING_PARAMS = TrackingParams()
 
 
 def cosine_similarity(v1: Iterable[float], v2: Iterable[float]) -> float:
@@ -169,7 +186,7 @@ def assign_occurrences_from_detection_chains(source_images, logger):
 
 
 def assign_occurrences_by_tracking_images(
-    event: Event, logger, algorithm: Algorithm, cost_threshold: float = TRACKING_COST_THRESHOLD, job=None
+    event: Event, logger, algorithm: Algorithm, params: TrackingParams = DEFAULT_TRACKING_PARAMS, job=None
 ) -> None:
     """
     Track detections across ordered source images and assign them to occurrences.
@@ -199,7 +216,7 @@ def assign_occurrences_by_tracking_images(
             next_detections,
             image_width=current_image.width,
             image_height=current_image.height,
-            cost_threshold=cost_threshold,
+            cost_threshold=params.cost_threshold,
             algorithm=algorithm,
             logger=logger,
         )
@@ -288,17 +305,19 @@ def pair_detections(
         assigned_next_ids.add(next_det.id)
 
 
-def perform_tracking(job: Job):
+def perform_tracking(job: "Job"):
     """
     Perform detection tracking for all events in the job's source image collection.
     Runs tracking only if all images in an event have processed detections with features.
     """
 
-    job_params = job.params or {}
-    cost_threshold = job_params.get("cost_threshold", TRACKING_COST_THRESHOLD)
+    params = DEFAULT_TRACKING_PARAMS
+    # Override default params with job params if provided
+    if job.params:
+        params = dataclasses.replace(params, **job.params)
 
     job.logger.info("Tracking started")
-    job.logger.info(f"Using cost threshold: {cost_threshold}")
+    job.logger.info(f"Using tracking parameters: {params}")
     collection = job.source_image_collection
     if not collection:
         job.logger.info("Tracking: No source image collection found. Skipping tracking.")
@@ -319,7 +338,7 @@ def perform_tracking(job: Job):
         # Get the most common algorithm for the current event
         algorithm = get_most_common_algorithm_for_event(event)
         if algorithm is not None:
-            job.logger.info(f"Using most common feature extraction algorithm for event {event}: ", f"{algorithm.name}")
+            job.logger.info(f"Using most common feature extraction algorithm for event {event}: {algorithm.name}")
         else:
             job.logger.warning(
                 f"No feature extraction algorithm found for detections in event {event}. "
@@ -328,12 +347,17 @@ def perform_tracking(job: Job):
             continue
 
         # Check if there are human identifications in the event
-        if Occurrence.objects.filter(event=event, identifications__isnull=False).exists():
+        if (
+            params.skip_if_human_identifications
+            and Occurrence.objects.filter(event=event, identifications__isnull=False).exists()
+        ):
             job.logger.info(f"Tracking: Skipping tracking for event {event.pk}: human identifications present.")
             continue
 
         # Check if the all captures in the event have processed detections with features
-        if not event_fully_processed(event, logger=job.logger, algorithm=algorithm):
+        if params.require_completely_processed_session and not event_fully_processed(
+            event, logger=job.logger, algorithm=algorithm
+        ):
             job.logger.info(
                 f"Tracking: Skipping tracking for event {event.pk}: not all detections are fully processed."
             )
@@ -344,8 +368,8 @@ def perform_tracking(job: Job):
         assign_occurrences_by_tracking_images(
             event=event,
             logger=job.logger,
+            params=params,
             algorithm=algorithm,
-            cost_threshold=cost_threshold,
             job=job,
         )
 
