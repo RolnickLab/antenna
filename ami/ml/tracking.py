@@ -143,6 +143,7 @@ def assign_occurrences_from_detection_chains(source_images, logger):
     """
     visited = set()
     created_occurrences_count = 0
+    existing_occurrence_count = Occurrence.objects.filter(detections__source_image__in=source_images).count()
     for image in source_images:
         for det in image.detections.all():
             if det.id in visited or getattr(det, "previous_detection", None) is not None:
@@ -164,12 +165,15 @@ def assign_occurrences_from_detection_chains(source_images, logger):
                 old_occurrences = {d.occurrence_id for d in chain if d.occurrence_id}
 
                 # Delete old occurrences (if any)
+                # @TODO: Consider if this is the desired behavior. Check for any history on the occurrence. Consider
+                # soft deleting or just reassign the detections to the new occurrence.
+
                 for occ_id in old_occurrences:
                     try:
+                        logger.debug(f"Deleting old occurrence {occ_id} before reassignment.")
                         Occurrence.objects.filter(id=occ_id).delete()
-                        logger.debug(f"Deleted old occurrence {occ_id} before reassignment.")
                     except Exception as e:
-                        logger.info(f"Failed to delete occurrence {occ_id}: {e}")
+                        logger.error(f"Failed to delete occurrence {occ_id}: {e}")
 
                 occurrence = Occurrence.objects.create(
                     event=chain[0].source_image.event,
@@ -185,8 +189,14 @@ def assign_occurrences_from_detection_chains(source_images, logger):
                 occurrence.save()
 
                 logger.debug(f"Assigned occurrence {occurrence.pk} to chain of {len(chain)} detections")
+    new_occurrence_count = Occurrence.objects.filter(detections__source_image__in=source_images).count()
+    occurrences_removed = existing_occurrence_count - new_occurrence_count
+    if occurrences_removed > 0:
+        logger.info(f"Reduced existing occurrences by {occurrences_removed}.")
     logger.info(
-        f"Assigned {created_occurrences_count} occurrences from detection chains across {len(source_images)} images."
+        f"Assigned {created_occurrences_count} occurrences from detection chains across {len(source_images)} images.\n"
+        f"Occurrences before: {existing_occurrence_count}, after: {new_occurrence_count}.\n"
+        f"Total detections processed: {len(visited)}."
     )
 
 
@@ -210,7 +220,7 @@ def assign_occurrences_by_tracking_images(
         current_detections = list(current_image.detections.all())
         next_detections = list(next_image.detections.all())
 
-        logger.debug(f"""Tracking: Processing image {i + 1}/{len(source_images)}""")
+        logger.debug(f"""Tracking: Processing image {i + 1} of {len(source_images)}""")
 
         if not current_image.width or not current_image.height:
             logger.warning(f"Image {current_image.pk} has no width and/or height. Skipping tracking for this event.")
@@ -338,7 +348,7 @@ def perform_tracking(job: "Job"):
         job.save()
 
     for idx, event in enumerate(events, start=1):
-        job.logger.info(f"Tracking: Processing event {idx}/{total_events} (Event ID: {event.pk})")
+        job.logger.info(f"Tracking: Processing event {idx} of {total_events} (Event ID: {event.pk})")
 
         # Get the most common algorithm for the current event
         algorithm = get_most_common_algorithm_for_event(event)
