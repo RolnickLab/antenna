@@ -155,7 +155,12 @@ def assign_occurrences_from_detection_chains(source_images, logger):
                 visited.add(current.id)
                 current = current.next_detection
 
-            if chain:
+            if chain and len(chain) > 1:
+                # Only create new occurrence if there are multiple detections in the chain
+                logger.debug(
+                    f"Found chain of {len(chain)} detections starting from detection {det.id} in image {image.pk}"
+                )
+
                 old_occurrences = {d.occurrence_id for d in chain if d.occurrence_id}
 
                 # Delete old occurrences (if any)
