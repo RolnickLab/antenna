@@ -3,7 +3,10 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { InfoBlock } from 'design-system/components/info-block/info-block'
+import {
+  InfoBlockField,
+  InfoBlockFieldValue,
+} from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { SearchIcon } from 'lucide-react'
@@ -143,22 +146,24 @@ export const OccurrenceDetails = ({
           taxon={occurrence.determinationTaxon}
         />
         <div className={styles.taxonActions}>
-          <BasicTooltip
-            content={
-              occurrence.determinationVerified
-                ? translate(STRING.VERIFIED_BY, {
-                    name: occurrence.determinationVerifiedBy?.name,
-                  })
-                : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: occurrence.determinationScore,
-                  })
-            }
-          >
-            <IdentificationScore
-              confirmed={occurrence.determinationVerified}
-              confidenceScore={occurrence.determinationScore}
-            />
-          </BasicTooltip>
+          {occurrence.determinationScore !== undefined ? (
+            <BasicTooltip
+              content={
+                occurrence.determinationVerified
+                  ? translate(STRING.VERIFIED_BY, {
+                      name: occurrence.determinationVerifiedBy?.name,
+                    })
+                  : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                      score: `${occurrence.determinationScore}`,
+                    })
+              }
+            >
+              <IdentificationScore
+                confirmed={occurrence.determinationVerified}
+                confidenceScore={occurrence.determinationScore}
+              />
+            </BasicTooltip>
+          ) : null}
           {canUpdate && (
             <>
               <Agree
@@ -226,7 +231,16 @@ export const OccurrenceDetails = ({
                   <Tabs.Trigger value={TABS.RAW} label="Raw" />
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
-                  <InfoBlock fields={fields} />
+                  <div className="grid gap-6">
+                    {fields.map((field, index) => (
+                      <InfoBlockField key={index} label={field.label}>
+                        <InfoBlockFieldValue
+                          value={field.value}
+                          to={field.to}
+                        />
+                      </InfoBlockField>
+                    ))}
+                  </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>
@@ -276,7 +290,11 @@ export const OccurrenceDetails = ({
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection items={blueprintItems} />
+            <BlueprintCollection showLicenseInfo={blueprintItems.length > 0}>
+              {blueprintItems.map((item) => (
+                <BlueprintItem key={item.id} item={item} />
+              ))}
+            </BlueprintCollection>
           </div>
         </div>
       </div>
