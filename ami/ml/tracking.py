@@ -79,7 +79,7 @@ def get_most_common_algorithm_for_event(event):
     return None
 
 
-def event_fully_processed(event, logger) -> bool:
+def event_fully_processed(event: Event, logger, algorithm: Algorithm) -> bool:
     """
     Checks if all captures in the event have processed detections with features_2048
     """
@@ -89,6 +89,7 @@ def event_fully_processed(event, logger) -> bool:
     processed_captures = (
         event.captures.filter(
             detections__classifications__features_2048__isnull=False,
+            detections__classifications__algorithm=algorithm,
         )
         .distinct()
         .count()
@@ -167,7 +168,7 @@ def assign_occurrences_from_detection_chains(source_images, logger):
 
 
 def assign_occurrences_by_tracking_images(
-    event, logger, cost_threshold: float = TRACKING_COST_THRESHOLD, job=None
+    event: Event, logger, algorithm: Algorithm, cost_threshold: float = TRACKING_COST_THRESHOLD, job=None
 ) -> None:
     """
     Track detections across ordered source images and assign them to occurrences.
@@ -200,7 +201,7 @@ def assign_occurrences_by_tracking_images(
             image_width=current_image.width,
             image_height=current_image.height,
             cost_threshold=cost_threshold,
-            algorithm=most_common_algorithm,
+            algorithm=algorithm,
             logger=logger,
         )
         if job:
@@ -306,25 +307,46 @@ def perform_tracking(job):
     total_events = events_qs.count()
     events = events_qs.iterator()
     job.logger.info("Tracking: Found %d events in collection %s", total_events, collection.pk)
+
     for event in events_qs:
         job.progress.add_stage(name=f"Event {event.pk}", key=f"event_{event.pk}")
         job.save()
+
     for idx, event in enumerate(events, start=1):
         job.logger.info(f"Tracking: Processing event {idx}/{total_events} (Event ID: {event.pk})")
+
+        # Get the most common algorithm for the current event
+        algorithm = get_most_common_algorithm_for_event(event)
+        if algorithm is not None:
+            job.logger.info(f"Using most common feature extraction algorithm for event {event}: ", f"{algorithm.name}")
+        else:
+            job.logger.warning(
+                f"No feature extraction algorithm found for detections in event {event}. "
+                "Skipping tracking for this event."
+            )
+            continue
 
         # Check if there are human identifications in the event
         if Occurrence.objects.filter(event=event, identifications__isnull=False).exists():
             job.logger.info(f"Tracking: Skipping tracking for event {event.pk}: human identifications present.")
             continue
+
         # Check if the all captures in the event have processed detections with features
-        if not event_fully_processed(event, logger=job.logger):
+        if not event_fully_processed(event, logger=job.logger, algorithm=algorithm):
             job.logger.info(
                 f"Tracking: Skipping tracking for event {event.pk}: not all detections are fully processed."
             )
             continue
 
         job.logger.info(f"Tracking: Running tracking for event {event.pk}")
-        assign_occurrences_by_tracking_images(event, job.logger, cost_threshold=cost_threshold, job=job)
+
+        assign_occurrences_by_tracking_images(
+            event=event,
+            logger=job.logger,
+            algorithm=algorithm,
+            cost_threshold=cost_threshold,
+            job=job,
+        )
 
     job.logger.info("Tracking: Finished tracking.")
     job.save()
