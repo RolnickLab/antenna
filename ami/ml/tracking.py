@@ -4,6 +4,7 @@ from collections.abc import Iterable
 import numpy as np
 from django.db.models import Count
 
+from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Event, Occurrence
 from ami.ml.models import Algorithm
 
@@ -178,7 +179,7 @@ def assign_occurrences_by_tracking_images(
     source_images = event.captures.order_by("timestamp")
     logger.info(f"Found {len(source_images)} source images for event {event.pk}")
     if len(source_images) < 2:
-        logger.info("Not enough images to perform tracking. At least 2 images are required.")
+        logger.warn("Not enough images to perform tracking. At least 2 images are required.")
         return
     for i in range(len(source_images) - 1):
         current_image = source_images[i]
@@ -188,12 +189,10 @@ def assign_occurrences_by_tracking_images(
         next_detections = list(next_image.detections.all())
 
         logger.debug(f"""Tracking: Processing image {i + 1}/{len(source_images)}""")
-        # Get the most common algorithm for the current event
-        most_common_algorithm = get_most_common_algorithm_for_event(current_image.event)
-        logger.debug(
-            f"""Using most common algorithm for event {current_image.event.pk}:
-            {most_common_algorithm.name if most_common_algorithm else 'None'}"""
-        )
+
+        if not current_image.width or not current_image.height:
+            logger.warning(f"Image {current_image.pk} has no width and/or height. Skipping tracking for this event.")
+            return
 
         pair_detections(
             current_detections,
@@ -273,9 +272,9 @@ def pair_detections(
         if det.id in assigned_current_ids or next_det.id in assigned_next_ids:
             continue
         # check if next detection has a previous detection already assigned
-        if getattr(next_det, "previous_detection", None) is not None:
+        previous_detection: Detection | None = getattr(next_det, "previous_detection", None)
+        if previous_detection is not None:
             logger.debug(f"{next_det.id} already has previous detection: {next_det.previous_detection.id}")
-            previous_detection = getattr(next_det, "previous_detection", None)
             previous_detection.next_detection = None
             previous_detection.save()
             logger.debug(f"Cleared previous detection {previous_detection.pk} -> {next_det.pk}  link")
@@ -289,13 +288,15 @@ def pair_detections(
         assigned_next_ids.add(next_det.id)
 
 
-def perform_tracking(job):
+def perform_tracking(job: Job):
     """
     Perform detection tracking for all events in the job's source image collection.
     Runs tracking only if all images in an event have processed detections with features.
     """
 
-    cost_threshold = job.params.get("cost_threshold", TRACKING_COST_THRESHOLD)
+    job_params = job.params or {}
+    cost_threshold = job_params.get("cost_threshold", TRACKING_COST_THRESHOLD)
+
     job.logger.info("Tracking started")
     job.logger.info(f"Using cost threshold: {cost_threshold}")
     collection = job.source_image_collection
