@@ -1,5 +1,6 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
+import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
 export const AVAILABLE_FILTERS: {
@@ -15,7 +16,7 @@ export const AVAILABLE_FILTERS: {
     field: 'algorithm',
   },
   {
-    label: 'Score threshold',
+    label: translate(STRING.FIELD_LABEL_SCORE_THRESHOLD),
     field: 'classification_threshold',
   },
   {
@@ -111,6 +112,14 @@ export const AVAILABLE_FILTERS: {
   {
     label: 'Verified by',
     field: 'verified_by_me',
+  },
+  {
+    label: 'Show unobserved taxa',
+    field: 'include_unobserved',
+  },
+  {
+    label: 'Best score threshold',
+    field: 'best_determination_score',
   },
 ]
 

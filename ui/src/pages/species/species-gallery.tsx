@@ -20,7 +20,7 @@ export const SpeciesGallery = ({
     () =>
       species.map((s) => ({
         id: s.id,
-        image: s.images[0],
+        image: s.coverImage ? { src: s.coverImage.url } : undefined,
         title: s.name,
         to: getAppRoute({
           to: APP_ROUTES.TAXON_DETAILS({
