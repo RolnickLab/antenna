@@ -2178,6 +2178,8 @@ class Detection(BaseModel):
         if self.bbox and len(self.bbox) == 4:
             return self.bbox[3] - self.bbox[1]
 
+    occurrence_id: int | None = None
+
     class Meta:
         ordering = [
             "frame_num",

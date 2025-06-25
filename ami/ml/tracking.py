@@ -6,7 +6,7 @@ from collections.abc import Iterable
 import numpy as np
 from django.db.models import Count
 
-from ami.main.models import Classification, Detection, Event, Occurrence
+from ami.main.models import Classification, Detection, Event, Occurrence, SourceImage
 from ami.ml.models import Algorithm
 
 if typing.TYPE_CHECKING:
@@ -137,37 +137,45 @@ def get_feature_vector(detection: Detection, algorithm: Algorithm):
     )
 
 
-def assign_occurrences_from_detection_chains(source_images, logger):
+def assign_occurrences_from_detection_chains(source_images: "list[SourceImage]", logger):
     """
     Walk detection chains across source images and assign a new occurrence to each chain.
     """
-    visited = set()
+    visited: set[int] = set()
     created_occurrences_count = 0
-    existing_occurrence_count = Occurrence.objects.filter(detections__source_image__in=source_images).count()
+    existing_occurrence_count = (
+        Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
+    )
     for image in source_images:
         for det in image.detections.all():
-            if det.id in visited or getattr(det, "previous_detection", None) is not None:
+            if det.pk in visited or getattr(det, "previous_detection", None) is not None:
                 continue  # Already processed or this is not a chain start
 
-            chain = []
+            chain: list[Detection] = []
             current = det
-            while current and current.id not in visited:
+            while current and current.pk not in visited:
                 chain.append(current)
-                visited.add(current.id)
+                visited.add(current.pk)
                 current = current.next_detection
 
             if chain and len(chain) > 1:
                 # Only create new occurrence if there are multiple detections in the chain
                 logger.debug(
-                    f"Found chain of {len(chain)} detections starting from detection {det.id} in image {image.pk}"
+                    f"Found chain of {len(chain)} detections starting from detection {det.pk} in image {image.pk}"
                 )
 
                 old_occurrences = {d.occurrence_id for d in chain if d.occurrence_id}
 
+                if len(old_occurrences) == 1:
+                    # If all detections in the chain belong to the same occurrence, skip reassignment
+                    logger.debug(
+                        f"All detections in chain already assigned to occurrence {old_occurrences.pop()}. Skipping."
+                    )
+                    continue
+
                 # Delete old occurrences (if any)
                 # @TODO: Consider if this is the desired behavior. Check for any history on the occurrence. Consider
                 # soft deleting or just reassign the detections to the new occurrence.
-
                 for occ_id in old_occurrences:
                     try:
                         logger.debug(f"Deleting old occurrence {occ_id} before reassignment.")
@@ -189,12 +197,15 @@ def assign_occurrences_from_detection_chains(source_images, logger):
                 occurrence.save()
 
                 logger.debug(f"Assigned occurrence {occurrence.pk} to chain of {len(chain)} detections")
-    new_occurrence_count = Occurrence.objects.filter(detections__source_image__in=source_images).count()
+
+    # @TODO report how many detections were processed, length of chains, which are solo vs. chains, etc.
+
+    new_occurrence_count = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
     occurrences_removed = existing_occurrence_count - new_occurrence_count
     if occurrences_removed > 0:
         logger.info(f"Reduced existing occurrences by {occurrences_removed}.")
     logger.info(
-        f"Assigned {created_occurrences_count} occurrences from detection chains across {len(source_images)} images.\n"
+        f"Assigned {created_occurrences_count} new occurrences to detection chains in {len(source_images)} images.\n"
         f"Occurrences before: {existing_occurrence_count}, after: {new_occurrence_count}.\n"
         f"Total detections processed: {len(visited)}."
     )
