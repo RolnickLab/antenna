@@ -42,7 +42,7 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell>
+        <BasicTableCell style={{ minWidth: '320px' }}>
           <TaxonDetails compact taxon={item} />
         </BasicTableCell>
       </Link>

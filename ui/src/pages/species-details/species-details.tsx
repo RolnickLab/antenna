@@ -74,17 +74,19 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
               />
             </InfoBlockField>
             <InfoBlockField label={translate(STRING.FIELD_LABEL_BEST_SCORE)}>
-              <DeterminationScore
-                score={species.score}
-                scoreLabel={species.scoreLabel}
-                tooltip={
-                  species.score
-                    ? translate(STRING.MACHINE_PREDICTION_SCORE, {
-                        score: `${species.score}`,
-                      })
-                    : undefined
-                }
-              />
+              <div>
+                <DeterminationScore
+                  score={species.score}
+                  scoreLabel={species.scoreLabel}
+                  tooltip={
+                    species.score
+                      ? translate(STRING.MACHINE_PREDICTION_SCORE, {
+                          score: `${species.score}`,
+                        })
+                      : undefined
+                  }
+                />
+              </div>
             </InfoBlockField>
             <InfoBlockField
               className="no-print"
