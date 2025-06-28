@@ -203,7 +203,7 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["random", "constant", "constant-detection-random-species"]
+PipelineChoice = typing.Literal["random", "constant", "random-detection-random-species"]
 
 
 class PipelineRequest(pydantic.BaseModel):

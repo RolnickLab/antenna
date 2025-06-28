@@ -80,7 +80,7 @@ PipelineChoice = typing.Literal[
 
 ## `minimal` Pipelines and Output Images
 
-- `ConstantPipeline` and `ConstantDetectionRandomSpeciesPipeline`
+- `ConstantPipeline` and `RandomDetectionRandomSpeciesPipeline`
 ![MinimalReprocessing](images/MinimalReprocessing.png)
 
 

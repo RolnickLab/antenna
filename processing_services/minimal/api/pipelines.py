@@ -63,6 +63,54 @@ def make_constant_detection(source_images: list[SourceImage]) -> list[Detection]
     return detector_responses
 
 
+def make_random_detection(source_images: list[SourceImage]) -> list[Detection]:
+    """
+    For each source image, produce a random bounding box size and position relative to image size. No classification.
+    """
+    detector_responses: list[Detection] = []
+    for source_image in source_images:
+        source_image.open(raise_exception=True)
+
+        if source_image.width and source_image.height and source_image._pil:
+            start_time = datetime.datetime.now()
+            # Produce a random bounding box size and position relative to image size
+            min_box_size = min(source_image.width, source_image.height) // 8
+            max_box_width = source_image.width // 2
+            max_box_height = source_image.height // 2
+            box_width = random.randint(min_box_size, max_box_width)
+            box_height = random.randint(min_box_size, max_box_height)
+            start_x = random.randint(0, source_image.width - box_width)
+            start_y = random.randint(0, source_image.height - box_height)
+            bbox = BoundingBox(
+                x1=start_x,
+                y1=start_y,
+                x2=start_x + box_width,
+                y2=start_y + box_height,
+            )
+            cropped_image_pil = source_image._pil.crop((bbox.x1, bbox.y1, bbox.x2, bbox.y2))
+            end_time = datetime.datetime.now()
+            elapsed_time = (end_time - start_time).total_seconds()
+
+            detector_responses.append(
+                Detection(
+                    id=f"{source_image.id}-crop-{bbox.x1}-{bbox.y1}-{bbox.x2}-{bbox.y2}",
+                    url=source_image.url,
+                    width=cropped_image_pil.width,
+                    height=cropped_image_pil.height,
+                    timestamp=datetime.datetime.now(),
+                    source_image=source_image,
+                    bbox=bbox,
+                    inference_time=elapsed_time,
+                    algorithm=AlgorithmReference(
+                        name=algorithms.RANDOM_DETECTOR.name,
+                        key=algorithms.RANDOM_DETECTOR.key,
+                    ),
+                )
+            )
+
+    return detector_responses
+
+
 def make_random_prediction(
     algorithm: AlgorithmConfigResponse,
     terminal: bool = True,
@@ -222,10 +270,10 @@ class ConstantPipeline(Pipeline):
     )
 
 
-class ConstantDetectionRandomSpeciesPipeline(Pipeline):
+class RandomDetectionRandomSpeciesPipeline(Pipeline):
     """
-    A pipeline that always returns a detection with the same bounding box
-    but with a random species classification.
+    A pipeline that always returns a detection with a random bounding box size/position
+    and a random species classification.
     """
 
     def run(self) -> list[DetectionResponse]:
@@ -235,7 +283,7 @@ class ConstantDetectionRandomSpeciesPipeline(Pipeline):
             detections: list[Detection] = self._process_existing_detections()
         else:
             logger.info("[1/2] No existing detections, generating detections...")
-            detections: list[Detection] = make_constant_detection(self.source_images)
+            detections: list[Detection] = make_random_detection(self.source_images)
 
         logger.info("[2/2] Running the classifier...")
         detections_with_classifications: list[DetectionResponse] = make_classifications(detections, "random")
@@ -243,12 +291,12 @@ class ConstantDetectionRandomSpeciesPipeline(Pipeline):
         return detections_with_classifications
 
     config = PipelineConfigResponse(
-        name="Constant Detection Random Species Pipeline",
-        slug="constant-detection-random-species",
-        description="A pipeline that always returns a detection in the same position with a random classification.",
+        name="Random Detection Random Species Pipeline",
+        slug="random-detection-random-species",
+        description="A pipeline that returns a random bbox with a random classification.",
         version=1,
         algorithms=[
-            algorithms.CONSTANT_DETECTOR,
+            algorithms.RANDOM_DETECTOR,
             algorithms.RANDOM_BINARY_CLASSIFIER,
             algorithms.RANDOM_SPECIES_CLASSIFIER,
         ],

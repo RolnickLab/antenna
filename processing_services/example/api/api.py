@@ -133,9 +133,29 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
 def create_detections(
     detection_requests: list[DetectionRequest] | None,
 ):
-    detections = (
-        [
-            Detection(
+    detections = []
+    if detection_requests:
+        for detection in detection_requests:
+            # Crop the image to set the _pil attribute
+            logger.info(f"Received detection without crop_image_url: {detection}")
+            logger.info("Falling back to cropping the source image...")
+            source_image = SourceImage(
+                id=detection.source_image.id,
+                url=detection.source_image.url,
+            )
+            source_image.open(raise_exception=True)
+            if source_image.width and source_image.height and source_image._pil:
+                cropped_image_pil = source_image._pil.crop(
+                    (detection.bbox.x1, detection.bbox.y1, detection.bbox.x2, detection.bbox.y2)
+                )
+            else:
+                raise fastapi.HTTPException(
+                    status_code=422,
+                    detail=f"Source image {source_image.id} could not be opened.",
+                )
+
+            # Create a Detection object
+            det = Detection(
                 source_image=SourceImage(
                     id=detection.source_image.id,
                     url=detection.source_image.url,
@@ -146,14 +166,12 @@ def create_detections(
                     f"{detection.bbox.x1}-{detection.bbox.y1}-"
                     f"{detection.bbox.x2}-{detection.bbox.y2}"
                 ),
-                url=detection.crop_image_url,
+                url=detection.crop_image_url or detection.source_image.url,
                 algorithm=detection.algorithm,
             )
-            for detection in detection_requests
-        ]
-        if detection_requests
-        else []
-    )
+            # Set the _pil attribute to the cropped image
+            det._pil = cropped_image_pil
+            detections.append(det)
 
     return detections
 
