@@ -2137,6 +2137,14 @@ class Detection(BaseModel):
     classifications: models.QuerySet["Classification"]
     source_image_id: int
     detection_algorithm_id: int
+    next_detection = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="previous_detection",
+        help_text="The detection that follows this one in the tracking sequence.",
+    )
 
     # def bbox(self):
     #     return (
@@ -2169,6 +2177,8 @@ class Detection(BaseModel):
     def height(self) -> int | None:
         if self.bbox and len(self.bbox) == 4:
             return self.bbox[3] - self.bbox[1]
+
+    occurrence_id: int | None = None
 
     class Meta:
         ordering = [
