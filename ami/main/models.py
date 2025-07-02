@@ -212,6 +212,10 @@ class Project(BaseModel):
         CREATE_JOB = "create_job"
         UPDATE_JOB = "update_job"
         RUN_JOB = "run_job"
+        RUN_ML_JOB = "run_ml_job"
+        RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
+        RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
+        RUN_DATA_EXPORT_JOB = "run_data_export_job"
         DELETE_JOB = "delete_job"
         RETRY_JOB = "retry_job"
         CANCEL_JOB = "cancel_job"
@@ -270,6 +274,10 @@ class Project(BaseModel):
             ("create_job", "Can create a job"),
             ("update_job", "Can update a job"),
             ("run_job", "Can run a job"),
+            ("run_ml_job", "Can run/retry/cancel ML jobs"),
+            ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
+            ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
+            ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("delete_job", "Can delete a job"),
             ("retry_job", "Can retry a job"),
             ("cancel_job", "Can cancel a job"),
@@ -1562,6 +1570,12 @@ class SourceImage(BaseModel):
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        if action in ["star", "unstar"]:
+            project = self.get_project() if hasattr(self, "get_project") else None
+            return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
+        return False
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")
