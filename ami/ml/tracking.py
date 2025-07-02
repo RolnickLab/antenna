@@ -21,7 +21,7 @@ class TrackingParams:
 
     cost_threshold: float = 0.2
     skip_if_human_identifications: bool = True
-    require_completely_processed_session: bool = True
+    require_completely_processed_session: bool = False
     feature_extraction_algorithm_id: int | None = None
 
 
