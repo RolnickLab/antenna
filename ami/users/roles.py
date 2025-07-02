@@ -75,9 +75,13 @@ class MLDataManager(Role):
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
-        Project.Permissions.RUN_JOB,
+        # Project.Permissions.RUN_JOB,
         Project.Permissions.RETRY_JOB,
         Project.Permissions.CANCEL_JOB,
+        # Project.Permissions.RUN_ML_JOB,
+        Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB,
+        Project.Permissions.RUN_DATA_STORAGE_SYNC_JOB,
+        Project.Permissions.RUN_DATA_EXPORT_JOB,
         Project.Permissions.DELETE_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
     }
