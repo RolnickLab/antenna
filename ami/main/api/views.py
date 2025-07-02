@@ -1027,7 +1027,6 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
 OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
     query_param="classification_threshold", filter_param="determination_score"
 )
-OccurrenceOODScoreFilter = ThresholdFilter.create("determination_ood_score")
 
 
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
@@ -1048,7 +1047,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
         OccurrenceDeterminationScoreFilter,
-        OccurrenceOODScoreFilter,
     ]
     filterset_fields = [
         "event",
@@ -1111,12 +1109,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 type=OpenApiTypes.FLOAT,
             ),
             OpenApiParameter(
-                name="determination_ood_score",
-                description="Filter occurrences by minimum out-of-distribution score.",
-                required=False,
-                type=OpenApiTypes.FLOAT,
-            ),
-            OpenApiParameter(
                 name="taxon",
                 description="Filter occurrences by determination taxon ID. Shows occurrences determined as this taxon "
                 "or any of its child taxa.",
@@ -1162,6 +1154,9 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+TaxonBestScoreFilter = ThresholdFilter.create("best_determination_score")
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1173,6 +1168,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         CustomTaxonFilter,
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
+        TaxonBestScoreFilter,
     ]
     filterset_fields = [
         "name",
