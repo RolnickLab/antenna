@@ -162,7 +162,7 @@ const MachinePredictionDetails = ({
         <div className="w-full flex items-center gap-4">
           <BasicTooltip
             content={translate(STRING.MACHINE_PREDICTION_SCORE, {
-              score,
+              score: `${score}`,
             })}
           >
             <div className="px-1">

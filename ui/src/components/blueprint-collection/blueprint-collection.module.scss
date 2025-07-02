@@ -82,16 +82,23 @@
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media (max-width: $small-screen-breakpoint) {
   .licenseInfoContent {
     text-align: left;
   }
 
   .blueprintContent {
-    flex-direction: row;
-
     &.empty {
       display: none;
     }
+  }
+}
+
+@media print {
+  .blueprintContent {
+    display: grid;
+    align-items: start;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
   }
 }

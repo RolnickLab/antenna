@@ -101,6 +101,7 @@ export const Occurrences = () => {
               <FilterControl data={taxaLists} field="taxa_list_id" />
             )}
             <FilterControl clearable={false} field="classification_threshold" />
+            <FilterControl clearable={false} field="determination_ood_score" />
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
           </FilterSection>

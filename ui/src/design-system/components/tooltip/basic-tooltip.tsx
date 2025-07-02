@@ -25,7 +25,9 @@ export const BasicTooltip = ({
           {children}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom">
-          <span className="block">{content}</span>
+          <span className="block text-center whitespace-break-spaces">
+            {content}
+          </span>
         </Tooltip.Content>
       </Tooltip.Root>
     </Tooltip.Provider>

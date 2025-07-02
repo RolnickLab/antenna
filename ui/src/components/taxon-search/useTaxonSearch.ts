@@ -22,12 +22,12 @@ const convertServerResults = (result: ServerTaxon[]): Taxon[] => {
   return _.unionWith(taxa, (t1, t2) => t1.id === t2.id)
 }
 
-export const useTaxonSearch = (searchString: string) => {
+export const useTaxonSearch = (searchString: string, projectId: string) => {
   const [data, setData] = useState<Taxon[]>()
   const [isLoading, setIsLoading] = useState<boolean>()
   const [error, setError] = useState<Error>()
   const fetchUrl = searchString.length
-    ? `${API_URL}/taxa/suggest/?q=${searchString}&limit=${MAX_NUM_RESULTS}`
+    ? `${API_URL}/taxa/suggest/?q=${searchString}&limit=${MAX_NUM_RESULTS}&project_id=${projectId}`
     : undefined
 
   useEffect(() => {

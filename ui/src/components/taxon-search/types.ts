@@ -3,6 +3,7 @@ export type Node = {
   label: string
   details?: string
   parentId?: string
+  image?: string
 }
 
 export type TreeItem = Node & { children: TreeItem[] }

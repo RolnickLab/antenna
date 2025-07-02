@@ -73,12 +73,16 @@ def make_random_prediction(
     category_labels = algorithm.category_map.labels
     logits = [random.random() for _ in category_labels]
     softmax = [math.exp(logit) / sum([math.exp(logit) for logit in logits]) for logit in logits]
+    ood_score = 1 - max(softmax)
     top_class = category_labels[softmax.index(max(softmax))]
+    features_2048 = [random.random() for _ in range(2048)]
     return ClassificationResponse(
         classification=top_class,
         labels=category_labels if len(category_labels) <= max_labels else None,
         scores=softmax,
+        ood_score=ood_score,
         logits=logits,
+        features=features_2048,
         timestamp=datetime.datetime.now(),
         algorithm=AlgorithmReference(name=algorithm.name, key=algorithm.key),
         terminal=terminal,
@@ -127,6 +131,7 @@ def make_constant_detections(source_image: SourceImage, num_detections: int = 10
 
     assert algorithms.CONSTANT_CLASSIFIER.category_map is not None
     labels = algorithms.CONSTANT_CLASSIFIER.category_map.labels
+    features_2048 = [0.0 for _ in range(2048)]  # Placeholder for features
 
     return [
         DetectionResponse(
@@ -139,7 +144,9 @@ def make_constant_detections(source_image: SourceImage, num_detections: int = 10
                     classification=labels[0],
                     labels=labels,
                     scores=[0.9],  # Constant score for each detection
+                    ood_score=0.1,
                     timestamp=timestamp,
+                    features=features_2048,
                     algorithm=AlgorithmReference(
                         name=algorithms.CONSTANT_CLASSIFIER.name, key=algorithms.CONSTANT_CLASSIFIER.key
                     ),

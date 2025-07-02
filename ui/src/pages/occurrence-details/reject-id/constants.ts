@@ -1,4 +1,4 @@
 export const REJECT_OPTIONS = [
-  { label: 'Not Lepidoptera', value: '11613' },
-  { label: 'Not identifiable', value: '11614' },
+  { label: 'Not a Moth', value: '7' },
+  { label: 'Not Identifiable', value: '5717' },
 ]

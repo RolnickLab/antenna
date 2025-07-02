@@ -92,15 +92,18 @@
 }
 
 @mixin bubble-label {
-  display: inline-flex;
-  height: auto;
-  border-radius: 4px;
-  padding: 6px 8px 4px;
-  background-color: $color-primary-1-50;
-  color: $color-primary-1-600;
   font-size: 16px;
   line-height: 22px;
-  font-weight: 600;
+
+  @media not print {
+    display: inline-flex;
+    height: auto;
+    border-radius: 4px;
+    padding: 6px 8px 4px;
+    background-color: $color-primary-1-50;
+    color: $color-primary-1-600;
+    font-weight: 600;
+  }
 }
 
 @mixin mono {
