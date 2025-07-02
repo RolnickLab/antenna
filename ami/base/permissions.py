@@ -64,18 +64,8 @@ def add_object_level_permissions(
     """
 
     permissions = response_data.get("user_permissions", set())
-    project = instance.get_project() if hasattr(instance, "get_project") else None
-    model_name = instance._meta.model_name  # Get model name
-    if user and user.is_superuser:
-        permissions.update(["update", "delete"])
-
-    if project:
-        user_permissions = get_perms(user, project)
-        # Filter and extract only the action part of "action_modelname" based on instance type
-        filtered_permissions = filter_permissions(permissions=user_permissions, model_name=model_name)
-        # Do not return create, view permissions at object-level
-        filtered_permissions -= {"create", "view"}
-        permissions.update(filtered_permissions)
+    if isinstance(instance, BaseModel):
+        permissions.update(instance.get_user_object_permissions(user))
     response_data["user_permissions"] = list(permissions)
     return response_data
 
@@ -216,39 +206,18 @@ class CanDeleteIdentification(permissions.BasePermission):
 
 # Job run permission check
 class CanRunJob(permissions.BasePermission):
-    """Custom permission to check if the user can run a job."""
-
-    permission = Project.Permissions.RUN_JOB
-
-    def has_object_permission(self, request, view, obj):
-        if view.action == "run":
-            project = obj.get_project() if hasattr(obj, "get_project") else None
-            return request.user.has_perm(self.permission, project)
-        return True
+    def has_object_permission(self, request, view, obj: Job):
+        return obj.has_permission(request.user, "run")
 
 
 class CanRetryJob(permissions.BasePermission):
-    """Custom permission to check if the user can retry a job."""
-
-    permission = Project.Permissions.RETRY_JOB
-
-    def has_object_permission(self, request, view, obj):
-        if view.action == "retry":
-            project = obj.get_project() if hasattr(obj, "get_project") else None
-            return request.user.has_perm(self.permission, project)
-        return True
+    def has_object_permission(self, request, view, obj: Job):
+        return obj.has_permission(request.user, "retry")
 
 
 class CanCancelJob(permissions.BasePermission):
-    """Custom permission to check if the user can cancel a job."""
-
-    permission = Project.Permissions.CANCEL_JOB
-
-    def has_object_permission(self, request, view, obj):
-        if view.action == "cancel":
-            project = obj.get_project() if hasattr(obj, "get_project") else None
-            return request.user.has_perm(self.permission, project)
-        return True
+    def has_object_permission(self, request, view, obj: Job):
+        return obj.has_permission(request.user, "cancel")
 
 
 class CanPopulateSourceImageCollection(permissions.BasePermission):
@@ -261,3 +230,15 @@ class CanPopulateSourceImageCollection(permissions.BasePermission):
             project = obj.get_project() if hasattr(obj, "get_project") else None
             return request.user.has_perm(self.permission, project)
         return True
+
+
+class ObjectPermission(permissions.BasePermission):
+    """
+    Generic permission class that delegates to the model's `check_permission(user, action)` method.
+    """
+
+    def has_permission(self, request, view):
+        return True  # Always allow — object-level handles actual checks
+
+    def has_object_permission(self, request, view, obj):
+        return obj.check_permission(request.user, view.action)
