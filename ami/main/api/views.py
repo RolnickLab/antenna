@@ -23,7 +23,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami.base.filters import NullsLastOrderingFilter
+from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import (
     CanDeleteIdentification,
@@ -1015,6 +1015,11 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
+OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
+    query_param="classification_threshold", filter_param="determination_score"
+)
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1032,6 +1037,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
+        OccurrenceDeterminationScoreFilter,
     ]
     filterset_fields = [
         "event",
@@ -1051,7 +1057,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination_score",
         "event",
         "detections_count",
-        "created_at",
     ]
 
     def get_serializer_class(self):
@@ -1076,14 +1081,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
 
-        if self.action == "list":
-            qs = (
-                qs.all()
-                .filter(determination_score__gte=get_active_classification_threshold(self.request))
-                .order_by("-determination_score")
-            )
-
-        else:
+        if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
                     "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
@@ -1092,7 +1090,30 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="classification_threshold",
+                description="Filter occurrences by minimum determination score.",
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="taxon",
+                description="Filter occurrences by determination taxon ID. Shows occurrences determined as this taxon "
+                "or any of its child taxa.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="collection_id",
+                description="Filter occurrences by the collection their detections' source images belong to.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ]
+    )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -1124,6 +1145,9 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+TaxonBestScoreFilter = ThresholdFilter.create("best_determination_score")
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1135,6 +1159,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         CustomTaxonFilter,
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
+        TaxonBestScoreFilter,
     ]
     filterset_fields = [
         "name",
