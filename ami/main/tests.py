@@ -5,13 +5,13 @@ from io import BytesIO
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase
-from guardian.shortcuts import get_perms
+from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
-from ami.jobs.models import Job
+from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.models import (
     Deployment,
     Device,
@@ -1555,3 +1555,63 @@ class TestRolePermissions(APITestCase):
         self._test_sourceimageupload_permissions(
             user=self.project_manager, permission_map=self.PERMISSIONS_MAPS["project_manager"]["sourceimageupload"]
         )
+
+
+class TestFineGrainedJobRunPermissionTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            email="regularuser@insectai.org",
+            password="password123",
+        )
+        self.client.force_authenticate(self.user)
+
+        self.project = Project.objects.create(
+            name="Job Permission Project", description="For testing job run permission"
+        )
+        assign_perm(Project.Permissions.CREATE_JOB, self.user, self.project)
+        self.valid_job_keys = [cls.key for cls in VALID_JOB_TYPES if cls.key != "unknown"]
+
+    def _create_job(self, job_type_key):
+        job = Job.objects.create(name="Test Job", project=self.project, job_type_key=job_type_key)
+        return job
+
+    def assign_run_permission(self, key):
+        perm = f"main.run_{key}_job"
+        assign_perm(perm, self.user, self.project)
+
+    def remove_run_permission(self, key):
+        perm = f"main.run_{key}_job"
+        remove_perm(perm, self.user, self.project)
+
+    def test_can_only_run_permitted_job_type(self):
+        allowed_key = self.valid_job_keys[0]
+        self.assign_run_permission(allowed_key)
+
+        for job_type_key in self.valid_job_keys:
+            job = self._create_job(job_type_key)
+            response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+            if job_type_key == allowed_key:
+                self.assertEqual(response.status_code, status.HTTP_200_OK, f"{job_type_key} should run successfully")
+            else:
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{job_type_key} should be denied")
+
+    def test_can_run_multiple_if_permitted(self):
+        allowed_keys = self.valid_job_keys[:2]
+        for key in allowed_keys:
+            self.assign_run_permission(key)
+
+        for job_type_key in self.valid_job_keys:
+            job = self._create_job(job_type_key)
+            response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+
+            if job_type_key in allowed_keys:
+                self.assertEqual(response.status_code, status.HTTP_200_OK, f"{job_type_key} should run successfully")
+            else:
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{job_type_key} should be denied")
+
+    def test_cannot_run_any_without_permission(self):
+        for job_type_key in self.valid_job_keys:
+            job = self._create_job(job_type_key)
+            response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{job_type_key} should be denied")
