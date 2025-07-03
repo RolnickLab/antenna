@@ -213,6 +213,7 @@ class Project(BaseModel):
         UPDATE_JOB = "update_job"
         RUN_JOB = "run_job"
         RUN_ML_JOB = "run_ml_job"
+        PROCESS_SINGLE_IMAGE_JOB = "process_single_image_ml_job"
         RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
         RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
@@ -236,7 +237,6 @@ class Project(BaseModel):
         UPDATE_SOURCE_IMAGE = "update_sourceimage"
         DELETE_SOURCE_IMAGE = "delete_sourceimage"
         STAR_SOURCE_IMAGE = "star_sourceimage"
-        PROCESS_SOURCE_IMAGE = "process_sourceimage"
 
         # SourceImageUpload permissions
         CREATE_SOURCE_IMAGE_UPLOAD = "create_sourceimageupload"
@@ -279,6 +279,7 @@ class Project(BaseModel):
             ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
             ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
+            ("process_single_image_ml_job", "Can process a single capture"),
             ("delete_job", "Can delete a job"),
             ("retry_job", "Can retry a job"),
             ("cancel_job", "Can cancel a job"),
@@ -296,7 +297,6 @@ class Project(BaseModel):
             ("update_sourceimage", "Can update a source image"),
             ("delete_sourceimage", "Can delete a source image"),
             ("star_sourceimage", "Can star a source image"),
-            ("process_sourceimage", "Can process a single source image"),
             # SourceImageUpload permissions
             ("create_sourceimageupload", "Can create a source image upload"),
             ("update_sourceimageupload", "Can update a source image upload"),
@@ -1577,9 +1577,6 @@ class SourceImage(BaseModel):
         project = self.get_project() if hasattr(self, "get_project") else None
         if action in ["star", "unstar"]:
             return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
-        elif action == "process":
-            return user.has_perm(Project.Permissions.PROCESS_SOURCE_IMAGE, project)
-        return False
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")

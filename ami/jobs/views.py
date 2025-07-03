@@ -131,28 +131,12 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):
-            # job.run()
-
-            if job.source_image_single_id:
-                # If the job is for a single source image, we can run it immediately
-                source_image = job.source_image_single
-                if source_image.check_permission(self.request.user, "process"):
-                    logger.info("user has permission to process the source image")
-                    # If the user has permission to process the source image, enqueue the job
-                    logger.info(f"Running job {job.pk} immediately for source image {source_image.pk}")
-
-                    job.enqueue()
-                else:
-                    # If the user does not have permission, raise an error
-                    raise PermissionDenied("You do not have permission to process this source image.")
+            if job.check_custom_permission(self.request.user, "run"):
+                # If the user has permission, enqueue the job
+                job.enqueue()
             else:
-                # check if user has permission to run the job
-                if job.check_custom_permission(self.request.user, "run"):
-                    # If the user has permission, enqueue the job
-                    job.enqueue()
-                else:
-                    # If the user does not have permission, raise an error
-                    raise PermissionDenied("You do not have permission to run this job.")
+                # If the user does not have permission, raise an error
+                raise PermissionDenied("You do not have permission to run this job.")
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()

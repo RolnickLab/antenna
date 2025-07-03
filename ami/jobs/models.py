@@ -910,6 +910,8 @@ class Job(BaseModel):
 
     def check_custom_permission(self, user, action: str) -> bool:
         job_type = self.job_type_key.lower()
+        if self.source_image_single_id:
+            action = "process_single_image"
         if action in ["run", "cancel", "retry"]:
             permission_codename = f"run_{job_type}_job"
         else:
@@ -929,7 +931,7 @@ class Job(BaseModel):
         for perm in perms:
             # permissions are in the format "action_modelname"
             if perm.endswith(f"{job_type}_{model_name}"):
-                action = perm.split("_", 1)[0]
+                action = perm[: -len(f"_{job_type}_{model_name}")]
                 # make sure to exclude standard CRUD actions
                 if action not in ["view", "create", "update", "delete"]:
                     custom_perms.add(action)

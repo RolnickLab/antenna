@@ -118,7 +118,7 @@ class ProjectManager(Role):
             Project.Permissions.CREATE_SOURCE_IMAGE,
             Project.Permissions.DELETE_SOURCE_IMAGE,
             Project.Permissions.UPDATE_SOURCE_IMAGE,
-            Project.Permissions.PROCESS_SOURCE_IMAGE,
+            Project.Permissions.PROCESS_SINGLE_IMAGE_JOB,
             Project.Permissions.CREATE_SOURCE_IMAGE_UPLOAD,
             Project.Permissions.UPDATE_SOURCE_IMAGE_UPLOAD,
             Project.Permissions.DELETE_SOURCE_IMAGE_UPLOAD,
