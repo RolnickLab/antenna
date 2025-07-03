@@ -78,11 +78,17 @@ export const JobDetailsForm = ({
 
   return (
     <form onSubmit={handleSubmit((values) => onSubmit(values))}>
-      {errorMessage && (
+      {errorMessage ? (
         <FormError
           inDialog
           intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
           message={errorMessage}
+        />
+      ) : (
+        <FormError
+          inDialog
+          intro="Warning"
+          message="Batch processing is currently in development and problems are likely to occur. If you need data processed, we recommend to reach out to the team for support. Thank you for your patience!"
         />
       )}
       <FormSection>
