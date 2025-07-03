@@ -26,7 +26,10 @@ export const UserPreferencesContextProvider = ({
         return DEFAULT_PREFERENCES
       }
       try {
-        return JSON.parse(storedPreferences) as UserPreferences
+        return {
+          ...DEFAULT_PREFERENCES,
+          ...JSON.parse(storedPreferences),
+        }
       } catch {
         return DEFAULT_PREFERENCES
       }

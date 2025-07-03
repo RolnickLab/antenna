@@ -18,15 +18,11 @@
   border-radius: 8px;
   background-color: $color-neutral-50;
   border: 1px solid $color-neutral-100;
+  overflow: hidden;
 
   &.light {
     background-color: $color-generic-white;
   }
-}
-
-.image {
-  max-width: 100%;
-  max-height: 100%;
 }
 
 /* Slideshow styles */
@@ -52,9 +48,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
   box-sizing: border-box;
   overflow: hidden;
+
+  img {
+    max-width: 100%;
+    max-height: 100%;
+  }
 
   &:not(.visible) {
     opacity: 0;
