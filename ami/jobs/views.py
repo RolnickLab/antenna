@@ -5,6 +5,7 @@ from django.forms import IntegerField
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
@@ -143,7 +144,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                     job.enqueue()
                 else:
                     # If the user does not have permission, raise an error
-                    raise PermissionError("You do not have permission to process this source image.")
+                    raise PermissionDenied("You do not have permission to process this source image.")
             else:
                 # check if user has permission to run the job
                 if job.check_custom_permission(self.request.user, "run"):
@@ -151,7 +152,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                     job.enqueue()
                 else:
                     # If the user does not have permission, raise an error
-                    raise PermissionError("You do not have permission to run this job.")
+                    raise PermissionDenied("You do not have permission to run this job.")
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()
