@@ -933,7 +933,7 @@ class Job(BaseModel):
             if perm.endswith(f"{job_type}_{model_name}"):
                 action = perm[: -len(f"_{job_type}_{model_name}")]
                 # make sure to exclude standard CRUD actions
-                if action not in ["view", "create", "update", "delete"]:
+                if action not in ["view", "create", "update", "delete", "process_single_image"]:
                     custom_perms.add(action)
         logger.debug(f"Custom permissions for user {user} on project {self}, with jobtype {job_type}: {custom_perms}")
         return list(custom_perms)
