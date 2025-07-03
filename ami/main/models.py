@@ -236,6 +236,7 @@ class Project(BaseModel):
         UPDATE_SOURCE_IMAGE = "update_sourceimage"
         DELETE_SOURCE_IMAGE = "delete_sourceimage"
         STAR_SOURCE_IMAGE = "star_sourceimage"
+        PROCESS_SOURCE_IMAGE = "process_sourceimage"
 
         # SourceImageUpload permissions
         CREATE_SOURCE_IMAGE_UPLOAD = "create_sourceimageupload"
@@ -295,6 +296,7 @@ class Project(BaseModel):
             ("update_sourceimage", "Can update a source image"),
             ("delete_sourceimage", "Can delete a source image"),
             ("star_sourceimage", "Can star a source image"),
+            ("process_sourceimage", "Can process a single source image"),
             # SourceImageUpload permissions
             ("create_sourceimageupload", "Can create a source image upload"),
             ("update_sourceimageupload", "Can update a source image upload"),
@@ -1572,9 +1574,11 @@ class SourceImage(BaseModel):
             self.update_calculated_fields(save=True)
 
     def check_custom_permission(self, user, action: str) -> bool:
+        project = self.get_project() if hasattr(self, "get_project") else None
         if action in ["star", "unstar"]:
-            project = self.get_project() if hasattr(self, "get_project") else None
             return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
+        elif action == "process":
+            return user.has_perm(Project.Permissions.PROCESS_SOURCE_IMAGE, project)
         return False
 
     class Meta:

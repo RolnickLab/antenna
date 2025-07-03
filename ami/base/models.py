@@ -34,7 +34,6 @@ class BaseModel(models.Model):
         project = self.get_project() if hasattr(self, "get_project") else None
         if not project:
             return False
-
         if action == "retrieve":
             # Allow view
             return True
