@@ -8,6 +8,7 @@ import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
 import { SpeciesDetails } from 'pages/species-details/species-details'
@@ -17,8 +18,10 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
@@ -26,9 +29,22 @@ import { SpeciesGallery } from './species-gallery'
 
 export const Species = () => {
   const { projectId, id } = useParams()
+  const { columnSettings, setColumnSettings } = useColumnSettings('species', {
+    'cover-image': true,
+    name: true,
+    rank: false,
+    'last-seen': true,
+    occurrences: true,
+    'best-determination-score': true,
+    'created-at': false,
+    'updated-at': false,
+  })
+  const { userPreferences } = useUserPreferences()
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters()
+  const { filters } = useFilters({
+    best_determination_score: `${userPreferences.scoreThreshold}`,
+  })
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -48,6 +64,8 @@ export const Species = () => {
           {taxaLists.length > 0 && (
             <FilterControl data={taxaLists} field="taxa_list_id" />
           )}
+          <FilterControl clearable={false} field="best_determination_score" />
+          <FilterControl field="include_unobserved" />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader
@@ -74,10 +92,17 @@ export const Species = () => {
               value={selectedView}
               onValueChange={setSelectedView}
             />
+            <ColumnSettings
+              columns={columns(projectId as string)}
+              columnSettings={columnSettings}
+              onColumnSettingsChange={setColumnSettings}
+            />
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              columns={columns(projectId as string)}
+              columns={columns(projectId as string).filter(
+                (column) => !!columnSettings[column.id]
+              )}
               error={error}
               isLoading={!id && isLoading}
               items={species}

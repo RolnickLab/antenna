@@ -1,4 +1,3 @@
-import _ from 'lodash'
 import { Algorithm } from './algorithm'
 import { Taxon } from './taxa'
 
@@ -24,8 +23,8 @@ export class ClassificationDetails {
           .slice(0, 5)
           .filter(({ taxon }: any) => !!taxon)
           .map(({ logit, score, taxon }: any) => ({
-            logit: _.round(logit, 4),
-            score: _.round(score, 4),
+            logit,
+            score,
             taxon: new Taxon(taxon),
           }))
       : []
@@ -36,10 +35,10 @@ export class ClassificationDetails {
   }
 
   get logit(): number {
-    return _.round(this._classification.logit, 4)
+    return this._classification.logit
   }
 
   get score(): number {
-    return _.round(this._classification.score, 4)
+    return this._classification.score
   }
 }

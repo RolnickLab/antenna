@@ -1,4 +1,3 @@
-import _ from 'lodash'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Algorithm } from './algorithm'
@@ -131,9 +130,8 @@ export class OccurrenceDetails extends Occurrence {
     let label = 'No classification'
 
     if (classification) {
-      label = `${classification.taxon.name} (${_.round(
-        classification.score,
-        4
+      label = `${classification.taxon.name} (${classification.score.toFixed(
+        2
       )})`
     }
 

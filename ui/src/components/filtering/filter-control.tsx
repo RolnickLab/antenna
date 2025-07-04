@@ -2,6 +2,7 @@ import { XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
+import { BooleanFilter } from './filters/boolean-filter'
 import { CollectionFilter } from './filters/collection-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
@@ -21,6 +22,7 @@ const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
   algorithm: AlgorithmFilter,
+  best_determination_score: ScoreFilter,
   classification_threshold: ScoreFilter,
   collection: CollectionFilter,
   date_end: DateFilter,
@@ -28,14 +30,15 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
+  include_unobserved: BooleanFilter,
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,
   pipeline: PipelineFilter,
   source_image_collection: CollectionFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,
-  taxon: TaxonFilter,
   taxa_list_id: TaxaListFilter,
+  taxon: TaxonFilter,
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
 }

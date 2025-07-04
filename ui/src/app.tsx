@@ -75,7 +75,7 @@ export const App = () => (
       />
     </Helmet>
     <div id={APP_CONTAINER_ID} className={styles.wrapper}>
-      <div id={INTRO_CONTAINER_ID}>
+      <div id={INTRO_CONTAINER_ID} className="no-print">
         <Header />
       </div>
       <Routes>

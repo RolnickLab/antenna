@@ -545,7 +545,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ID_APPLIED]: 'ID applied',
   [STRING.LAST_UPDATED]: 'Last updated',
   [STRING.LOADING_DATA]: 'Loading data',
-  [STRING.MACHINE_PREDICTION_SCORE]: 'Machine prediction\nscore {{score}}',
+  [STRING.MACHINE_PREDICTION_SCORE]: 'Machine prediction score\n{{score}}',
   [STRING.MACHINE_SUGGESTION]: 'Machine suggestion',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
   [STRING.INTERMEDIATE_CLASSIFICATION]: 'Intermediate classification',
