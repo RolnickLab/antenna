@@ -1057,6 +1057,13 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
         allow_empty=True,
     )
 
+    event_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
     # Kwargs for other sampling methods, this is not complete
     # see the SourceImageCollection model for all available kwargs.
     size = serializers.IntegerField(required=False, allow_null=True)
@@ -1072,8 +1079,6 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
-    # @TODO can sampling kwargs be a nested serializer instead??
-
     source_images = serializers.SerializerMethodField()
     kwargs = SourceImageCollectionCommonKwargsSerializer(required=False, partial=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
