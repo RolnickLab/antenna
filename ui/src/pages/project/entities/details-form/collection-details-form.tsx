@@ -37,6 +37,7 @@ type CollectionFormValues = FormValues & {
     minute_interval: number | undefined
     size: number | undefined
     deployment_ids: string | undefined
+    research_site_ids: string | undefined
     event_ids: string | undefined
   }
 }
@@ -115,6 +116,15 @@ const config: FormConfig = {
   },
   'kwargs.event_ids': {
     label: 'Session IDs',
+    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    rules: {
+      validate: validateIntegerList,
+    },
+    toApiValue: parseIntegerList,
+    toFormValue: formatIntegerList,
+  },
+  'kwargs.research_site_ids': {
+    label: 'Research Site IDs',
     description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
@@ -360,6 +370,14 @@ export const CollectionDetailsForm = ({
             config={config}
             control={control}
           />
+          <FormField
+            name="kwargs.research_site_ids"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
           <FormField
             name="kwargs.event_ids"
             type="text"
