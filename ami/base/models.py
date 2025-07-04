@@ -1,3 +1,4 @@
+from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.db import models
 from guardian.shortcuts import get_perms
 
@@ -30,7 +31,7 @@ class BaseModel(models.Model):
         """Update calculated fields specific to each model."""
         pass
 
-    def check_permission(self, user, action: str) -> bool:
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         project = self.get_project() if hasattr(self, "get_project") else None
         if not project:
             return False
@@ -52,9 +53,9 @@ class BaseModel(models.Model):
         # Delegate to model-specific logic
         return self.check_custom_permission(user, action)
 
-    def check_custom_permission(self, user, action: str) -> bool:
+    def check_custom_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         """To be overridden in models for non-CRUD actions"""
-
+        assert self._meta.model_name is not None, "Model must have a model_name defined in Meta class."
         model_name = self._meta.model_name.lower()
         permission_codename = f"{action}_{model_name}"
         project = self.get_project() if hasattr(self, "get_project") else None
@@ -86,7 +87,7 @@ class BaseModel(models.Model):
         allowed_perms.update(set(custom_perms))
         return list(allowed_perms)
 
-    def get_custom_user_permissions(self, user) -> list[str]:
+    def get_custom_user_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         project = self.get_project()
         if not project:
             return []
@@ -97,6 +98,7 @@ class BaseModel(models.Model):
         for perm in perms:
             # permissions are in the format "action_modelname"
             if perm.endswith(f"_{model_name}"):
+                # process_single_image_sourceimage
                 action = perm.split("_", 1)[0]
                 # make sure to exclude standard CRUD actions
                 if action not in ["view", "create", "update", "delete"]:

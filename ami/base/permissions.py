@@ -7,6 +7,8 @@ from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
 from ami.jobs.models import Job
+
+# from ami.main.api.views import DefaultViewSet
 from ami.main.models import (
     BaseModel,
     Deployment,
@@ -19,6 +21,9 @@ from ami.main.models import (
     SourceImageUpload,
 )
 from ami.users.roles import ProjectManager
+
+# from rest_framework.viewsets import ModelViewSet
+
 
 logger = logging.getLogger(__name__)
 
@@ -240,5 +245,5 @@ class ObjectPermission(permissions.BasePermission):
     def has_permission(self, request, view):
         return True  # Always allow — object-level handles actual checks
 
-    def has_object_permission(self, request, view, obj):
+    def has_object_permission(self, request, view, obj: BaseModel):
         return obj.check_permission(request.user, view.action)
