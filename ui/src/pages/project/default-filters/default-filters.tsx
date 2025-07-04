@@ -2,6 +2,7 @@ import classNames from 'classnames'
 import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
 import { Project } from 'data-services/models/project'
 import styles from 'design-system/components/dialog/dialog.module.scss'
+import { DefaultFiltersForm } from 'pages/project-details/default-filters-form'
 import { useEffect } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -34,7 +35,15 @@ export const DefaultFilters = () => {
             {translate(STRING.NAV_ITEM_DEFAULT_FILTERS)}
           </h1>
         </div>
-        <div></div>
+        <div>
+          <DefaultFiltersForm
+            error={error}
+            isLoading={isLoading}
+            isSuccess={isSuccess}
+            onSubmit={(data) => updateProject(data)}
+            project={project}
+          />
+        </div>
       </div>
     </>
   )
