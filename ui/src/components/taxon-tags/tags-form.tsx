@@ -66,7 +66,9 @@ export const TagsForm = ({ species }: { species: Species }) => {
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              onClick={() => assignTags(formValues)}
+              onClick={() =>
+                assignTags({ projectId: projectId as string, tags: formValues })
+              }
               size="small"
               variant="success"
             >
