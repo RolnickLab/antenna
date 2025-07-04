@@ -3153,7 +3153,6 @@ class SourceImageCollection(BaseModel):
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
     ):
-
         return SourceImage.objects.filter(project=self.project)
 
     @classmethod
