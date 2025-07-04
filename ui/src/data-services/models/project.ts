@@ -38,6 +38,10 @@ export class Project {
     return this._project.description
   }
 
+  get featureFlags(): { [key: string]: boolean } {
+    return this._project.feature_flags ?? {}
+  }
+
   get id(): string {
     return `${this._project.id}`
   }
