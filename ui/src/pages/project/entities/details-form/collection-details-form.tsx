@@ -15,6 +15,11 @@ import { XIcon } from 'lucide-react'
 import { Button, Select } from 'nova-ui-kit'
 import { SERVER_SAMPLING_METHODS } from 'pages/project/collections/constants'
 import { useForm } from 'react-hook-form'
+import {
+  formatIntegerList,
+  parseIntegerList,
+  validateIntegerList,
+} from 'utils/fieldProcessors'
 import { STRING, translate } from 'utils/language'
 import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
 import { useFormError } from 'utils/useFormError'
@@ -30,6 +35,7 @@ type CollectionFormValues = FormValues & {
     max_num: number | undefined
     minute_interval: number | undefined
     size: number | undefined
+    deployment_ids: string | undefined
   }
 }
 
@@ -126,6 +132,15 @@ const config: FormConfig = {
       },
     },
   },
+  'kwargs.deployment_ids': {
+    label: 'Station IDs',
+    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    rules: {
+      validate: validateIntegerList,
+    },
+    toApiValue: parseIntegerList,
+    toFormValue: formatIntegerList,
+  },
 }
 
 export const CollectionDetailsForm = ({
@@ -142,7 +157,15 @@ export const CollectionDetailsForm = ({
         name: entity?.name ?? '',
         description: entity?.description ?? '',
         kwargs: {
-          ...(collection?.kwargs ? collection.kwargs : {}),
+          ...Object.fromEntries(
+            Object.entries(collection?.kwargs || {}).map(([key, value]) => {
+              const fieldConfig = config[`kwargs.${key}`]
+              const formValue = fieldConfig?.toFormValue
+                ? fieldConfig.toFormValue(value)
+                : value
+              return [key, formValue]
+            })
+          ),
           minute_interval: 10,
           size: 100,
         },
@@ -170,7 +193,15 @@ export const CollectionDetailsForm = ({
 
               return true
             })
-            .map(([key, value]) => [key, value === '' ? null : value])
+            .map(([key, value]) => {
+              const fieldConfig = config[`kwargs.${key}`]
+              const processedValue = fieldConfig?.toApiValue
+                ? fieldConfig.toApiValue(value)
+                : value === ''
+                ? null
+                : value
+              return [key, processedValue]
+            })
         )
 
         onSubmit({
@@ -335,6 +366,19 @@ export const CollectionDetailsForm = ({
               control={control}
             />
           ) : null}
+        </FormRow>
+      </FormSection>
+      <FormSection>
+        <h3 className="body-large font-bold text-muted-foreground/50">
+          Advanced Filters
+        </h3>
+        <FormRow>
+          <FormField
+            name="kwargs.deployment_ids"
+            type="text"
+            config={config}
+            control={control}
+          />
         </FormRow>
       </FormSection>
       <FormActions>
