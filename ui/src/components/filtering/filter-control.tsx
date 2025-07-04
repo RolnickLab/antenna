@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
@@ -80,12 +80,12 @@ export const FilterControl = ({
         />
         {clearable && filter.value && (
           <Button
-            size="icon"
             className="shrink-0 text-muted-foreground"
-            variant="ghost"
             onClick={() => clearFilter(field)}
+            size="icon"
+            variant="ghost"
           >
-            <X className="w-4 h-4" />
+            <XIcon className="w-4 h-4" />
           </Button>
         )}
       </div>

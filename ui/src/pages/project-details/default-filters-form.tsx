@@ -6,10 +6,13 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
+import { AddTaxon } from 'components/taxon-search/add-taxon'
 import { TaxonSelect } from 'components/taxon-search/taxon-select'
 import { Project } from 'data-services/models/project'
 import { InputContent } from 'design-system/components/input/input'
+import { CheckIcon, Loader2Icon, XIcon } from 'lucide-react'
 import { Button, Slider } from 'nova-ui-kit'
+import { Fragment } from 'react'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -24,43 +27,41 @@ const config: FormConfig = {
   scoreThreshold: {
     label: 'Score threshold',
     description:
-      'Occurrences with a score below the threshold will be exluded by default for the project.',
-    rules: {
-      required: true,
-    },
+      'Occurrences with a score below this threshold will be exluded by default for the project.',
   },
   includeTaxa: {
     label: 'Include taxa',
     description: 'This taxa will be included by default for the project.',
-    rules: {
-      required: true,
-    },
   },
   excludeTaxa: {
     label: 'Exclude taxa',
     description: 'This taxa will be excluded by default for the project.',
-    rules: {
-      required: true,
-    },
   },
 }
 
 export const DefaultFiltersForm = ({
   error,
+  isLoading,
+  isSuccess,
   onSubmit,
 }: {
   error?: unknown
   isLoading?: boolean
   isSuccess?: boolean
-  project: Project
   onSubmit: (data: DefaultFiltersFormValues) => void
+  project: Project
 }) => {
   const {
     control,
     handleSubmit,
     setError: setFieldError,
   } = useForm<DefaultFiltersFormValues>({
-    defaultValues: {},
+    // TODO: Replace default values with stored values for project
+    defaultValues: {
+      scoreThreshold: 0.6,
+      includeTaxa: [],
+      excludeTaxa: [],
+    },
     mode: 'onChange',
   })
 
@@ -93,12 +94,12 @@ export const DefaultFiltersForm = ({
                     min={0}
                     max={1}
                     step={0.01}
-                    value={[0.6]}
-                    onValueChange={() => {}}
-                    onValueCommit={() => {}}
+                    value={[field.value]}
+                    onValueChange={(value) => field.onChange(value[0])}
+                    onValueCommit={(value) => field.onChange(value[0])}
                   />
                   <span className="w-12 text-right body-overline text-muted-foreground">
-                    0.6
+                    {field.value}
                   </span>
                 </div>
               </InputContent>
@@ -118,14 +119,11 @@ export const DefaultFiltersForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <div className="space-y-4">
-                  <div>
-                    <TaxonSelect
-                      triggerLabel="Lepidoptera"
-                      onTaxonChange={() => {}}
-                    />
-                  </div>
-                </div>
+                <TaxaSelect
+                  taxa={field.value}
+                  onTaxaChange={field.onChange}
+                  limit={5}
+                />
               </InputContent>
             )}
           />
@@ -139,30 +137,80 @@ export const DefaultFiltersForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <div className="space-y-4">
-                  <div>
-                    <TaxonSelect
-                      triggerLabel="Not Lepidoptera"
-                      onTaxonChange={() => {}}
-                    />
-                  </div>
-                  <div>
-                    <TaxonSelect
-                      triggerLabel="Not identifieable"
-                      onTaxonChange={() => {}}
-                    />
-                  </div>
-                </div>
+                <TaxaSelect
+                  taxa={field.value}
+                  onTaxaChange={field.onChange}
+                  limit={5}
+                />
               </InputContent>
             )}
           />
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button type="submit" size="small" variant="success">
-          <span>Save</span>
+        <Button size="small" type="submit" variant="success">
+          <span>
+            {isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
+          </span>
+          {isSuccess ? (
+            <CheckIcon className="w-4 h-4 ml-2" />
+          ) : isLoading ? (
+            <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+          ) : null}
         </Button>
       </FormActions>
     </form>
+  )
+}
+
+const TaxaSelect = ({
+  limit,
+  onTaxaChange,
+  taxa = [],
+}: {
+  limit?: number
+  onTaxaChange: (taxa: { id: string; name: string }[]) => void
+  taxa?: { id: string; name: string }[]
+}) => {
+  const canAdd = limit ? taxa.length < limit : true
+
+  return (
+    <div
+      className="grid items-center gap-x-2 gap-y-4"
+      style={{ gridTemplateColumns: '1fr auto' }}
+    >
+      {taxa.map((taxon) => (
+        <Fragment key={taxon.id}>
+          <TaxonSelect
+            triggerLabel={taxon.name}
+            onTaxonChange={(t) => {
+              if (t) {
+                taxon.id = t.id
+                taxon.name = t.name
+                onTaxaChange([...taxa])
+              }
+            }}
+          />
+          <Button
+            className="shrink-0 text-muted-foreground"
+            onClick={() => onTaxaChange(taxa.filter((t) => t.id !== taxon.id))}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <XIcon className="w-4 h-4" />
+          </Button>
+        </Fragment>
+      ))}
+      {canAdd ? (
+        <AddTaxon
+          onAdd={(t) => {
+            if (t) {
+              onTaxaChange([...taxa, { id: t.id, name: t.name }])
+            }
+          }}
+        />
+      ) : null}
+    </div>
   )
 }
