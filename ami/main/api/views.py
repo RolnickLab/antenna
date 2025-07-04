@@ -1548,6 +1548,7 @@ class IdentificationViewSet(DefaultViewSet):
         "user",
     ]
     permission_classes = [CanUpdateIdentification, CanDeleteIdentification]
+    # permission_classes = [ObjectPermission]
 
     def perform_create(self, serializer):
         """
