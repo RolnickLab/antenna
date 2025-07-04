@@ -18,6 +18,7 @@ import { useForm } from 'react-hook-form'
 import {
   formatIntegerList,
   parseIntegerList,
+  validateInteger,
   validateIntegerList,
 } from 'utils/fieldProcessors'
 import { STRING, translate } from 'utils/language'
@@ -67,13 +68,7 @@ const config: FormConfig = {
     rules: {
       min: 0,
       max: 24,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.hour_end': {
@@ -82,26 +77,14 @@ const config: FormConfig = {
     rules: {
       min: 0,
       max: 24,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.max_num': {
     label: 'Max number of images',
     rules: {
       min: 0,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.minute_interval': {
@@ -109,13 +92,7 @@ const config: FormConfig = {
     rules: {
       min: 0,
       required: true,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.size': {
@@ -123,13 +100,7 @@ const config: FormConfig = {
     rules: {
       min: 0,
       required: true,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.deployment_ids': {
