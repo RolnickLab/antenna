@@ -15,9 +15,10 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Species>[] = (
+export const columns: (project: {
   projectId: string
-) => [
+  featureFlags?: { [key: string]: boolean }
+}) => TableColumn<Species>[] = ({ projectId, featureFlags }) => [
   {
     id: 'cover-image',
     name: 'Cover image',
@@ -47,11 +48,13 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           >
             <TaxonDetails compact taxon={item} />
           </Link>
-          <div className="flex flex-wrap gap-1">
-            {item.tags.map((tag) => (
-              <Tag key={tag.id} name={tag.name} />
-            ))}
-          </div>
+          {featureFlags?.tags && item.tags.length ? (
+            <div className="flex flex-wrap gap-1">
+              {item.tags.map((tag) => (
+                <Tag key={tag.id} name={tag.name} />
+              ))}
+            </div>
+          ) : null}
         </div>
       </BasicTableCell>
     ),

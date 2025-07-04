@@ -1,5 +1,6 @@
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
@@ -30,6 +31,7 @@ import { SpeciesGallery } from './species-gallery'
 
 export const Species = () => {
   const { projectId, id } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
   const { columnSettings, setColumnSettings } = useColumnSettings('species', {
     'cover-image': true,
     name: true,
@@ -68,8 +70,12 @@ export const Species = () => {
           )}
           <FilterControl clearable={false} field="best_determination_score" />
           <FilterControl field="include_unobserved" />
-          <FilterControl data={tags} field="tag_id" />
-          <FilterControl data={tags} field="not_tag_id" />
+          {project?.featureFlags.tags ? (
+            <>
+              <FilterControl data={tags} field="tag_id" />
+              <FilterControl data={tags} field="not_tag_id" />
+            </>
+          ) : null}
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader
@@ -97,16 +103,17 @@ export const Species = () => {
               onValueChange={setSelectedView}
             />
             <ColumnSettings
-              columns={columns(projectId as string)}
+              columns={columns({ projectId: projectId as string })}
               columnSettings={columnSettings}
               onColumnSettingsChange={setColumnSettings}
             />
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              columns={columns(projectId as string).filter(
-                (column) => !!columnSettings[column.id]
-              )}
+              columns={columns({
+                projectId: projectId as string,
+                featureFlags: project?.featureFlags,
+              }).filter((column) => !!columnSettings[column.id])}
               error={error}
               isLoading={!id && isLoading}
               items={species}

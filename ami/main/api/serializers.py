@@ -282,6 +282,7 @@ class ProjectSerializer(DefaultSerializer):
             "deployments",
             "summary_data",  # @TODO move to a 2nd request, it's too slow
             "owner",
+            "feature_flags",
         ]
 
 

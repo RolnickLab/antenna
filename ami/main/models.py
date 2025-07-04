@@ -125,6 +125,7 @@ class Project(BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+    feature_flags: dict[str, bool] = {"tags": False}  # @TODO return stored feature flags for project
 
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
