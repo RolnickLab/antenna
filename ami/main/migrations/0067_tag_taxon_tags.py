@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0066_populate_cached_occurence_fields"),
+        ("main", "0059_alter_project_options"),
     ]
 
     operations = [
