@@ -1,4 +1,19 @@
 // Utility functions for processing form field values
+import { STRING, translate } from './language'
+
+/**
+ * Validate that a value is an integer with translated error message
+ * @param value - Value to validate
+ * @returns undefined if valid, translated error message if invalid
+ */
+export const validateInteger = (value: any): string | undefined => {
+  if (value) {
+    if (!Number.isInteger(Number(value))) {
+      return translate(STRING.MESSAGE_VALUE_INVALID)
+    }
+  }
+  return undefined
+}
 
 /**
  * Convert comma-separated string to integer array
