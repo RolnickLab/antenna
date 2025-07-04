@@ -1131,7 +1131,7 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": True, "update": True, "delete": True},
                 "site": {"create": True, "update": True, "delete": True},
                 "device": {"create": True, "update": True, "delete": True},
-                "job": {"create": True, "update": True, "delete": True},
+                "job": {"create": True, "update": True, "delete": True, "run_single_image": True},
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
             },
@@ -1143,7 +1143,7 @@ class TestRolePermissions(APITestCase):
                 "sourceimage": {"create": False, "update": False, "delete": False},
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
-                "job": {"create": False, "update": False, "delete": False},
+                "job": {"create": False, "update": False, "delete": False, "run_single_image": True},
                 "identification": {"create": False, "delete": False},
                 "capture": {"star": True, "unstar": True},
             },
@@ -1155,7 +1155,7 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
-                "job": {"create": False, "update": False, "delete": False},
+                "job": {"create": False, "update": False, "delete": False, "run_single_image": True},
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
             },
@@ -1167,7 +1167,7 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
-                "job": {"create": False, "update": False, "delete": False},
+                "job": {"create": False, "update": False, "delete": False, "run_single_image": False},
                 "identification": {"create": False, "delete": False},
                 "capture": {"star": False, "unstar": False},
             },
@@ -1192,7 +1192,7 @@ class TestRolePermissions(APITestCase):
         )
 
     def _create_job(self):
-        self.job = Job.objects.create(name="Test Job", project=self.project)
+        self.job = Job.objects.create(name="Test Job", project=self.project, job_type_key="ml")
 
     def _create_source_image_upload_file(self):
         image_buffer = BytesIO()
@@ -1322,7 +1322,11 @@ class TestRolePermissions(APITestCase):
                 object_id = entity_ids[entity]
                 obj = next((r for r in results if r["id"] == object_id), None)
                 if obj:
-                    self.assertEqual(set(obj.get("user_permissions", [])), set(object_permissions))
+                    self.assertEqual(
+                        set(obj.get("user_permissions", [])),
+                        set(object_permissions),
+                        f"Object permissions mismatch for {entity}",
+                    )
 
             # Step 2: Test Update
             logger.info(f"Testing {role_class} update permission for {entity} , actions {actions}")

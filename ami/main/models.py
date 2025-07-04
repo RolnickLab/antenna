@@ -1583,7 +1583,6 @@ class SourceImage(BaseModel):
 
         custom_perms = set()
         perms = get_perms(user, project)
-        logger.info(f"User {user} has permissions: {perms} for project {project} on SourceImage {self.pk}")
         for perm in perms:
             # permissions are in the format "action_modelname"
             if perm.endswith("_sourceimage"):
