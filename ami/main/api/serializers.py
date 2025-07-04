@@ -1064,6 +1064,13 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
         allow_empty=True,
     )
 
+    research_site_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
     # Kwargs for other sampling methods, this is not complete
     # see the SourceImageCollection model for all available kwargs.
     size = serializers.IntegerField(required=False, allow_null=True)
