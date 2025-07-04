@@ -37,6 +37,7 @@ type CollectionFormValues = FormValues & {
     minute_interval: number | undefined
     size: number | undefined
     deployment_ids: string | undefined
+    event_ids: string | undefined
   }
 }
 
@@ -105,6 +106,15 @@ const config: FormConfig = {
   },
   'kwargs.deployment_ids': {
     label: 'Station IDs',
+    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    rules: {
+      validate: validateIntegerList,
+    },
+    toApiValue: parseIntegerList,
+    toFormValue: formatIntegerList,
+  },
+  'kwargs.event_ids': {
+    label: 'Session IDs',
     description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
@@ -346,6 +356,12 @@ export const CollectionDetailsForm = ({
         <FormRow>
           <FormField
             name="kwargs.deployment_ids"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="kwargs.event_ids"
             type="text"
             config={config}
             control={control}
