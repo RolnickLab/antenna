@@ -9,7 +9,7 @@ services:
     extra_hosts:
       - minio:host-gateway
     networks:
-      - ml_network
+      - antenna_network
     deploy:
       resources:
         reservations:
@@ -19,5 +19,5 @@ services:
               capabilities: [gpu]
 
 networks:
-  ml_network:
-    name: ml_network
+  antenna_network:
+    name: antenna_network

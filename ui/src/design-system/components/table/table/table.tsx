@@ -150,9 +150,13 @@ export const Table = <T extends { id: string }>({
         </tbody>
       </StickyHeaderTable>
       <div
-        className={classNames(styles.overflowFader, {
-          [styles.visible]: showScrollFader,
-        })}
+        className={classNames(
+          styles.overflowFader,
+          {
+            [styles.visible]: showScrollFader,
+          },
+          'no-print'
+        )}
       />
     </div>
   )

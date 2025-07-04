@@ -35,7 +35,7 @@ services:
     command: /start
     networks:
       - default
-      - ml_network
+      - antenna_network
 
   postgres:
     build:
@@ -108,7 +108,7 @@ services:
       - ./data/flower/:/data/
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     command: minio server --console-address ":9001" /data
     volumes:
       - "minio_data:/data"
@@ -134,7 +134,7 @@ services:
       - minio
 
   minio-init:
-    image: minio/mc
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
     env_file:
       - ./.envs/.local/.django
     depends_on:
@@ -157,6 +157,5 @@ services:
           - processing_service
 
 networks:
-  ml_network:
-    external: true
-    name: ml_network
+  antenna_network:
+    name: antenna_network

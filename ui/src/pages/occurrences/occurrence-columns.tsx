@@ -1,3 +1,4 @@
+import { DeterminationScore } from 'components/determination-score'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -7,13 +8,11 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { SearchIcon } from 'lucide-react'
-import { Button, IdentificationScore, TaxonDetails } from 'nova-ui-kit'
+import { TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
-import { TABS } from 'pages/occurrence-details/occurrence-details'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
-import { Link, useNavigate } from 'react-router-dom'
+import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
+import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -45,7 +44,7 @@ export const columns: (
 
       return (
         <ImageTableCell
-          images={item.images}
+          images={[item.images[0]]}
           theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
@@ -70,7 +69,22 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_SCORE),
     sortField: 'determination_score',
     renderCell: (item: Occurrence) => (
-      <ScoreCell item={item} projectId={projectId} />
+      <BasicTableCell>
+        <DeterminationScore
+          confirmed={item.determinationVerified}
+          score={item.determinationScore}
+          scoreLabel={item.determinationScoreLabel}
+          tooltip={
+            item.determinationVerified
+              ? translate(STRING.VERIFIED_BY, {
+                  name: item.determinationVerifiedBy?.name,
+                })
+              : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                  score: `${item.determinationScore}`,
+                })
+          }
+        />
+      </BasicTableCell>
     ),
   },
   {
@@ -140,6 +154,12 @@ export const columns: (
     sortField: 'created_at',
     renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
   },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Occurrence) => <BasicTableCell value={item.updatedAt} />,
+  },
 ]
 
 const TaxonCell = ({
@@ -154,7 +174,6 @@ const TaxonCell = ({
   showQuickActions?: boolean
 }) => {
   const { userInfo } = useUserInfo()
-  const navigate = useNavigate()
   const detailsRoute = getAppRoute({
     to: APP_ROUTES.OCCURRENCE_DETAILS({
       projectId,
@@ -167,7 +186,7 @@ const TaxonCell = ({
 
   return (
     <div id={id} className={styles.taxonCell}>
-      <BasicTableCell>
+      <BasicTableCell style={{ minWidth: '320px' }}>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
             <TaxonDetails compact taxon={item.determinationTaxon} />
@@ -184,22 +203,7 @@ const TaxonCell = ({
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />
-              <BasicTooltip asChild content={translate(STRING.SUGGEST_ID)}>
-                <Button
-                  onClick={() =>
-                    navigate(detailsRoute, {
-                      state: {
-                        defaultTab: TABS.IDENTIFICATION,
-                        suggestIdOpen: true,
-                      },
-                    })
-                  }
-                  size="icon"
-                  variant="outline"
-                >
-                  <SearchIcon className="w-4 h-4" />
-                </Button>
-              </BasicTooltip>
+              <SuggestIdPopover occurrenceIds={[item.id]} />
               <IdQuickActions
                 occurrenceIds={[item.id]}
                 occurrenceTaxons={[item.determinationTaxon]}
@@ -207,58 +211,6 @@ const TaxonCell = ({
               />
             </div>
           )}
-        </div>
-      </BasicTableCell>
-    </div>
-  )
-}
-
-const ScoreCell = ({
-  item,
-  projectId,
-}: {
-  item: Occurrence
-  projectId: string
-}) => {
-  const navigate = useNavigate()
-  const detailsRoute = getAppRoute({
-    to: APP_ROUTES.OCCURRENCE_DETAILS({
-      projectId,
-      occurrenceId: item.id,
-    }),
-    keepSearchParams: true,
-  })
-
-  return (
-    <div className={styles.scoreCell}>
-      <BasicTableCell>
-        <div className={styles.scoreCellContent}>
-          <BasicTooltip
-            content={
-              item.determinationVerified
-                ? translate(STRING.VERIFIED_BY, {
-                    name: item.determinationVerifiedBy?.name,
-                  })
-                : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: item.determinationScore,
-                  })
-            }
-            onTriggerClick={() =>
-              navigate(detailsRoute, {
-                state: {
-                  defaultTab: TABS.IDENTIFICATION,
-                },
-              })
-            }
-          >
-            <IdentificationScore
-              confirmed={item.determinationVerified}
-              confidenceScore={item.determinationScore}
-            />
-          </BasicTooltip>
-          <span className={styles.scoreCellLabel}>
-            {item.determinationScoreLabel}
-          </span>
         </div>
       </BasicTableCell>
     </div>

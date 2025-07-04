@@ -29,18 +29,22 @@ const useSearchParam = ({
     }
   }
 
-  const clearValue = () => {
+  const resetValue = () => {
     if (searchParams.has(key)) {
       searchParams.delete(key)
       setSearchParams(searchParams)
     }
   }
 
-  return { value, setValue, clearValue }
+  return { value, setValue, resetValue }
 }
 
-export const usePagination = ({ perPage }: { perPage?: number } = {}) => {
-  const { value: page, setValue: setPage } = useSearchParam({
+const usePagination = ({ perPage }: { perPage?: number } = {}) => {
+  const {
+    value: page,
+    setValue: setPage,
+    resetValue: resetPage,
+  } = useSearchParam({
     key: SEARCH_PARAM_KEY_PAGE,
     defaultValue: DEFAULT_PAGINATION.page,
   })
@@ -50,6 +54,9 @@ export const usePagination = ({ perPage }: { perPage?: number } = {}) => {
       page,
       perPage: perPage ?? DEFAULT_PAGINATION.perPage,
     },
+    resetPage,
     setPage,
   }
 }
+
+export { SEARCH_PARAM_KEY_PAGE, usePagination }

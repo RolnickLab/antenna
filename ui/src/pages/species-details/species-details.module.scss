@@ -8,17 +8,21 @@
   height: 100%;
 }
 
-.content {
-  max-width: 100%;
-  display: flex;
-  flex: 1;
-}
-
 .header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
   padding: 24px;
   background-color: $color-neutral-50;
   border-bottom: 2px solid $color-neutral-100;
   z-index: 1;
+}
+
+.content {
+  max-width: 100%;
+  display: flex;
+  flex: 1;
 }
 
 .info {
@@ -40,7 +44,7 @@
   overflow-y: auto;
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media (max-width: $small-screen-breakpoint) {
   .wrapper {
     width: 100%;
     height: 100%;
@@ -49,6 +53,10 @@
 
   .content {
     flex-direction: column;
+  }
+
+  .info {
+    width: auto;
   }
 
   .blueprintWrapper {

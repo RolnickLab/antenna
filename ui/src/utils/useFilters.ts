@@ -1,5 +1,7 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
+import { STRING, translate } from './language'
+import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
 export const AVAILABLE_FILTERS: {
   label: string
@@ -14,7 +16,7 @@ export const AVAILABLE_FILTERS: {
     field: 'algorithm',
   },
   {
-    label: 'Score threshold',
+    label: translate(STRING.FIELD_LABEL_SCORE_THRESHOLD),
     field: 'classification_threshold',
   },
   {
@@ -111,6 +113,14 @@ export const AVAILABLE_FILTERS: {
     label: 'Verified by',
     field: 'verified_by_me',
   },
+  {
+    label: 'Show unobserved taxa',
+    field: 'include_unobserved',
+  },
+  {
+    label: 'Best score threshold',
+    field: 'best_determination_score',
+  },
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
@@ -141,6 +151,12 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const addFilter = (field: string, value: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
       searchParams.set(field, value)
+
+      // Reset page param if set, when filters are updated
+      if (searchParams.has(SEARCH_PARAM_KEY_PAGE)) {
+        searchParams.delete(SEARCH_PARAM_KEY_PAGE)
+      }
+
       setSearchParams(searchParams)
     }
   }
@@ -148,6 +164,12 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const clearFilter = (field: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
       searchParams.delete(field)
+
+      // Reset page param if set, when filters are updated
+      if (searchParams.has(SEARCH_PARAM_KEY_PAGE)) {
+        searchParams.delete(SEARCH_PARAM_KEY_PAGE)
+      }
+
       setSearchParams(searchParams)
     }
   }
