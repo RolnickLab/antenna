@@ -17,6 +17,7 @@ export enum UserPermission {
   Populate = 'populate', // Custom collection permission
   Retry = 'retry', // Custom job permission
   Run = 'run', // Custom job permission
+  RunSingleImage = 'run_single_image', // Custom job permission
   Star = 'star',
   Update = 'update', // Custom capture permission
 }
