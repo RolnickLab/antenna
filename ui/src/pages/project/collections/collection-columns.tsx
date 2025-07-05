@@ -23,6 +23,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
+    sortField: 'id',
     renderCell: (item: Collection) => <BasicTableCell value={item.id} />,
   },
   {
