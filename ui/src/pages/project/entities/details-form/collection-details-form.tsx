@@ -124,7 +124,7 @@ const config: FormConfig = {
     toFormValue: formatIntegerList,
   },
   'kwargs.research_site_ids': {
-    label: 'Research Site IDs',
+    label: 'Research site IDs',
     description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
@@ -361,7 +361,7 @@ export const CollectionDetailsForm = ({
       </FormSection>
       <FormSection>
         <h3 className="body-large font-bold text-muted-foreground/50">
-          Advanced Filters
+          Advanced filters
         </h3>
         <FormRow>
           <FormField
