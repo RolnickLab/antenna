@@ -107,7 +107,7 @@ const config: FormConfig = {
   },
   'kwargs.deployment_ids': {
     label: 'Station IDs',
-    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
     },
@@ -116,7 +116,7 @@ const config: FormConfig = {
   },
   'kwargs.event_ids': {
     label: 'Session IDs',
-    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
     },
@@ -125,7 +125,7 @@ const config: FormConfig = {
   },
   'kwargs.research_site_ids': {
     label: 'Research site IDs',
-    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
     },

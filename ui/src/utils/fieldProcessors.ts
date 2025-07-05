@@ -54,7 +54,7 @@ export const validateIntegerList = (
   if (!value || value.trim() === '') return undefined // Optional field
   const pattern = /^\s*\d+\s*(?:\s*,\s*\d+\s*)*$/
   if (!pattern.test(value)) {
-    return 'Enter comma-separated integers (e.g., 1, 2, 3).'
+    return 'Enter comma-separated numbers (e.g., 1, 2, 3).'
   }
   return undefined
 }
