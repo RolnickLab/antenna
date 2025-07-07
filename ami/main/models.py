@@ -12,6 +12,7 @@ from typing import Final, final  # noqa: F401
 import pydantic
 from django.apps import apps
 from django.conf import settings
+from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
@@ -1903,6 +1904,21 @@ class Identification(BaseModel):
 
         # Allow the update_occurrence_determination to determine the next best ID
         update_occurrence_determination(self.occurrence, current_determination=self.taxon)
+
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        """Custom permission check logic for Identification model."""
+        import ami.users.roles as roles
+
+        project = self.get_project()
+        if not project:
+            return False
+
+        if action == "destroy":
+            # Allow if user is superuser, project manager, or owner of the identification
+            return user.is_superuser or roles.ProjectManager.has_role(user, project) or self.user == user
+
+        # Fallback to base class permission checks
+        return super().check_permission(user, action)
 
 
 @final
