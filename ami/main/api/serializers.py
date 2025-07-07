@@ -731,6 +731,8 @@ class TaxonSerializer(DefaultSerializer):
             "events_count",
             "occurrences",
             "gbif_taxon_key",
+            "last_detected",
+            "best_determination_score",
         ]
 
 

@@ -8,8 +8,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
 import { useRef } from 'react'
 import { useForm } from 'react-hook-form'
@@ -115,16 +114,14 @@ export const UserInfoForm = ({ userInfo }: { userInfo: UserInfo }) => {
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button
-          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          icon={isSuccess ? IconType.RadixCheck : undefined}
+        <SaveButton
+          isLoading={isLoading}
+          isSuccess={isSuccess}
           onClick={() => {
             formRef.current?.dispatchEvent(
               new Event('submit', { cancelable: true, bubbles: true })
             )
           }}
-          theme={ButtonTheme.Success}
-          loading={isLoading}
         />
       </FormActions>
     </>
