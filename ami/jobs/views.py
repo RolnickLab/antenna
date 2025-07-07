@@ -67,7 +67,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "source_image_collection",
         "pipeline",
     ]
-    # permission_classes = [CanRunJob, CanRetryJob, CanCancelJob, JobCRUDPermission]
+
     permission_classes = [ObjectPermission]
 
     def get_serializer_class(self):

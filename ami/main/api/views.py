@@ -25,13 +25,7 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import (
-    CanDeleteIdentification,
-    CanUpdateIdentification,
-    IsActiveStaffOrReadOnly,
-    ObjectPermission,
-    SourceImageUploadCRUDPermission,
-)
+from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
@@ -747,7 +741,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     queryset = SourceImageUpload.objects.all()
 
     serializer_class = SourceImageUploadSerializer
-    permission_classes = [SourceImageUploadCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
@@ -1547,8 +1541,8 @@ class IdentificationViewSet(DefaultViewSet):
         "updated_at",
         "user",
     ]
-    permission_classes = [CanUpdateIdentification, CanDeleteIdentification]
-    # permission_classes = [ObjectPermission]
+
+    permission_classes = [ObjectPermission]
 
     def perform_create(self, serializer):
         """
