@@ -273,15 +273,12 @@ class Project(BaseModel):
             # Job permissions
             ("create_job", "Can create a job"),
             ("update_job", "Can update a job"),
-            ("run_job", "Can run a job"),
             ("run_ml_job", "Can run/retry/cancel ML jobs"),
             ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
             ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
             ("delete_job", "Can delete a job"),
-            ("retry_job", "Can retry a job"),
-            ("cancel_job", "Can cancel a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
             ("delete_deployment", "Can delete a deployment"),
