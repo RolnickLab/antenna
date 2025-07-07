@@ -1592,7 +1592,7 @@ class SourceImage(BaseModel):
                 if action not in ["view", "create", "update", "delete"]:
                     custom_perms.add(action)
         if Project.Permissions.RUN_SINGLE_IMAGE_JOB in perms:
-            custom_perms.add("run_single_image")
+            custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
 
     class Meta:
