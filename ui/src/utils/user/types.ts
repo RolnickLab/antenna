@@ -11,14 +11,13 @@ export type UserInfo = {
 }
 
 export enum UserPermission {
-  Cancel = 'cancel', // Custom job permission
   Create = 'create',
   Delete = 'delete',
   Populate = 'populate', // Custom collection permission
-  Retry = 'retry', // Custom job permission
   Run = 'run', // Custom job permission
+  RunSingleImage = 'run_single_image', // Custom job permission
   Star = 'star',
-  Update = 'update', // Custom capture permission
+  Update = 'update',
 }
 
 export interface UserContextValues {
