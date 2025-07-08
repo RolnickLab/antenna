@@ -1671,3 +1671,77 @@ class TestFineGrainedJobRunPermission(APITestCase):
         response = self.client.get(f"/api/v2/jobs/{job.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("run", response.data.get("user_permissions", []))
+
+
+class TestRunSingleImageJobPermission(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            email="regularuser@insectai.org",
+            password="password123",
+        )
+        self.project = Project.objects.create(name="Single Image Project", description="Testing single image job")
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML pipeline",
+            description="Test ML pipeline",
+        )
+        self.pipeline.projects.add(self.project)
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        self.capture = self.deployment.captures.first()
+        self.client.force_authenticate(self.user)
+
+    def _grant_create_job__and_run_single_image_perm(self):
+        """Grants run_single_image_job permission on a specific capture to the user."""
+        assign_perm(Project.Permissions.CREATE_JOB, self.user, self.project)
+        assign_perm(Project.Permissions.RUN_SINGLE_IMAGE_JOB, self.user, self.project)
+
+    def _remove_run_single_image_perm(self):
+        remove_perm(Project.Permissions.RUN_SINGLE_IMAGE_JOB, self.user, self.project)
+
+    def test_user_can_run_single_image_job_and_perm_is_reflected(self):
+        self._grant_create_job__and_run_single_image_perm()
+
+        # Verify permission is reflected in capture detail response
+        capture_detail_url = f"/api/v2/captures/{self.capture.pk}/"
+        response = self.client.get(capture_detail_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "run_single_image_ml_job",
+            response.data.get("user_permissions", []),
+            "run_single_image permission not reflected",
+        )
+
+        # Try to run a job using source_image_single_id
+        run_url = "/api/v2/jobs/?start_now"
+        payload = {
+            "delay": 0,
+            "name": f"Capture #{self.capture.pk}",
+            "project_id": str(self.project.pk),
+            "pipeline_id": str(self.pipeline.pk),
+            "source_image_single_id": str(self.capture.pk),
+        }
+        response = self.client.post(run_url, payload, format="json")
+        self.assertEqual(
+            response.status_code, 201, f"User should be able to run single image job, got {response.status_code}"
+        )
+        # Remove permission
+        self._remove_run_single_image_perm()
+
+        # Permission should no longer appear in capture detail
+        response = self.client.get(capture_detail_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(
+            "run_single_image_ml_job",
+            response.data.get("user_permissions", []),
+            "run_single_image permission should be removed but still present",
+        )
+
+        # Should not be able to run job now
+        response = self.client.post(run_url, payload, format="json")
+        self.assertEqual(
+            response.status_code,
+            403,
+            f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
+        )
