@@ -11,6 +11,12 @@ export const columns: (
   type: string
 ) => TableColumn<Entity>[] = (collection: string, type: string) => [
   {
+    id: 'id',
+    name: translate(STRING.FIELD_LABEL_ID),
+    sortField: 'id',
+    renderCell: (item: Entity) => <BasicTableCell value={item.id} />,
+  },
+  {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
