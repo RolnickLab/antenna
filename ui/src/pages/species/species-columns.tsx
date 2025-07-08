@@ -1,4 +1,5 @@
 import { DeterminationScore } from 'components/determination-score'
+import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -14,9 +15,10 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Species>[] = (
+export const columns: (project: {
   projectId: string
-) => [
+  featureFlags?: { [key: string]: boolean }
+}) => TableColumn<Species>[] = ({ projectId, featureFlags }) => [
   {
     id: 'cover-image',
     name: 'Cover image',
@@ -36,16 +38,25 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_TAXON),
     renderCell: (item: Species) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
-          keepSearchParams: true,
-        })}
-      >
-        <BasicTableCell style={{ minWidth: '320px' }}>
-          <TaxonDetails compact taxon={item} />
-        </BasicTableCell>
-      </Link>
+      <BasicTableCell>
+        <div className="grid gap-4">
+          <Link
+            to={getAppRoute({
+              to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
+              keepSearchParams: true,
+            })}
+          >
+            <TaxonDetails compact taxon={item} />
+          </Link>
+          {featureFlags?.tags && item.tags.length ? (
+            <div className="flex flex-wrap gap-1">
+              {item.tags.map((tag) => (
+                <Tag key={tag.id} name={tag.name} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </BasicTableCell>
     ),
   },
   {
