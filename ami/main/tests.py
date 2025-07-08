@@ -1131,7 +1131,15 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": True, "update": True, "delete": True},
                 "site": {"create": True, "update": True, "delete": True},
                 "device": {"create": True, "update": True, "delete": True},
-                "job": {"create": True, "update": True, "delete": True, "run_single_image": True},
+                "job": {
+                    "create": True,
+                    "update": True,
+                    "delete": True,
+                    "run_single_image": True,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
             },
@@ -1143,7 +1151,15 @@ class TestRolePermissions(APITestCase):
                 "sourceimage": {"create": False, "update": False, "delete": False},
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
-                "job": {"create": False, "update": False, "delete": False, "run_single_image": True},
+                "job": {
+                    "create": False,
+                    "update": False,
+                    "delete": False,
+                    "run_single_image": True,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
                 "identification": {"create": False, "delete": False},
                 "capture": {"star": True, "unstar": True},
             },
@@ -1155,7 +1171,15 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
-                "job": {"create": False, "update": False, "delete": False, "run_single_image": True},
+                "job": {
+                    "create": False,
+                    "update": False,
+                    "delete": False,
+                    "run_single_image": True,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
             },
@@ -1167,7 +1191,15 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
-                "job": {"create": False, "update": False, "delete": False, "run_single_image": False},
+                "job": {
+                    "create": False,
+                    "update": False,
+                    "delete": False,
+                    "run_single_image": False,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
                 "identification": {"create": False, "delete": False},
                 "capture": {"star": False, "unstar": False},
             },
@@ -1343,18 +1375,18 @@ class TestRolePermissions(APITestCase):
                 logger.info(f"{entity} expected_status: {expected_status}, response_status:{response.status_code}")
                 self.assertEqual(response.status_code, expected_status)
 
-            # # Step 3: Test Custom Actions
-            # if entity == "job" and entity_ids[entity]:
-            #     for action in ["run", "retry", "cancel"]:
-            #         logger.info(f"Testing {role_class} for job {action} custom permission")
-            #         if action in actions:
-            #             response = self.client.post(f"{endpoints[entity]}{entity_ids[entity]}/{action}/")
-            #             expected_status = status.HTTP_200_OK if actions[action] else status.HTTP_403_FORBIDDEN
-            #             self.assertEqual(
-            #                 response.status_code,
-            #                 expected_status,
-            #                 f"{role_class} {action} permission failed for {entity}",
-            #             )
+            # Step 3: Test Custom Actions
+            if entity == "job" and entity_ids[entity]:
+                for action in ["run", "retry", "cancel"]:
+                    logger.info(f"Testing {role_class} for job {action} custom permission")
+                    if action in actions:
+                        response = self.client.post(f"{endpoints[entity]}{entity_ids[entity]}/{action}/")
+                        expected_status = status.HTTP_200_OK if actions[action] else status.HTTP_403_FORBIDDEN
+                        self.assertEqual(
+                            response.status_code,
+                            expected_status,
+                            f"{role_class} {action} permission failed for {entity}",
+                        )
 
             if entity == "collection" and entity_ids[entity] and "populate" in actions:
                 logger.info(f"Testing {role_class} for  collection populate custom permission")
@@ -1561,7 +1593,7 @@ class TestRolePermissions(APITestCase):
         )
 
 
-class TestFineGrainedJobRunPermissionTests(APITestCase):
+class TestFineGrainedJobRunPermission(APITestCase):
     def setUp(self):
         super().setUp()
         self.user = User.objects.create_user(
@@ -1619,3 +1651,23 @@ class TestFineGrainedJobRunPermissionTests(APITestCase):
             job = self._create_job(job_type_key)
             response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{job_type_key} should be denied")
+
+    def test_user_permissions_reflected_in_job_detail(self):
+        job = self._create_job(job_type_key="ml")
+
+        # By default, the user shouldn't have any job-related perms
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data.get("user_permissions"), [], "User should not have any job perms initially")
+
+        # Assign run permission and check if it's reflected
+        assign_perm(Project.Permissions.RUN_ML_JOB, self.user, self.project)
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run", response.data.get("user_permissions", []))
+
+        # Remove run permission and confirm it's removed
+        remove_perm(Project.Permissions.RUN_ML_JOB, self.user, self.project)
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("run", response.data.get("user_permissions", []))
