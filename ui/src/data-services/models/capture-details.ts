@@ -1,3 +1,4 @@
+import { UserPermission } from 'utils/user/types'
 import { Capture, ServerCapture } from './capture'
 import { Job } from './job'
 
@@ -68,5 +69,9 @@ export class CaptureDetails extends Capture {
 
   get url(): string {
     return this._capture.url
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._capture.user_permissions
   }
 }

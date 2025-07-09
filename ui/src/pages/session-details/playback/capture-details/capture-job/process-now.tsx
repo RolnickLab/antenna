@@ -1,11 +1,11 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
-import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails } from 'data-services/models/capture-details'
 import { Tooltip } from 'design-system/components/tooltip/tooltip'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { UserPermission } from 'utils/user/types'
 
 export const ProcessNow = ({
   capture,
@@ -15,14 +15,16 @@ export const ProcessNow = ({
   pipelineId?: string
 }) => {
   const { projectId } = useParams()
-  const { project } = useProjectDetails(projectId as string, true)
   const { createJob, isLoading, isSuccess } = useCreateJob()
+  const canProcess = capture?.userPermissions.includes(
+    UserPermission.RunSingleImage
+  )
   const disabled =
-    !capture || capture.hasJobInProgress || !pipelineId || !project?.canUpdate
+    !capture || capture.hasJobInProgress || !pipelineId || !canProcess
 
   // @TODO: hasJobInProgress, replace with if pipeline is healthy/available
 
-  const tooltipContent = project?.canUpdate
+  const tooltipContent = canProcess
     ? translate(STRING.MESSAGE_PROCESS_NOW_TOOLTIP)
     : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
 

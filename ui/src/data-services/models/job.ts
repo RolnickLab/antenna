@@ -45,7 +45,7 @@ export class Job {
 
   get canCancel(): boolean {
     return (
-      this._job.user_permissions.includes(UserPermission.Cancel) &&
+      this._job.user_permissions.includes(UserPermission.Run) &&
       (this.status.code === 'STARTED' || this.status.code === 'PENDING')
     )
   }
@@ -63,7 +63,7 @@ export class Job {
 
   get canRetry(): boolean {
     return (
-      this._job.user_permissions.includes(UserPermission.Retry) &&
+      this._job.user_permissions.includes(UserPermission.Run) &&
       this.status.code !== 'CREATED' &&
       this.status.code !== 'STARTED' &&
       this.status.code !== 'PENDING'
