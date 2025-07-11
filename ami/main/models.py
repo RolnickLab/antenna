@@ -610,6 +610,8 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
+        # Group images into events
+        group_images_into_events(deployment)
         self.save()
         self.update_calculated_fields(save=True)
 
