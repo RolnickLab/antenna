@@ -207,10 +207,10 @@ class TestPipelineWithProcessingService(TestCase):
             "detection_algorithm",
             "detection_algorithm__category_map",
         )
+        initial_detection_ids = sorted([det.pk for det in detections])
         assert detections.count() > 0
-        initial_num_detections = detections.count()
 
-        # Reprocess the same images
+        # Reprocess the same images using a different pipeline
         pipeline = self.processing_service_instance.pipelines.all().get(slug="constant")
         pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk)
         reprocessed_results = save_results(pipeline_response, return_created=True)
@@ -222,7 +222,15 @@ class TestPipelineWithProcessingService(TestCase):
             "detection_algorithm",
             "detection_algorithm__category_map",
         )
-        assert initial_num_detections == detections.count(), "Expected no new detections to be created."
+
+        # Check detections were re-processed, and not re-created
+        reprocessed_detection_ids = sorted([det.pk for det in detections])
+        assert initial_detection_ids == reprocessed_detection_ids, (
+            "Expected the same detections to be returned after reprocessing with a different pipeline, "
+            f"but found {initial_detection_ids} != {reprocessed_detection_ids}"
+        )
+
+        # The constant pipeline produces 1 classification per detection
         for detection in detections:
             assert (
                 detection.classifications.count() == 3

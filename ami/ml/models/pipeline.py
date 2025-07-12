@@ -194,24 +194,23 @@ def process_images(
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
-    source_images: list[SourceImageRequest] = []
+    source_image_requests: list[SourceImageRequest] = []
     detection_requests: list[DetectionRequest] = []
 
     for source_image, url in zip(images, urls):
         if url:
-            source_images.append(
-                SourceImageRequest(
-                    id=str(source_image.pk),
-                    url=url,
-                )
+            source_image_request = SourceImageRequest(
+                id=str(source_image.pk),
+                url=url,
             )
-            # Only re-process detections created by the pipeline's detector
+            source_image_requests.append(source_image_request)
+            # Re-process all existing detections if they exist
             for detection in source_image.detections.all():
                 bbox = detection.get_bbox()
                 if bbox and detection.detection_algorithm:
                     detection_requests.append(
                         DetectionRequest(
-                            source_image=source_images[-1],
+                            source_image=source_image_request,
                             bbox=bbox,
                             crop_image_url=detection.url(),
                             algorithm=AlgorithmReference(
@@ -231,7 +230,7 @@ def process_images(
 
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
-        source_images=source_images,
+        source_images=source_image_requests,
         config=config,
         detections=detection_requests,
     )
@@ -253,7 +252,8 @@ def process_images(
             pipeline=pipeline.slug,
             total_time=0,
             source_images=[
-                SourceImageResponse(id=source_image.id, url=source_image.url) for source_image in source_images
+                SourceImageResponse(id=source_image_request.id, url=source_image_request.url)
+                for source_image_request in source_image_requests
             ],
             detections=[],
             errors=msg,
@@ -992,7 +992,7 @@ class Pipeline(BaseModel):
         )
 
     def choose_processing_service_for_pipeline(
-        self, job_id: int, pipeline_name: str, project_id: int
+        self, job_id: int | None, pipeline_name: str, project_id: int
     ) -> ProcessingService:
         # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
 
