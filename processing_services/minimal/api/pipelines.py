@@ -14,7 +14,6 @@ from .schemas import (
     PipelineConfigResponse,
     SourceImage,
 )
-from .utils import get_image
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -26,8 +25,6 @@ def make_constant_detection(source_images: list[SourceImage]) -> list[Detection]
     """
     detector_responses: list[Detection] = []
     for source_image in source_images:
-        source_image.open(raise_exception=True)
-
         if source_image.width and source_image.height and source_image._pil:
             start_time = datetime.datetime.now()
             # For each source image, produce a fixed bounding box size and position relative to image size
@@ -59,6 +56,8 @@ def make_constant_detection(source_images: list[SourceImage]) -> list[Detection]
                     ),
                 )
             )
+        else:
+            raise ValueError(f"Source image {source_image.id} could not be opened or does not have a valid PIL image.")
 
     return detector_responses
 
@@ -69,8 +68,6 @@ def make_random_detection(source_images: list[SourceImage]) -> list[Detection]:
     """
     detector_responses: list[Detection] = []
     for source_image in source_images:
-        source_image.open(raise_exception=True)
-
         if source_image.width and source_image.height and source_image._pil:
             start_time = datetime.datetime.now()
             # Produce a random bounding box size and position relative to image size
@@ -107,7 +104,8 @@ def make_random_detection(source_images: list[SourceImage]) -> list[Detection]:
                     ),
                 )
             )
-
+        else:
+            raise ValueError(f"Source image {source_image.id} could not be opened or does not have a valid PIL image.")
     return detector_responses
 
 
@@ -201,42 +199,6 @@ class Pipeline:
     def run(self) -> list[DetectionResponse]:
         raise NotImplementedError("Subclasses must implement the run method")
 
-    def _process_existing_detections(self) -> list[Detection]:
-        """
-        Helper function for processing existing detections.
-        Opens the source and cropped images, and crops the source image if the cropped image URL is not valid.
-        """
-        processed_detections = self.existing_detections.copy()
-
-        for detection in processed_detections:
-            logger.info(f"Processing existing detection: {detection.id}")
-            detection.source_image.open(raise_exception=True)
-            assert detection.source_image._pil is not None, "Source image must be opened before cropping."
-
-            try:
-                # @TODO: Is this necessary? Should we always crop the image ourselves?
-                # The cropped image URL is typically a local file path.
-                # e.g. /media/detections/1/2018-06-15/session_2018-06-15_capture_20180615220800_detection_54.jpg
-                logger.info("Opening cropped image from the cropped image URL...")
-                detection._pil = get_image(
-                    url=detection.url,
-                    raise_exception=True,
-                )
-            except Exception as e:
-                logger.info(f"Failed to open cropped image from the URL: {detection.url}. Error: {e}")
-                logger.info("Falling back to cropping the source image...")
-                cropped_image_pil = detection.source_image._pil.crop(
-                    (
-                        min(detection.bbox.x1, detection.bbox.x2),
-                        min(detection.bbox.y1, detection.bbox.y2),
-                        max(detection.bbox.x1, detection.bbox.x2),
-                        max(detection.bbox.y1, detection.bbox.y2),
-                    )
-                )
-                detection._pil = cropped_image_pil
-            logger.info(f"Successfully processed existing detection: {detection.id}")
-        return processed_detections
-
 
 class ConstantPipeline(Pipeline):
     """
@@ -248,7 +210,7 @@ class ConstantPipeline(Pipeline):
         detections: list[Detection] = []
         if self.existing_detections:
             logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections: list[Detection] = self._process_existing_detections()
+            detections: list[Detection] = self.existing_detections
         else:
             logger.info("[1/2] No existing detections, generating detections...")
             detections: list[Detection] = make_constant_detection(self.source_images)
@@ -280,7 +242,7 @@ class RandomDetectionRandomSpeciesPipeline(Pipeline):
         detections: list[Detection] = []
         if self.existing_detections:
             logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections: list[Detection] = self._process_existing_detections()
+            detections: list[Detection] = self.existing_detections
         else:
             logger.info("[1/2] No existing detections, generating detections...")
             detections: list[Detection] = make_random_detection(self.source_images)

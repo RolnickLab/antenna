@@ -18,7 +18,6 @@ from .schemas import (
     SourceImage,
     SourceImageResponse,
 )
-from .utils import get_image
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -140,42 +139,6 @@ class Pipeline:
             detections=detection_responses,
         )
 
-    def _process_existing_detections(self) -> list[Detection]:
-        """
-        Helper function for processing existing detections.
-        Opens the source and cropped images, and crops the source image if the cropped image URL is not valid.
-        """
-        processed_detections = self.existing_detections.copy()
-
-        for detection in processed_detections:
-            logger.info(f"Processing existing detection: {detection.id}")
-            detection.source_image.open(raise_exception=True)
-            assert detection.source_image._pil is not None, "Source image must be opened before cropping."
-
-            try:
-                # @TODO: Is this necessary? Should we always crop the image ourselves?
-                # The cropped image URL is typically a local file path.
-                # e.g. /media/detections/1/2018-06-15/session_2018-06-15_capture_20180615220800_detection_54.jpg
-                logger.info("Opening cropped image from the cropped image URL...")
-                detection._pil = get_image(
-                    url=detection.url,
-                    raise_exception=True,
-                )
-            except Exception as e:
-                logger.info(f"Failed to open cropped image from the URL: {detection.url}. Error: {e}")
-                logger.info("Falling back to cropping the source image...")
-                cropped_image_pil = detection.source_image._pil.crop(
-                    (
-                        min(detection.bbox.x1, detection.bbox.x2),
-                        min(detection.bbox.y1, detection.bbox.y2),
-                        max(detection.bbox.x1, detection.bbox.x2),
-                        max(detection.bbox.y1, detection.bbox.y2),
-                    )
-                )
-                detection._pil = cropped_image_pil
-            logger.info(f"Successfully processed existing detection: {detection.id}")
-        return processed_detections
-
 
 class ZeroShotHFClassifierPipeline(Pipeline):
     """
@@ -214,7 +177,7 @@ class ZeroShotHFClassifierPipeline(Pipeline):
         detections_with_candidate_labels: list[Detection] = []
         if self.existing_detections:
             logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections_with_candidate_labels = self._process_existing_detections()
+            detections_with_candidate_labels = self.existing_detections
         else:
             logger.info("[1/2] No existing detections, generating detections...")
             detections_with_candidate_labels: list[Detection] = self._get_detections(
@@ -313,7 +276,7 @@ class ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline(Pipeline):
         detections: list[Detection] = []
         if self.existing_detections:
             logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections = self._process_existing_detections()
+            detections = self.existing_detections
         else:
             logger.info("[1/2] No existing detections, generating detections...")
             detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
@@ -366,7 +329,7 @@ class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
         detections: list[Detection] = []
         if self.existing_detections:
             logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections = self._process_existing_detections()
+            detections = self.existing_detections
         else:
             logger.info("[1/2] No existing detections, generating detections...")
             detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])

@@ -86,8 +86,6 @@ class ZeroShotObjectDetector(Algorithm):
     def run(self, source_images: list[SourceImage], intermediate=False) -> list[Detection]:
         detector_responses: list[Detection] = []
         for source_image in source_images:
-            source_image.open(raise_exception=True)
-
             if source_image.width and source_image.height and source_image._pil:
                 start_time = datetime.datetime.now()
                 logger.info("Predicting...")
