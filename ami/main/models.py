@@ -610,8 +610,9 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
-        # Group images into events
-        group_images_into_events(deployment)
+        # Regroup source images  if needed
+        if deployment_event_needs_update(deployment):
+            group_images_into_events(deployment)
         self.save()
         self.update_calculated_fields(save=True)
 
@@ -1091,6 +1092,48 @@ def group_images_into_events(
     deployment.save(update_calculated_fields=False, update_fields=["events_count"])
 
     return events
+
+
+def deployment_event_needs_update(deployment: Deployment) -> bool:
+    """
+    Returns True if the deployment has new SourceImages created after the most recent Event,
+    indicating that we should run `group_images_into_events` again.
+    """
+
+    latest_image_time = (
+        SourceImage.objects.filter(deployment=deployment)
+        .order_by("-created_at")
+        .values_list("created_at", flat=True)
+        .first()
+    )
+
+    latest_event_time = (
+        Event.objects.filter(deployment=deployment)
+        .order_by("-created_at")
+        .values_list("created_at", flat=True)
+        .first()
+    )
+
+    if latest_image_time is None:
+        # No images — nothing to group
+        logger.debug(f"No source images found for deployment {deployment}.")
+        return False
+
+    if latest_event_time is None:
+        # No events exist yet — need to group
+        logger.debug(f"No events found for deployment {deployment}.")
+        return True
+
+    # Compare timestamps
+    needs_update = latest_image_time > latest_event_time
+
+    logger.debug(
+        f"Deployment {deployment.pk}: "
+        f"latest image created at {latest_image_time}, "
+        f"latest event created at {latest_event_time} -> needs_update={needs_update}"
+    )
+
+    return needs_update
 
 
 def delete_empty_events(deployment: Deployment, dry_run=False):
