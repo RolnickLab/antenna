@@ -1096,44 +1096,19 @@ def group_images_into_events(
 
 def deployment_event_needs_update(deployment: Deployment) -> bool:
     """
-    Returns True if the deployment has new SourceImages created after the most recent Event,
-    indicating that we should run `group_images_into_events` again.
+    Returns True if there are any SourceImages in the deployment
+    that haven't been assigned to an `Event`.
+
+    Note: This does not detect if images were deleted from the deployment
+    after being grouped. We currently have limited support for image deletion,
+    so handling that is out of scope for this check.
     """
 
-    latest_image_time = (
-        SourceImage.objects.filter(deployment=deployment)
-        .order_by("-created_at")
-        .values_list("created_at", flat=True)
-        .first()
-    )
+    ungrouped_images_exist = SourceImage.objects.filter(deployment=deployment, event__isnull=True).exists()
 
-    latest_event_time = (
-        Event.objects.filter(deployment=deployment)
-        .order_by("-created_at")
-        .values_list("created_at", flat=True)
-        .first()
-    )
+    logger.debug(f"Deployment {deployment.pk}: ungrouped images exist = {ungrouped_images_exist}")
 
-    if latest_image_time is None:
-        # No images — nothing to group
-        logger.debug(f"No source images found for deployment {deployment}.")
-        return False
-
-    if latest_event_time is None:
-        # No events exist yet — need to group
-        logger.debug(f"No events found for deployment {deployment}.")
-        return True
-
-    # Compare timestamps
-    needs_update = latest_image_time > latest_event_time
-
-    logger.debug(
-        f"Deployment {deployment.pk}: "
-        f"latest image created at {latest_image_time}, "
-        f"latest event created at {latest_event_time} -> needs_update={needs_update}"
-    )
-
-    return needs_update
+    return ungrouped_images_exist
 
 
 def delete_empty_events(deployment: Deployment, dry_run=False):
