@@ -1593,8 +1593,36 @@ class TestDeploymentSyncCreatesEvents(TestCase):
 
         # Refresh and check results
         deployment.refresh_from_db()
-        events = Event.objects.filter(deployment=deployment)
+        initial_events = Event.objects.filter(deployment=deployment)
+        initial_events_count = initial_events.count()
 
         # Assertions
-        self.assertTrue(events.exists(), "Expected events to be created")
-        self.assertEqual(deployment.events_count, events.count(), "Deployment events_count should match actual events")
+        self.assertTrue(initial_events.exists(), "Expected events to be created")
+        self.assertEqual(
+            deployment.events_count, initial_events.count(), "Deployment events_count should match actual events"
+        )
+        # Simulate new images added to object store
+        populate_bucket(
+            config=deployment.data_source.config,
+            subdir=f"deployment_{deployment.pk}",
+            skip_existing=False,
+            num_nights=2,
+            images_per_day=5,
+            minutes_interval=120,
+        )
+
+        # Sync again
+        deployment.sync_captures()
+        deployment.refresh_from_db()
+        updated_events = Event.objects.filter(deployment=deployment)
+
+        # Assertions for second sync
+        self.assertGreater(
+            updated_events.count(), initial_events_count, "New events should be created after adding new images"
+        )
+        self.assertEqual(
+            deployment.events_count,
+            updated_events.count(),
+            "Deployment events_count should reflect updated event count",
+        )
+        logger.info(f"Initial events count: {initial_events_count}, Updated events count: {updated_events.count()}")
