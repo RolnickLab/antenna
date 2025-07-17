@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 def make_classifications_filtered_by_taxa_list(
     collection: SourceImageCollection,
     taxa_list: TaxaList,
+    algorithm: Algorithm,
     params: dict,
     task_logger: logging.Logger = logger,
     job=None,
@@ -21,9 +22,10 @@ def make_classifications_filtered_by_taxa_list(
     # @TODO
 
     classifications = Classification.objects.filter(
-        detection__source_image__collection=collection,
+        detection__source_image__collections=collection,
         terminal=True,
-        algorithm__task_type="classification",
+        # algorithm__task_type="classification",
+        algorithm=algorithm,
         scores__isnull=False,
     ).distinct()
 
@@ -49,6 +51,16 @@ def make_classifications_filtered_by_taxa_list(
     # included_category_indices = [int(category["index"]) for category in category_map_with_taxa]
     excluded_category_indices = [int(category["index"]) for category in excluded_category_map_with_taxa]
 
+    # Log number of categories in the category map, num included, and num excluded, num classifications to update
+
+    logger.info(
+        f"Category map has {len(category_map_with_taxa)} categories, "
+        f"{len(excluded_category_map_with_taxa)} categories excluded, "
+        f"{len(classifications)} classifications to check"
+    )
+
+    classifications_to_update = []
+
     for classification in classifications:
         scores, logits = classification.scores, classification.logits
         # Set scores and logits to zero if they are not in the filtered category indices
@@ -72,16 +84,25 @@ def make_classifications_filtered_by_taxa_list(
 
         scores = scores_np.tolist()
         logits = logits_np.tolist()
+
+        # check if needs updating
+        if classification.scores == scores and classification.logits == logits:
+            logger.debug(f"Classification {classification.pk} does not need updating")
+            continue
+
         classification.scores = scores
         classification.logits = logits
+        classifications_to_update.append(classification)
 
         logger.info(f"New totals: {sum(scores)} scores, {sum(logits)} logits")
 
     # Bulk save the classifications
     Classification.objects.bulk_update(
-        classifications,
+        classifications_to_update,
         fields=["scores", "logits"],
     )
+
+    logger.info(f"Updated {len(classifications_to_update)} classifications")
 
     # Update the occurrence determinations
     for occurrence in occurrences_to_update:
