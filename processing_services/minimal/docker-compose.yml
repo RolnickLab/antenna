@@ -1,13 +1,44 @@
 services:
-  ml_backend_minimal:
+  # API Server (optional - for direct HTTP calls)
+  ml_backend_api:
     build:
       context: .
     volumes:
       - ./:/app:z
     ports:
       - "2000:2000"
+    command: ["python", "/app/start_api.py"]
     extra_hosts:
       - minio:host-gateway
+    networks:
+      - antenna_network
+    profiles:
+      - test
+
+  # Celery Worker (main service)
+  ml_backend_worker:
+    build:
+      context: .
+    volumes:
+      - ./:/app:z
+      - ./celery_results:/tmp/celery-results:z
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://guest@test_rabbitmq:5672//}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-file:///tmp/celery-results}
+    command: ["python", "/app/start_worker.py"]
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+
+  # Test RabbitMQ (only for local testing)
+  test_rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    profiles:
+      - test
     networks:
       - antenna_network
 

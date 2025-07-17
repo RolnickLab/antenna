@@ -3,3 +3,5 @@ uvicorn
 pydantic
 Pillow
 requests
+celery
+python-dotenv

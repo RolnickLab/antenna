@@ -3,30 +3,15 @@ Fast API interface for processing images through the localization and classifica
 """
 
 import logging
-import time
 
 import fastapi
 
-from .pipelines import ConstantPipeline, Pipeline, RandomPipeline
-from .schemas import (
-    AlgorithmConfigResponse,
-    PipelineRequest,
-    PipelineResultsResponse,
-    ProcessingServiceInfoResponse,
-    SourceImage,
-    SourceImageResponse,
-)
+from .processing import get_pipeline_info, process_pipeline_request
+from .schemas import PipelineRequest, PipelineResultsResponse, ProcessingServiceInfoResponse
 
 logger = logging.getLogger(__name__)
 
 app = fastapi.FastAPI()
-
-
-pipelines: list[type[Pipeline]] = [RandomPipeline, ConstantPipeline]
-pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
-algorithm_choices: dict[str, AlgorithmConfigResponse] = {
-    algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
-}
 
 
 @app.get("/")
@@ -36,6 +21,7 @@ async def root():
 
 @app.get("/info", tags=["services"])
 async def info() -> ProcessingServiceInfoResponse:
+    pipelines = get_pipeline_info()
     info = ProcessingServiceInfoResponse(
         name="ML Backend Template",
         description=(
@@ -43,7 +29,7 @@ async def info() -> ProcessingServiceInfoResponse:
             "models and processing methods on images for the Antenna platform."
         ),
         pipelines=[pipeline.config for pipeline in pipelines],
-        # algorithms=list(algorithm_choices.values()),
+        # algorithms=list(get_algorithm_choices().values()),
     )
     return info
 
@@ -64,44 +50,24 @@ async def readyz():
     @TODO may need to simplify this to just return True/False. Pipeline algorithms will likely be loaded into memory
     on-demand when the pipeline is selected.
     """
-    if pipeline_choices:
-        return fastapi.responses.JSONResponse(status_code=200, content={"status": list(pipeline_choices.keys())})
+    pipelines = get_pipeline_info()
+    pipeline_slugs = [pipeline.config.slug for pipeline in pipelines]
+    if pipeline_slugs:
+        return fastapi.responses.JSONResponse(status_code=200, content={"status": pipeline_slugs})
     else:
         return fastapi.responses.JSONResponse(status_code=503, content={"status": []})
 
 
 @app.post("/process", tags=["services"])
 async def process(data: PipelineRequest) -> PipelineResultsResponse:
-    pipeline_slug = data.pipeline
-
-    source_images = [SourceImage(**image.model_dump()) for image in data.source_images]
-    source_image_results = [SourceImageResponse(**image.model_dump()) for image in data.source_images]
-
-    start_time = time.time()
-
     try:
-        Pipeline = pipeline_choices[pipeline_slug]
-    except KeyError:
-        raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
-
-    pipeline = Pipeline(source_images=source_images)
-    try:
-        results = pipeline.run()
+        response = process_pipeline_request(data)
+        return response
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        logger.error(f"Error running pipeline: {e}")
-        raise fastapi.HTTPException(status_code=422, detail=f"{e}")
-
-    end_time = time.time()
-    seconds_elapsed = float(end_time - start_time)
-
-    response = PipelineResultsResponse(
-        pipeline=pipeline_slug,
-        algorithms={algorithm.key: algorithm for algorithm in pipeline.config.algorithms},
-        source_images=source_image_results,
-        detections=results,
-        total_time=seconds_elapsed,
-    )
-    return response
+        logger.error(f"Error processing pipeline: {e}")
+        raise fastapi.HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
 
 if __name__ == "__main__":
