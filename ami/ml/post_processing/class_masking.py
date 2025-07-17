@@ -1,5 +1,7 @@
 import logging
 
+from django.utils import timezone
+
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models import Algorithm, AlgorithmCategoryMap
 
@@ -92,6 +94,7 @@ def make_classifications_filtered_by_taxa_list(
 
         classification.scores = scores
         classification.logits = logits
+        classification.updated_at = timezone.now()
         classifications_to_update.append(classification)
 
         logger.info(f"New totals: {sum(scores)} scores, {sum(logits)} logits")
@@ -99,7 +102,7 @@ def make_classifications_filtered_by_taxa_list(
     # Bulk save the classifications
     Classification.objects.bulk_update(
         classifications_to_update,
-        fields=["scores", "logits"],
+        fields=["scores", "logits", "updated_at"],
     )
 
     logger.info(f"Updated {len(classifications_to_update)} classifications")
