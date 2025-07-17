@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.main.models import Classification
+    from ami.main.models import Classification, Taxon
     from ami.ml.models import Pipeline
 
 import typing
@@ -58,7 +58,9 @@ class AlgorithmCategoryMap(BaseModel):
         # Can use JSON containment operators
         return self.data.index(next(category for category in self.data if category[label_field] == label))
 
-    def with_taxa(self, category_field="label", only_indexes: list[int] | None = None):
+    def with_taxa(
+        self, category_field="label", only_indexes: list[int] | None = None
+    ) -> list[dict[str, str | int | Taxon | None]]:
         """
         Add Taxon objects to the category map, or None if no match
 
