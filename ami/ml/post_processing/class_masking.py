@@ -92,8 +92,23 @@ def make_classifications_filtered_by_taxa_list(
             logger.debug(f"Classification {classification.pk} does not need updating")
             continue
 
+        # Recalculate the top taxon and score
+        # new_classificaion = Classification.objects.create(
+        #     taxon=taxa[0],
+        #     algorithm=classification.algorithm,
+        #     score=scores[0],
+        #     scores=scores,
+        #     detection=classification.detection,
+        #     timestamp=classification.timestamp,
+        #     terminal=False,
+        #     # category_map=classification.category_map, @TODO create new category map
+        #     created_at=now(),
+        #     updated_at=now(),
+        # )
+
         classification.scores = scores
         classification.logits = logits
+
         classification.updated_at = timezone.now()
         classifications_to_update.append(classification)
 
