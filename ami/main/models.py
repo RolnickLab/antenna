@@ -995,7 +995,10 @@ def update_calculated_fields_for_events(
 
 
 def group_images_into_events(
-    deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
+    deployment: Deployment,
+    max_time_gap=datetime.timedelta(minutes=120),
+    delete_empty=True,
+    merge=False,
 ) -> list[Event]:
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
@@ -1014,52 +1017,78 @@ def group_images_into_events(
             f"Only one image will be used for each timestamp for each event."
         )
 
-    image_timestamps = list(
-        SourceImage.objects.filter(deployment=deployment)
-        .exclude(timestamp=None)
-        .values_list("timestamp", flat=True)
-        .order_by("timestamp")
-        .distinct()
-    )
+    # image_timestamps = list(
+    #     SourceImage.objects.filter(deployment=deployment)
+    #     .exclude(timestamp=None)
+    #     .values_list("timestamp", flat=True)
+    #     .order_by("timestamp")
+    #     .distinct()
+    # )
 
-    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
     # @TODO this event grouping needs testing. Still getting events over 24 hours
     # timestamp_groups = ami.utils.dates.group_datetimes_by_shifted_day(image_timestamps)
 
+    # Get only images that are not already part of an event
+    new_images = list(
+        SourceImage.objects.filter(deployment=deployment, event__isnull=True)
+        .exclude(timestamp=None)
+        .order_by("timestamp")
+    )
+
+    if not new_images:
+        logger.info("No ungrouped images found; skipping")
+        return []
+
+    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(
+        [img.timestamp for img in new_images if img.timestamp], max_time_gap
+    )
+    existing_events = list(Event.objects.filter(deployment=deployment))
     events = []
+
     for group in timestamp_groups:
-        if not len(group):
+        if not group:
             continue
 
-        start_date = group[0]
-        end_date = group[-1]
+        group_start, group_end = group[0], group[-1]
+        group_set = set(group)
+        group_images = [img for img in new_images if img.timestamp in group_set]
 
-        # Print debugging info about groups
-        delta = end_date - start_date
-        hours = round(delta.seconds / 60 / 60, 1)
-        logger.debug(
-            f"Found session starting at {start_date} with {len(group)} images that ran for {hours} hours.\n"
-            f"From {start_date.strftime('%c')} to {end_date.strftime('%c')}."
-        )
+        merged = False
+        for event in existing_events:
+            # Check for overlap or proximity
+            overlaps = group_start <= event.end and group_end >= event.start
+            close_enough = abs(group_start - event.end) <= max_time_gap or abs(event.start - group_end) <= max_time_gap
 
-        # Creating events & assigning images
-        group_by = start_date.date()
-        event, _ = Event.objects.get_or_create(
-            deployment=deployment,
-            group_by=group_by,
-            defaults={"start": start_date, "end": end_date},
-        )
-        events.append(event)
-        SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
-        event.save()  # Update start and end times and other cached fields
-        logger.info(
-            f"Created/updated event {event} with {len(group)} images for deployment {deployment}. "
-            f"Duration: {event.duration_label()}"
-        )
+            if overlaps or close_enough:
+                # Merge into this event
+                SourceImage.objects.filter(id__in=[img.pk for img in group_images]).update(event=event)
 
-    logger.info(
-        f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
-    )
+                # Update event times if extended
+                if group_start < event.start or group_end > event.end:
+                    event.start = min(event.start, group_start)
+                    event.end = max(event.end, group_end)
+                    event.save()
+
+                events.append(event)
+                merged = True
+                break
+
+        if not merged:
+            # Cannot merge — create new event
+            event = Event.objects.create(
+                deployment=deployment,
+                group_by=group_start,
+                start=group_start,
+                end=group_end,
+            )
+            SourceImage.objects.filter(id__in=[img.pk for img in group_images]).update(event=event)
+            events.append(event)
+
+    logger.info(f"Grouped and merged {len(new_images)} images into {len(events)} events")
+
+    # logger.info(
+    #     f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
+    # )
 
     if delete_empty:
         logger.info("Deleting empty events for deployment")
