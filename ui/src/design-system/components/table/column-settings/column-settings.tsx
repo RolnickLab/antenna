@@ -1,7 +1,7 @@
-import { Button } from 'design-system/components/button/button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { IconType } from 'design-system/components/icon/icon'
 import * as Popover from 'design-system/components/popover/popover'
+import { ChevronDownIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import styles from './column-settings.module.scss'
 
@@ -18,11 +18,10 @@ export const ColumnSettings = ({
 }: ColumnSettingsProps) => (
   <Popover.Root>
     <Popover.Trigger>
-      <Button
-        label={translate(STRING.COLUMNS)}
-        icon={IconType.ToggleDown}
-        customClass={styles.triggerButton}
-      />
+      <Button variant="outline" size="small">
+        <span>{translate(STRING.COLUMNS)}</span>
+        <ChevronDownIcon className="w-4 h-4" />
+      </Button>
     </Popover.Trigger>
     <Popover.Content
       ariaCloselabel={translate(STRING.CLOSE)}

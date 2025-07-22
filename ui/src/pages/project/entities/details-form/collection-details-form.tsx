@@ -86,7 +86,7 @@ const config: FormConfig = {
     },
   },
   'kwargs.max_num': {
-    label: 'Max number of images',
+    label: 'Max number of captures',
     rules: {
       min: 0,
       validate: (value) => {
@@ -113,7 +113,7 @@ const config: FormConfig = {
     },
   },
   'kwargs.size': {
-    label: 'Size',
+    label: 'Number of captures',
     rules: {
       min: 0,
       required: true,
