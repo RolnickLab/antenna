@@ -98,6 +98,11 @@ const getSidebarSections = ({
               title: translate(STRING.NAV_ITEM_GENERAL),
               path: APP_ROUTES.GENERAL({ projectId }),
             },
+            {
+              id: 'default-filters',
+              title: translate(STRING.NAV_ITEM_DEFAULT_FILTERS),
+              path: APP_ROUTES.DEFAULT_FILTERS({ projectId }),
+            },
           ]
         : []),
       {
