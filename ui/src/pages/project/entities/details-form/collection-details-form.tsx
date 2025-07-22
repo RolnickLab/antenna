@@ -148,6 +148,8 @@ export const CollectionDetailsForm = ({
         name: entity?.name ?? '',
         description: entity?.description ?? '',
         kwargs: {
+          minute_interval: 10,
+          size: 100,
           ...Object.fromEntries(
             Object.entries(collection?.kwargs || {}).map(([key, value]) => {
               const fieldConfig = config[`kwargs.${key}`]
