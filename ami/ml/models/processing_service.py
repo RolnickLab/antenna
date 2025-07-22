@@ -5,6 +5,7 @@ import typing
 from urllib.parse import urljoin
 
 import requests
+from django.conf import settings
 from django.db import models
 
 from ami.base.models import BaseModel
@@ -12,7 +13,19 @@ from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_categor
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
 
+if typing.TYPE_CHECKING:
+    from ami.main.models import Project
+
 logger = logging.getLogger(__name__)
+
+
+class ProcessingServiceManger(models.Manager):
+    """Custom manager for ProcessingService to handle specific queries."""
+
+    def create(self, **kwargs) -> "ProcessingService":
+        instance = super().create(**kwargs)
+        instance.get_status()  # Check the status of the service immediately after creation
+        return instance
 
 
 @typing.final
@@ -27,6 +40,8 @@ class ProcessingService(BaseModel):
     last_checked = models.DateTimeField(null=True)
     last_checked_live = models.BooleanField(null=True)
     last_checked_latency = models.FloatField(null=True)
+
+    objects = ProcessingServiceManger()
 
     def __str__(self):
         return f'#{self.pk} "{self.name}" at {self.endpoint_url}'
@@ -168,3 +183,37 @@ class ProcessingService(BaseModel):
         resp.raise_for_status()
         info_data = ProcessingServiceInfoResponse.parse_obj(resp.json())
         return info_data.pipelines
+
+
+def create_default_processing_service(
+    project: "Project",
+    register_pipelines: bool = True,
+) -> "ProcessingService | None":
+    """
+    Create a default processing service for a project.
+
+    If configured, will use the global default processing service
+    for the current environment. Otherwise, it return None.
+
+    Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
+    environment variables to configure & enable the default processing service.
+    """
+
+    name = settings.DEFAULT_PROCESSING_SERVICE_NAME or "Default Processing Service"
+    endpoint_url = settings.DEFAULT_PROCESSING_SERVICE_ENDPOINT
+    if not endpoint_url:
+        logger.warning(
+            "Default processing service is not configured. "
+            "Set the 'DEFAULT_PROCESSING_SERVICE_ENDPOINT' environment variable."
+        )
+        return None
+
+    service, _created = ProcessingService.objects.get_or_create(
+        name=name,
+        endpoint_url=endpoint_url,
+    )
+    service.projects.add(project)
+    logger.info(f"Created default processing service for project {project}")
+    if register_pipelines:
+        service.create_pipelines()  # Register pipelines from the processing service
+    return service

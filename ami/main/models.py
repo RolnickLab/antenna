@@ -15,7 +15,7 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
-from django.db import IntegrityError, models
+from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
@@ -34,6 +34,7 @@ from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
+    from ami.ml.models import ProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,43 @@ def create_default_research_site(project: "Project") -> "Site":
     return site
 
 
+def create_default_deployment(
+    project: "Project", site: "Site | None" = None, device: "Device | None" = None
+) -> "Deployment":
+    """Create a default deployment for a project."""
+    deployment, _created = Deployment.objects.get_or_create(
+        name="Example Station",
+        project=project,
+        research_site=site,
+        device=device,
+    )
+    logger.info(f"Created default deployment for project {project}")
+    return deployment
+
+
+def create_default_collection(project: "Project") -> "SourceImageCollection":
+    """Create a default collection for a project for all images, updated dynamically."""
+    collection, _created = SourceImageCollection.objects.get_or_create(
+        name="All Images",
+        project=project,
+    )
+    logger.info(f"Created default collection for project {project}")
+    return collection
+
+
+def create_default_project(user: User) -> "Project":
+    """
+    Create a default project for a user.
+
+    Default related objects like devices and research sites will be created
+    when the project is saved for the first time.
+    If the project already exists, it will be returned without modification.
+    """
+    project, _created = Project.objects.get_or_create(name="Sandbox Project", owner=user)
+    logger.info(f"Created default project for user {user}")
+    return project
+
+
 class ProjectQuerySet(models.QuerySet):
     def filter_by_user(self, user: User):
         """
@@ -114,6 +152,41 @@ class ProjectQuerySet(models.QuerySet):
 class ProjectManager(models.Manager):
     def get_queryset(self) -> ProjectQuerySet:
         return ProjectQuerySet(self.model, using=self._db)
+
+    def create(self, create_defaults: bool = True, **kwargs) -> "Project":
+        """
+        Create a new Project and related models with defaults.
+
+        Args:
+            create_defaults: Whether to create default related models
+            **kwargs: Model field values
+
+        Returns:
+            Created Project instance
+        """
+        with transaction.atomic():
+            project_instance = super().create(**kwargs)
+            logger.info(f"Created project: {project_instance.name}")
+
+            if create_defaults:
+                self.create_related_defaults(project_instance)
+
+            return project_instance
+
+    def create_related_defaults(self, project: "Project"):
+        """Create default device, and other related models for this project if they don't exist."""
+        if not project.devices.exists():
+            device = create_default_device(project=project)
+        if not project.sites.exists():
+            site = create_default_research_site(project=project)
+        if not project.sourceimage_collections.exists():
+            create_default_collection(project=project)
+        if not project.deployments.exists():
+            create_default_deployment(project=project, site=site, device=device)
+        if not project.processing_services.exists():
+            from ami.ml.models.processing_service import create_default_processing_service
+
+            create_default_processing_service(project=project)
 
 
 @final
@@ -140,6 +213,8 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    sourceimage_collections: models.QuerySet["SourceImageCollection"]
+    processing_services: models.QuerySet["ProcessingService"]
 
     objects = ProjectManager()
 
@@ -177,21 +252,15 @@ class Project(BaseModel):
 
         return plots
 
-    def create_related_defaults(self):
-        """Create default device, and other related models for this project if they don't exist."""
-        if not self.devices.exists():
-            create_default_device(project=self)
-        if not self.sites.exists():
-            create_default_research_site(project=self)
+    def create(self, *args, **kwargs):
+        """
+        override the create method
+        """
 
     def save(self, *args, **kwargs):
-        new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
-        if new_project:
-            logger.info(f"Created new project {self}")
-            self.create_related_defaults()
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
@@ -1183,6 +1252,7 @@ class S3StorageSource(BaseModel):
     # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
+    # projects
 
     deployments: models.QuerySet["Deployment"]
 
