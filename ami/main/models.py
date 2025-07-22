@@ -125,6 +125,7 @@ class Project(BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+    feature_flags: dict[str, bool] = {"tags": False}  # @TODO return stored feature flags for project
 
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
@@ -140,6 +141,7 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
 
@@ -2768,7 +2770,7 @@ class Taxon(BaseModel):
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
-
+    tags = models.ManyToManyField("Tag", related_name="taxa", blank=True)
     objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
@@ -2972,6 +2974,19 @@ class TaxaList(BaseModel):
     class Meta:
         ordering = ["-created_at"]
         verbose_name_plural = "Taxa Lists"
+
+
+@final
+class Tag(BaseModel):
+    """A tag for taxa"""
+
+    name = models.CharField(max_length=255)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags", null=True, blank=True)
+
+    taxa: models.QuerySet[Taxon]
+
+    class Meta:
+        unique_together = ("name", "project")
 
 
 @final

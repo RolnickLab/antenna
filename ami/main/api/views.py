@@ -42,6 +42,7 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.serializers import TagSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -61,6 +62,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    Tag,
     TaxaList,
     Taxon,
     User,
@@ -1158,6 +1160,29 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
 TaxonBestScoreFilter = ThresholdFilter.create("best_determination_score")
 
 
+class TaxonTagFilter(filters.BaseFilterBackend):
+    """FilterBackend that allows OR-based filtering of taxa by tag ID."""
+
+    def filter_queryset(self, request, queryset, view):
+        tag_ids = request.query_params.getlist("tag_id")
+        if tag_ids:
+            queryset = queryset.filter(tags__id__in=tag_ids).distinct()
+        return queryset
+
+
+class TagInverseFilter(filters.BaseFilterBackend):
+    """
+    Exclude taxa that have any of the specified tag IDs using `not_tag_id`.
+    Example: /api/v2/taxa/?not_tag_id=1&not_tag_id=2
+    """
+
+    def filter_queryset(self, request, queryset, view):
+        not_tag_ids = request.query_params.getlist("not_tag_id")
+        if not_tag_ids:
+            queryset = queryset.exclude(tags__id__in=not_tag_ids)
+        return queryset.distinct()
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1170,6 +1195,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
         TaxonBestScoreFilter,
+        TaxonTagFilter,
+        TagInverseFilter,
     ]
     filterset_fields = [
         "name",
@@ -1294,6 +1321,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset()
         project = self.get_active_project()
+        qs = self.attach_tags_by_project(qs, project)
 
         if project:
             # Allow showing detail views for unobserved taxa
@@ -1377,6 +1405,43 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             )
         return qs
 
+    def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
+        """
+        Prefetch and override the `.tags` attribute on each Taxon
+        with only the tags belonging to the given project.
+        """
+        # Include all tags if no project is passed
+        if project is None:
+            tag_qs = Tag.objects.all()
+        else:
+            # Prefetch only the tags that belong to the project or are global
+            tag_qs = Tag.objects.filter(models.Q(project=project) | models.Q(project__isnull=True))
+
+        tag_prefetch = Prefetch("tags", queryset=tag_qs, to_attr="prefetched_tags")
+
+        return qs.prefetch_related(tag_prefetch)
+
+    @action(detail=True, methods=["post"])
+    def assign_tags(self, request, pk=None):
+        """
+        Assign tags to a taxon
+        """
+        taxon = self.get_object()
+        tag_ids = request.data.get("tag_ids")
+        logger.info(f"Tag IDs: {tag_ids}")
+        if not isinstance(tag_ids, list):
+            return Response({"detail": "tag_ids must be a list of IDs."}, status=status.HTTP_400_BAD_REQUEST)
+
+        tags = Tag.objects.filter(id__in=tag_ids)
+        logger.info(f"Tags: {tags}, len: {len(tags)}")
+        taxon.tags.set(tags)  # replaces all tags for this taxon
+        taxon.save()
+        logger.info(f"Tags after assingment : {len(taxon.tags.all())}")
+        return Response(
+            {"taxon_id": taxon.id, "assigned_tag_ids": [tag.pk for tag in tags]},
+            status=status.HTTP_200_OK,
+        )
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -1393,6 +1458,20 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         return qs
 
     serializer_class = TaxaListSerializer
+
+
+class TagViewSet(DefaultViewSet, ProjectMixin):
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+    filterset_fields = ["taxa"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        project = self.get_active_project()
+        if project:
+            # Filter by project, but also include global tags
+            return qs.filter(models.Q(project=project) | models.Q(project__isnull=True))
+        return qs
 
 
 class ClassificationViewSet(DefaultViewSet, ProjectMixin):
