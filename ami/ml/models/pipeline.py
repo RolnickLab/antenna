@@ -38,7 +38,9 @@ from ami.main.models import (
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
+    AlgorithmReference,
     ClassificationResponse,
+    DetectionRequest,
     DetectionResponse,
     PipelineRequest,
     PipelineRequestConfigParameters,
@@ -61,6 +63,7 @@ def filter_processed_images(
     Return only images that need to be processed by a given pipeline.
     An image needs processing if:
     1. It has no detections from the pipeline's detection algorithm
+    or
     2. It has detections but they don't have classifications from all the pipeline's classification algorithms
     """
     pipeline_algorithms = pipeline.algorithms.all()
@@ -191,14 +194,31 @@ def process_images(
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
-    source_images = [
-        SourceImageRequest(
-            id=str(source_image.pk),
-            url=url,
-        )
-        for source_image, url in zip(images, urls)
-        if url
-    ]
+    source_image_requests: list[SourceImageRequest] = []
+    detection_requests: list[DetectionRequest] = []
+
+    for source_image, url in zip(images, urls):
+        if url:
+            source_image_request = SourceImageRequest(
+                id=str(source_image.pk),
+                url=url,
+            )
+            source_image_requests.append(source_image_request)
+            # Re-process all existing detections if they exist
+            for detection in source_image.detections.all():
+                bbox = detection.get_bbox()
+                if bbox and detection.detection_algorithm:
+                    detection_requests.append(
+                        DetectionRequest(
+                            source_image=source_image_request,
+                            bbox=bbox,
+                            crop_image_url=detection.url(),
+                            algorithm=AlgorithmReference(
+                                name=detection.detection_algorithm.name,
+                                key=detection.detection_algorithm.key,
+                            ),
+                        )
+                    )
 
     if not project_id:
         task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
@@ -206,10 +226,13 @@ def process_images(
     config = pipeline.get_config(project_id=project_id)
     task_logger.info(f"Using pipeline config: {config}")
 
+    task_logger.info(f"Found {len(detection_requests)} existing detections.")
+
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
-        source_images=source_images,
+        source_images=source_image_requests,
         config=config,
+        detections=detection_requests,
     )
 
     session = create_session()
@@ -229,7 +252,8 @@ def process_images(
             pipeline=pipeline.slug,
             total_time=0,
             source_images=[
-                SourceImageResponse(id=source_image.id, url=source_image.url) for source_image in source_images
+                SourceImageResponse(id=source_image_request.id, url=source_image_request.url)
+                for source_image_request in source_image_requests
             ],
             detections=[],
             errors=msg,
@@ -350,23 +374,12 @@ def get_or_create_detection(
     serialized_bbox = list(detection_resp.bbox.dict().values())
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
-    assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-    try:
-        detection_algo = algorithms_used[detection_resp.algorithm.key]
-    except KeyError:
-        raise ValueError(
-            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-            "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_used.keys())}"
-        )
-
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     existing_detection = Detection.objects.filter(
         source_image=source_image,
-        detection_algorithm=detection_algo,
         bbox=serialized_bbox,
     ).first()
 
@@ -386,6 +399,16 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
+        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+        try:
+            detection_algo = algorithms_used[detection_resp.algorithm.key]
+        except KeyError:
+            raise ValueError(
+                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                "The processing service must declare it in the /info endpoint. "
+                f"Known algorithms: {list(algorithms_used.keys())}"
+            )
+
         new_detection = Detection(
             source_image=source_image,
             bbox=serialized_bbox,
@@ -969,7 +992,7 @@ class Pipeline(BaseModel):
         )
 
     def choose_processing_service_for_pipeline(
-        self, job_id: int, pipeline_name: str, project_id: int
+        self, job_id: int | None, pipeline_name: str, project_id: int
     ) -> ProcessingService:
         # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
 

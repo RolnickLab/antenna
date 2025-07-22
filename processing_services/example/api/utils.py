@@ -26,6 +26,18 @@ USER_AGENT = "AntennaInsectDataPlatform/1.0 (https://insectai.org)"
 # -----------
 
 
+def is_url(path: str) -> bool:
+    return path.startswith("http://") or path.startswith("https://")
+
+
+def is_base64(s: str) -> bool:
+    try:
+        # Check if string can be decoded from base64
+        return base64.b64encode(base64.b64decode(s)).decode() == s
+    except Exception:
+        return False
+
+
 def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
     """
     Fetch a file from a URL or local path. If the path is a URL, download the file.
