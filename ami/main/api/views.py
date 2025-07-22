@@ -646,6 +646,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     ]
     filterset_fields = ["method"]
     ordering_fields = [
+        "id",
         "created_at",
         "updated_at",
         "name",
