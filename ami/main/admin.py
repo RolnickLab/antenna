@@ -394,6 +394,29 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     def detections_count(self, obj) -> int:
         return obj.detections_count
 
+    @admin.action(description="Apply class masking to occurrences")
+    def apply_class_mask(self, request: HttpRequest, queryset: QuerySet[Occurrence]) -> QuerySet[Occurrence]:
+        """
+        Apply class masking to the queryset.
+        This is a placeholder for the actual implementation.
+        """
+        from ami.main.models import TaxaList
+        from ami.ml.models import Algorithm
+        from ami.ml.post_processing import class_masking
+
+        taxa_list = TaxaList.objects.get(pk=5)
+        algorithm = Algorithm.objects.get(pk=11)
+
+        for occurrence in queryset:
+            class_masking.update_single_occurrence(
+                occurrence=occurrence,
+                algorithm=algorithm,
+                taxa_list=taxa_list,
+            )
+        return queryset
+
+    actions = [apply_class_mask]
+
     ordering = ("-created_at",)
 
     # Add classifications as inline
