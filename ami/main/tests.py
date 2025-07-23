@@ -28,6 +28,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.pipeline import Pipeline
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_in_range,
