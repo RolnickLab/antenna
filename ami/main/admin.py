@@ -372,7 +372,7 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "determination__rank",
         "created_at",
     )
-    search_fields = ("determination__name", "determination__search_names")
+    search_fields = ("determination__name", "determination__search_names", "pk")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -420,7 +420,7 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     ordering = ("-created_at",)
 
     # Add classifications as inline
-    inlines = [DetectionInline]
+    # inlines = [DetectionInline]
 
 
 @admin.register(Classification)
