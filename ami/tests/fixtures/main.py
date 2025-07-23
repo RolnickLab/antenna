@@ -162,6 +162,51 @@ def create_captures(
     return created
 
 
+def create_captures_in_range(
+    deployment: Deployment,
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+    interval_minutes: int = 10,
+    subdir: str = "test",
+    keep_existing: bool = True,
+):
+    assert start_time < end_time, "start_time must be before end_time"
+    assert interval_minutes > 0, "interval_minutes must be > 0"
+
+    if not keep_existing:
+        SourceImage.objects.filter(deployment=deployment).delete()
+
+    current_time = start_time
+    source_images = []
+
+    while current_time <= end_time:
+        prefix = f"deployment_{deployment.pk}"
+        path = pathlib.Path(subdir) / f"{prefix}_{current_time.strftime('%Y%m%d%H%M%S')}.jpg"
+
+        source_images.append(
+            SourceImage(
+                deployment=deployment,
+                timestamp=current_time,
+                path=path,
+                last_modified=timezone.now(),
+                size=100,
+                checksum="",
+                checksum_algorithm="md5",
+            )
+        )
+
+        current_time += datetime.timedelta(minutes=interval_minutes)
+
+    created_images = SourceImage.objects.bulk_create(
+        source_images,
+        update_conflicts=True,
+        unique_fields=["deployment", "path"],  # type: ignore
+        update_fields=["last_modified", "size", "checksum", "checksum_algorithm"],
+    )
+
+    return created_images
+
+
 def create_captures_from_files(
     deployment: Deployment, skip_existing=True
 ) -> list[tuple[SourceImage, GeneratedTestFrame]]:
@@ -414,5 +459,7 @@ def create_local_admin_user():
         logger.error(f"Failed to create superuser: {e}")
 
     email = os.environ.get("DJANGO_SUPERUSER_EMAIL", "Unknown")
+    password = os.environ.get("DJANGO_SUPERUSER_PASSWORD", "Unknown")
+    logger.info(f"Test user credentials: {email} / {password}")
     password = os.environ.get("DJANGO_SUPERUSER_PASSWORD", "Unknown")
     logger.info(f"Test user credentials: {email} / {password}")
