@@ -103,7 +103,9 @@ def make_classifications_filtered_by_taxa_list(
     )
 
     classifications_to_add = []
+    classifications_to_update = []
 
+    timestamp = timezone.now()
     for classification in classifications:
         scores, logits = classification.scores, classification.logits
         # Set scores and logits to zero if they are not in the filtered category indices
@@ -153,6 +155,10 @@ def make_classifications_filtered_by_taxa_list(
             logger.debug(f"Classification {classification.pk} does not need updating")
             continue
 
+        # Consider the existing classification as an intermediate classification
+        classification.terminal = False
+        classification.updated_at = timestamp
+
         # Recalculate the top taxon and score
         new_classification = Classification(
             taxon=top_taxon,
@@ -164,10 +170,11 @@ def make_classifications_filtered_by_taxa_list(
             timestamp=classification.timestamp,
             terminal=True,
             category_map=None,  # @TODO need a new category map with the filtered taxa
-            created_at=timezone.now(),
-            updated_at=timezone.now(),
+            created_at=timestamp,
+            updated_at=timestamp,
         )
 
+        classifications_to_update.append(classification)
         classifications_to_add.append(new_classification)
 
         assert new_classification.detection is not None
@@ -178,10 +185,17 @@ def make_classifications_filtered_by_taxa_list(
             f"Adding new classification for Taxon {top_taxon} to occurrence {new_classification.detection.occurrence}"
         )
 
-    # Bulk create the new classifications
-    logger.info(f"Bulk creating {len(classifications_to_add)} new classifications")
-    Classification.objects.bulk_create(classifications_to_add)
-    logger.info(f"Added {len(classifications_to_add)} new classifications")
+    # Bulk update the existing classifications
+    if classifications_to_update:
+        logger.info(f"Bulk updating {len(classifications_to_update)} existing classifications")
+        Classification.objects.bulk_update(classifications_to_update, ["terminal", "updated_at"])
+        logger.info(f"Updated {len(classifications_to_update)} existing classifications")
+
+    if classifications_to_add:
+        # Bulk create the new classifications
+        logger.info(f"Bulk creating {len(classifications_to_add)} new classifications")
+        Classification.objects.bulk_create(classifications_to_add)
+        logger.info(f"Added {len(classifications_to_add)} new classifications")
 
     # Update the occurrence determinations
     logger.info(f"Updating the determinations for {len(occurrences_to_update)} occurrences")
