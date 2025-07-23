@@ -610,6 +610,9 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
+        # Regroup source images  if needed
+        if deployment_event_needs_update(deployment):
+            group_images_into_events(deployment)
         self.save()
         self.update_calculated_fields(save=True)
 
@@ -1099,6 +1102,23 @@ def group_images_into_events(
 
     logger.info(f"Finished grouping {len(timestamps)} images into {len(events)} events for deployment '{deployment}'")
     return events
+
+
+def deployment_event_needs_update(deployment: Deployment) -> bool:
+    """
+    Returns True if there are any SourceImages in the deployment
+    that haven't been assigned to an `Event`.
+
+    Note: This does not detect if images were deleted from the deployment
+    after being grouped. We currently have limited support for image deletion,
+    so handling that is out of scope for this check.
+    """
+
+    ungrouped_images_exist = SourceImage.objects.filter(deployment=deployment, event__isnull=True).exists()
+
+    logger.debug(f"Deployment {deployment.pk}: ungrouped images exist = {ungrouped_images_exist}")
+
+    return ungrouped_images_exist
 
 
 def delete_empty_events(deployment: Deployment, dry_run=False):
