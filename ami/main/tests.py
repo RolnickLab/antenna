@@ -48,33 +48,6 @@ class TestImageGrouping(TestCase):
         self.project, self.deployment = setup_test_project()
         return super().setUp()
 
-    def _create_captures_from_urls(self, deployment, capture_urls):
-        import pathlib
-
-        created = []
-
-        for url in capture_urls:
-            filename = url.split("/")[-1]
-            datetime_str = filename.split("-")[0]
-            timestamp = datetime.datetime.strptime(datetime_str, "%Y%m%d%H%M%S")
-
-            path = pathlib.Path("from_urls") / filename
-
-            img = SourceImage.objects.create(
-                deployment=deployment,
-                timestamp=timestamp,
-                path=path,
-            )
-            created.append(img)
-
-        collection = SourceImageCollection.objects.create(
-            project=deployment.project,
-            name="Source Images from URLs",
-        )
-        collection.images.set(created)
-
-        return created
-
     def test_grouping(self):
         num_nights = 3
         images_per_night = 3
