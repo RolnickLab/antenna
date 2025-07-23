@@ -175,7 +175,7 @@ def make_classifications_filtered_by_taxa_list(
         occurrences_to_update.add(new_classification.detection.occurrence)
 
         logging.info(
-            f"Adding new classification {new_classification} to occurrence {new_classification.detection.occurrence}"
+            f"Adding new classification for Taxon {top_taxon} to occurrence {new_classification.detection.occurrence}"
         )
 
     # Bulk create the new classifications
