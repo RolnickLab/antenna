@@ -15,7 +15,7 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
-from django.db import IntegrityError, models
+from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
@@ -781,6 +781,41 @@ class Deployment(BaseModel):
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
 
 
+class EventQuerySet(models.QuerySet):
+    def dissociate_related_objects(self):
+        """
+        Clear all related objects from the event, including source images and occurrences.
+        This is useful when the event is being deleted or dissociated from its captures.
+        It does not delete the event itself, but removes its associations with source images and occurrences.
+
+        This was created to reassociate source imag es and occurrences with a new event
+        when an event is being split into multiple events, or collapsed into one.
+        """
+        with transaction.atomic():
+            events = self.filter().distinct()
+            image_qs = SourceImage.objects.filter(event__in=events)
+            occ_qs = Occurrence.objects.filter(detections__source_image__in=image_qs).distinct()
+            if not image_qs.exists() and not occ_qs.exists():
+                logger.info("No objects to remove from events")
+                return events
+            logger.info(f"Removing {image_qs.count()} source images and {occ_qs.count()} occurrences from event.")
+            occ_updated_count = occ_qs.update(event=None)
+            # Ensure the image_qs is updated last
+            image_updated_count = image_qs.update(event=None)
+            update_calculated_fields_for_events(
+                qs=events,
+                last_updated=timezone.now(),
+                save=True,
+            )
+            logger.info(f"Dissociated event from {image_updated_count} source images, {occ_updated_count} occurrences")
+            return events
+
+
+class EventManager(models.Manager):
+    def get_queryset(self) -> EventQuerySet:
+        return EventQuerySet(self.model, using=self._db)
+
+
 @final
 class Event(BaseModel):
     """A monitoring session"""
@@ -799,6 +834,8 @@ class Event(BaseModel):
     detections_count = models.IntegerField(blank=True, null=True)
     occurrences_count = models.IntegerField(blank=True, null=True)
     calculated_fields_updated_at = models.DateTimeField(blank=True, null=True)
+
+    objects = EventManager()
 
     class Meta:
         ordering = ["start"]
@@ -936,14 +973,14 @@ def update_calculated_fields_for_events(
     qs: models.QuerySet[Event] | None = None,
     pks: list[typing.Any] | None = None,
     last_updated: datetime.datetime | None = None,
-    save=True,
-):
+    save: bool = True,
+) -> list[Event]:
     """
     This function is called by a migration to update the calculated fields for all events.
 
     @TODO this can likely be abstracted to a more generic function that can be used for any model
     """
-    to_update = []
+    to_update: list[Event] = []
 
     qs = qs or Event.objects.all()
     if pks:
@@ -954,14 +991,14 @@ def update_calculated_fields_for_events(
             Q(calculated_fields_updated_at__isnull=True) | Q(calculated_fields_updated_at__lte=last_updated)
         )
 
-    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
-
     updated_timestamp = timezone.now()
     for event in qs:
         event.update_calculated_fields(save=False, updated_timestamp=updated_timestamp)
         to_update.append(event)
 
-    if save:
+    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
+
+    if save and to_update:
         updated_count = Event.objects.bulk_update(
             to_update,
             [
@@ -993,7 +1030,7 @@ def group_images_into_events(
         .values("timestamp")
         .annotate(count=models.Count("id"))
         .filter(count__gt=1)
-        .exclude(timestamp=None)
+        .exclude(timestamp__isnull=True)
     )
     if dupes.count():
         values = "\n".join(
@@ -1016,9 +1053,8 @@ def group_images_into_events(
     # Group timestamps
     timestamps = list(image_qs.values_list("timestamp", flat=True).distinct())
     timestamp_groups = ami.utils.dates.group_datetimes_by_gap(timestamps, max_time_gap)
-
     existing_events_qs = Event.objects.filter(deployment=deployment)
-    events = []
+    events: list[Event] = []
 
     # For each group of images check if we can merge with an existing
     # event based on overlapping or proximity if use_existing is True.
@@ -1078,6 +1114,12 @@ def group_images_into_events(
     for event in events:
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
+
+        logger.info("Updating related occurrences for images in event")
+        # @TODO can occurrences stay up-to-date with the event via a signal? (efficiently?)
+        Occurrence.objects.filter(detections__source_image__event=event).update(
+            event=event,
+        )
 
     logger.info("Checking for unusual statistics of events")
     events_over_24_hours = Event.objects.filter(
@@ -1582,6 +1624,13 @@ class SourceImage(BaseModel):
             self.project = self.deployment.project
         if self.pk is not None:
             self.detections_count = self.get_detections_count()
+        # This is another approach to keep related occurrences up-to-date.
+        # But it is not used currently because it can be inefficient
+        # occurrences_with_incorrect_event = Occurrence.objects.filter(detection__source_image=self).exclude(
+        #     event=self.event
+        # )
+        # if occurrences_with_incorrect_event.exists():
+        #     occurrences_with_incorrect_event.update(event=self.event)
         if save:
             self.save(update_calculated_fields=False)
 

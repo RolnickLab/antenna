@@ -10,6 +10,7 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
+from ami.main.models import update_calculated_fields_for_events
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
 
@@ -20,6 +21,7 @@ from .models import (
     Detection,
     Device,
     Event,
+    EventQuerySet,
     Occurrence,
     Project,
     S3StorageSource,
@@ -42,7 +44,7 @@ class AdminBase(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
     @admin.action(description="Save selected instances in the background")
-    def save_async(self, request: HttpRequest, queryset: QuerySet[SourceImage]) -> None:
+    def save_async(self, request: HttpRequest, queryset: QuerySet[Any]) -> None:
         app_label = self.model._meta.app_label
         model_name = self.model._meta.model_name
         assert app_label and model_name, "Model must have app_label and model_name"
@@ -214,13 +216,21 @@ class EventAdmin(admin.ModelAdmin[Event]):
     # Save all events in queryset
     @admin.action(description="Updated pre-calculated fields")
     def update_calculated_fields(self, request: HttpRequest, queryset: QuerySet[Event]) -> None:
-        from ami.main.models import update_calculated_fields_for_events
-
         update_calculated_fields_for_events(qs=queryset)
         self.message_user(request, f"Updated {queryset.count()} events.")
 
+    @admin.action()
+    def dissociate_related_objects(self, request: HttpRequest, queryset: EventQuerySet) -> None:
+        """
+        Remove source images and occurrences from events.
+
+        This is useful when you want to recalculate events from source images.
+        """
+        queryset.dissociate_related_objects()
+        self.message_user(request, f"Dissociated {queryset.count()} events from captures and occurrences.")
+
     list_filter = ("deployment", "project", "start")
-    actions = [update_calculated_fields]
+    actions = [dissociate_related_objects, update_calculated_fields]
 
 
 @admin.register(SourceImage)
@@ -249,10 +259,7 @@ class SourceImageAdmin(AdminBase):
         "collections",
     )
 
-    search_fields = (
-        "id",
-        "path",
-    )
+    search_fields = ("id", "path", "event__start__date")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
