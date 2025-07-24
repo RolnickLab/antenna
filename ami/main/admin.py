@@ -21,13 +21,13 @@ from .models import (
     Detection,
     Device,
     Event,
+    EventQuerySet,
     Occurrence,
     Project,
     S3StorageSource,
     Site,
     SourceImage,
     SourceImageCollection,
-    SourceImageQuerySet,
     TaxaList,
     Taxon,
 )
@@ -220,19 +220,17 @@ class EventAdmin(admin.ModelAdmin[Event]):
         self.message_user(request, f"Updated {queryset.count()} events.")
 
     @admin.action()
-    def remove_images_from_events(self, request: HttpRequest, queryset: QuerySet[Event]) -> None:
+    def dissociate_related_objects(self, request: HttpRequest, queryset: EventQuerySet) -> None:
         """
-        Remove source images from events.
+        Remove source images and occurrences from events.
 
         This is useful when you want to recalculate events from source images.
         """
-        source_images: SourceImageQuerySet = SourceImage.objects.filter(event__in=queryset)  # type: ignore
-        source_images_count = source_images.count()
-        source_images.remove_from_event()
-        self.message_user(request, f"Removed {source_images_count} source images from {queryset.count()} events")
+        queryset.dissociate_related_objects()
+        self.message_user(request, f"Dissociated {queryset.count()} events from captures and occurrences.")
 
     list_filter = ("deployment", "project", "start")
-    actions = [remove_images_from_events, update_calculated_fields]
+    actions = [dissociate_related_objects, update_calculated_fields]
 
 
 @admin.register(SourceImage)
@@ -265,13 +263,6 @@ class SourceImageAdmin(AdminBase):
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
-
-    @admin.action()
-    def remove_from_event(self, request: HttpRequest, queryset: SourceImageQuerySet) -> None:
-        queryset.remove_from_event()
-        self.message_user(request, f"Removed {queryset.count()} source images from their events")
-
-    actions = [remove_from_event]
 
 
 class ClassificationInline(admin.TabularInline):
