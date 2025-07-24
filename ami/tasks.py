@@ -93,8 +93,9 @@ def regroup_events(deployment_id: int) -> None:
     deployment = Deployment.objects.get(id=deployment_id)
     if deployment:
         logger.info(f"Grouping captures for {deployment}")
-        events = group_images_into_events(deployment)
-        logger.info(f"{deployment } now has {len(events)} events")
+        group_images_into_events(deployment)
+        total_events = deployment.events.count()
+        logger.info(f"{deployment } now has {total_events} events")
     else:
         logger.error(f"Deployment with id {deployment_id} not found")
 
