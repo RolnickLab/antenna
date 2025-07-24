@@ -15,7 +15,7 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
-from django.db import IntegrityError, models
+from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
@@ -936,14 +936,14 @@ def update_calculated_fields_for_events(
     qs: models.QuerySet[Event] | None = None,
     pks: list[typing.Any] | None = None,
     last_updated: datetime.datetime | None = None,
-    save=True,
-):
+    save: bool = True,
+) -> list[Event]:
     """
     This function is called by a migration to update the calculated fields for all events.
 
     @TODO this can likely be abstracted to a more generic function that can be used for any model
     """
-    to_update = []
+    to_update: list[Event] = []
 
     qs = qs or Event.objects.all()
     if pks:
@@ -1081,6 +1081,12 @@ def group_images_into_events(
     for event in events:
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
+
+        logger.info("Updating related occurrences for images in event")
+        # @TODO should this be done in a signal or a post-save hook?
+        Occurrence.objects.filter(detection__source_image__event=event).update(
+            event=event,
+        )
 
     logger.info("Checking for unusual statistics of events")
     events_over_24_hours = Event.objects.filter(
@@ -1374,6 +1380,32 @@ class SourceImageQuerySet(models.QuerySet):
                 distinct=True,
             )
         )
+
+    def remove_from_event(self):
+        """
+        Remove all source images from the given event.
+        """
+        with transaction.atomic():
+            # Ensure that the event is not deleted
+            qs = self.filter(event__isnull=False)
+            occ_qs = Occurrence.objects.filter(detections__source_image__in=qs).distinct()
+            if qs.exists():
+                logger.info(
+                    f"Removing {self.count()} source images and {occ_qs.count()} occurrences from their event."
+                )
+            else:
+                logger.info("No source images to remove from event.")
+            events = Event.objects.filter(captures__in=qs).distinct()
+            occ_updated_count = occ_qs.update(event=None)
+            # Ensure the qs is updated last
+            image_updated_count = qs.update(event=None)
+            update_calculated_fields_for_events(
+                qs=events,
+                last_updated=timezone.now(),
+                save=True,
+            )
+            logger.info(f"Dissociated event from {image_updated_count} source images, {occ_updated_count} occurrences")
+            return qs
 
 
 class SourceImageManager(models.Manager):
