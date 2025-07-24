@@ -1046,16 +1046,14 @@ def group_images_into_events(
         # Get only newly added images (images without an event)
         image_qs = image_qs.filter(event__isnull=True)
 
-    images = list(image_qs.order_by("timestamp"))
-    if not images:
+    if not image_qs.exists():
         logger.info("No relevant images found; skipping")
         return []
 
     # Group timestamps
-    timestamps = list(image_qs.order_by("timestamp").values_list("timestamp", flat=True).distinct())
+    timestamps = list(image_qs.values_list("timestamp", flat=True).distinct())
     timestamp_groups = ami.utils.dates.group_datetimes_by_gap(timestamps, max_time_gap)
-
-    existing_events = list(Event.objects.filter(deployment=deployment))
+    existing_events_qs = Event.objects.filter(deployment=deployment)
     events: list[Event] = []
 
     # For each group of images check if we can merge with an existing
@@ -1066,12 +1064,12 @@ def group_images_into_events(
     for group in timestamp_groups:
         group_start, group_end = group[0], group[-1]
         group_set = set(group)
-        group_image_ids = [img.pk for img in images if img.timestamp in group_set]
+        group_image_ids = image_qs.filter(timestamp__in=group_set).values_list("pk", flat=True)
 
         event = None
         if use_existing:
             # Look for overlap or proximity
-            for existing_event in existing_events:
+            for existing_event in existing_events_qs:
                 existing_event.refresh_from_db(fields=["start", "end"])
                 overlaps = group_start <= existing_event.end and group_end >= existing_event.start
                 close_enough = (
@@ -1091,12 +1089,10 @@ def group_images_into_events(
             ).first()
 
         if event:
-            if use_existing:
-                # Adjust times if necessary (merge)
-                if group_start < event.start or group_end > event.end:
-                    event.start = min(event.start, group_start)
-                    event.end = max(event.end, group_end)
-            logger.info(f"{'Merged' if use_existing else 'Reused'} event {event} for {len(group_image_ids)} images")
+            # Adjust times if necessary (merge)
+            event.start = min(event.start, group_start)
+            event.end = max(event.end, group_end)
+
         else:
             # Create new event
             event = Event.objects.create(
