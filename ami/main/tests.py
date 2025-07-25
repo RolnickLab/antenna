@@ -32,7 +32,9 @@ from ami.ml.models.pipeline import Pipeline
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_in_range,
+    create_deployment,
     create_occurrences,
+    create_storage_source,
     create_taxa,
     setup_test_project,
 )
@@ -597,12 +599,14 @@ class TestEvents(TestCase):
 
 class TestDuplicateFieldsOnChildren(TestCase):
     def setUp(self) -> None:
-        from ami.main.models import Deployment, Project
+        from ami.main.models import Project
 
         self.project_one = Project.objects.create(name="Test Project One")
         self.project_two = Project.objects.create(name="Test Project Two")
-        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
 
+        data_source = create_storage_source(self.project_one, "Test Data Source")
+        self.deployment = create_deployment(self.project_one, data_source, "Test Deployment")
+        assert self.deployment.data_source is not None
         create_captures(deployment=self.deployment)
         group_images_into_events(deployment=self.deployment)
         create_taxa(project=self.project_one)
@@ -1983,17 +1987,18 @@ class TestDeploymentSyncCreatesEvents(TestCase):
     def test_sync_creates_events_and_updates_counts(self):
         # Set up a new project and deployment with test data
         project, deployment = setup_test_project(reuse=False)
-
+        now = datetime.datetime.now()
         # Populate the object store with image data
         assert deployment.data_source is not None
         populate_bucket(
             config=deployment.data_source.config,
             subdir=f"deployment_{deployment.pk}",
             skip_existing=False,
+            beginning_timestamp=now,
         )
 
         # Sync captures
-        deployment.sync_captures()
+        deployment.sync_captures(regroup_events_per_batch=True)
 
         # Refresh and check results
         deployment.refresh_from_db()
@@ -2013,10 +2018,11 @@ class TestDeploymentSyncCreatesEvents(TestCase):
             num_nights=2,
             images_per_day=5,
             minutes_interval=120,
+            beginning_timestamp=now + datetime.timedelta(days=10),
         )
 
         # Sync again
-        deployment.sync_captures()
+        deployment.sync_captures(regroup_events_per_batch=True)
         deployment.refresh_from_db()
         updated_events = Event.objects.filter(deployment=deployment)
 

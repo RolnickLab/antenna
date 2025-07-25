@@ -1,3 +1,4 @@
+import datetime
 import io
 import logging
 
@@ -45,6 +46,7 @@ def populate_bucket(
     images_per_day: int = 3,
     minutes_interval: int = 45,
     minutes_interval_variation: int = 10,
+    beginning_timestamp: datetime.datetime | None = None,
     skip_existing: bool = True,
 ) -> list[GeneratedTestFrame]:
     # Images need to be named with iso timestamps to be sorted correctly
@@ -67,6 +69,7 @@ def populate_bucket(
             minutes_interval=minutes_interval,
             minutes_interval_variation=minutes_interval_variation,
             save_images=False,
+            beginning_timestamp=beginning_timestamp,
         ):
             # Convert the image to bytes
             img_byte_arr = io.BytesIO()
