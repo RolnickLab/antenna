@@ -199,7 +199,7 @@ class ProcessingService(BaseModel):
         return info_data.pipelines
 
 
-def create_default_processing_service(
+def get_or_create_default_processing_service(
     project: "Project",
     register_pipelines: bool = True,
 ) -> "ProcessingService | None":
