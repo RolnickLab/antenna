@@ -610,11 +610,7 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
-        # Regroup source images  if needed
-        if deployment_event_needs_update(deployment):
-            group_images_into_events(deployment)
         self.save()
-        self.update_calculated_fields(save=True)
 
         if job:
             job.progress.update_stage("Update deployment cache", progress=1)
@@ -756,23 +752,10 @@ class Deployment(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
-        if self.pk:
-            events_last_updated = min(
-                [
-                    self.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
-                    or datetime.datetime.max,
-                    self.updated_at,
-                ]
-            )
-        else:
-            events_last_updated = datetime.datetime.min
-
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
-            # @TODO Use "dirty" flag strategy to only update when needed
-            new_or_updated_captures = self.captures.filter(updated_at__gte=events_last_updated).count()
-            deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
-            if new_or_updated_captures or deleted_captures:
+            if deployment_events_need_update(self):
+                logger.info(f"Deployment {self} has events that need to be regrouped")
                 ami.tasks.regroup_events.delay(self.pk)
             self.update_calculated_fields(save=True)
             if self.project:
@@ -1172,7 +1155,7 @@ def group_images_into_events(
     return events
 
 
-def deployment_event_needs_update(deployment: Deployment) -> bool:
+def deployment_events_need_update(deployment: Deployment) -> bool:
     """
     Returns True if there are any SourceImages in the deployment
     that haven't been assigned to an `Event`.
@@ -1182,11 +1165,35 @@ def deployment_event_needs_update(deployment: Deployment) -> bool:
     so handling that is out of scope for this check.
     """
 
-    ungrouped_images_exist = SourceImage.objects.filter(deployment=deployment, event__isnull=True).exists()
+    capture_counts_differ = deployment.captures_count != deployment.captures.count()
 
-    logger.debug(f"Deployment {deployment.pk}: ungrouped images exist = {ungrouped_images_exist}")
+    ungrouped_images = models.Q(event__isnull=True)
 
-    return ungrouped_images_exist
+    events_last_updated = (
+        deployment.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
+        or deployment.updated_at
+    )
+    images_updated_after_events = models.Q(timestamp__gt=events_last_updated)
+
+    new_or_ungrouped_images = (
+        SourceImage.objects.filter(deployment=deployment).filter(ungrouped_images | images_updated_after_events)
+    ).exists()
+
+    images_in_deployment_but_another_event = (
+        SourceImage.objects.filter(deployment=deployment).exclude(event__in=deployment.events.all()).exists()
+    )
+
+    needs_update = new_or_ungrouped_images or capture_counts_differ or images_in_deployment_but_another_event
+
+    if needs_update:
+        logger.info(
+            f"Deployment {deployment} events need updating: "
+            f"capture_counts_differ={capture_counts_differ}, "
+            f"new_or_ungrouped_images={new_or_ungrouped_images}, "
+            f"images_in_deployment_but_another_event={images_in_deployment_but_another_event}"
+        )
+
+    return needs_update
 
 
 def delete_empty_events(deployment: Deployment, dry_run=False):
@@ -1371,6 +1378,7 @@ def create_source_image_from_upload(image: ImageFieldFile, deployment: Deploymen
         uploaded_by=request.user if request else None,
     )
     source_image.save()
+    deployment.save()
     return source_image
 
 
@@ -1397,11 +1405,6 @@ class SourceImageUpload(BaseModel):
     def get_project(self):
         """Get the project associated with the model instance."""
         return self.deployment.get_project()
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
-        self.deployment.save()
 
 
 @receiver(pre_delete, sender=SourceImageUpload)
