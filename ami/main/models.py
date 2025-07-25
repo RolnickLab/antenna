@@ -250,11 +250,6 @@ class Project(BaseModel):
 
         return plots
 
-    def create(self, *args, **kwargs):
-        """
-        override the create method
-        """
-
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # Add owner to members
@@ -1250,7 +1245,7 @@ class S3StorageSource(BaseModel):
     # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
-    # projects
+    # @TODO allow multiple projects to share the same S3StorageSource
 
     deployments: models.QuerySet["Deployment"]
 
