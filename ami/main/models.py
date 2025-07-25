@@ -123,6 +123,8 @@ def get_or_create_default_collection(project: "Project") -> "SourceImageCollecti
     collection, _created = SourceImageCollection.objects.get_or_create(
         name="All Images",
         project=project,
+        method="full",
+        # @TODO make this a dynamic collection that updates automatically
     )
     logger.info(f"Created default collection for project {project}")
     return collection
@@ -3093,7 +3095,7 @@ class Page(BaseModel):
 
 
 _SOURCE_IMAGE_SAMPLING_METHODS = [
-    "common_combined",  # Deprecated
+    "full",
     "random",
     "stratified_random",
     "interval",
@@ -3103,7 +3105,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "last_and_random_from_each_event",
     "greatest_file_size_from_each_event",
     "detections_only",
-    "full",
+    "common_combined",  # Deprecated
 ]
 
 
@@ -3186,7 +3188,7 @@ class SourceImageCollection(BaseModel):
     method = models.CharField(
         max_length=255,
         choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS),
-        default="common_combined",
+        default="full",
     )
     # @TODO this should be a JSON field with a schema, use a pydantic model
     kwargs = models.JSONField(
