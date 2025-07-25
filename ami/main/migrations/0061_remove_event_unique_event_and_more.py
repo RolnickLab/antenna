@@ -3,6 +3,30 @@
 from django.db import migrations, models
 
 
+def populate_group_by_on_rollback(apps, schema_editor):
+    """Populate group_by field with start date for rollback compatibility."""
+    Event = apps.get_model("main", "Event")
+
+    # Group events by deployment to handle uniqueness
+    from collections import defaultdict
+
+    deployment_counters = defaultdict(lambda: defaultdict(int))
+
+    for event in Event.objects.all().order_by("deployment_id", "start"):
+        if event.start:
+            date_key = event.start.date().isoformat()
+            deployment_counters[event.deployment_id][date_key] += 1
+            counter = deployment_counters[event.deployment_id][date_key]
+
+            # Make group_by unique by appending counter if needed
+            if counter == 1:
+                event.group_by = date_key
+            else:
+                event.group_by = f"{date_key}-{counter}"
+
+            event.save(update_fields=["group_by"])
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("main", "0060_alter_sourceimagecollection_method"),
@@ -17,6 +41,25 @@ class Migration(migrations.Migration):
             model_name="event",
             name="main_event_group_b_6ce666_idx",
         ),
+        # Step 1: Make the field nullable with a default for rollback safety
+        migrations.AlterField(
+            model_name="event",
+            name="group_by",
+            field=models.CharField(
+                db_index=True,
+                help_text="A unique identifier for this event, used to group images into events.",
+                max_length=255,
+                null=True,
+                blank=True,
+                default=None,
+            ),
+        ),
+        # Step 2: Populate data on rollback
+        migrations.RunPython(
+            code=migrations.RunPython.noop,
+            reverse_code=populate_group_by_on_rollback,
+        ),
+        # Step 3: Remove the field
         migrations.RemoveField(
             model_name="event",
             name="group_by",
