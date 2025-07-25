@@ -118,7 +118,7 @@ def get_or_create_default_deployment(
     return deployment
 
 
-def create_default_collection(project: "Project") -> "SourceImageCollection":
+def get_or_create_default_collection(project: "Project") -> "SourceImageCollection":
     """Create a default collection for a project for all images, updated dynamically."""
     collection, _created = SourceImageCollection.objects.get_or_create(
         name="All Images",
@@ -128,7 +128,7 @@ def create_default_collection(project: "Project") -> "SourceImageCollection":
     return collection
 
 
-def create_default_project(user: User) -> "Project":
+def get_or_create_default_project(user: User) -> "Project":
     """
     Create a default project for a user.
 
@@ -136,7 +136,7 @@ def create_default_project(user: User) -> "Project":
     when the project is saved for the first time.
     If the project already exists, it will be returned without modification.
     """
-    project, _created = Project.objects.get_or_create(name="Sandbox Project", owner=user)
+    project, _created = Project.objects.get_or_create(name="Scratch Project", owner=user, create_defaults=True)
     logger.info(f"Created default project for user {user}")
     return project
 
@@ -175,18 +175,16 @@ class ProjectManager(models.Manager):
 
     def create_related_defaults(self, project: "Project"):
         """Create default device, and other related models for this project if they don't exist."""
-        if not project.devices.exists():
-            device = create_default_device(project=project)
-        if not project.sites.exists():
-            site = create_default_research_site(project=project)
-        if not project.sourceimage_collections.exists():
-            create_default_collection(project=project)
+        device = get_or_create_default_device(project=project)
+        site = get_or_create_default_research_site(project=project)
         if not project.deployments.exists():
-            create_default_deployment(project=project, site=site, device=device)
+            get_or_create_default_deployment(project=project, site=site, device=device)
+        if not project.sourceimage_collections.exists():
+            get_or_create_default_collection(project=project)
         if not project.processing_services.exists():
-            from ami.ml.models.processing_service import create_default_processing_service
+            from ami.ml.models.processing_service import get_or_create_default_processing_service
 
-            create_default_processing_service(project=project)
+            get_or_create_default_processing_service(project=project)
 
 
 @final

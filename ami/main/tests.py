@@ -79,11 +79,11 @@ class TestProjectSetup(TestCase):
         """
         Test that the default processing service is created if the environment variables are set.
         """
-        from ami.ml.models.processing_service import create_default_processing_service
+        from ami.ml.models.processing_service import get_or_create_default_processing_service
 
         project = Project.objects.create(name="Test Project for Processing Service", create_defaults=False)
 
-        service = create_default_processing_service(project=project, register_pipelines=False)
+        service = get_or_create_default_processing_service(project=project, register_pipelines=False)
         self.assertIsNotNone(service, "Default processing service should be created if environment variables are set.")
         assert service is not None  # For type checking
         self.assertIsNotNone(service.endpoint_url)
@@ -98,11 +98,11 @@ class TestProjectSetup(TestCase):
         """
         Test that the default processing service is not created if the environment variables are not set.
         """
-        from ami.ml.models.processing_service import create_default_processing_service
+        from ami.ml.models.processing_service import get_or_create_default_processing_service
 
         project = Project.objects.create(name="Test Project for Processing Service", create_defaults=False)
 
-        service = create_default_processing_service(project=project)
+        service = get_or_create_default_processing_service(project=project)
         self.assertIsNone(
             service, "Default processing service should not be created if environment variables are not set."
         )

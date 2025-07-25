@@ -116,6 +116,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     Always return a valid project and deployment, creating them if necessary.
     """
     project = None
+    short_id = ""
     shared_test_project_name = "Shared Test Project"
 
     if reuse:
