@@ -90,26 +90,26 @@ def get_media_url(path: str) -> str:
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
-def create_default_device(project: "Project") -> "Device":
+def get_or_create_default_device(project: "Project") -> "Device":
     """Create a default device for a project."""
     device, _created = Device.objects.get_or_create(name="Default device", project=project)
     logger.info(f"Created default device for project {project}")
     return device
 
 
-def create_default_research_site(project: "Project") -> "Site":
+def get_or_create_default_research_site(project: "Project") -> "Site":
     """Create a default research site for a project."""
     site, _created = Site.objects.get_or_create(name="Default site", project=project)
     logger.info(f"Created default research site for project {project}")
     return site
 
 
-def create_default_deployment(
+def get_or_create_default_deployment(
     project: "Project", site: "Site | None" = None, device: "Device | None" = None
 ) -> "Deployment":
     """Create a default deployment for a project."""
     deployment, _created = Deployment.objects.get_or_create(
-        name="Example Station",
+        name="Default Station",
         project=project,
         research_site=site,
         device=device,
