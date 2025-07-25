@@ -1,6 +1,7 @@
 import { getCompactDatespanString } from 'utils/date/getCompactDatespanString/getCompactDatespanString'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 
 export type ServerEvent = any // TODO: Update this type
@@ -97,6 +98,18 @@ export class Session {
     return getCompactTimespanString({
       date1: new Date(this._event.start),
       date2: new Date(this._event.end),
+    })
+  }
+
+  get createdAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._event.created_at),
+    })
+  }
+
+  get updatedAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._event.updated_at),
     })
   }
 }
