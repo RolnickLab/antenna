@@ -10,7 +10,7 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
-from ami.main.models import update_calculated_fields_for_events
+from ami.main.models import group_images_into_events, update_calculated_fields_for_events
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
 
@@ -229,8 +229,22 @@ class EventAdmin(admin.ModelAdmin[Event]):
         queryset.dissociate_related_objects()
         self.message_user(request, f"Dissociated {queryset.count()} events from captures and occurrences.")
 
+    @admin.action(description="Fix sessions by regrouping images")
+    def fix_sessions(self, request: HttpRequest, queryset: EventQuerySet) -> None:
+        # Remove images from selected sessions
+        SourceImage.objects.filter(event__in=queryset).update(event=None)
+
+        # Get unique deployments from the selected events
+        deployments = Deployment.objects.filter(events__in=queryset).distinct()
+
+        # Regroup images for each deployment
+        for deployment in deployments:
+            group_images_into_events(deployment, use_existing=False)
+
+        self.message_user(request, f"Fixed sessions: regrouped images in {len(deployments)} deployment(s).")
+
     list_filter = ("deployment", "project", "start")
-    actions = [dissociate_related_objects, update_calculated_fields]
+    actions = [fix_sessions, dissociate_related_objects, update_calculated_fields]
 
 
 @admin.register(SourceImage)
