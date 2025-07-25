@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0060_alter_sourceimagecollection_method"),
+        ("main", "0062_project_feature_flags"),
     ]
 
     operations = [
