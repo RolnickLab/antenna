@@ -289,6 +289,107 @@ class TestImageGrouping(TestCase):
             updated_event.captures.count() == initial_capture_count + 3
         )  # 3 new images are added (not considered duplicates)
 
+    def test_regroup_with_different_time_gap(self):
+        """
+        Scenario: There are already grouped events using a certain time gap.
+        Then we re-group with a different (smaller) time gap using use_existing=False.
+        Expectation:
+        - All previous groupings are overridden.
+        - Events match new grouping.
+        - No empty events are left.
+        """
+        now = datetime.datetime.now()
+
+        # Initial setup: create 6 images, 15 mins apart => total 75 mins
+        first_batch_start = now
+        first_batch_end = now + datetime.timedelta(minutes=75)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=first_batch_start,
+            end_time=first_batch_end,
+            interval_minutes=15,
+            keep_existing=False,
+        )
+        gap_between_batches = datetime.timedelta(minutes=45)
+        second_batch_start = first_batch_end + gap_between_batches
+        second_batch_end = second_batch_start + datetime.timedelta(minutes=75)
+
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=second_batch_start,
+            end_time=second_batch_end,
+            interval_minutes=15,
+            keep_existing=True,
+        )
+
+        # Group with large time gap (2 hours)
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            use_existing=False,
+        )
+        assert Event.objects.filter(deployment=self.deployment).count() == 1
+
+        # Re-group with smaller time gap (30 mins)
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(minutes=30),
+            use_existing=False,
+        )
+
+        events = Event.objects.filter(deployment=self.deployment)
+        images = SourceImage.objects.filter(deployment=self.deployment)
+
+        # Should split into two events
+        assert events.count() == 2, "Expected two events after regrouping with smaller time gap"
+        # No empty events left
+        for event in events:
+            assert event.captures.exists(), f"Event {event.pk} should not be empty after regrouping"
+        # All images reassigned
+        assert (
+            images.exclude(event__isnull=True).count() == images.count()
+        ), "All images should be assigned to an event after regrouping"
+
+    def test_full_regroup_after_adding_new_overlapping_images(self):
+        now = datetime.datetime.now()
+
+        # Create first batch: 4 images (10 min apart)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=1),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+        logger.info("First batch of images created.")
+        group_images_into_events(deployment=self.deployment, use_existing=False)
+        old_events = Event.objects.filter(deployment=self.deployment)
+        assert old_events.exists()
+        assert old_events.count() == 1, "Expected one event after first grouping"
+
+        # Add second batch of images (new captures) that overlaps with existing events
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(minutes=40),
+            end_time=now + datetime.timedelta(hours=2),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Full regroup
+        group_images_into_events(deployment=self.deployment, use_existing=False)
+
+        events = Event.objects.filter(deployment=self.deployment)
+        # expected one event, since the new captures overlap with the existing ones
+        assert events.count() == 1, "Expected one event after regrouping with new overlapping images"
+        images = SourceImage.objects.filter(deployment=self.deployment)
+
+        # Every image belongs to a valid event
+        assert images.exclude(event__isnull=True).count() == images.count()
+        # No empty events
+        for event in events:
+            assert event.captures.exists()
+
 
 # This test is disabled because it requires certain data to be present in the database
 # and data in a configured S3 bucket. Will require Minio or something like it to be running.
