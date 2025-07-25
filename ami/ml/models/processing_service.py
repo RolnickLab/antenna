@@ -17,7 +17,7 @@ from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoRe
 logger = logging.getLogger(__name__)
 
 
-class ProcessingServiceManger(models.Manager):
+class ProcessingServiceManager(models.Manager):
     """Custom manager for ProcessingService to handle specific queries."""
 
     def create(self, **kwargs) -> "ProcessingService":
@@ -39,7 +39,7 @@ class ProcessingService(BaseModel):
     last_checked_live = models.BooleanField(null=True)
     last_checked_latency = models.FloatField(null=True)
 
-    objects = ProcessingServiceManger()
+    objects = ProcessingServiceManager()
 
     def __str__(self):
         return f'#{self.pk} "{self.name}" at {self.endpoint_url}'
@@ -117,7 +117,8 @@ class ProcessingService(BaseModel):
             logger.info(
                 f"Pipeline '{pipeline.name}' (slug: {pipeline.slug}, version: {pipeline.version}) "
                 f"{'created' if created else 'updated'}, "
-                f"enabled for projects: {[project.name for project in projects if project_pipeline_config.enabled]}."
+                f"applied to {projects.count()} projects."
+                f"pipelines enabled: {enable_only if enable_only else 'all'}"
             )
             pipeline.save()
             pipelines.append(pipeline)
