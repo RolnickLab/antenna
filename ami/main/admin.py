@@ -231,9 +231,7 @@ class EventAdmin(admin.ModelAdmin[Event]):
 
     @admin.action(description="Fix sessions by regrouping images")
     def fix_sessions(self, request: HttpRequest, queryset: EventQuerySet) -> None:
-        # Remove images from selected sessions
-        SourceImage.objects.filter(event__in=queryset).update(event=None)
-
+        queryset.dissociate_related_objects()
         # Get unique deployments from the selected events
         deployments = Deployment.objects.filter(events__in=queryset).distinct()
 
