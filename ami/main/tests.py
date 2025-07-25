@@ -390,6 +390,117 @@ class TestImageGrouping(TestCase):
         for event in events:
             assert event.captures.exists()
 
+    def test_merge_with_multiple_existing_overlapping_events(self):
+        now = datetime.datetime.now()
+
+        # Create first batch: 0 to 2 hour
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=2),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Create second batch: 3 to 5 hours
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=4),
+            end_time=now + datetime.timedelta(hours=7),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Group all images initially (use_existing=False)
+        initial_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        assert len(initial_events) == 2
+
+        # Create third batch: overlaps both (1 to 5 hours)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=1),
+            end_time=now + datetime.timedelta(hours=5),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Regroup all (use_existing=False) — should create one merged event
+        full_regrouped = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        assert len(full_regrouped) == 1
+
+    def test_merge_with_multiple_existing_overlapping_events_use_existing_true(self):
+        now = datetime.datetime.now()
+
+        # Create first batch: 0 to 2 hour
+        first_batch_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=2),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Create second batch: 4 to 7 hours
+        second_batch_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=4),
+            end_time=now + datetime.timedelta(hours=7),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Group all images initially (use_existing=False)
+        group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        # Assert that there are two events
+        # Get events sorted by start time
+        initial_events = Event.objects.filter(deployment=self.deployment).order_by("start")
+
+        assert len(initial_events) == 2
+        # assert that the first event has 13 captures and start time is now, end time is now + 2 hours
+        first_event = initial_events[0]
+        assert first_event.start == now
+        assert first_event.end == now + datetime.timedelta(hours=2)
+        assert first_event.captures.count() == 13
+        # assert that the second event has 19 captures and start time is now + 4 hours, end time is now + 7 hours
+        second_event = initial_events[1]
+        assert second_event.start == now + datetime.timedelta(hours=4)
+        assert second_event.end == now + datetime.timedelta(hours=7)
+        assert second_event.captures.count() == 19
+
+        # Create third batch: overlaps both (1 to 5 hours)
+        third_batch_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=1, minutes=1),
+            end_time=now + datetime.timedelta(hours=5, minutes=1),
+            interval_minutes=2 * 60,  # 2 hours
+            keep_existing=True,
+        )
+
+        # Group only new images (use_existing=True) — should merge into one event
+        group_images_into_events(
+            deployment=self.deployment,
+            use_existing=True,
+        )
+        # Assert that there is one event and it should start at now and end at now + 7 hours
+        merged_events = Event.objects.filter(deployment=self.deployment).order_by("start")
+        assert len(merged_events) == 1
+        merged_event = merged_events[0]
+        assert merged_event.start == now
+        assert merged_event.end == now + datetime.timedelta(hours=7)
+
+        assert merged_event.captures.count() == len(first_batch_captures) + len(second_batch_captures) + len(
+            third_batch_captures
+        )
+
 
 # This test is disabled because it requires certain data to be present in the database
 # and data in a configured S3 bucket. Will require Minio or something like it to be running.

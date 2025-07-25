@@ -1016,6 +1016,32 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def merge_with_following_events(event: Event, events_qs: models.QuerySet, max_time_gap: datetime.timedelta) -> None:
+    """
+    Merge the given event with any following events in the list that overlap or are close enough
+    based on the max_time_gap.
+    """
+    # Evaluate the events_qs to be able to get the index of the current event
+    events = list(events_qs)
+    current_index = events.index(event)
+    remaining_events = events[current_index + 1 :]  # noqa
+    for next_event in remaining_events:
+        if next_event.start > event.end + max_time_gap:
+            break  # No further overlapping or close events possible
+
+        if ami.utils.dates.time_ranges_overlap_or_close(
+            event.start,
+            event.end,
+            next_event.start,
+            next_event.end,
+            max_time_gap,
+        ):
+            SourceImage.objects.filter(event=next_event).update(event=event)
+            event.end = max(event.end, next_event.end)
+
+    logger.info(f"Finished merging events into event {event.pk}")
+
+
 def group_images_into_events(
     deployment: Deployment,
     max_time_gap=datetime.timedelta(minutes=120),
@@ -1053,7 +1079,8 @@ def group_images_into_events(
     # Group timestamps
     timestamps = list(image_qs.values_list("timestamp", flat=True).distinct())
     timestamp_groups = ami.utils.dates.group_datetimes_by_gap(timestamps, max_time_gap)
-    existing_events_qs = Event.objects.filter(deployment=deployment)
+    # Get existing events for this deployment ordered by start time
+    existing_events_qs = Event.objects.filter(deployment=deployment).order_by("start")
     events: list[Event] = []
 
     # For each group of images check if we can merge with an existing
@@ -1071,13 +1098,9 @@ def group_images_into_events(
             # Look for overlap or proximity
             for existing_event in existing_events_qs:
                 existing_event.refresh_from_db(fields=["start", "end"])
-                overlaps = group_start <= existing_event.end and group_end >= existing_event.start
-                close_enough = (
-                    abs(group_start - existing_event.end) <= max_time_gap
-                    or abs(existing_event.start - group_end) <= max_time_gap
-                )
-
-                if overlaps or close_enough:
+                if ami.utils.dates.time_ranges_overlap_or_close(
+                    group_start, group_end, existing_event.start, existing_event.end, max_time_gap
+                ):
                     event = existing_event
                     break
         else:
@@ -1092,6 +1115,12 @@ def group_images_into_events(
             # Adjust times if necessary (merge)
             event.start = min(event.start, group_start)
             event.end = max(event.end, group_end)
+
+            # We do not need to do this if use_existing is False
+            # because we will either have and exact match or a new event.
+            if use_existing:
+                # Try to merge with following events if there are any overlapping or close enough events
+                merge_with_following_events(event, existing_events_qs, max_time_gap)
 
         else:
             # Create new event
