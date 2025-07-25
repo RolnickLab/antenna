@@ -9,12 +9,10 @@ from django.conf import settings
 from django.db import models
 
 from ami.base.models import BaseModel
+from ami.main.models import Project
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
-
-if typing.TYPE_CHECKING:
-    from ami.main.models import Project
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +48,11 @@ class ProcessingService(BaseModel):
         verbose_name = "Processing Service"
         verbose_name_plural = "Processing Services"
 
-    def create_pipelines(self):
+    def create_pipelines(
+        self,
+        enable_only: list[str] | None = None,
+        projects: models.QuerySet[Project] | None = None,
+    ) -> PipelineRegistrationResponse:
         """
         Register pipeline choices in Antenna using the pipeline configurations from the processing service API.
         """
@@ -60,6 +62,7 @@ class ProcessingService(BaseModel):
         pipelines = []
         pipelines_created = []
         algorithms_created = []
+        projects = projects or self.projects.all()
 
         for pipeline_data in pipelines_to_add:
             pipeline = Pipeline.objects.filter(
@@ -75,36 +78,47 @@ class ProcessingService(BaseModel):
                 )
                 created = True
 
-            for project in self.projects.all():
+            for project in projects:
+                if enable_only is not None and pipeline.slug not in enable_only:
+                    enabled = False
+                else:
+                    enabled = True
                 project_pipeline_config, created = ProjectPipelineConfig.objects.get_or_create(
                     pipeline=pipeline,
                     project=project,
-                    defaults={"enabled": True, "config": {}},
+                    defaults={"enabled": enabled, "config": {}},
                 )
                 if created:
-                    logger.info(f"Created project pipeline config for {project.name} and {pipeline.name}.")
+                    logger.debug(
+                        f"Created project pipeline config for {project.name} and {pipeline.name} (enabled: {enabled})."
+                    )
                     project_pipeline_config.save()
                 else:
-                    logger.info(f"Using existing project pipeline config for {project.name} and {pipeline.name}.")
+                    logger.debug(f"Using existing project pipeline config for {project.name} and {pipeline.name}.")
 
             self.pipelines.add(pipeline)
 
             if created:
-                logger.info(f"Successfully created pipeline {pipeline.name}.")
+                logger.debug(f"Successfully created pipeline {pipeline.name}.")
                 pipelines_created.append(pipeline.slug)
             else:
-                logger.info(f"Using existing pipeline {pipeline.name}.")
+                logger.debug(f"Using existing pipeline {pipeline.name}.")
 
             existing_algorithms = pipeline.algorithms.all()
             for algorithm_data in pipeline_data.algorithms:
                 algorithm = get_or_create_algorithm_and_category_map(algorithm_data, logger=logger)
                 if algorithm not in existing_algorithms:
-                    logger.info(f"Registered new algorithm {algorithm.name} to pipeline {pipeline.name}.")
+                    logger.debug(f"Registered new algorithm {algorithm.name} to pipeline {pipeline.name}.")
                     pipeline.algorithms.add(algorithm)
                     pipelines_created.append(algorithm.key)
                 else:
-                    logger.info(f"Using existing algorithm {algorithm.name}.")
+                    logger.debug(f"Using existing algorithm {algorithm.name}.")
 
+            logger.info(
+                f"Pipeline '{pipeline.name}' (slug: {pipeline.slug}, version: {pipeline.version}) "
+                f"{'created' if created else 'updated'}, "
+                f"enabled for projects: {[project.name for project in projects if project_pipeline_config.enabled]}."
+            )
             pipeline.save()
             pipelines.append(pipeline)
 
@@ -215,5 +229,8 @@ def create_default_processing_service(
     service.projects.add(project)
     logger.info(f"Created default processing service for project {project}")
     if register_pipelines:
-        service.create_pipelines()  # Register pipelines from the processing service
+        service.create_pipelines(
+            enable_only=settings.DEFAULT_PIPELINES_ENABLED,
+            projects=Project.objects.filter(pk=project.pk),
+        )
     return service

@@ -53,3 +53,8 @@ DJANGO_ACCOUNT_ALLOW_REGISTRATION=True
 # Gunicorn
 # ------------------------------------------------------------------------------
 WEB_CONCURRENCY=4
+
+# Default processing service
+DEFAULT_PROCESSING_SERVICE_NAME="AMI Data Companion"
+DEFAULT_PROCESSING_SERVICE_ENDPOINT=http://ml.antenna.insectai.org/
+DEFAULT_PIPELINES_ENABLED=global_moths_2024,quebec_vermont_moths_2023,panama_moths_2023
