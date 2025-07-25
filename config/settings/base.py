@@ -435,3 +435,4 @@ DEFAULT_PROCESSING_SERVICE_NAME = env(
 DEFAULT_PROCESSING_SERVICE_ENDPOINT = env(
     "DEFAULT_PROCESSING_SERVICE_ENDPOINT", default=None  # type: ignore[no-untyped-call]
 )
+DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None)  # type: ignore[no-untyped-call]
