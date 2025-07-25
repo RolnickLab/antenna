@@ -117,7 +117,7 @@ class ProcessingService(BaseModel):
             logger.info(
                 f"Pipeline '{pipeline.name}' (slug: {pipeline.slug}, version: {pipeline.version}) "
                 f"{'created' if created else 'updated'}, "
-                f"applied to {projects.count()} projects."
+                f"applied to {projects.count()} projects. "
                 f"pipelines enabled: {enable_only if enable_only else 'all'}"
             )
             pipeline.save()
