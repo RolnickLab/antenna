@@ -15,7 +15,7 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
-from django.db import IntegrityError, models
+from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
@@ -34,6 +34,7 @@ from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
+    from ami.ml.models import ProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -89,18 +90,55 @@ def get_media_url(path: str) -> str:
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
-def create_default_device(project: "Project") -> "Device":
+def get_or_create_default_device(project: "Project") -> "Device":
     """Create a default device for a project."""
     device, _created = Device.objects.get_or_create(name="Default device", project=project)
     logger.info(f"Created default device for project {project}")
     return device
 
 
-def create_default_research_site(project: "Project") -> "Site":
+def get_or_create_default_research_site(project: "Project") -> "Site":
     """Create a default research site for a project."""
     site, _created = Site.objects.get_or_create(name="Default site", project=project)
     logger.info(f"Created default research site for project {project}")
     return site
+
+
+def get_or_create_default_deployment(
+    project: "Project", site: "Site | None" = None, device: "Device | None" = None
+) -> "Deployment":
+    """Create a default deployment for a project."""
+    deployment, _created = Deployment.objects.get_or_create(
+        name="Default Station",
+        project=project,
+        research_site=site,
+        device=device,
+    )
+    logger.info(f"Created default deployment for project {project}")
+    return deployment
+
+
+def get_or_create_default_collection(project: "Project") -> "SourceImageCollection":
+    """Create a default collection for a project for all images, updated dynamically."""
+    collection, _created = SourceImageCollection.objects.get_or_create(
+        name="All Images",
+        project=project,
+    )
+    logger.info(f"Created default collection for project {project}")
+    return collection
+
+
+def get_or_create_default_project(user: User) -> "Project":
+    """
+    Create a default project for a user.
+
+    Default related objects like devices and research sites will be created
+    when the project is saved for the first time.
+    If the project already exists, it will be returned without modification.
+    """
+    project, _created = Project.objects.get_or_create(name="Scratch Project", owner=user, create_defaults=True)
+    logger.info(f"Created default project for user {user}")
+    return project
 
 
 class ProjectQuerySet(models.QuerySet):
@@ -114,6 +152,39 @@ class ProjectQuerySet(models.QuerySet):
 class ProjectManager(models.Manager):
     def get_queryset(self) -> ProjectQuerySet:
         return ProjectQuerySet(self.model, using=self._db)
+
+    def create(self, create_defaults: bool = True, **kwargs) -> "Project":
+        """
+        Create a new Project and related models with defaults.
+
+        Args:
+            create_defaults: Whether to create default related models
+            **kwargs: Model field values
+
+        Returns:
+            Created Project instance
+        """
+        with transaction.atomic():
+            project_instance = super().create(**kwargs)
+            logger.info(f"Created project: {project_instance.name}")
+
+            if create_defaults:
+                self.create_related_defaults(project_instance)
+
+            return project_instance
+
+    def create_related_defaults(self, project: "Project"):
+        """Create default device, and other related models for this project if they don't exist."""
+        device = get_or_create_default_device(project=project)
+        site = get_or_create_default_research_site(project=project)
+        if not project.deployments.exists():
+            get_or_create_default_deployment(project=project, site=site, device=device)
+        if not project.sourceimage_collections.exists():
+            get_or_create_default_collection(project=project)
+        if not project.processing_services.exists():
+            from ami.ml.models.processing_service import get_or_create_default_processing_service
+
+            get_or_create_default_processing_service(project=project)
 
 
 @final
@@ -141,6 +212,8 @@ class Project(BaseModel):
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    sourceimage_collections: models.QuerySet["SourceImageCollection"]
+    processing_services: models.QuerySet["ProcessingService"]
     tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
@@ -179,21 +252,10 @@ class Project(BaseModel):
 
         return plots
 
-    def create_related_defaults(self):
-        """Create default device, and other related models for this project if they don't exist."""
-        if not self.devices.exists():
-            create_default_device(project=self)
-        if not self.sites.exists():
-            create_default_research_site(project=self)
-
     def save(self, *args, **kwargs):
-        new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
-        if new_project:
-            logger.info(f"Created new project {self}")
-            self.create_related_defaults()
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
@@ -1178,6 +1240,7 @@ class S3StorageSource(BaseModel):
     # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
+    # @TODO allow multiple projects to share the same S3StorageSource
 
     deployments: models.QuerySet["Deployment"]
 
