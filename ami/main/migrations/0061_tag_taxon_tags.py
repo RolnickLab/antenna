@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0059_alter_project_options"),
+        ("main", "0060_alter_sourceimagecollection_method"),
     ]
 
     operations = [
