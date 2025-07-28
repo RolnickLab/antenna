@@ -203,7 +203,7 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["random", "constant", "random-detection-random-species"]
+PipelineChoice = typing.Literal["constant", "random-detection-random-species"]
 
 
 class PipelineRequest(pydantic.BaseModel):
@@ -237,6 +237,7 @@ class PipelineResultsResponse(pydantic.BaseModel):
     total_time: float
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
+    errors: str | None = None
 
 
 class PipelineStageParam(pydantic.BaseModel):

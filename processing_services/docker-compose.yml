@@ -11,6 +11,17 @@ services:
     networks:
       - antenna_network
 
+  celeryworker_minimal:
+    build:
+      context: ./minimal
+    command: ./celery_worker/start_celery.sh
+    environment:
+      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+
   ml_backend_example:
     build:
       context: ./example
@@ -18,6 +29,17 @@ services:
       - ./example/:/app:z
     ports:
       - "2003:2000"
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+
+  celeryworker_example:
+    build:
+      context: ./example
+    command: ./celery_worker/start_celery.sh
+    environment:
+      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
     extra_hosts:
       - minio:host-gateway
     networks:
