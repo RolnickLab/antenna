@@ -1,6 +1,5 @@
 import datetime
 
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -32,7 +31,6 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
-    validate_filename_timestamp,
 )
 
 
@@ -1029,14 +1027,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
         obj.source_image = source_image  # type: ignore
         obj.save()
         return obj
-
-    def validate_image(self, value):
-        # Ensure that image filename contains a timestamp
-        try:
-            validate_filename_timestamp(value.name)
-        except DjangoValidationError as e:
-            raise serializers.ValidationError(str(e))
-        return value
 
 
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):

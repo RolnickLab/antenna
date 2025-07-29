@@ -1,14 +1,15 @@
 import collections
 import datetime
 import functools
-import hashlib
 import logging
 import textwrap
 import time
 import typing
 import urllib.parse
+from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import PIL.Image
 import pydantic
 from django.apps import apps
 from django.conf import settings
@@ -30,6 +31,7 @@ from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
 from ami.users.models import User
+from ami.utils.media import calculate_file_checksum, extract_timestamp
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
@@ -1345,9 +1347,28 @@ def create_source_image_from_upload(
     process_now=True,
 ) -> "SourceImage":
     """Create a complete SourceImage from an uploaded file."""
-    # md5 checksum from file
-    checksum = hashlib.md5(image.read()).hexdigest()
-    checksum_algorithm = "md5"
+
+    # Read file content once
+    image.seek(0)
+    file_content = image.read()
+
+    # Calculate a checksum for the image content
+    checksum, checksum_algorithm = calculate_file_checksum(file_content)
+
+    # Create PIL image from file content (no additional file reads)
+    image_stream = BytesIO(file_content)
+    pil_image = PIL.Image.open(image_stream)
+
+    timestamp = extract_timestamp(filename=image.name, image=pil_image)
+    if not timestamp:
+        raise ValidationError(
+            "A valid timestamp could not be found in the image's EXIF data or filename. "
+            "Please rename the file to include a timestamp "
+            "(e.g. YYYYMMDDHHMMSS-snapshot.jpg). "
+        )
+    width = pil_image.width
+    height = pil_image.height
+    size = len(file_content)
 
     # get full public media url of image:
     if request:
@@ -1360,20 +1381,20 @@ def create_source_image_from_upload(
         public_base_url=base_url,  # @TODO how to merge this with the data source?
         project=deployment.project,
         deployment=deployment,
-        timestamp=None,  # Will be calculated from filename or EXIF data on save
+        timestamp=timestamp,
         event=None,  # Will be assigned when the image is grouped into events
-        size=image.size,
+        size=size,
         checksum=checksum,
         checksum_algorithm=checksum_algorithm,
-        width=image.width,
-        height=image.height,
+        width=width,
+        height=height,
         test_image=True,
         uploaded_by=request.user if request else None,
     )
     group_images_into_events(deployment=deployment)
     if process_now:
         process_single_source_image(source_image=source_image)
-    # deployment.save()
+    deployment.save()
     return source_image
 
 
@@ -1390,7 +1411,8 @@ class SourceImageUpload(BaseModel):
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
 
-    image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
+    # image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
+    image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
     source_image = models.OneToOneField(
