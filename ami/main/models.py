@@ -34,7 +34,7 @@ from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
-    from ami.ml.models import ProcessingService
+    from ami.ml.models import Pipeline, ProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +215,7 @@ class Project(BaseModel):
     jobs: models.QuerySet["Job"]
     sourceimage_collections: models.QuerySet["SourceImageCollection"]
     processing_services: models.QuerySet["ProcessingService"]
+    pipelines: models.QuerySet["Pipeline"]
 
     objects = ProjectManager()
 
@@ -1337,7 +1338,12 @@ def validate_filename_timestamp(filename: str) -> None:
         raise ValidationError("Image filename does not contain a valid timestamp (e.g. YYYYMMDDHHMMSS-snapshot.jpg).")
 
 
-def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+def create_source_image_from_upload(
+    image: ImageFieldFile,
+    deployment: Deployment,
+    request=None,
+    process_now=True,
+) -> "SourceImage":
     """Create a complete SourceImage from an uploaded file."""
     # md5 checksum from file
     checksum = hashlib.md5(image.read()).hexdigest()
@@ -1349,7 +1355,7 @@ def create_source_image_from_upload(image: ImageFieldFile, deployment: Deploymen
     else:
         base_url = settings.MEDIA_URL
 
-    source_image = SourceImage(
+    source_image = SourceImage.objects.create(
         path=image.name,  # Includes relative path from MEDIA_ROOT
         public_base_url=base_url,  # @TODO how to merge this with the data source?
         project=deployment.project,
@@ -1364,8 +1370,10 @@ def create_source_image_from_upload(image: ImageFieldFile, deployment: Deploymen
         test_image=True,
         uploaded_by=request.user if request else None,
     )
-    source_image.save()
-    deployment.save()
+    group_images_into_events(deployment=deployment)
+    if process_now:
+        process_single_source_image(source_image=source_image)
+    # deployment.save()
     return source_image
 
 
@@ -1665,6 +1673,53 @@ class SourceImage(BaseModel):
             models.Index(fields=["event", "timestamp"]),
             models.Index(fields=["timestamp"]),
         ]
+
+
+def process_single_source_image(
+    source_image: SourceImage,
+    pipeline: "Pipeline | None" = None,
+    run_async=True,
+) -> "Job":
+    """
+    Process a single SourceImage immediately.
+    """
+    from ami.jobs.models import Job
+    from ami.ml.models import Pipeline
+
+    assert source_image.deployment is not None, "SourceImage must belong to a deployment"
+
+    if not source_image.event:
+        group_images_into_events(deployment=source_image.deployment)
+        source_image.refresh_from_db()
+    assert source_image.event is not None, "SourceImage must belong to an event"
+
+    project = source_image.project
+    assert project is not None, "SourceImage must belong to a project"
+
+    # Select the pipeline that has a classification model with the most categories
+    # pipeline_choice = project.pipelines.all().enabled().first()  # type: ignore[union-attr]
+    pipeline_choice = pipeline or (
+        Pipeline.objects.filter()
+        .annotate(num_categories=models.Count("algorithms__category_map__labels"))
+        .order_by("-num_categories")
+        .first()
+    )
+
+    assert pipeline_choice is not None, "Project must have a pipeline to run"
+
+    # @TODO add images to a queue without creatin a job for each image
+    job = Job.objects.create(
+        name=f"Capture #{source_image.pk} ({source_image.timestamp}) from {source_image.deployment.name}",
+        job_type_key="ml",
+        source_image_single=source_image,
+        pipeline=pipeline_choice,
+        project=project,
+    )
+    if run_async:
+        job.enqueue()
+    else:
+        job.run()
+    return job
 
 
 def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None, null_only=False) -> int:

@@ -1013,18 +1013,21 @@ class SourceImageUploadSerializer(DefaultSerializer):
 
     def create(self, validated_data):
         # Add the user to the validated data
-        request = self.context.get("request")
+        request: Request = self.context["request"]
         user = get_current_user(request)
         # @TODO IMPORTANT ensure current user is a member of the deployment's project
         obj = SourceImageUpload.objects.create(user=user, **validated_data)
+        process_now = request.data.get("process_now", True)
         source_image = create_source_image_from_upload(
-            obj.image,
-            obj.deployment,
-            request,
+            image=obj.image,
+            deployment=obj.deployment,
+            request=request,
+            process_now=process_now,
         )
-        if source_image is not None:
-            obj.source_image = source_image  # type: ignore
-            obj.save()
+        if source_image is None:
+            raise serializers.ValidationError("Failed to create source image from upload.")
+        obj.source_image = source_image  # type: ignore
+        obj.save()
         return obj
 
     def validate_image(self, value):
