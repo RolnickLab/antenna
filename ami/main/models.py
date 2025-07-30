@@ -984,6 +984,23 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def audit_event_lengths(deployment: Deployment):
+    logger.info("Checking for unusual event durations")
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    )
+    if events_over_24_hours.count():
+        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
+    )
+    if events_starting_before_noon.count():
+        logger.warning(
+            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
+        )
+
+
 def group_images_into_events(
     deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
@@ -1060,23 +1077,11 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
-    logger.info("Checking for unusual statistics of events")
-    events_over_24_hours = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
-    )
-    if events_over_24_hours.count():
-        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
-    events_starting_before_noon = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
-    )
-    if events_starting_before_noon.count():
-        logger.warning(
-            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
-        )
-
     logger.info("Updating relevant cached fields on deployment")
     deployment.events_count = len(events)
     deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+
+    audit_event_lengths(deployment)
 
     return events
 
