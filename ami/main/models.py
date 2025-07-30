@@ -610,7 +610,8 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
-        self.save()
+        # If new images were added, ensure the regroup happens now, not queued as an async task.
+        self.save(regroup_async=False)
 
         if job:
             job.progress.update_stage("Update deployment cache", progress=1)
@@ -751,12 +752,15 @@ class Deployment(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
-    def save(self, update_calculated_fields=True, *args, **kwargs):
+    def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
             if deployment_events_need_update(self):
                 logger.info(f"Deployment {self} has events that need to be regrouped")
-                ami.tasks.regroup_events.delay(self.pk)
+                if regroup_async:
+                    ami.tasks.regroup_events.delay(self.pk)
+                else:
+                    group_images_into_events(self)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
