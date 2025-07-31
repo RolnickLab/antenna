@@ -1181,7 +1181,7 @@ def deployment_events_need_update(deployment: Deployment) -> bool:
     ).exists()
 
     images_in_deployment_but_another_event = (
-        SourceImage.objects.filter(deployment=deployment).exclude(event__in=deployment.events.all()).exists()
+        SourceImage.objects.filter(deployment=deployment).exclude(event__deployment=deployment).exists()
     )
 
     needs_update = new_or_ungrouped_images or capture_counts_differ or images_in_deployment_but_another_event
