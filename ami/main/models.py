@@ -1162,10 +1162,9 @@ def deployment_events_need_update(deployment: Deployment) -> bool:
 
     ungrouped_images = models.Q(event__isnull=True)
 
-    events_last_updated = (
-        deployment.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
-        or deployment.updated_at
-    )
+    events_last_updated = deployment.events.aggregate(
+        latest_updated_at=models.Max("updated_at"),
+    )["latest_updated_at"]
     images_updated_after_events = models.Q(timestamp__gt=events_last_updated)
 
     new_or_ungrouped_images = (
