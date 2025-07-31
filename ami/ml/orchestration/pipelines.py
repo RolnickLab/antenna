@@ -14,7 +14,8 @@ def get_default_pipeline(project: Project) -> Pipeline | None:
     @TODO use project settings to determine the default pipeline
     """
     return (
-        Pipeline.objects.enabled(project=project)  # type: ignore
+        Pipeline.objects.all()
+        .enabled(project=project)  # type: ignore
         .annotate(num_categories=models.Count("algorithms__category_map__labels"))
         .order_by("-num_categories", "-created_at")
         .first()
