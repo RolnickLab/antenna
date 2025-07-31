@@ -1051,9 +1051,10 @@ def audit_event_lengths(deployment: Deployment):
 
     events_over_24_hours = Event.objects.filter(
         deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
-    )
-    if events_over_24_hours.count():
-        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
+    ).count()
+    if events_over_24_hours:
+        logger.warning(f"Found {events_over_24_hours} event(s) over 24 hours in deployment {deployment}. ")
+
     events_starting_before_noon = Event.objects.filter(
         deployment=deployment, start__hour__lt=12  # Before hour 12
     ).count()
@@ -1061,6 +1062,10 @@ def audit_event_lengths(deployment: Deployment):
         logger.warning(
             f"Found {events_starting_before_noon} event(s) starting before noon in deployment {deployment}. "
         )
+
+    events_ending_before_start = Event.objects.filter(deployment=deployment, start__gt=models.F("end")).count()
+    if events_ending_before_start:
+        logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
 
 
 def group_images_into_events(
