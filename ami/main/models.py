@@ -1055,11 +1055,11 @@ def audit_event_lengths(deployment: Deployment):
     if events_over_24_hours.count():
         logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
     events_starting_before_noon = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
-    )
-    if events_starting_before_noon.count():
+        deployment=deployment, start__hour__lt=12  # Before hour 12
+    ).count()
+    if events_starting_before_noon:
         logger.warning(
-            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
+            f"Found {events_starting_before_noon} event(s) starting before noon in deployment {deployment}. "
         )
 
 
