@@ -1015,7 +1015,7 @@ class SourceImageUploadSerializer(DefaultSerializer):
         user = get_current_user(request)
         # @TODO IMPORTANT ensure current user is a member of the deployment's project
         obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        process_now = request.data.get("process_now", True)
+        process_now = request.data.get("process_now", False)
         source_image = create_source_image_from_upload(
             image=obj.image,
             deployment=obj.deployment,
