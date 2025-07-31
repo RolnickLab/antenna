@@ -325,6 +325,8 @@ class EventListSerializer(DefaultSerializer):
             "taxa_count",
             "captures",
             "example_captures",
+            "created_at",
+            "updated_at",
         ]
 
     def get_captures(self, obj):
@@ -1416,6 +1418,8 @@ class EventSerializer(DefaultSerializer):
             "first_capture",
             "summary_data",
             "capture_page_offset",
+            "created_at",
+            "updated_at",
         ]
 
     def get_captures(self, obj):
