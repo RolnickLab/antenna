@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ami.ml.models import ProcessingService, ProjectPipelineConfig
     from ami.jobs.models import Job
+    from ami.main.models import Project
 
 import collections
 import dataclasses
@@ -886,6 +887,30 @@ class PipelineStage(ConfigurableStage):
     """A configurable stage of a pipeline."""
 
 
+class PipelineQuerySet(models.QuerySet):
+    """Custom QuerySet for Pipeline model."""
+
+    def enabled(self, project: Project) -> PipelineQuerySet:
+        """
+        Return pipelines that are enabled for a given project.
+
+        # @TODO how can this automatically filter based on the pipeline's projects
+        # or the current query without having to specify the project? (e.g. with OuterRef?)
+        """
+        return self.filter(
+            projects=project,
+            project_pipeline_configs__enabled=True,
+            project_pipeline_configs__project=project,
+        ).distinct()
+
+
+class PipelineManager(models.Manager):
+    """Custom Manager for Pipeline model."""
+
+    def get_queryset(self) -> PipelineQuerySet:
+        return PipelineQuerySet(self.model, using=self._db)
+
+
 @typing.final
 class Pipeline(BaseModel):
     """A pipeline of algorithms"""
@@ -917,6 +942,9 @@ class Pipeline(BaseModel):
             "and the processing service."
         ),
     )
+
+    objects = PipelineManager()
+
     processing_services: models.QuerySet[ProcessingService]
     project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
     jobs: models.QuerySet[Job]
