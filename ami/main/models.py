@@ -121,12 +121,16 @@ def get_or_create_default_deployment(
 
 
 def get_or_create_default_collection(project: "Project") -> "SourceImageCollection":
-    """Create a default collection for a project for all images, updated dynamically."""
+    """
+    Create a default collection for a project for all images.
+
+    @TODO Consider ways to update this collection automatically. With a query-only collection
+    or a periodic task that runs the populate_collection method.
+    """
     collection, _created = SourceImageCollection.objects.get_or_create(
         name="All Images",
         project=project,
         method="full",
-        # @TODO make this a dynamic collection that updates automatically
     )
     logger.info(f"Created default collection for project {project}")
     return collection
@@ -1429,7 +1433,6 @@ class SourceImageUpload(BaseModel):
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
 
-    # image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
     image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
