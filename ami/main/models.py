@@ -1384,11 +1384,13 @@ def create_source_image_from_upload(
 
     timestamp = extract_timestamp(filename=image.name, image=pil_image)
     if not timestamp:
-        raise ValidationError(
+        logger.warning(
             "A valid timestamp could not be found in the image's EXIF data or filename. "
             "Please rename the file to include a timestamp "
             "(e.g. YYYYMMDDHHMMSS-snapshot.jpg). "
+            "Falling back to the current time for the image captured timestamp."
         )
+        timestamp = timezone.now()
     width = pil_image.width
     height = pil_image.height
     size = len(file_content)
