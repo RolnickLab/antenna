@@ -1174,7 +1174,7 @@ def deployment_events_need_update(deployment: Deployment) -> bool:
         or deployment.updated_at
         or datetime.datetime.min
     )
-    images_updated_after_events = models.Q(timestamp__gt=events_last_updated)
+    images_updated_after_events = models.Q(updated_at__gt=events_last_updated)
 
     new_or_ungrouped_images = (
         SourceImage.objects.filter(deployment=deployment).filter(ungrouped_images | images_updated_after_events)
