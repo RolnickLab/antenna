@@ -137,6 +137,7 @@ def create_captures(
     images_per_night: int = 3,
     interval_minutes: int = 10,
     subdir: str = "test",
+    update_deployment: bool = True,
 ):
     # Create some images over a few monitoring nights
     first_night = datetime.datetime.now()
@@ -159,6 +160,10 @@ def create_captures(
         name="Test Source Image Collection",
     )
     collection.images.set(created)
+
+    if update_deployment:
+        # This should only be set to False when manually testing grouping images into events
+        deployment.save(update_calculated_fields=True, regroup_async=False)
 
     return created
 

@@ -218,6 +218,8 @@ class Project(BaseModel):
     sourceimage_collections: models.QuerySet["SourceImageCollection"]
     processing_services: models.QuerySet["ProcessingService"]
     pipelines: models.QuerySet["Pipeline"]
+    sourceimage_collections: models.QuerySet["SourceImageCollection"]
+    processing_services: models.QuerySet["ProcessingService"]
 
     objects = ProjectManager()
 
@@ -677,7 +679,8 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
-        self.save()
+        # If new images were added, ensure the regroup happens now, not queued as an async task.
+        self.save(regroup_async=False)
 
         if job:
             job.progress.update_stage("Update deployment cache", progress=1)
@@ -818,12 +821,15 @@ class Deployment(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
-    def save(self, update_calculated_fields=True, *args, **kwargs):
+    def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
             if deployment_events_need_update(self):
                 logger.info(f"Deployment {self} has events that need to be regrouped")
-                ami.tasks.regroup_events.delay(self.pk)
+                if regroup_async:
+                    ami.tasks.regroup_events.delay(self.pk)
+                else:
+                    group_images_into_events(self)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
@@ -1047,6 +1053,28 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def audit_event_lengths(deployment: Deployment):
+    logger.info("Checking for unusual event durations")
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    ).count()
+    if events_over_24_hours:
+        logger.warning(f"Found {events_over_24_hours} event(s) over 24 hours in deployment {deployment}. ")
+
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__hour__lt=12  # Before hour 12
+    ).count()
+    if events_starting_before_noon:
+        logger.warning(
+            f"Found {events_starting_before_noon} event(s) starting before noon in deployment {deployment}. "
+        )
+
+    events_ending_before_start = Event.objects.filter(deployment=deployment, start__gt=models.F("end")).count()
+    if events_ending_before_start:
+        logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
+
+
 def group_images_into_events(
     deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
@@ -1123,23 +1151,11 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
-    logger.info("Checking for unusual statistics of events")
-    events_over_24_hours = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
-    )
-    if events_over_24_hours.count():
-        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
-    events_starting_before_noon = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
-    )
-    if events_starting_before_noon.count():
-        logger.warning(
-            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
-        )
-
     logger.info("Updating relevant cached fields on deployment")
     deployment.events_count = len(events)
     deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+
+    audit_event_lengths(deployment)
 
     return events
 
@@ -1159,17 +1175,20 @@ def deployment_events_need_update(deployment: Deployment) -> bool:
     ungrouped_images = models.Q(event__isnull=True)
 
     events_last_updated = (
-        deployment.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
+        deployment.events.aggregate(
+            latest_updated_at=models.Max("updated_at"),
+        )["latest_updated_at"]
         or deployment.updated_at
+        or datetime.datetime.min
     )
-    images_updated_after_events = models.Q(timestamp__gt=events_last_updated)
+    images_updated_after_events = models.Q(updated_at__gt=events_last_updated)
 
     new_or_ungrouped_images = (
         SourceImage.objects.filter(deployment=deployment).filter(ungrouped_images | images_updated_after_events)
     ).exists()
 
     images_in_deployment_but_another_event = (
-        SourceImage.objects.filter(deployment=deployment).exclude(event__in=deployment.events.all()).exists()
+        SourceImage.objects.filter(deployment=deployment).exclude(event__deployment=deployment).exists()
     )
 
     needs_update = new_or_ungrouped_images or capture_counts_differ or images_in_deployment_but_another_event
@@ -1391,10 +1410,9 @@ def create_source_image_from_upload(
         test_image=True,
         uploaded_by=request.user if request else None,
     )
-    group_images_into_events(deployment=deployment)
+    deployment.save(regroup_async=False)
     if process_now:
         process_single_source_image(source_image=source_image)
-    deployment.save()
     return source_image
 
 
