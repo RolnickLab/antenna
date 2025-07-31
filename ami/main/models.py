@@ -672,11 +672,8 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
-        # Regroup source images  if needed
-        if deployment_event_needs_update(deployment):
-            group_images_into_events(deployment)
-        self.save()
-        self.update_calculated_fields(save=True)
+        # If new images were added, ensure the regroup happens now, not queued as an async task.
+        self.save(regroup_async=False)
 
         if job:
             job.progress.update_stage("Update deployment cache", progress=1)
@@ -817,25 +814,15 @@ class Deployment(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
-    def save(self, update_calculated_fields=True, *args, **kwargs):
-        if self.pk:
-            events_last_updated = min(
-                [
-                    self.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
-                    or datetime.datetime.max,
-                    self.updated_at,
-                ]
-            )
-        else:
-            events_last_updated = datetime.datetime.min
-
+    def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
-            # @TODO Use "dirty" flag strategy to only update when needed
-            new_or_updated_captures = self.captures.filter(updated_at__gte=events_last_updated).count()
-            deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
-            if new_or_updated_captures or deleted_captures:
-                ami.tasks.regroup_events.delay(self.pk)
+            if deployment_events_need_update(self):
+                logger.info(f"Deployment {self} has events that need to be regrouped")
+                if regroup_async:
+                    ami.tasks.regroup_events.delay(self.pk)
+                else:
+                    group_images_into_events(self)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
@@ -1059,6 +1046,28 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def audit_event_lengths(deployment: Deployment):
+    logger.info("Checking for unusual event durations")
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    ).count()
+    if events_over_24_hours:
+        logger.warning(f"Found {events_over_24_hours} event(s) over 24 hours in deployment {deployment}. ")
+
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__hour__lt=12  # Before hour 12
+    ).count()
+    if events_starting_before_noon:
+        logger.warning(
+            f"Found {events_starting_before_noon} event(s) starting before noon in deployment {deployment}. "
+        )
+
+    events_ending_before_start = Event.objects.filter(deployment=deployment, start__gt=models.F("end")).count()
+    if events_ending_before_start:
+        logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
+
+
 def group_images_into_events(
     deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
@@ -1135,28 +1144,16 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
-    logger.info("Checking for unusual statistics of events")
-    events_over_24_hours = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
-    )
-    if events_over_24_hours.count():
-        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
-    events_starting_before_noon = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
-    )
-    if events_starting_before_noon.count():
-        logger.warning(
-            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
-        )
-
     logger.info("Updating relevant cached fields on deployment")
     deployment.events_count = len(events)
     deployment.save(update_calculated_fields=False, update_fields=["events_count"])
 
+    audit_event_lengths(deployment)
+
     return events
 
 
-def deployment_event_needs_update(deployment: Deployment) -> bool:
+def deployment_events_need_update(deployment: Deployment) -> bool:
     """
     Returns True if there are any SourceImages in the deployment
     that haven't been assigned to an `Event`.
@@ -1166,11 +1163,38 @@ def deployment_event_needs_update(deployment: Deployment) -> bool:
     so handling that is out of scope for this check.
     """
 
-    ungrouped_images_exist = SourceImage.objects.filter(deployment=deployment, event__isnull=True).exists()
+    capture_counts_differ = deployment.captures_count != deployment.captures.count()
 
-    logger.debug(f"Deployment {deployment.pk}: ungrouped images exist = {ungrouped_images_exist}")
+    ungrouped_images = models.Q(event__isnull=True)
 
-    return ungrouped_images_exist
+    events_last_updated = (
+        deployment.events.aggregate(
+            latest_updated_at=models.Max("updated_at"),
+        )["latest_updated_at"]
+        or deployment.updated_at
+        or datetime.datetime.min
+    )
+    images_updated_after_events = models.Q(updated_at__gt=events_last_updated)
+
+    new_or_ungrouped_images = (
+        SourceImage.objects.filter(deployment=deployment).filter(ungrouped_images | images_updated_after_events)
+    ).exists()
+
+    images_in_deployment_but_another_event = (
+        SourceImage.objects.filter(deployment=deployment).exclude(event__deployment=deployment).exists()
+    )
+
+    needs_update = new_or_ungrouped_images or capture_counts_differ or images_in_deployment_but_another_event
+
+    if needs_update:
+        logger.info(
+            f"Deployment {deployment} events need updating: "
+            f"capture_counts_differ={capture_counts_differ}, "
+            f"new_or_ungrouped_images={new_or_ungrouped_images}, "
+            f"images_in_deployment_but_another_event={images_in_deployment_but_another_event}"
+        )
+
+    return needs_update
 
 
 def delete_empty_events(deployment: Deployment, dry_run=False):
@@ -1356,6 +1380,7 @@ def create_source_image_from_upload(image: ImageFieldFile, deployment: Deploymen
         uploaded_by=request.user if request else None,
     )
     source_image.save()
+    deployment.save()
     return source_image
 
 
@@ -1382,11 +1407,6 @@ class SourceImageUpload(BaseModel):
     def get_project(self):
         """Get the project associated with the model instance."""
         return self.deployment.get_project()
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
-        self.deployment.save()
 
 
 @receiver(pre_delete, sender=SourceImageUpload)
