@@ -4,7 +4,7 @@ from django.http import HttpRequest
 
 from ami.main.admin import AdminBase
 
-from .models import Job, get_job_type_by_inferred_key
+from .models import Job, MLTaskRecord, get_job_type_by_inferred_key
 
 
 @admin.register(Job)
@@ -53,4 +53,15 @@ class JobAdmin(AdminBase):
         "updated_at",
         "progress",
         "result",
+    )
+
+
+@admin.register(MLTaskRecord)
+class MLTaskRecordAdmin(AdminBase):
+    """Admin panel example for ``MLTaskRecord`` model."""
+
+    list_display = (
+        "job",
+        "task_id",
+        "task_name",
     )

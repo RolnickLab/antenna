@@ -12,9 +12,8 @@ import logging
 import time
 import typing
 import uuid
-from urllib.parse import urljoin
 
-import requests
+from celery.result import AsyncResult
 from django.db import models
 from django.utils.text import slugify
 from django.utils.timezone import now
@@ -46,10 +45,9 @@ from ami.ml.schemas import (
     PipelineRequestConfigParameters,
     PipelineResultsResponse,
     SourceImageRequest,
-    SourceImageResponse,
 )
 from ami.ml.tasks import celery_app, create_detection_images
-from ami.utils.requests import create_session
+from config.celery_app import PIPELINE_EXCHANGE
 
 logger = logging.getLogger(__name__)
 
@@ -158,15 +156,104 @@ def collect_images(
     return images
 
 
+@celery_app.task(name="process_pipeline_request")
+def process_pipeline_request(pipeline_request: dict):
+    # TODO: instead of dict can we use pipeline request object?
+    """
+    Placeholder for the processing service's request processing logic
+    """
+    pass
+
+
+def submit_pipeline_requests(
+    pipeline: str,
+    source_image_requests: list[SourceImageRequest],
+    source_images: list[SourceImage],
+    pipeline_config: PipelineRequestConfigParameters,
+    detection_requests: list[DetectionRequest],
+    job_id: int | None = None,
+    task_logger: logging.Logger = logger,
+) -> list[str]:
+    """Submit prediction task to appropriate celery queue."""
+    task_ids = []
+    batch_size = pipeline_config.get("bath_size", 1)
+
+    # Group source images into batches
+
+    # @TODO: linter prevents me from commiting this cleaner code due to whitespace before ':'
+    # but the linter makes the whitespace automatically?
+    # source_image_request_batches = [
+    #     source_image_requests[i : i + batch_size] for i in range(0, len(source_image_requests), batch_size)
+    # ]
+    # source_image_batches = [source_images[i : i + batch_size] for i in range(0, len(source_images), batch_size)]
+
+    source_image_request_batches = []
+    source_image_batches = []
+
+    for i in range(0, len(source_image_requests), batch_size):
+        request_batch = []
+        image_batch = []
+        for j in range(batch_size):
+            if i + j >= len(source_image_requests):
+                break
+            request_batch.append(source_image_requests[i + j])
+            image_batch.append(source_images[i + j])
+        source_image_request_batches.append(request_batch)
+        source_image_batches.append(image_batch)
+
+    # Group the detections into batches based on its source image
+    for idx, source_images_batch in enumerate(source_image_request_batches):
+        detections_batch = [
+            detection
+            for detection in detection_requests
+            if detection.source_image.id in [img.id for img in source_images_batch]
+        ]
+        prediction_request = PipelineRequest(
+            pipeline=pipeline,
+            source_images=source_images_batch,
+            detections=detections_batch,
+            config=pipeline_config,
+        )
+        task_result = process_pipeline_request.apply_async(
+            args=[prediction_request.dict()],
+            exchange=PIPELINE_EXCHANGE,
+            routing_key=pipeline,
+        )
+        task_ids.append(task_result.id)
+
+        if job_id:
+            from ami.jobs.models import Job, MLTaskRecord
+
+            job = Job.objects.get(pk=job_id)
+            # Create a new MLTaskRecord for this task
+            ml_task_record = MLTaskRecord.objects.create(
+                job=job,
+                task_id=task_result.id,
+                task_name="process_pipeline_request",
+                pipeline_request=prediction_request,
+                num_captures=len(source_image_batches[idx]),
+            )
+            ml_task_record.source_images.set(source_image_batches[idx])
+            ml_task_record.save()
+            job.logger.info(
+                f"Created MLTaskRecord for job {job_id} with task ID {task_result.id}"
+                " and task name process_pipeline_request"
+            )
+        else:
+            task_logger.warning("No job ID provided, MLTaskRecord will not be created.")
+
+    return task_ids
+
+
 def process_images(
     pipeline: Pipeline,
-    endpoint_url: str,
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
     project_id: int | None = None,
-) -> PipelineResultsResponse:
+) -> list[str]:
     """
-    Process images using ML pipeline API.
+    Process images using ML batch processing.
+    Returns a list of task IDs for the submitted tasks.
     """
     job = None
     task_logger = logger
@@ -184,13 +271,9 @@ def process_images(
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
 
     if not images:
-        task_logger.info("No images to process")
-        return PipelineResultsResponse(
-            pipeline=pipeline.slug,
-            source_images=[],
-            detections=[],
-            total_time=0,
-        )
+        task_logger.info("No images to process, no tasks submitted.")
+        return []  # No tasks submitted
+
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
@@ -219,7 +302,10 @@ def process_images(
                             ),
                         )
                     )
-
+        else:
+            task_logger.error(
+                f"Source image {source_image.pk} has no public url. Can't process it with the pipeline {pipeline}."
+            )
     if not project_id:
         task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
 
@@ -228,50 +314,13 @@ def process_images(
 
     task_logger.info(f"Found {len(detection_requests)} existing detections.")
 
-    request_data = PipelineRequest(
-        pipeline=pipeline.slug,
-        source_images=source_image_requests,
-        config=config,
-        detections=detection_requests,
+    # Submit task to celery queue as an argument
+    tasks_to_watch = submit_pipeline_requests(
+        pipeline.slug, source_image_requests, images, config, detection_requests, job_id, task_logger
     )
 
-    session = create_session()
-    resp = session.post(endpoint_url, json=request_data.dict())
-    if not resp.ok:
-        try:
-            msg = resp.json()["detail"]
-        except (ValueError, KeyError):
-            msg = str(resp.content)
-        if job:
-            job.logger.error(msg)
-        else:
-            logger.error(msg)
-            raise requests.HTTPError(msg)
-
-        results = PipelineResultsResponse(
-            pipeline=pipeline.slug,
-            total_time=0,
-            source_images=[
-                SourceImageResponse(id=source_image_request.id, url=source_image_request.url)
-                for source_image_request in source_image_requests
-            ],
-            detections=[],
-            errors=msg,
-        )
-        return results
-
-    results = resp.json()
-    results = PipelineResultsResponse(**results)
-    if job:
-        job.logger.debug(f"Results: {results}")
-        detections = results.detections
-        classifications = [classification for detection in detections for classification in detection.classifications]
-        job.logger.info(
-            f"Pipeline results returned {len(results.source_images)} images, {len(detections)} detections, "
-            f"{len(classifications)} classifications"
-        )
-
-    return results
+    task_logger.info(f"Prediction task(s) submitted: {tasks_to_watch}")
+    return tasks_to_watch
 
 
 def get_or_create_algorithm_and_category_map(
@@ -991,64 +1040,8 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def choose_processing_service_for_pipeline(
-        self, job_id: int | None, pipeline_name: str, project_id: int
-    ) -> ProcessingService:
-        # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
-
-        job = None
-        task_logger = logger
-        if job_id:
-            from ami.jobs.models import Job
-
-            job = Job.objects.get(pk=job_id)
-            task_logger = job.logger
-
-        # get all processing services that are associated with the provided pipeline project
-        processing_services = self.processing_services.filter(projects=project_id)
-        task_logger.info(
-            f"Searching processing services:"
-            f"{[processing_service.name for processing_service in processing_services]}"
-        )
-
-        # check the status of all processing services
-        timeout = 5 * 60.0  # 5 minutes
-        lowest_latency = timeout
-        processing_services_online = False
-
-        for processing_service in processing_services:
-            status_response = processing_service.get_status()  # @TODO pass timeout to get_status()
-            if status_response.server_live:
-                processing_services_online = True
-                if status_response.latency < lowest_latency:
-                    lowest_latency = status_response.latency
-                    # pick the processing service that has lowest latency
-                    processing_service_lowest_latency = processing_service
-
-        # if all offline then throw error
-        if not processing_services_online:
-            msg = f'No processing services are online for the pipeline "{pipeline_name}".'
-            task_logger.error(msg)
-
-            raise Exception(msg)
-        else:
-            task_logger.info(
-                f"Using processing service with latency {round(lowest_latency, 4)}: "
-                f"{processing_service_lowest_latency}"
-            )
-
-            return processing_service_lowest_latency
-
     def process_images(self, images: typing.Iterable[SourceImage], project_id: int, job_id: int | None = None):
-        processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
-
-        if not processing_service.endpoint_url:
-            raise ValueError(
-                f"No endpoint URL configured for this pipeline's processing service ({processing_service})"
-            )
-
         return process_images(
-            endpoint_url=urljoin(processing_service.endpoint_url, "/process"),
             pipeline=self,
             images=images,
             job_id=job_id,
@@ -1070,3 +1063,79 @@ class Pipeline(BaseModel):
             unique_suffix = str(uuid.uuid4())[:8]
             self.slug = f"{slugify(self.name)}-v{self.version}-{unique_suffix}"
         return super().save(*args, **kwargs)
+
+    def watch_single_batch_task(
+        self,
+        task_id: str,
+        task_logger: logging.Logger | None = None,
+    ) -> PipelineResultsResponse | None:
+        """
+        Helper function to watch a single batch process task and return the result.
+        """
+        task_logger = task_logger or logger
+
+        result = AsyncResult(task_id)
+        if result.ready():
+            task_logger.info(f"Task {task_id} completed with status: {result.status}")
+            if result.successful():
+                task_logger.info(f"Task {task_id} completed successfully with result: {result.result}")
+                task_logger.warning(f"Task {task_id} result: {result.result}")
+                return PipelineResultsResponse(**result.result)
+            else:
+                task_logger.error(f"Task {task_id} failed with result: {result.result}")
+                return PipelineResultsResponse(
+                    pipeline="",
+                    algorithms={},
+                    total_time=0.0,
+                    source_images=[],
+                    detections=[],
+                    errors=f"Task {task_id} failed with result: {result.result}",
+                )
+        else:
+            task_logger.warning(f"Task {task_id} is not ready yet.")
+            return None
+
+    def watch_batch_tasks(
+        self,
+        task_ids: list[str],
+        timeout: int = 300,
+        poll_interval: int = 5,
+        task_logger: logging.Logger | None = None,
+    ) -> PipelineResultsResponse:
+        """
+        Helper function to watch batch process tasks and aggregate results into a single PipelineResultsResponse.
+
+        @TODO: this is only used by the test_process view, keep this as just a useful helper
+        function for that view? or can we somehow use it in the ML job too?
+        """
+        task_logger = task_logger or logger
+        start_time = time.time()
+        remaining = set(task_ids)
+
+        results = None
+        while remaining and (time.time() - start_time) < timeout:
+            for task_id in list(remaining):
+                result = self.watch_single_batch_task(task_id, task_logger=task_logger)
+                if result is not None:
+                    if not results:
+                        results = result
+                    else:
+                        results.combine_pipeline_results(result)
+                    remaining.remove(task_id)
+            time.sleep(poll_interval)
+
+        if remaining and logger:
+            logger.error(f"Timeout reached. The following tasks didn't finish: {remaining}")
+
+        if results:
+            results.total_time = time.time() - start_time
+            return results
+        else:
+            return PipelineResultsResponse(
+                pipeline="",
+                algorithms={},
+                total_time=0.0,
+                source_images=[],
+                detections=[],
+                errors="No tasks completed successfully.",
+            )

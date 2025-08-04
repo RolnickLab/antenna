@@ -21,6 +21,9 @@ services:
       - minio:host-gateway
     networks:
       - antenna_network
+    volumes: # fixes drift issue
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
 
   ml_backend_example:
     build:
@@ -44,6 +47,9 @@ services:
       - minio:host-gateway
     networks:
       - antenna_network
+    volumes: # fixes drift issue
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
 
 networks:
   antenna_network:
