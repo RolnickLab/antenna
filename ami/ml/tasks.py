@@ -8,6 +8,7 @@ from config import celery_app
 logger = logging.getLogger(__name__)
 
 
+# @TODO: Deprecate this? is this still needed?
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
 def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
     from ami.jobs.models import Job
@@ -106,3 +107,38 @@ def check_processing_services_online():
         except Exception as e:
             logger.error(f"Error checking service {service}: {e}")
             continue
+
+
+@celery_app.task(soft_time_limit=400, time_limit=600)
+def check_ml_job_status(ml_job_id: int):
+    """
+    Check the status of a specific ML job's inprogress subtasks and update its status accordingly.
+    """
+    from django_celery_beat.models import PeriodicTask
+
+    from ami.jobs.models import Job, MLJob
+
+    logger.info(f"Checking status for ML job with ID {ml_job_id}.")
+
+    try:
+        job = Job.objects.get(pk=ml_job_id)
+        assert job.job_type_key == MLJob.key, "Job is not an ML job"
+        jobs_complete = job.check_inprogress_subtasks()
+        logger.info(f"Successfully checked status for job {job}. .")
+    except Job.DoesNotExist:
+        raise ValueError(f"Job with ID {ml_job_id} does not exist.")
+    except Exception as e:
+        raise Exception(f"Error checking status for job with ID {ml_job_id}: {e}")
+
+    if jobs_complete:
+        # if the tasks exists delete it (check it exists to avoid errors if task was already scheduled before)
+        PeriodicTask.objects.get(name=f"check_ml_job_status_{ml_job_id}").delete()
+        logger.info(f"Deleted periodic task check_ml_job_status_{ml_job_id} since job is complete.")
+        job.logger.info(f"Deleted periodic task check_ml_job_status_{ml_job_id} since job is complete.")
+    else:
+        logger.info(f"Job {ml_job_id} still in progress. Will check again later.")
+        job.logger.info("Job still in progress. Will check again later.")  # TODO: remove this clutters logs?
+
+    # Debugging: print current inprogress subtasks
+    inprogress_subtasks = job.inprogress_subtasks
+    job.logger.info(f"In-progress subtasks for job {ml_job_id}: {inprogress_subtasks}")

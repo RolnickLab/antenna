@@ -150,3 +150,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], name="check-inprogress-subtasks")
+    def check_inprogress_subtasks(self, request, pk=None):
+        """
+        Check in-progress subtasks for a job.
+        """
+        # @TODO: add additional stats here? i.e. time fo each task, progress stats
+        job: Job = self.get_object()
+        result = job.check_inprogress_subtasks()
+        return Response({"inprogress_subtasks": result})

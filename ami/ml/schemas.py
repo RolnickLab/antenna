@@ -190,6 +190,33 @@ class PipelineResultsResponse(pydantic.BaseModel):
     detections: list[DetectionResponse]
     errors: list | str | None = None
 
+    def combine_pipeline_results(
+        self,
+        resp: "PipelineResultsResponse",
+    ):
+        """
+        Combine two PipelineResultsResponse objects into one.
+        """
+        assert self.pipeline == resp.pipeline, "Cannot combine results from different pipelines"
+        assert self.algorithms.keys() == resp.algorithms.keys(), "Cannot combine results with different algorithm keys"
+        for key in self.algorithms:
+            assert (
+                self.algorithms[key] == resp.algorithms[key]
+            ), f"Algorithm config for '{key}' differs between responses"
+
+        self.source_images.extend(resp.source_images)
+        self.detections.extend(resp.detections)
+
+        def to_list(errors):
+            if errors is None:
+                return []
+            if isinstance(errors, str):
+                return [errors]
+            return list(errors)
+
+        self.errors = to_list(self.errors)
+        self.errors.extend(to_list(resp.errors))
+
 
 class PipelineStageParam(pydantic.BaseModel):
     """A configurable parameter of a stage of a pipeline."""
