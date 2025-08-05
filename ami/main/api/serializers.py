@@ -274,7 +274,13 @@ class ProjectListSerializer(DefaultSerializer):
 
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
+    feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
+
+    def get_feature_flags(self, obj):
+        if obj.feature_flags:
+            return obj.feature_flags.dict()
+        return {}
 
     class Meta:
         model = Project
