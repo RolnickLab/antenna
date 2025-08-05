@@ -150,8 +150,6 @@ export const CollectionDetailsForm = ({
               return [key, formValue]
             })
           ),
-          minute_interval: 10,
-          size: 100,
         },
         method: collection?.method ?? SERVER_SAMPLING_METHODS[0],
       },
