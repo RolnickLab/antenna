@@ -4,7 +4,7 @@ from io import BytesIO
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from guardian.shortcuts import get_perms
 from PIL import Image
 from rest_framework import status
@@ -29,11 +29,177 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.ml.models.pipeline import Pipeline
+from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, ProjectManager
 
 logger = logging.getLogger(__name__)
+
+
+class TestProjectSetup(TestCase):
+    def test_project_creation(self):
+        project = Project.objects.create(name="New Project with Defaults", create_defaults=True)
+        self.assertIsInstance(project, Project)
+
+    def test_default_related_models(self):
+        """Test that the default related models are created correctly when a project is created."""
+        project = Project.objects.create(name="New Project with Defaults", create_defaults=True)
+
+        # Check that the project has a default deployment
+        self.assertGreaterEqual(project.deployments.count(), 1)
+        deployment = project.deployments.first()
+        self.assertIsInstance(deployment, Deployment)
+
+        # Check that the deployment has a default site
+        self.assertGreaterEqual(project.sites.count(), 1)
+        site = project.sites.first()
+        self.assertIsInstance(site, Site)
+
+        # Check that the deployment has a default device
+        self.assertGreaterEqual(project.devices.count(), 1)
+        device = project.devices.first()
+        self.assertIsInstance(device, Device)
+
+        # Check that the project has a default source image collection
+        self.assertGreaterEqual(project.sourceimage_collections.count(), 1)
+        collection = project.sourceimage_collections.first()
+        self.assertIsInstance(collection, SourceImageCollection)
+
+    # Disable this test for now, as it requires a more complex setup
+    def no_test_default_permissions(self):
+        pass
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2009/",
+    )
+    def test_processing_service_if_configured(self):
+        """
+        Test that the default processing service is created if the environment variables are set.
+        """
+        from ami.ml.models.processing_service import get_or_create_default_processing_service
+
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=False)
+
+        service = get_or_create_default_processing_service(project=project, register_pipelines=False)
+        self.assertIsNotNone(service, "Default processing service should be created if environment variables are set.")
+        assert service is not None  # For type checking
+        self.assertIsNotNone(service.endpoint_url)
+        self.assertIsNotNone(service.name)
+        self.assertGreaterEqual(project.processing_services.count(), 1)
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME=None,
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT=None,
+    )
+    def test_processing_service_if_not_configured(self):
+        """
+        Test that the default processing service is not created if the environment variables are not set.
+        """
+        from ami.ml.models.processing_service import get_or_create_default_processing_service
+
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=False)
+
+        service = get_or_create_default_processing_service(project=project)
+        self.assertIsNone(
+            service, "Default processing service should not be created if environment variables are not set."
+        )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",
+        DEFAULT_PIPELINES_ENABLED=[],  # All pipelines DISABLED by default
+    )
+    def test_processing_service_with_disabled_pipelines(self):
+        """
+        Test that the default processing service is created with all pipelines disabled
+        if DEFAULT_PIPELINES_ENABLED is any empty list.
+        """
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=True)
+        processing_service = project.processing_services.first()
+        assert processing_service is not None
+        # There should be at least two pipelines created by default
+        self.assertGreaterEqual(processing_service.pipelines.count(), 2)
+        # All pipelines should be disabled by default
+        project_pipeline_configs = ProjectPipelineConfig.objects.filter(project=project)
+        for config in project_pipeline_configs:
+            self.assertFalse(
+                config.enabled,
+                f"Pipeline {config.pipeline.name} should be disabled for project {project.name}.",
+            )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",
+        DEFAULT_PIPELINES_ENABLED=None,  # All pipelines ENABLED by default
+    )
+    def test_processing_service_with_enabled_pipelines(self):
+        """
+        Test that the default processing service is created with all pipelines enabled
+        if the DEFAULT_PIPELINES_ENABLED setting is None (or missing).
+        """
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=True)
+        processing_service = project.processing_services.first()
+        assert processing_service is not None
+        # There should be at least two pipelines created by default
+        self.assertGreaterEqual(processing_service.pipelines.count(), 2)
+        # All pipelines should be enabled by default
+        project_pipeline_configs = ProjectPipelineConfig.objects.filter(project=project)
+        for config in project_pipeline_configs:
+            self.assertTrue(
+                config.enabled,
+                f"Pipeline {config.pipeline.name} should be enabled for project {project.name}.",
+            )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",  # should have at least two pipelines
+        DEFAULT_PIPELINES_ENABLED=["constant"],
+    )
+    def test_existing_processing_service_new_project(self):
+        """
+        Create a new project, enable all pipelines.
+        Create a 2nd project, ensure that the same processing service is used and only the enabled pipelines are
+        registered.
+        """
+        enabled_pipelines = ["constant"]
+
+        project_one = Project.objects.create(name="Test Project One", create_defaults=True)
+
+        # Enable all pipelines for the first project
+        ProjectPipelineConfig.objects.filter(project=project_one).update(enabled=True)
+
+        project_two = Project.objects.create(name="Test Project Two", create_defaults=True)
+
+        project_one_processing_service = project_one.processing_services.first()
+        project_two_processing_service = project_two.processing_services.first()
+
+        assert project_one_processing_service is not None
+        assert project_two_processing_service is not None
+
+        # Ensure only the same processing service instance is used (and they are not None)
+        self.assertEqual(
+            project_one_processing_service,
+            project_two_processing_service,
+            "Both projects should use the same processing service instance.",
+        )
+
+        # Ensure that only the enabled pipelines are enabled for the second project
+        project_two_pipeline_configs = ProjectPipelineConfig.objects.filter(project=project_two)
+        self.assertGreaterEqual(project_two_pipeline_configs.count(), 2, "Project should have at least two pipelines.")
+        for config in project_two_pipeline_configs:
+            if config.pipeline.slug in enabled_pipelines:
+                self.assertTrue(
+                    config.enabled,
+                    f"Pipeline {config.pipeline.name} should be enabled for project {project_two.name}.",
+                )
+            else:
+                self.assertFalse(
+                    config.enabled,
+                    f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
+                )
 
 
 class TestImageGrouping(TestCase):
@@ -65,8 +231,8 @@ class TestImageGrouping(TestCase):
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
 
-        create_captures(deployment=self.deployment)
-        events = group_images_into_events(deployment=self.deployment)
+        captures = create_captures(deployment=self.deployment)
+        events = Event.objects.filter(captures__in=captures).distinct()
 
         for event in events:
             event.captures.all().delete()
@@ -82,8 +248,8 @@ class TestImageGrouping(TestCase):
 
         image_width, image_height = 100, 100
 
-        create_captures(deployment=self.deployment)
-        events = group_images_into_events(deployment=self.deployment)
+        captures = create_captures(deployment=self.deployment)
+        events = Event.objects.filter(captures__in=captures).distinct()
 
         for event in events:
             first_image = event.captures.first()
@@ -124,7 +290,6 @@ class TestEvents(TestCase):
     def setUp(self) -> None:
         project, deployment = setup_test_project()
         create_captures(deployment=deployment, num_nights=2, images_per_night=5)
-        group_images_into_events(deployment=deployment)
         self.project = project
         self.deployment = deployment
         return super().setUp()
@@ -199,7 +364,7 @@ class TestDuplicateFieldsOnChildren(TestCase):
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
 
         create_captures(deployment=self.deployment)
-        group_images_into_events(deployment=self.deployment)
+        self.deployment.save(regroup_async=False)  # Ensure events are grouped immediately
         create_taxa(project=self.project_one)
         create_taxa(project=self.project_two)
         create_occurrences(deployment=self.deployment, num=1)
@@ -243,7 +408,6 @@ class TestSourceImageCollections(TestCase):
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
 
         create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
-        group_images_into_events(deployment=self.deployment)
 
         return super().setUp()
 
@@ -401,8 +565,6 @@ class TestSourceImageCollections(TestCase):
         # Create captures for each deployment
         create_captures(deployment=deployment_two, num_nights=2, images_per_night=10, interval_minutes=1)
         create_captures(deployment=deployment_three, num_nights=2, images_per_night=10, interval_minutes=1)
-        group_images_into_events(deployment=deployment_two)
-        group_images_into_events(deployment=deployment_three)
 
         # Verify that we have images from the deployments
         assert deployment_two.captures.count() > 0
@@ -592,8 +754,6 @@ class TestTaxonomyViews(TestCase):
         print(f"Deployment Two: {deployment_two.pk}")
         create_captures(deployment=deployment_one)
         create_captures(deployment=deployment_two)
-        group_images_into_events(deployment=deployment_one)
-        group_images_into_events(deployment=deployment_two)
         create_occurrences(deployment=deployment_one, num=5)
         create_occurrences(deployment=deployment_two, num=5)
         self.project_one = project_one
@@ -724,7 +884,6 @@ class TestIdentification(APITestCase):
         project, deployment = setup_test_project()
         create_taxa(project=project)
         create_captures(deployment=deployment)
-        group_images_into_events(deployment=deployment)
         create_occurrences(deployment=deployment, num=5)
         self.project = project
         self.user = User.objects.create_user(  # type: ignore
@@ -789,7 +948,6 @@ class TestMovingSourceImages(TestCase):
         create_captures(
             deployment=deployment, subdir=self.other_subdir, num_nights=1, images_per_night=self.images_per_dir
         )
-        group_images_into_events(deployment=deployment)
         self.project = project
         self.deployment = deployment
         return super().setUp()
@@ -833,9 +991,8 @@ class TestProjectSettingsFiltering(APITestCase):
             project, deployment = setup_test_project(reuse=False)
             create_taxa(project=project)
             create_captures(deployment=deployment)
-            group_images_into_events(deployment=deployment)
             create_occurrences(deployment=deployment, num=5)
-        self.project_ids = [project.id for project in Project.objects.all()]
+        self.project_ids = [project.pk for project in Project.objects.all()]
 
         self.user = User.objects.create_user(  # type: ignore
             email="testuser@insectai.org",
@@ -1204,7 +1361,6 @@ class TestRolePermissions(APITestCase):
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
         S3StorageSource.objects.create(name="New source", project=self.project, bucket="Test Bucket")
         create_captures(deployment=self.deployment)
-        group_images_into_events(deployment=self.deployment)
         create_taxa(project=self.project)
         create_occurrences(deployment=self.deployment, num=1)
         self._create_job()
@@ -1572,3 +1728,56 @@ class TestRolePermissions(APITestCase):
         self._test_sourceimageupload_permissions(
             user=self.project_manager, permission_map=self.PERMISSIONS_MAPS["project_manager"]["sourceimageupload"]
         )
+
+
+class TestDeploymentSyncCreatesEvents(TestCase):
+    def test_sync_creates_events_and_updates_counts(self):
+        # Set up a new project and deployment with test data
+        project, deployment = setup_test_project(reuse=False)
+
+        # Populate the object store with image data
+        assert deployment.data_source is not None
+        populate_bucket(
+            config=deployment.data_source.config,
+            subdir=f"deployment_{deployment.pk}",
+            skip_existing=False,
+        )
+
+        # Sync captures
+        deployment.sync_captures()
+
+        # Refresh and check results
+        deployment.refresh_from_db()
+        initial_events = Event.objects.filter(deployment=deployment)
+        initial_events_count = initial_events.count()
+
+        # Assertions
+        self.assertTrue(initial_events.exists(), "Expected events to be created")
+        self.assertEqual(
+            deployment.events_count, initial_events.count(), "Deployment events_count should match actual events"
+        )
+        # Simulate new images added to object store
+        populate_bucket(
+            config=deployment.data_source.config,
+            subdir=f"deployment_{deployment.pk}",
+            skip_existing=False,
+            num_nights=2,
+            images_per_day=5,
+            minutes_interval=120,
+        )
+
+        # Sync again
+        deployment.sync_captures()
+        deployment.refresh_from_db()
+        updated_events = Event.objects.filter(deployment=deployment)
+
+        # Assertions for second sync
+        self.assertGreater(
+            updated_events.count(), initial_events_count, "New events should be created after adding new images"
+        )
+        self.assertEqual(
+            deployment.events_count,
+            updated_events.count(),
+            "Deployment events_count should reflect updated event count",
+        )
+        logger.info(f"Initial events count: {initial_events_count}, Updated events count: {updated_events.count()}")
