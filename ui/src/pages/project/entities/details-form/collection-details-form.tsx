@@ -123,15 +123,6 @@ const config: FormConfig = {
     toApiValue: parseIntegerList,
     toFormValue: formatIntegerList,
   },
-  'kwargs.research_site_ids': {
-    label: 'Research site IDs',
-    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
-    rules: {
-      validate: validateIntegerList,
-    },
-    toApiValue: parseIntegerList,
-    toFormValue: formatIntegerList,
-  },
 }
 
 export const CollectionDetailsForm = ({
@@ -311,6 +302,20 @@ export const CollectionDetailsForm = ({
             control={control}
           />
         </FormRow>
+        <FormRow>
+          <FormField
+            name="kwargs.deployment_ids"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="kwargs.event_ids"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
       </FormSection>
       <FormSection>
         <h3 className="body-large font-bold text-muted-foreground/50">
@@ -359,33 +364,6 @@ export const CollectionDetailsForm = ({
               control={control}
             />
           ) : null}
-        </FormRow>
-      </FormSection>
-      <FormSection>
-        <h3 className="body-large font-bold text-muted-foreground/50">
-          Advanced filters
-        </h3>
-        <FormRow>
-          <FormField
-            name="kwargs.deployment_ids"
-            type="text"
-            config={config}
-            control={control}
-          />
-          <FormField
-            name="kwargs.research_site_ids"
-            type="text"
-            config={config}
-            control={control}
-          />
-        </FormRow>
-        <FormRow>
-          <FormField
-            name="kwargs.event_ids"
-            type="text"
-            config={config}
-            control={control}
-          />
         </FormRow>
       </FormSection>
       <FormActions>
