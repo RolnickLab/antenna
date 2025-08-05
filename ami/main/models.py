@@ -123,6 +123,8 @@ def get_or_create_default_collection(project: "Project") -> "SourceImageCollecti
     collection, _created = SourceImageCollection.objects.get_or_create(
         name="All Images",
         project=project,
+        method="full",
+        # @TODO make this a dynamic collection that updates automatically
     )
     logger.info(f"Created default collection for project {project}")
     return collection
@@ -3141,7 +3143,7 @@ class Page(BaseModel):
 
 
 _SOURCE_IMAGE_SAMPLING_METHODS = [
-    "common_combined",  # Deprecated
+    "full",
     "random",
     "stratified_random",
     "interval",
@@ -3151,7 +3153,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "last_and_random_from_each_event",
     "greatest_file_size_from_each_event",
     "detections_only",
-    "full",
+    "common_combined",  # Deprecated
 ]
 
 
@@ -3234,7 +3236,7 @@ class SourceImageCollection(BaseModel):
     method = models.CharField(
         max_length=255,
         choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS),
-        default="common_combined",
+        default="full",
     )
     # @TODO this should be a JSON field with a schema, use a pydantic model
     kwargs = models.JSONField(
@@ -3279,13 +3281,8 @@ class SourceImageCollection(BaseModel):
 
     def get_queryset(
         self,
-        hour_start: int | None = None,
-        hour_end: int | None = None,
-        month_start: int | None = None,
-        month_end: int | None = None,
-        date_start: str | None = None,
-        date_end: str | None = None,
-        deployment_ids: list[int] | None = None,
+        *args,
+        **kwargs,
     ):
         return SourceImage.objects.filter(project=self.project)
 
@@ -3323,9 +3320,15 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         if deployment_ids is not None:
             qs = qs.filter(deployment__in=deployment_ids)
+        if research_site_ids is not None:
+            qs = qs.filter(deployment__research_site__in=research_site_ids)
+        if event_ids is not None:
+            qs = qs.filter(event__in=event_ids)
         if date_start is not None:
             qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
         if date_end is not None:
@@ -3360,6 +3363,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         """Create a random sample of source images"""
 
@@ -3373,6 +3378,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
         return qs.order_by("?")[:size]
 
@@ -3395,6 +3402,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
         qs = self._filter_sample(
@@ -3406,6 +3415,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
 
         if minute_interval is not None:
@@ -3434,6 +3445,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         """Create a sample of source images based on a time interval"""
 
@@ -3447,6 +3460,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
@@ -3516,6 +3531,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         """Sample all source images"""
 
@@ -3529,6 +3546,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
         return qs.all().distinct()
 
