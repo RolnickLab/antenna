@@ -237,7 +237,7 @@ class EventAdmin(admin.ModelAdmin[Event]):
 
         # Regroup images for each deployment
         for deployment in deployments:
-            group_images_into_events(deployment, use_existing=True)
+            group_images_into_events(deployment)
 
         self.message_user(request, f"Fixed sessions: regrouped images in {len(deployments)} deployment(s).")
 
