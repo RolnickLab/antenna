@@ -107,7 +107,7 @@ const config: FormConfig = {
   },
   'kwargs.deployment_ids': {
     label: 'Station IDs',
-    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
     },
@@ -116,7 +116,7 @@ const config: FormConfig = {
   },
   'kwargs.event_ids': {
     label: 'Session IDs',
-    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
     },
@@ -124,8 +124,8 @@ const config: FormConfig = {
     toFormValue: formatIntegerList,
   },
   'kwargs.research_site_ids': {
-    label: 'Research Site IDs',
-    description: 'Enter comma-separated integers (e.g., 1, 2, 3).',
+    label: 'Research site IDs',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
     rules: {
       validate: validateIntegerList,
     },
@@ -148,6 +148,8 @@ export const CollectionDetailsForm = ({
         name: entity?.name ?? '',
         description: entity?.description ?? '',
         kwargs: {
+          minute_interval: 10,
+          size: 100,
           ...Object.fromEntries(
             Object.entries(collection?.kwargs || {}).map(([key, value]) => {
               const fieldConfig = config[`kwargs.${key}`]
@@ -361,7 +363,7 @@ export const CollectionDetailsForm = ({
       </FormSection>
       <FormSection>
         <h3 className="body-large font-bold text-muted-foreground/50">
-          Advanced Filters
+          Advanced filters
         </h3>
         <FormRow>
           <FormField
