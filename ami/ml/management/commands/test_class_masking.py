@@ -28,7 +28,7 @@ class Command(BaseCommand):
         algorithm_id = options["algorithm"]
 
         from ami.main.models import Project, TaxaList
-        from ami.ml.post_processing.class_masking import make_classifications_filtered_by_taxa_list
+        from ami.ml.post_processing.class_masking import update_occurrences_in_collection
 
         try:
             project = Project.objects.get(id=project_id)
@@ -44,7 +44,7 @@ class Command(BaseCommand):
         # Log collection
         self.stdout.write(f"Collection: {collection.name} (ID: {collection.pk})")
 
-        make_classifications_filtered_by_taxa_list(
+        update_occurrences_in_collection(
             collection=collection,
             taxa_list=taxa_list,
             algorithm=algorithm,

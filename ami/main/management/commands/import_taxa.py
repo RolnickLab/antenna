@@ -32,6 +32,9 @@ logger.setLevel(logging.INFO)
 # https://docs.google.com/spreadsheets/d/e/2PACX-1vRzHE3kjjIc8iWV1Be4hlTUBU4M1oD7R5h3imEZcsO5C2MWLlk40FolNfkAZiQetyhxm7ya6DDPd9Ye/pub?gid=0&single=true&output=csv # noqa
 # docker compose  run --rm django python manage.py import_taxa --format csv https://docs.google.com/spreadsheets/d/e/2PACX-1vRzHE3kjjIc8iWV1Be4hlTUBU4M1oD7R5h3imEZcsO5C2MWLlk40FolNfkAZiQetyhxm7ya6DDPd9Ye/pub\?gid\=0\&single\=true\&output\=csv --list upper-ranks  # noqa
 
+# Pennsylvania moth species list
+# url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxq0y4eTD8EqYcs5oVWclDVqn1bOfpy43st1C4mAGBph1hW4OqFcLuD7Cb9T4OJA/pub?gid=1952339517&single=true&output=csv"
+# docker compose run --rm django python manage.py import_taxa --format csv "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxq0y4eTD8EqYcs5oVWclDVqn1bOfpy43st1C4mAGBph1hW4OqFcLuD7Cb9T4OJA/pub?gid=1952339517&single=true&output=csv" --list “Pennsylvania Moth Species”  # noqa
 
 def read_csv(fname: str) -> list[dict]:
     reader = csv.DictReader(open(fname))
