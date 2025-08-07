@@ -148,7 +148,11 @@ def make_classifications_filtered_by_taxa_list(
 
         # Get the taxon with the highest score  using the index of the max score
         top_index = scores.index(max(scores))
-        top_taxon = category_map_with_taxa[top_index]["taxon"]
+        top_taxon = category_map_with_taxa[top_index][
+            "taxon"
+        ]  # @TODO: This doesn't work if the taxon has never been classified
+        print("Top taxon: ", category_map_with_taxa[top_index])  # @TODO: REMOVE
+        print("Top index: ", top_index)  # @TODO: REMOVE
 
         # check if needs updating
         if classification.scores == scores and classification.logits == logits:
@@ -173,6 +177,8 @@ def make_classifications_filtered_by_taxa_list(
             created_at=timestamp,
             updated_at=timestamp,
         )
+        if new_classification.taxon is None:
+            raise (ValueError("Classification isn't registered yet. Aborting"))  # @TODO remove or fail gracefully
 
         classifications_to_update.append(classification)
         classifications_to_add.append(new_classification)
