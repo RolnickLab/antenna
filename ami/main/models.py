@@ -105,6 +105,61 @@ def create_default_research_site(project: "Project") -> "Site":
     return site
 
 
+def get_or_create_default_deployment(
+    project: "Project",
+    site: "Site | None" = None,
+    device: "Device | None" = None,
+    name: str = "Default Deployment",
+) -> "Deployment":
+    """
+    Create a default deployment for a project.
+
+    @TODO Require that the deployment name is unique per project.
+    """
+    deployment = (
+        Deployment.objects.filter(
+            project=project,
+            name=name,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if not deployment:
+        deployment = Deployment.objects.create(
+            name=name,
+            project=project,
+            research_site=site,
+            device=device,
+        )
+        logger.info(f"Created default deployment for project {project}")
+    return deployment
+
+
+def get_or_create_default_collection(project: "Project") -> "SourceImageCollection":
+    """Create a default collection for a project for all images, updated dynamically."""
+    collection, _created = SourceImageCollection.objects.get_or_create(
+        name="All Images",
+        project=project,
+        method="full",
+        # @TODO make this a dynamic collection that updates automatically
+    )
+    logger.info(f"Created default collection for project {project}")
+    return collection
+
+
+def get_or_create_default_project(user: User) -> "Project":
+    """
+    Create a default project for a user.
+
+    Default related objects like devices and research sites will be created
+    when the project is saved for the first time.
+    If the project already exists, it will be returned without modification.
+    """
+    project, _created = Project.objects.get_or_create(name="Scratch Project", owner=user, create_defaults=True)
+    logger.info(f"Created default project for user {user}")
+    return project
+
+
 class ProjectQuerySet(models.QuerySet):
     def filter_by_user(self, user: User):
         """
@@ -997,6 +1052,28 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def audit_event_lengths(deployment: Deployment):
+    logger.info("Checking for unusual event durations")
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    ).count()
+    if events_over_24_hours:
+        logger.warning(f"Found {events_over_24_hours} event(s) over 24 hours in deployment {deployment}. ")
+
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__hour__lt=12  # Before hour 12
+    ).count()
+    if events_starting_before_noon:
+        logger.warning(
+            f"Found {events_starting_before_noon} event(s) starting before noon in deployment {deployment}. "
+        )
+
+    events_ending_before_start = Event.objects.filter(deployment=deployment, start__gt=models.F("end")).count()
+    if events_ending_before_start:
+        logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
+
+
 def group_images_into_events(
     deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
@@ -1053,11 +1130,24 @@ def group_images_into_events(
             defaults={"start": start_date, "end": end_date},
         )
         events.append(event)
-        SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+        source_images = SourceImage.objects.filter(deployment=deployment, timestamp__in=group)
+        source_images.update(event=event)
+
         event.save()  # Update start and end times and other cached fields
         logger.info(
             f"Created/updated event {event} with {len(group)} images for deployment {deployment}. "
             f"Duration: {event.duration_label()}"
+        )
+        # Update occurrences to point to the new event
+        occurrences_updated = (
+            Occurrence.objects.filter(
+                detections__source_image__in=source_images,
+            )
+            .filter(event=event)
+            .update(event=event)
+        )
+        logger.info(
+            f"Updated {occurrences_updated} occurrences to point to event {event} for deployment {deployment}."
         )
 
     logger.info(
@@ -1073,23 +1163,23 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
-    logger.info("Checking for unusual statistics of events")
-    events_over_24_hours = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    # Warn if any occurrences belonging to the deployment are not assigned to an event
+    logger.info("Checking for ungrouped occurrences in deployment")
+    ungrouped_occurrences = Occurrence.objects.filter(
+        deployment=deployment,
+        event__isnull=True,
     )
-    if events_over_24_hours.count():
-        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
-    events_starting_before_noon = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
-    )
-    if events_starting_before_noon.count():
+    if ungrouped_occurrences.exists():
         logger.warning(
-            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
+            f"Found {ungrouped_occurrences.count()} occurrences in deployment {deployment} "
+            "that are not assigned to any event. "
+            "This may indicate that some images were not grouped correctly."
         )
 
     logger.info("Updating relevant cached fields on deployment")
-    deployment.events_count = len(events)
-    deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+    deployment.update_calculated_fields(save=True)
+
+    audit_event_lengths(deployment)
 
     return events
 
