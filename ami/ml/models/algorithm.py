@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from ami.main.models import Classification, Taxon
     from ami.ml.models import Pipeline
 
+import logging
 import typing
 
 from django.contrib.postgres.fields import ArrayField
@@ -13,6 +14,8 @@ from django.db import models
 from django.utils.text import slugify
 
 from ami.base.models import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 @typing.final
@@ -71,7 +74,7 @@ class AlgorithmCategoryMap(BaseModel):
         @TODO consider creating missing taxa?
         """
 
-        from ami.main.models import Taxon
+        from ami.main.models import Taxon, TaxonRank
 
         if only_indexes:
             labels_data = [self.data[i] for i in only_indexes]
@@ -90,6 +93,14 @@ class AlgorithmCategoryMap(BaseModel):
 
         for category in labels_data:
             taxon = taxon_map.get(category[category_field])
+            # Import all taxa in the category map that are not in the database yet
+            if not taxon:
+                taxon = Taxon.objects.create(
+                    name=category["label"],
+                    rank=category.get("taxon_rank", TaxonRank.SPECIES),  # @TODO: make this flexible
+                )
+                # @TODO: this doesn't seem to be working - logging works but no species are registered
+                logger.info(f"Registered new taxon {taxon}")
             category["taxon"] = taxon
 
         return labels_data
