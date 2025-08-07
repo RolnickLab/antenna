@@ -1173,7 +1173,7 @@ def group_images_into_events(
             Occurrence.objects.filter(
                 detections__source_image__in=source_images,
             )
-            .filter(event=event)
+            .exclude(event=event)
             .update(event=event)
         )
         logger.info(
