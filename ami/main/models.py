@@ -105,16 +105,32 @@ def get_or_create_default_research_site(project: "Project") -> "Site":
 
 
 def get_or_create_default_deployment(
-    project: "Project", site: "Site | None" = None, device: "Device | None" = None
+    project: "Project",
+    site: "Site | None" = None,
+    device: "Device | None" = None,
+    name: str = "Default Deployment",
 ) -> "Deployment":
-    """Create a default deployment for a project."""
-    deployment, _created = Deployment.objects.get_or_create(
-        name="Default Station",
-        project=project,
-        research_site=site,
-        device=device,
+    """
+    Create a default deployment for a project.
+
+    @TODO Require that the deployment name is unique per project.
+    """
+    deployment = (
+        Deployment.objects.filter(
+            project=project,
+            name=name,
+        )
+        .order_by("-created_at")
+        .first()
     )
-    logger.info(f"Created default deployment for project {project}")
+    if not deployment:
+        deployment = Deployment.objects.create(
+            name=name,
+            project=project,
+            research_site=site,
+            device=device,
+        )
+        logger.info(f"Created default deployment for project {project}")
     return deployment
 
 
@@ -1144,11 +1160,24 @@ def group_images_into_events(
             defaults={"start": start_date, "end": end_date},
         )
         events.append(event)
-        SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
+        source_images = SourceImage.objects.filter(deployment=deployment, timestamp__in=group)
+        source_images.update(event=event)
+
         event.save()  # Update start and end times and other cached fields
         logger.info(
             f"Created/updated event {event} with {len(group)} images for deployment {deployment}. "
             f"Duration: {event.duration_label()}"
+        )
+        # Update occurrences to point to the new event
+        occurrences_updated = (
+            Occurrence.objects.filter(
+                detections__source_image__in=source_images,
+            )
+            .filter(event=event)
+            .update(event=event)
+        )
+        logger.info(
+            f"Updated {occurrences_updated} occurrences to point to event {event} for deployment {deployment}."
         )
 
     logger.info(
@@ -1164,9 +1193,21 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
+    # Warn if any occurrences belonging to the deployment are not assigned to an event
+    logger.info("Checking for ungrouped occurrences in deployment")
+    ungrouped_occurrences = Occurrence.objects.filter(
+        deployment=deployment,
+        event__isnull=True,
+    )
+    if ungrouped_occurrences.exists():
+        logger.warning(
+            f"Found {ungrouped_occurrences.count()} occurrences in deployment {deployment} "
+            "that are not assigned to any event. "
+            "This may indicate that some images were not grouped correctly."
+        )
+
     logger.info("Updating relevant cached fields on deployment")
-    deployment.events_count = len(events)
-    deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+    deployment.update_calculated_fields(save=True)
 
     audit_event_lengths(deployment)
 

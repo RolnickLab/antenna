@@ -129,9 +129,16 @@ class SourceImageRequest(pydantic.BaseModel):
     # b64: str | None = None
 
 
+class DeploymentResponse(pydantic.BaseModel):
+    id: str | None = None
+    name: str
+    key: str | None = None
+
+
 class SourceImageResponse(pydantic.BaseModel):
     id: str
     url: str
+    deployment: DeploymentResponse | None = None
 
     class Config:
         extra = "ignore"
@@ -180,6 +187,7 @@ class PipelineResultsResponse(pydantic.BaseModel):
     total_time: float
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
+    deployments: list[DeploymentResponse] | None = None
     errors: list | str | None = None
 
 
