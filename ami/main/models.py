@@ -2603,10 +2603,14 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
             if taxon.parent and taxon.parent.rank == "GENUS":
                 continue
             genus_name = taxon.name.split()[0]
-            genus = self.get_queryset().filter(name=genus_name, rank="GENUS").first()
+            genus = self.get_queryset().filter(name=genus_name).first()
             if not genus:
                 Taxon = self.model
                 genus = Taxon.objects.create(name=genus_name, rank="GENUS")
+            if genus.rank != "GENUS":
+                genus.rank = "GENUS"
+                logger.info(f"Fixed rank of genus {genus}")
+                genus.save()
             taxon.parent = genus
             logger.info(f"Added parent {genus} to {taxon}")
             taxon.save()
