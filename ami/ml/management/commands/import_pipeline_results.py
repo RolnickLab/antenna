@@ -97,6 +97,15 @@ class Command(BaseCommand):
                             f"\n  - Total processing time: {result.total_time:.2f} seconds"
                         )
                     )
+
+                    # Re-save all deployments in the results to ensure they are up-to-date
+                    # Must loop through the source images
+                    self.stdout.write(self.style.SUCCESS("Updating sessions and stations"))
+                    deployments = {
+                        source_image.deployment for source_image in result.source_images if source_image.deployment
+                    }
+                    for deployment in deployments:
+                        deployment.save(regroup_async=False)
                 else:
                     self.stdout.write(self.style.WARNING("Import completed but no result object returned"))
 
