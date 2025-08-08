@@ -292,11 +292,12 @@ def get_or_create_algorithm_and_category_map(
             " Will attempt to create one from the classification results."
         )
 
+    # @TODO update the unique constraint to use key & version instead of name & version
     algo, _created = Algorithm.objects.get_or_create(
-        key=algorithm_config.key,
+        name=algorithm_config.name,
         version=algorithm_config.version,
         defaults={
-            "name": algorithm_config.name,
+            "key": algorithm_config.key,
             "task_type": algorithm_config.task_type,
             "version_name": algorithm_config.version_name,
             "uri": algorithm_config.uri,
@@ -869,6 +870,7 @@ def save_results(
     create_missing_source_images: bool = False,
     project_id: int | None = None,
     public_base_url: str | None = None,
+    create_new_algorithms: bool = False,
 ) -> PipelineSaveResults | None:
     """
     Save results from ML pipeline API.
@@ -951,7 +953,7 @@ def save_results(
             if detection.source_image_id in id_mapping:
                 detection.source_image_id = str(id_mapping[detection.source_image_id])
 
-        job_logger.info(f"Created/found {len(id_mapping)} source images with ID mapping: {id_mapping}")
+        job_logger.debug(f"Created/found {len(id_mapping)} source images with ID mapping: {id_mapping}")
 
     source_images = SourceImage.objects.filter(pk__in=[int(img.id) for img in results.source_images]).distinct()
 
@@ -961,19 +963,23 @@ def save_results(
             f"The pipeline returned by the ML backend was not recognized, created a placeholder: {pipeline}"
         )
 
-    # Algorithms and category maps should be created in advance when registering the pipeline & processing service
-    # however they are also currently available in each pipeline results response as well.
-    # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of the results
-    algorithms_used = {
-        algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
-        for algo_key, algo_config in results.algorithms.items()
-    }
-    # Add all algorithms initially reported in the pipeline response to the pipeline
-    for algo in algorithms_used.values():
-        pipeline.algorithms.add(algo)
+    if create_new_algorithms:
+        # Algorithms and category maps should be created in advance when registering the pipeline & processing service
+        # however they are also currently available in each pipeline results response as well.
+        # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of
+        # the results
+        algorithms_used = {
+            algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
+            for algo_key, algo_config in results.algorithms.items()
+        }
+        # Add all algorithms initially reported in the pipeline response to the pipeline
+        for algo in algorithms_used.values():
+            pipeline.algorithms.add(algo)
 
-    algos_reported = [f"    {algo.task_type}: {algo_key} ({algo})\n" for algo_key, algo in algorithms_used.items()]
-    job_logger.info(f"Algorithms reported in pipeline response: \n{''.join(algos_reported)}")
+        algos_reported = [f"    {algo.task_type}: {algo_key} ({algo})\n" for algo_key, algo in algorithms_used.items()]
+        job_logger.info(f"Algorithms reported in pipeline response: \n{''.join(algos_reported)}")
+    else:
+        algorithms_used = {algo.key: algo for algo in pipeline.algorithms.all()}
 
     detections = create_detections(
         detections=results.detections,
