@@ -374,7 +374,7 @@ def get_or_create_detection(
 
     # A detection may have a pre-existing crop image URL or not.
     # If not, a new one will be created in a periodic background task.
-    if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
+    if detection_resp.crop_image_url and detection_resp.crop_image_url.startswith(("http://", "https://")):
         # Ensure that the crop image URL is not empty or only a slash. None is fine.
         crop_url = detection_resp.crop_image_url
     else:
