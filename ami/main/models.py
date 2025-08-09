@@ -239,7 +239,6 @@ class Project(BaseModel):
     sourceimage_collections: models.QuerySet["SourceImageCollection"]
     processing_services: models.QuerySet["ProcessingService"]
     pipelines: models.QuerySet["Pipeline"]
-    sourceimage_collections: models.QuerySet["SourceImageCollection"]
     tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
