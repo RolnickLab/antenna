@@ -901,6 +901,16 @@ class PipelineQuerySet(models.QuerySet):
             projects=project,
             project_pipeline_configs__enabled=True,
             project_pipeline_configs__project=project,
+            processing_services__projects=project,
+        ).distinct()
+
+    def online(self, project: Project) -> PipelineQuerySet:
+        """
+        Return pipelines that are available at least one online processing service.
+        """
+        return self.filter(
+            processing_services__projects=project,
+            processing_services__last_checked_live=True,
         ).distinct()
 
 

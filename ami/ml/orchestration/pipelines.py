@@ -16,6 +16,7 @@ def get_default_pipeline(project: Project) -> Pipeline | None:
     return (
         Pipeline.objects.all()
         .enabled(project=project)  # type: ignore
+        .online(project=project)  # type: ignore
         .annotate(num_categories=models.Count("algorithms__category_map__labels"))
         .order_by("-num_categories", "-created_at")
         .first()
