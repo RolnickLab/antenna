@@ -760,6 +760,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
 
     serializer_class = SourceImageUploadSerializer
     permission_classes = [SourceImageUploadCRUDPermission]
+    project_required = True
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
@@ -783,7 +784,6 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
         user = get_current_user(self.request)
 
         # Create the SourceImageUpload object with the user
-        # @TODO IMPORTANT ensure current user is a member of the deployment's project
         obj = serializer.save(user=user)
 
         # Get process_now flag from request data
