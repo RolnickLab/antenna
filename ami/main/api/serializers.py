@@ -1022,8 +1022,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
             request=request,
             process_now=process_now,
         )
-        if source_image is None:
-            raise serializers.ValidationError("Failed to create source image from upload.")
         obj.source_image = source_image  # type: ignore
         obj.save()
         return obj

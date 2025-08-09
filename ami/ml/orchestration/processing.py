@@ -30,7 +30,7 @@ def process_single_source_image(
     pipeline_choice = pipeline or get_default_pipeline(project)
     assert pipeline_choice is not None, "Project must have a pipeline to run"
 
-    # @TODO add images to a queue without creatin a job for each image
+    # @TODO add images to a queue without creating a job for each image
     job = Job.objects.create(
         name=f"Capture #{source_image.pk} ({source_image.timestamp}) from {source_image.deployment.name}",
         job_type_key="ml",
