@@ -1,7 +1,10 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
+import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
 export type ServerSpecies = any // TODO: Update this type
+
+export type Tag = { id: number; name: string }
 
 export class Species extends Taxon {
   protected readonly _species: ServerSpecies
@@ -76,9 +79,19 @@ export class Species extends Taxon {
     return undefined
   }
 
+  get tags(): Tag[] {
+    const tags = this._species.tags ?? []
+
+    return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
+  }
+
   get updatedAt(): string {
     return getFormatedDateTimeString({
       date: new Date(this._species.updated_at),
     })
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._species.user_permissions
   }
 }

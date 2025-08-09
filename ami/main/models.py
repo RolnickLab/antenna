@@ -195,15 +195,32 @@ class ProjectManager(models.Manager):
             get_or_create_default_processing_service(project=project)
 
 
+class ProjectFeatureFlags(pydantic.BaseModel):
+    """
+    Feature flags for the project.
+    """
+
+    tags: bool = False  # Whether the project supports tagging taxa
+
+
+default_feature_flags = ProjectFeatureFlags()
+
+
 @final
 class Project(BaseModel):
     """ """
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
-    description = models.TextField()
+    description = models.TextField(blank=True)
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+    feature_flags = SchemaField(
+        ProjectFeatureFlags,
+        default=default_feature_flags,
+        null=False,
+        blank=True,
+    )
 
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
@@ -223,6 +240,7 @@ class Project(BaseModel):
     processing_services: models.QuerySet["ProcessingService"]
     pipelines: models.QuerySet["Pipeline"]
     sourceimage_collections: models.QuerySet["SourceImageCollection"]
+    tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
 
@@ -2890,7 +2908,7 @@ class Taxon(BaseModel):
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
     ordering = models.IntegerField(null=True, blank=True)
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
-
+    tags = models.ManyToManyField("Tag", related_name="taxa", blank=True)
     objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
@@ -3097,6 +3115,19 @@ class TaxaList(BaseModel):
 
 
 @final
+class Tag(BaseModel):
+    """A tag for taxa"""
+
+    name = models.CharField(max_length=255)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tags", null=True, blank=True)
+
+    taxa: models.QuerySet[Taxon]
+
+    class Meta:
+        unique_together = ("name", "project")
+
+
+@final
 class BlogPost(BaseModel):
     """
     This model is used just as an example.
@@ -3287,13 +3318,8 @@ class SourceImageCollection(BaseModel):
 
     def get_queryset(
         self,
-        hour_start: int | None = None,
-        hour_end: int | None = None,
-        month_start: int | None = None,
-        month_end: int | None = None,
-        date_start: str | None = None,
-        date_end: str | None = None,
-        deployment_ids: list[int] | None = None,
+        *args,
+        **kwargs,
     ):
         return SourceImage.objects.filter(project=self.project)
 
@@ -3331,9 +3357,15 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         if deployment_ids is not None:
             qs = qs.filter(deployment__in=deployment_ids)
+        if research_site_ids is not None:
+            qs = qs.filter(deployment__research_site__in=research_site_ids)
+        if event_ids is not None:
+            qs = qs.filter(event__in=event_ids)
         if date_start is not None:
             qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
         if date_end is not None:
@@ -3368,6 +3400,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         """Create a random sample of source images"""
 
@@ -3381,6 +3415,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
         return qs.order_by("?")[:size]
 
@@ -3403,6 +3439,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
         qs = self.get_queryset()
         qs = self._filter_sample(
@@ -3414,6 +3452,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
 
         if minute_interval is not None:
@@ -3442,6 +3482,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         """Create a sample of source images based on a time interval"""
 
@@ -3455,6 +3497,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
@@ -3524,6 +3568,8 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         """Sample all source images"""
 
@@ -3537,6 +3583,8 @@ class SourceImageCollection(BaseModel):
             date_start=date_start,
             date_end=date_end,
             deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
         )
         return qs.all().distinct()
 

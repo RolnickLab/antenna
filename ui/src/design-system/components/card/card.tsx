@@ -63,14 +63,16 @@ export const Card = ({
         >
           {title}
         </span>
-        <span
-          className={classNames(styles.subTitle, {
-            [styles.medium]: size === CardSize.Medium,
-            [styles.large]: size === CardSize.Large,
-          })}
-        >
-          {subTitle}
-        </span>
+        {subTitle ? (
+          <span
+            className={classNames(styles.subTitle, {
+              [styles.medium]: size === CardSize.Medium,
+              [styles.large]: size === CardSize.Large,
+            })}
+          >
+            {subTitle}
+          </span>
+        ) : null}
       </div>
       {children && <div className={styles.content}>{children}</div>}
     </div>
