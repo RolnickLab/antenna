@@ -782,12 +782,13 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
 
         # Get current user from request
         user = get_current_user(self.request)
+        project = self.get_active_project()
 
         # Create the SourceImageUpload object with the user
         obj = serializer.save(user=user)
 
-        # Get process_now flag from request data
-        process_now = self.request.data.get("process_now", True)
+        # Get process_now flag from project feature flags
+        process_now = project.feature_flags.auto_processs_manual_uploads
 
         # Create source image from the upload
         source_image = create_source_image_from_upload(
