@@ -772,6 +772,35 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     # This is the maximum limit for manually uploaded captures
     pagination_class.default_limit = 20
 
+    def perform_create(self, serializer):
+        """
+        Save the SourceImageUpload with the current user and create the associated SourceImage.
+        """
+        from ami.base.serializers import get_current_user
+        from ami.main.models import create_source_image_from_upload
+
+        # Get current user from request
+        user = get_current_user(self.request)
+
+        # Create the SourceImageUpload object with the user
+        # @TODO IMPORTANT ensure current user is a member of the deployment's project
+        obj = serializer.save(user=user)
+
+        # Get process_now flag from request data
+        process_now = self.request.data.get("process_now", True)
+
+        # Create source image from the upload
+        source_image = create_source_image_from_upload(
+            image=obj.image,
+            deployment=obj.deployment,
+            request=self.request,
+            process_now=process_now,
+        )
+
+        # Update the source_image reference and save
+        obj.source_image = source_image
+        obj.save()
+
 
 class DetectionViewSet(DefaultViewSet, ProjectMixin):
     """

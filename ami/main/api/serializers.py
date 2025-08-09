@@ -6,9 +6,9 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
-from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
+from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import Tag, create_source_image_from_upload
+from ami.main.models import Tag
 from ami.ml.models import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.users.models import User
@@ -1044,23 +1044,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
             "user",
             "created_at",
         ]
-
-    def create(self, validated_data):
-        # Add the user to the validated data
-        request: Request = self.context["request"]
-        user = get_current_user(request)
-        # @TODO IMPORTANT ensure current user is a member of the deployment's project
-        obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        process_now = request.data.get("process_now", False)
-        source_image = create_source_image_from_upload(
-            image=obj.image,
-            deployment=obj.deployment,
-            request=request,
-            process_now=process_now,
-        )
-        obj.source_image = source_image  # type: ignore
-        obj.save()
-        return obj
 
 
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
