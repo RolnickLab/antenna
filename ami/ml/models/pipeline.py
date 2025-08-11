@@ -176,7 +176,7 @@ def submit_pipeline_requests(
 ) -> list[str]:
     """Submit prediction task to appropriate celery queue."""
     task_ids = []
-    batch_size = pipeline_config.get("bath_size", 1)
+    batch_size = pipeline_config.get("batch_size", 1)
 
     # Group source images into batches
 
@@ -235,10 +235,10 @@ def submit_pipeline_requests(
             )
             ml_task_record.source_images.set(source_image_batches[idx])
             ml_task_record.save()
-            job.logger.info(
-                f"Created MLTaskRecord for job {job_id} with task ID {task_result.id}"
-                " and task name process_pipeline_request"
-            )
+            # job.logger.info(
+            #     f"Created MLTaskRecord for job {job_id} with task ID {task_result.id}"
+            #     " and task name process_pipeline_request"
+            # )
         else:
             task_logger.warning("No job ID provided, MLTaskRecord will not be created.")
 
@@ -250,7 +250,7 @@ def process_images(
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
     project_id: int | None = None,
-) -> list[str]:
+):
     """
     Process images using ML batch processing.
     Returns a list of task IDs for the submitted tasks.
@@ -272,7 +272,7 @@ def process_images(
 
     if not images:
         task_logger.info("No images to process, no tasks submitted.")
-        return []  # No tasks submitted
+        return  # No tasks submitted
 
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
@@ -319,8 +319,7 @@ def process_images(
         pipeline.slug, source_image_requests, images, config, detection_requests, job_id, task_logger
     )
 
-    task_logger.info(f"Prediction task(s) submitted: {tasks_to_watch}")
-    return tasks_to_watch
+    task_logger.info(f"Submitted {len(tasks_to_watch)} prediction task(s).")
 
 
 def get_or_create_algorithm_and_category_map(
@@ -1021,6 +1020,9 @@ class Pipeline(BaseModel):
                 )
             except self.project_pipeline_configs.model.DoesNotExist as e:
                 logger.warning(f"No project-pipeline config for Pipeline {self} " f"and Project #{project_id}: {e}")
+
+        logger.warning("No project_id, no pipeline config is used.")
+
         return config
 
     def collect_images(

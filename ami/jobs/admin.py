@@ -64,4 +64,6 @@ class MLTaskRecordAdmin(AdminBase):
         "job",
         "task_id",
         "task_name",
+        "status",
+        "subtask_id",
     )
