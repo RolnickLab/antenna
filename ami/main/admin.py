@@ -77,7 +77,7 @@ class ProjectAdmin(GuardedModelAdmin):
     inlines = [ProjectPipelineConfigInline]
 
     fieldsets = (
-        (None, {"fields": ("name", "description", "priority", "active")}),
+        (None, {"fields": ("name", "description", "priority", "active", "draft")}),
         (
             "Ownership & Access",
             {
