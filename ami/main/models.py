@@ -216,6 +216,9 @@ class Project(BaseModel):
         blank=True,
     )
 
+    active = models.BooleanField(default=True)
+    priority = models.IntegerField(default=1)
+
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
     deployments: models.QuerySet["Deployment"]
@@ -223,10 +226,6 @@ class Project(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
     taxa: models.QuerySet["Taxon"]
     taxa_lists: models.QuerySet["TaxaList"]
-
-    active = models.BooleanField(default=True)
-    priority = models.IntegerField(default=1)
-
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
