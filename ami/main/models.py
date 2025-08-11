@@ -127,7 +127,10 @@ class Project(BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
-
+    draft = models.BooleanField(
+        default=False,
+        help_text="Indicates whether this project is in draft mode",
+    )
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
     deployments: models.QuerySet["Deployment"]
