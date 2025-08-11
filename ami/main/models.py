@@ -203,10 +203,10 @@ class Project(BaseModel):
         `delete_<model>`, `view_<model>`"""
 
         # Project permissions
-        VIEW = "view_project"
-        CHANGE = "update_project"
-        DELETE = "delete_project"
-        ADD = "create_project"
+        VIEW_PROJECT = "view_project"
+        UPDATE_PROJECT = "update_project"
+        DELETE_PROJECT = "delete_project"
+        CREATE_PROJECT = "create_project"
 
         # Identification permissions
         CREATE_IDENTIFICATION = "create_identification"
