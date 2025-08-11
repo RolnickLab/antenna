@@ -1745,3 +1745,63 @@ class TestRunSingleImageJobPermission(APITestCase):
             403,
             f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
         )
+
+
+class TestDraftProjectViewPermissions(APITestCase):
+    def setUp(self) -> None:
+        # Users
+        self.owner = User.objects.create_user(email="owner@insectai.org", is_staff=True)
+        self.member = User.objects.create_user(email="member@insectai.org", is_staff=False)
+        self.outsider = User.objects.create_user(email="outsider@insectai.org", is_staff=False)
+        self.superuser = User.objects.create_superuser(
+            email="superuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+
+        # Draft project with owner
+        self.project = Project.objects.create(
+            name="Draft Only Project",
+            description="Draft visibility test",
+            owner=self.owner,
+            draft=True,
+        )
+        self.detail_url = f"/api/v2/projects/{self.project.pk}/"
+
+    def _get_as(self, user):
+        self.client.force_authenticate(user=user)
+        return self.client.get(self.detail_url)
+
+    def test_owner_can_view_draft_project(self):
+        resp = self._get_as(self.owner)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Owner should be able to view draft project")
+
+    def test_member_can_view_draft_project(self):
+        # Assign membership, then can view
+        self.project.members.add(self.member)
+        resp = self._get_as(self.member)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Member should be able to view draft project")
+
+    def test_member_removed_cannot_view_draft_project(self):
+        # Add then remove membership; should no longer be able to view
+        self.project.members.add(self.member)
+        self.project.members.remove(self.member)
+
+        resp = self._get_as(self.member)
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+            " Member should not view draft project after removal",
+        )
+
+    def test_outsider_cannot_view_draft_project(self):
+        resp = self._get_as(self.outsider)
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+            " Non-member should not view draft project",
+        )
+
+    def test_superuser_can_view_draft_project(self):
+        resp = self._get_as(self.superuser)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Superuser should be able to view draft project")
