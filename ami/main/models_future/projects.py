@@ -5,8 +5,8 @@ class ProjectSettingsMixin(models.Model):
     """
     User definable settings for projects.
 
-    This is a mixin that will be flatten out into the final model.
-    It allows us to organized user-defined project settings in their own class
+    This is a mixin that will be flattened out into the final model.
+    It allows us to organize user-defined project settings in their own class
     without needing to create a separate model.
     """
 
@@ -46,7 +46,7 @@ class ProjectSettingsMixin(models.Model):
 
     default_filters_exclude_taxa = models.ManyToManyField(
         "Taxon",
-        related_name="exlude_taxa_default_projects",
+        related_name="exclude_taxa_default_projects",
         blank=True,
         help_text=(
             "Taxa that are excluded by default in the occurrence filters and metrics. " "For example, 'Not a Moth'."

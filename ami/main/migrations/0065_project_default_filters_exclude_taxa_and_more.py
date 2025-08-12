@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
             field=models.ManyToManyField(
                 blank=True,
                 help_text="Taxa that are excluded by default in the occurrence filters and metrics. For example, 'Not a Moth'.",
-                related_name="exlude_taxa_default_projects",
+                related_name="exclude_taxa_default_projects",
                 to="main.taxon",
             ),
         ),
