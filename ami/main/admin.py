@@ -76,6 +76,7 @@ class ProjectAdmin(GuardedModelAdmin):
     filter_horizontal = ("members",)
 
     inlines = [ProjectPipelineConfigInline]
+    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
 
     fieldsets = (
         (
