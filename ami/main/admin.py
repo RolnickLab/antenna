@@ -91,6 +91,18 @@ class ProjectAdmin(GuardedModelAdmin):
             },
         ),
         (
+            "Settings",
+            {
+                "fields": (
+                    "default_processing_pipeline",
+                    "session_time_gap_seconds",
+                    "default_filters_score_threshold",
+                    "default_filters_include_taxa",
+                    "default_filters_exclude_taxa",
+                ),
+            },
+        ),
+        (
             "Ownership & Access",
             {
                 "fields": ("owner", "members"),

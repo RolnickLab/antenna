@@ -25,6 +25,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectSettingsMixin,
     S3StorageSource,
     Site,
     SourceImage,
@@ -272,10 +273,17 @@ class ProjectListSerializer(DefaultSerializer):
         ]
 
 
+class ProjectSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = ProjectSettingsMixin.get_settings_field_names()
+
+
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
     feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
+    settings = ProjectSettingsSerializer(source="*", required=False)
 
     def get_feature_flags(self, obj):
         if obj.feature_flags:
@@ -289,6 +297,7 @@ class ProjectSerializer(DefaultSerializer):
             "summary_data",  # @TODO move to a 2nd request, it's too slow
             "owner",
             "feature_flags",
+            "settings",
         ]
 
 
