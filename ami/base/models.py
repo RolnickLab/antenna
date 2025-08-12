@@ -3,6 +3,7 @@ from django.db import models
 from guardian.shortcuts import get_perms
 
 import ami.tasks
+from ami.users.roles import BasicMember
 
 
 class BaseModel(models.Model):
@@ -56,7 +57,9 @@ class BaseModel(models.Model):
         if not project:
             return False
         if action == "retrieve":
-            # Allow view
+            if project.draft:
+                # Allow view permission for members and owners of draft projects
+                return BasicMember.has_role(user, project) or user == project.owner or user.is_superuser
             return True
 
         model = self._meta.model_name

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class Role:
     """Base class for all roles."""
 
-    permissions = {Project.Permissions.VIEW}
+    permissions = {Project.Permissions.VIEW_PROJECT}
 
     # @TODO : Refactor after adding the project <-> Group formal relationship
     @classmethod
@@ -93,8 +93,8 @@ class ProjectManager(Role):
         | Identifier.permissions
         | MLDataManager.permissions
         | {
-            Project.Permissions.CHANGE,
-            Project.Permissions.DELETE,
+            Project.Permissions.UPDATE_PROJECT,
+            Project.Permissions.DELETE_PROJECT,
             Project.Permissions.IMPORT_DATA,
             Project.Permissions.MANAGE_MEMBERS,
             Project.Permissions.POPULATE_COLLECTION,
