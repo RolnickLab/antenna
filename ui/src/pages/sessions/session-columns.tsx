@@ -134,4 +134,16 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
       </Link>
     ),
   },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Session) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Session) => <BasicTableCell value={item.updatedAt} />,
+  },
 ]

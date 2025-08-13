@@ -65,8 +65,8 @@ class TestImageGrouping(TestCase):
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
 
-        create_captures(deployment=self.deployment)
-        events = group_images_into_events(deployment=self.deployment)
+        captures = create_captures(deployment=self.deployment)
+        events = Event.objects.filter(captures__in=captures).distinct()
 
         for event in events:
             event.captures.all().delete()
@@ -82,8 +82,8 @@ class TestImageGrouping(TestCase):
 
         image_width, image_height = 100, 100
 
-        create_captures(deployment=self.deployment)
-        events = group_images_into_events(deployment=self.deployment)
+        captures = create_captures(deployment=self.deployment)
+        events = Event.objects.filter(captures__in=captures).distinct()
 
         for event in events:
             first_image = event.captures.first()
@@ -124,7 +124,6 @@ class TestEvents(TestCase):
     def setUp(self) -> None:
         project, deployment = setup_test_project()
         create_captures(deployment=deployment, num_nights=2, images_per_night=5)
-        group_images_into_events(deployment=deployment)
         self.project = project
         self.deployment = deployment
         return super().setUp()
@@ -199,7 +198,7 @@ class TestDuplicateFieldsOnChildren(TestCase):
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
 
         create_captures(deployment=self.deployment)
-        group_images_into_events(deployment=self.deployment)
+        self.deployment.save(regroup_async=False)  # Ensure events are grouped immediately
         create_taxa(project=self.project_one)
         create_taxa(project=self.project_two)
         create_occurrences(deployment=self.deployment, num=1)
@@ -243,7 +242,6 @@ class TestSourceImageCollections(TestCase):
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
 
         create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
-        group_images_into_events(deployment=self.deployment)
 
         return super().setUp()
 
@@ -401,8 +399,6 @@ class TestSourceImageCollections(TestCase):
         # Create captures for each deployment
         create_captures(deployment=deployment_two, num_nights=2, images_per_night=10, interval_minutes=1)
         create_captures(deployment=deployment_three, num_nights=2, images_per_night=10, interval_minutes=1)
-        group_images_into_events(deployment=deployment_two)
-        group_images_into_events(deployment=deployment_three)
 
         # Verify that we have images from the deployments
         assert deployment_two.captures.count() > 0
@@ -592,8 +588,6 @@ class TestTaxonomyViews(TestCase):
         print(f"Deployment Two: {deployment_two.pk}")
         create_captures(deployment=deployment_one)
         create_captures(deployment=deployment_two)
-        group_images_into_events(deployment=deployment_one)
-        group_images_into_events(deployment=deployment_two)
         create_occurrences(deployment=deployment_one, num=5)
         create_occurrences(deployment=deployment_two, num=5)
         self.project_one = project_one
@@ -724,7 +718,6 @@ class TestIdentification(APITestCase):
         project, deployment = setup_test_project()
         create_taxa(project=project)
         create_captures(deployment=deployment)
-        group_images_into_events(deployment=deployment)
         create_occurrences(deployment=deployment, num=5)
         self.project = project
         self.user = User.objects.create_user(  # type: ignore
@@ -789,7 +782,6 @@ class TestMovingSourceImages(TestCase):
         create_captures(
             deployment=deployment, subdir=self.other_subdir, num_nights=1, images_per_night=self.images_per_dir
         )
-        group_images_into_events(deployment=deployment)
         self.project = project
         self.deployment = deployment
         return super().setUp()
@@ -833,9 +825,8 @@ class TestProjectSettingsFiltering(APITestCase):
             project, deployment = setup_test_project(reuse=False)
             create_taxa(project=project)
             create_captures(deployment=deployment)
-            group_images_into_events(deployment=deployment)
             create_occurrences(deployment=deployment, num=5)
-        self.project_ids = [project.id for project in Project.objects.all()]
+        self.project_ids = [project.pk for project in Project.objects.all()]
 
         self.user = User.objects.create_user(  # type: ignore
             email="testuser@insectai.org",
@@ -1204,7 +1195,6 @@ class TestRolePermissions(APITestCase):
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
         S3StorageSource.objects.create(name="New source", project=self.project, bucket="Test Bucket")
         create_captures(deployment=self.deployment)
-        group_images_into_events(deployment=self.deployment)
         create_taxa(project=self.project)
         create_occurrences(deployment=self.deployment, num=1)
         self._create_job()
