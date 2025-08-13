@@ -201,12 +201,6 @@ class ProjectFeatureFlags(pydantic.BaseModel):
 default_feature_flags = ProjectFeatureFlags()
 
 
-class ProjectDisplaySettings(pydantic.BaseModel):
-    """ """
-
-    items_per_page: int = 20  # Number of items to display per page in lists
-
-
 @final
 class Project(ProjectSettingsMixin, BaseModel):
     """ """
