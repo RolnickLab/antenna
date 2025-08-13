@@ -1,15 +1,14 @@
 import datetime
 
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
-from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
+from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import Tag, create_source_image_from_upload
+from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
@@ -33,7 +32,6 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
-    validate_filename_timestamp,
 )
 
 
@@ -1084,30 +1082,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
             "user",
             "created_at",
         ]
-
-    def create(self, validated_data):
-        # Add the user to the validated data
-        request = self.context.get("request")
-        user = get_current_user(request)
-        # @TODO IMPORTANT ensure current user is a member of the deployment's project
-        obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        source_image = create_source_image_from_upload(
-            obj.image,
-            obj.deployment,
-            request,
-        )
-        if source_image is not None:
-            obj.source_image = source_image  # type: ignore
-            obj.save()
-        return obj
-
-    def validate_image(self, value):
-        # Ensure that image filename contains a timestamp
-        try:
-            validate_filename_timestamp(value.name)
-        except DjangoValidationError as e:
-            raise serializers.ValidationError(str(e))
-        return value
 
 
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
