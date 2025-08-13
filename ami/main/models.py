@@ -29,6 +29,7 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
+from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.users.models import User
 from ami.utils.schemas import OrderedEnum
 
@@ -201,7 +202,7 @@ default_feature_flags = ProjectFeatureFlags()
 
 
 @final
-class Project(BaseModel):
+class Project(ProjectSettingsMixin, BaseModel):
     """ """
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
@@ -209,12 +210,16 @@ class Project(BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+
     feature_flags = SchemaField(
         ProjectFeatureFlags,
         default=default_feature_flags,
         null=False,
         blank=True,
     )
+
+    active = models.BooleanField(default=True)
+    priority = models.IntegerField(default=1)
 
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
@@ -223,10 +228,6 @@ class Project(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
     taxa: models.QuerySet["Taxon"]
     taxa_lists: models.QuerySet["TaxaList"]
-
-    active = models.BooleanField(default=True)
-    priority = models.IntegerField(default=1)
-
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
