@@ -7,7 +7,7 @@ import django_pydantic_field.fields
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0064_alter_project_description"),
+        ("main", "0065_project_default_filters_exclude_taxa_and_more"),
     ]
 
     operations = [

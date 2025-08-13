@@ -9,8 +9,8 @@ from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.jobs.models import Job
 from ami.main.models import Tag
-from ami.ml.models import Algorithm
-from ami.ml.serializers import AlgorithmSerializer
+from ami.ml.models import Algorithm, Pipeline
+from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
 
@@ -24,6 +24,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectSettingsMixin,
     S3StorageSource,
     Site,
     SourceImage,
@@ -253,6 +254,18 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
         ]
 
 
+class TaxonNoParentNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+            "gbif_taxon_key",
+        ]
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
 
@@ -270,10 +283,46 @@ class ProjectListSerializer(DefaultSerializer):
         ]
 
 
+class ProjectSettingsSerializer(DefaultSerializer):
+    default_processing_pipeline = PipelineNestedSerializer(read_only=True)
+    default_processing_pipeline_id = serializers.PrimaryKeyRelatedField(
+        queryset=Pipeline.objects.all(),
+        source="default_processing_pipeline",
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    default_filters_include_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_include_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_include_taxa",
+        write_only=True,
+        required=False,
+    )
+    default_filters_exclude_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_exclude_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_exclude_taxa",
+        write_only=True,
+        required=False,
+    )
+
+    class Meta:
+        model = Project
+        fields = ProjectSettingsMixin.get_settings_field_names() + [
+            "default_processing_pipeline_id",
+            "default_filters_include_taxa_ids",
+            "default_filters_exclude_taxa_ids",
+        ]
+
+
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
     feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
+    settings = ProjectSettingsSerializer(source="*", required=False)
 
     def get_feature_flags(self, obj):
         if obj.feature_flags:
@@ -287,6 +336,7 @@ class ProjectSerializer(DefaultSerializer):
             "summary_data",  # @TODO move to a 2nd request, it's too slow
             "owner",
             "feature_flags",
+            "settings",
         ]
 
 
@@ -453,18 +503,6 @@ class DeploymentSerializer(DeploymentListSerializer):
             request=self.context.get("request"),
             params={"deployment": obj.pk},
         )
-
-
-class TaxonNoParentNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Taxon
-        fields = [
-            "id",
-            "name",
-            "rank",
-            "details",
-            "gbif_taxon_key",
-        ]
 
 
 class TaxonParentSerializer(serializers.Serializer):
