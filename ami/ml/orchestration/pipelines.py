@@ -13,7 +13,7 @@ def get_default_pipeline(project: Project) -> Pipeline | None:
 
     @TODO use project settings to determine the default pipeline
     """
-    return (
+    default_pipeline = project.default_processing_pipeline or (
         Pipeline.objects.all()
         .enabled(project=project)  # type: ignore
         .online(project=project)  # type: ignore
@@ -21,3 +21,4 @@ def get_default_pipeline(project: Project) -> Pipeline | None:
         .order_by("-num_categories", "-created_at")
         .first()
     )
+    return default_pipeline
