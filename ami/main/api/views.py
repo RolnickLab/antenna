@@ -760,7 +760,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
 
     serializer_class = SourceImageUploadSerializer
     permission_classes = [SourceImageUploadCRUDPermission]
-    project_required = True
+    require_project = True
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
