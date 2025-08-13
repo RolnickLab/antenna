@@ -1618,7 +1618,11 @@ class TestRolePermissions(APITestCase):
         # --- Test Create ---
         response = self.client.post(
             list_url,
-            {"image": self._create_source_image_upload_file(), "deployment": self.deployment.id},
+            {
+                "image": self._create_source_image_upload_file(),
+                "deployment": self.deployment.pk,
+                "project_id": self.project.pk,
+            },
             format="multipart",
         )
 
