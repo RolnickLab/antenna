@@ -118,6 +118,16 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def get_queryset(self):
+        qs: QuerySet = super().get_queryset()
+        assert self.queryset is not None
+
+        if hasattr(self.queryset.model, "get_project_accessor"):
+            project_accessor = self.queryset.model.get_project_accessor()
+            return qs.visible_draft_projects_only(self.request.user, project_accessor=project_accessor)
+
+        return qs
+
 
 class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
     pass
