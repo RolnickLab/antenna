@@ -7,10 +7,9 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { CollectionsPicker } from 'design-system/components/collections-picker'
-import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -78,11 +77,17 @@ export const JobDetailsForm = ({
 
   return (
     <form onSubmit={handleSubmit((values) => onSubmit(values))}>
-      {errorMessage && (
+      {errorMessage ? (
         <FormError
           inDialog
           intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
           message={errorMessage}
+        />
+      ) : (
+        <FormError
+          inDialog
+          intro="Warning"
+          message="Batch processing is currently in development and problems are likely to occur. If you need data processed, we recommend to reach out to the team for support. Thank you for your patience!"
         />
       )}
       <FormSection>
@@ -155,13 +160,7 @@ export const JobDetailsForm = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button
-          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          icon={isSuccess ? IconType.RadixCheck : undefined}
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
       </FormActions>
     </form>
   )

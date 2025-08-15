@@ -106,7 +106,7 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
             target="_blank"
           >
             <span>{translate(STRING.FIELD_LABEL_ALGORITHM_URI)}</span>
-            <ExternalLinkIcon className="w-4 h-4 ml-2" />
+            <ExternalLinkIcon className="w-4 h-4" />
           </a>
         )}
         {algorithm.categoryMapURI && (
@@ -120,7 +120,7 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
             target="_blank"
           >
             <span>{translate(STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS)}</span>
-            <ExternalLinkIcon className="w-4 h-4 ml-2" />
+            <ExternalLinkIcon className="w-4 h-4" />
           </a>
         )}
       </div>

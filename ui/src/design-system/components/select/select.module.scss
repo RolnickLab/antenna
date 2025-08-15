@@ -36,8 +36,9 @@
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  border-radius: 4px;
-  padding: 8px 12px;
+  height: 48px;
+  border-radius: 6px;
+  padding: 0 16px;
   @include paragraph-small();
   color: $color-neutral-700;
   border: 1px solid $color-neutral-100;

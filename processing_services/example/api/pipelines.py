@@ -2,7 +2,13 @@ import datetime
 import logging
 from typing import final
 
-from .algorithms import Algorithm, HFImageClassifier, ZeroShotObjectDetector
+from .algorithms import (
+    Algorithm,
+    ConstantClassifier,
+    HFImageClassifier,
+    RandomSpeciesClassifier,
+    ZeroShotObjectDetector,
+)
 from .schemas import (
     Detection,
     DetectionResponse,
@@ -12,7 +18,6 @@ from .schemas import (
     SourceImage,
     SourceImageResponse,
 )
-from .utils import get_image
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -134,42 +139,6 @@ class Pipeline:
             detections=detection_responses,
         )
 
-    def _process_existing_detections(self) -> list[Detection]:
-        """
-        Helper function for processing existing detections.
-        Opens the source and cropped images, and crops the source image if the cropped image URL is not valid.
-        """
-        processed_detections = self.existing_detections.copy()
-
-        for detection in processed_detections:
-            logger.info(f"Processing existing detection: {detection.id}")
-            detection.source_image.open(raise_exception=True)
-            assert detection.source_image._pil is not None, "Source image must be opened before cropping."
-
-            try:
-                # @TODO: Is this necessary? Should we always crop the image ourselves?
-                # The cropped image URL is typically a local file path.
-                # e.g. /media/detections/1/2018-06-15/session_2018-06-15_capture_20180615220800_detection_54.jpg
-                logger.info("Opening cropped image from the cropped image URL...")
-                detection._pil = get_image(
-                    url=detection.url,
-                    raise_exception=True,
-                )
-            except Exception as e:
-                logger.info(f"Failed to open cropped image from the URL: {detection.url}. Error: {e}")
-                logger.info("Falling back to cropping the source image...")
-                cropped_image_pil = detection.source_image._pil.crop(
-                    (
-                        min(detection.bbox.x1, detection.bbox.x2),
-                        min(detection.bbox.y1, detection.bbox.y2),
-                        max(detection.bbox.x1, detection.bbox.x2),
-                        max(detection.bbox.y1, detection.bbox.y2),
-                    )
-                )
-                detection._pil = cropped_image_pil
-            logger.info(f"Successfully processed existing detection: {detection.id}")
-        return processed_detections
-
 
 class ZeroShotHFClassifierPipeline(Pipeline):
     """
@@ -208,7 +177,7 @@ class ZeroShotHFClassifierPipeline(Pipeline):
         detections_with_candidate_labels: list[Detection] = []
         if self.existing_detections:
             logger.info("[1/2] Skipping the localizer, use existing detections...")
-            detections_with_candidate_labels = self._process_existing_detections()
+            detections_with_candidate_labels = self.existing_detections
         else:
             logger.info("[1/2] No existing detections, generating detections...")
             detections_with_candidate_labels: list[Detection] = self._get_detections(
@@ -262,6 +231,112 @@ class ZeroShotObjectDetectorPipeline(Pipeline):
         logger.info("[1/1] Running the zero shot object detector...")
         detections_with_classifications: list[Detection] = self._get_detections(
             self.stages[0], self.source_images, self.batch_sizes[0]
+        )
+        end_time = datetime.datetime.now()
+        elapsed_time = (end_time - start_time).total_seconds()
+        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
+            detections_with_classifications, elapsed_time
+        )
+        logger.info(f"Successfully processed {len(detections_with_classifications)} detections.")
+
+        return pipeline_response
+
+
+class ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline(Pipeline):
+    """
+    A pipeline that uses the HuggingFace zero shot object detector and a random species classifier.
+    """
+
+    batch_sizes = [1, 1]
+    config = PipelineConfigResponse(
+        name="Zero Shot Object Detector With Random Species Classifier Pipeline",
+        slug="zero-shot-object-detector-with-random-species-classifier-pipeline",
+        description=("HF zero shot object detector with random species classifier."),
+        version=1,
+        algorithms=[
+            ZeroShotObjectDetector.algorithm_config_response,
+            RandomSpeciesClassifier.algorithm_config_response,
+        ],
+    )
+
+    def get_stages(self) -> list[Algorithm]:
+        zero_shot_object_detector = ZeroShotObjectDetector()
+        if "candidate_labels" in self.request_config:
+            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
+
+        self.config.algorithms = [
+            zero_shot_object_detector.algorithm_config_response,
+            RandomSpeciesClassifier.algorithm_config_response,
+        ]
+
+        return [zero_shot_object_detector, RandomSpeciesClassifier()]
+
+    def run(self) -> PipelineResultsResponse:
+        start_time = datetime.datetime.now()
+        detections: list[Detection] = []
+        if self.existing_detections:
+            logger.info("[1/2] Skipping the localizer, use existing detections...")
+            detections = self.existing_detections
+        else:
+            logger.info("[1/2] No existing detections, generating detections...")
+            detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
+
+        logger.info("[2/2] Running the classifier...")
+        detections_with_classifications: list[Detection] = self._get_detections(
+            self.stages[1], detections, self.batch_sizes[1]
+        )
+        end_time = datetime.datetime.now()
+        elapsed_time = (end_time - start_time).total_seconds()
+        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
+            detections_with_classifications, elapsed_time
+        )
+        logger.info(f"Successfully processed {len(detections_with_classifications)} detections.")
+
+        return pipeline_response
+
+
+class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
+    """
+    A pipeline that uses the HuggingFace zero shot object detector and a constant classifier.
+    """
+
+    batch_sizes = [1, 1]
+    config = PipelineConfigResponse(
+        name="Zero Shot Object Detector With Constant Classifier Pipeline",
+        slug="zero-shot-object-detector-with-constant-classifier-pipeline",
+        description=("HF zero shot object detector with constant classifier."),
+        version=1,
+        algorithms=[
+            ZeroShotObjectDetector.algorithm_config_response,
+            ConstantClassifier.algorithm_config_response,
+        ],
+    )
+
+    def get_stages(self) -> list[Algorithm]:
+        zero_shot_object_detector = ZeroShotObjectDetector()
+        if "candidate_labels" in self.request_config:
+            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
+
+        self.config.algorithms = [
+            zero_shot_object_detector.algorithm_config_response,
+            ConstantClassifier.algorithm_config_response,
+        ]
+
+        return [zero_shot_object_detector, ConstantClassifier()]
+
+    def run(self) -> PipelineResultsResponse:
+        start_time = datetime.datetime.now()
+        detections: list[Detection] = []
+        if self.existing_detections:
+            logger.info("[1/2] Skipping the localizer, use existing detections...")
+            detections = self.existing_detections
+        else:
+            logger.info("[1/2] No existing detections, generating detections...")
+            detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
+
+        logger.info("[2/2] Running the classifier...")
+        detections_with_classifications: list[Detection] = self._get_detections(
+            self.stages[1], detections, self.batch_sizes[1]
         )
         end_time = datetime.datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()
