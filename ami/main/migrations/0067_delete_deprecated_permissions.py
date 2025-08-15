@@ -23,7 +23,7 @@ def delete_deprecated_permissions(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("main", "0058_alter_project_options_squashed_0067_alter_project_options"),
+        ("main", "0066_alter_project_feature_flags_and_more"),
     ]
 
     operations = [
