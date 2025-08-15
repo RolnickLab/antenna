@@ -5,9 +5,6 @@ from django.db import models
 
 from ami.base.models import BaseModel
 
-# from ami.main.models import Project
-# from ami.ml.models.pipeline import Pipeline
-
 logger = logging.getLogger(__name__)
 
 

@@ -15,6 +15,12 @@ import { XIcon } from 'lucide-react'
 import { Button, Select } from 'nova-ui-kit'
 import { SERVER_SAMPLING_METHODS } from 'pages/project/collections/constants'
 import { useForm } from 'react-hook-form'
+import {
+  formatIntegerList,
+  parseIntegerList,
+  validateInteger,
+  validateIntegerList,
+} from 'utils/fieldProcessors'
 import { STRING, translate } from 'utils/language'
 import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
 import { useFormError } from 'utils/useFormError'
@@ -30,6 +36,9 @@ type CollectionFormValues = FormValues & {
     max_num: number | undefined
     minute_interval: number | undefined
     size: number | undefined
+    deployment_ids: string | undefined
+    research_site_ids: string | undefined
+    event_ids: string | undefined
   }
 }
 
@@ -61,13 +70,7 @@ const config: FormConfig = {
     rules: {
       min: 0,
       max: 24,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.hour_end': {
@@ -76,26 +79,14 @@ const config: FormConfig = {
     rules: {
       min: 0,
       max: 24,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.max_num': {
-    label: 'Max number of images',
+    label: 'Max number of captures',
     rules: {
       min: 0,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.minute_interval': {
@@ -103,28 +94,34 @@ const config: FormConfig = {
     rules: {
       min: 0,
       required: true,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
   },
   'kwargs.size': {
-    label: 'Size',
+    label: 'Number of captures',
     rules: {
       min: 0,
       required: true,
-      validate: (value) => {
-        if (value) {
-          if (!Number.isInteger(Number(value))) {
-            return translate(STRING.MESSAGE_VALUE_INVALID)
-          }
-        }
-      },
+      validate: validateInteger,
     },
+  },
+  'kwargs.deployment_ids': {
+    label: 'Station IDs',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
+    rules: {
+      validate: validateIntegerList,
+    },
+    toApiValue: parseIntegerList,
+    toFormValue: formatIntegerList,
+  },
+  'kwargs.event_ids': {
+    label: 'Session IDs',
+    description: 'Enter comma-separated numbers (e.g., 1, 2, 3).',
+    rules: {
+      validate: validateIntegerList,
+    },
+    toApiValue: parseIntegerList,
+    toFormValue: formatIntegerList,
   },
 }
 
@@ -142,9 +139,17 @@ export const CollectionDetailsForm = ({
         name: entity?.name ?? '',
         description: entity?.description ?? '',
         kwargs: {
-          ...(collection?.kwargs ? collection.kwargs : {}),
           minute_interval: 10,
           size: 100,
+          ...Object.fromEntries(
+            Object.entries(collection?.kwargs || {}).map(([key, value]) => {
+              const fieldConfig = config[`kwargs.${key}`]
+              const formValue = fieldConfig?.toFormValue
+                ? fieldConfig.toFormValue(value)
+                : value
+              return [key, formValue]
+            })
+          ),
         },
         method: collection?.method ?? SERVER_SAMPLING_METHODS[0],
       },
@@ -170,7 +175,15 @@ export const CollectionDetailsForm = ({
 
               return true
             })
-            .map(([key, value]) => [key, value === '' ? null : value])
+            .map(([key, value]) => {
+              const fieldConfig = config[`kwargs.${key}`]
+              const processedValue = fieldConfig?.toApiValue
+                ? fieldConfig.toApiValue(value)
+                : value === ''
+                ? null
+                : value
+              return [key, processedValue]
+            })
         )
 
         onSubmit({
@@ -283,6 +296,20 @@ export const CollectionDetailsForm = ({
           <FormField
             name="kwargs.hour_end"
             type="number"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+        <FormRow>
+          <FormField
+            name="kwargs.deployment_ids"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="kwargs.event_ids"
+            type="text"
             config={config}
             control={control}
           />

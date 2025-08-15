@@ -1,8 +1,10 @@
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
+import { useTags } from 'data-services/hooks/taxa-tags/useTags'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
@@ -29,6 +31,7 @@ import { SpeciesGallery } from './species-gallery'
 
 export const Species = () => {
   const { projectId, id } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
   const { columnSettings, setColumnSettings } = useColumnSettings('species', {
     'cover-image': true,
     name: true,
@@ -53,6 +56,7 @@ export const Species = () => {
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
+  const { tags = [] } = useTags({ projectId: projectId as string })
 
   return (
     <>
@@ -66,6 +70,12 @@ export const Species = () => {
           )}
           <FilterControl clearable={false} field="best_determination_score" />
           <FilterControl field="include_unobserved" />
+          {project?.featureFlags.tags ? (
+            <>
+              <FilterControl data={tags} field="tag_id" />
+              <FilterControl data={tags} field="not_tag_id" />
+            </>
+          ) : null}
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader
@@ -93,16 +103,17 @@ export const Species = () => {
               onValueChange={setSelectedView}
             />
             <ColumnSettings
-              columns={columns(projectId as string)}
+              columns={columns({ projectId: projectId as string })}
               columnSettings={columnSettings}
               onColumnSettingsChange={setColumnSettings}
             />
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              columns={columns(projectId as string).filter(
-                (column) => !!columnSettings[column.id]
-              )}
+              columns={columns({
+                projectId: projectId as string,
+                featureFlags: project?.featureFlags,
+              }).filter((column) => !!columnSettings[column.id])}
               error={error}
               isLoading={!id && isLoading}
               items={species}
