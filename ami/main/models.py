@@ -203,7 +203,7 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     """
 
     tags: bool = False  # Whether the project supports tagging taxa
-    auto_processs_manual_uploads: bool = False  # Whether to automatically process uploaded images
+    auto_process_manual_uploads: bool = False  # Whether to automatically process uploaded images
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
 
 
