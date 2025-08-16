@@ -1,17 +1,16 @@
 import datetime
 
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
-from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
+from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import Tag, create_source_image_from_upload
-from ami.ml.models import Algorithm
-from ami.ml.serializers import AlgorithmSerializer
+from ami.main.models import Tag
+from ami.ml.models import Algorithm, Pipeline
+from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
 
@@ -25,6 +24,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectSettingsMixin,
     S3StorageSource,
     Site,
     SourceImage,
@@ -32,7 +32,6 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
-    validate_filename_timestamp,
 )
 
 
@@ -255,6 +254,18 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
         ]
 
 
+class TaxonNoParentNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+            "gbif_taxon_key",
+        ]
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
 
@@ -272,10 +283,46 @@ class ProjectListSerializer(DefaultSerializer):
         ]
 
 
+class ProjectSettingsSerializer(DefaultSerializer):
+    default_processing_pipeline = PipelineNestedSerializer(read_only=True)
+    default_processing_pipeline_id = serializers.PrimaryKeyRelatedField(
+        queryset=Pipeline.objects.all(),
+        source="default_processing_pipeline",
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    default_filters_include_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_include_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_include_taxa",
+        write_only=True,
+        required=False,
+    )
+    default_filters_exclude_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_exclude_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_exclude_taxa",
+        write_only=True,
+        required=False,
+    )
+
+    class Meta:
+        model = Project
+        fields = ProjectSettingsMixin.get_settings_field_names() + [
+            "default_processing_pipeline_id",
+            "default_filters_include_taxa_ids",
+            "default_filters_exclude_taxa_ids",
+        ]
+
+
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
     feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
+    settings = ProjectSettingsSerializer(source="*", required=False)
 
     def get_feature_flags(self, obj):
         if obj.feature_flags:
@@ -289,6 +336,7 @@ class ProjectSerializer(DefaultSerializer):
             "summary_data",  # @TODO move to a 2nd request, it's too slow
             "owner",
             "feature_flags",
+            "settings",
         ]
 
 
@@ -455,18 +503,6 @@ class DeploymentSerializer(DeploymentListSerializer):
             request=self.context.get("request"),
             params={"deployment": obj.pk},
         )
-
-
-class TaxonNoParentNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Taxon
-        fields = [
-            "id",
-            "name",
-            "rank",
-            "details",
-            "gbif_taxon_key",
-        ]
 
 
 class TaxonParentSerializer(serializers.Serializer):
@@ -1046,30 +1082,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
             "user",
             "created_at",
         ]
-
-    def create(self, validated_data):
-        # Add the user to the validated data
-        request = self.context.get("request")
-        user = get_current_user(request)
-        # @TODO IMPORTANT ensure current user is a member of the deployment's project
-        obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        source_image = create_source_image_from_upload(
-            obj.image,
-            obj.deployment,
-            request,
-        )
-        if source_image is not None:
-            obj.source_image = source_image  # type: ignore
-            obj.save()
-        return obj
-
-    def validate_image(self, value):
-        # Ensure that image filename contains a timestamp
-        try:
-            validate_filename_timestamp(value.name)
-        except DjangoValidationError as e:
-            raise serializers.ValidationError(str(e))
-        return value
 
 
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):

@@ -1,14 +1,15 @@
 import collections
 import datetime
 import functools
-import hashlib
 import logging
 import textwrap
 import time
 import typing
 import urllib.parse
+from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import PIL.Image
 import pydantic
 from django.apps import apps
 from django.conf import settings
@@ -29,12 +30,14 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
+from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.users.models import User
+from ami.utils.media import calculate_file_checksum, extract_timestamp
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
-    from ami.ml.models import ProcessingService
+    from ami.ml.models import Pipeline, ProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -135,12 +138,16 @@ def get_or_create_default_deployment(
 
 
 def get_or_create_default_collection(project: "Project") -> "SourceImageCollection":
-    """Create a default collection for a project for all images, updated dynamically."""
+    """
+    Create a default collection for a project for all images.
+
+    @TODO Consider ways to update this collection automatically. With a query-only collection
+    or a periodic task that runs the populate_collection method.
+    """
     collection, _created = SourceImageCollection.objects.get_or_create(
         name="All Images",
         project=project,
         method="full",
-        # @TODO make this a dynamic collection that updates automatically
     )
     logger.info(f"Created default collection for project {project}")
     return collection
@@ -211,26 +218,31 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     """
 
     tags: bool = False  # Whether the project supports tagging taxa
+    auto_processs_manual_uploads: bool = False  # Whether to automatically process uploaded images
 
 
 default_feature_flags = ProjectFeatureFlags()
 
 
 @final
-class Project(BaseModel):
+class Project(ProjectSettingsMixin, BaseModel):
     """ """
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
-    description = models.TextField()
+    description = models.TextField(blank=True)
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+
     feature_flags = SchemaField(
         ProjectFeatureFlags,
         default=default_feature_flags,
         null=False,
         blank=True,
     )
+
+    active = models.BooleanField(default=True)
+    priority = models.IntegerField(default=1)
 
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
@@ -239,15 +251,12 @@ class Project(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
     taxa: models.QuerySet["Taxon"]
     taxa_lists: models.QuerySet["TaxaList"]
-
-    active = models.BooleanField(default=True)
-    priority = models.IntegerField(default=1)
-
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
     sourceimage_collections: models.QuerySet["SourceImageCollection"]
     processing_services: models.QuerySet["ProcessingService"]
+    pipelines: models.QuerySet["Pipeline"]
     tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
@@ -1413,11 +1422,37 @@ def validate_filename_timestamp(filename: str) -> None:
         raise ValidationError("Image filename does not contain a valid timestamp (e.g. YYYYMMDDHHMMSS-snapshot.jpg).")
 
 
-def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+def create_source_image_from_upload(
+    image: ImageFieldFile,
+    deployment: Deployment,
+    request=None,
+    process_now=True,
+) -> "SourceImage":
     """Create a complete SourceImage from an uploaded file."""
-    # md5 checksum from file
-    checksum = hashlib.md5(image.read()).hexdigest()
-    checksum_algorithm = "md5"
+
+    # Read file content once
+    image.seek(0)
+    file_content = image.read()
+
+    # Calculate a checksum for the image content
+    checksum, checksum_algorithm = calculate_file_checksum(file_content)
+
+    # Create PIL image from file content (no additional file reads)
+    image_stream = BytesIO(file_content)
+    pil_image = PIL.Image.open(image_stream)
+
+    timestamp = extract_timestamp(filename=image.name, image=pil_image)
+    if not timestamp:
+        logger.warning(
+            "A valid timestamp could not be found in the image's EXIF data or filename. "
+            "Please rename the file to include a timestamp "
+            "(e.g. YYYYMMDDHHMMSS-snapshot.jpg). "
+            "Falling back to the current time for the image captured timestamp."
+        )
+        timestamp = timezone.now()
+    width = pil_image.width
+    height = pil_image.height
+    size = len(file_content)
 
     # get full public media url of image:
     if request:
@@ -1425,23 +1460,26 @@ def create_source_image_from_upload(image: ImageFieldFile, deployment: Deploymen
     else:
         base_url = settings.MEDIA_URL
 
-    source_image = SourceImage(
+    source_image = SourceImage.objects.create(
         path=image.name,  # Includes relative path from MEDIA_ROOT
         public_base_url=base_url,  # @TODO how to merge this with the data source?
         project=deployment.project,
         deployment=deployment,
-        timestamp=None,  # Will be calculated from filename or EXIF data on save
+        timestamp=timestamp,
         event=None,  # Will be assigned when the image is grouped into events
-        size=image.size,
+        size=size,
         checksum=checksum,
         checksum_algorithm=checksum_algorithm,
-        width=image.width,
-        height=image.height,
+        width=width,
+        height=height,
         test_image=True,
         uploaded_by=request.user if request else None,
     )
-    source_image.save()
-    deployment.save()
+    deployment.save(regroup_async=False)
+    if process_now:
+        from ami.ml.orchestration.processing import process_single_source_image
+
+        process_single_source_image(source_image=source_image)
     return source_image
 
 
@@ -1458,7 +1496,7 @@ class SourceImageUpload(BaseModel):
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
 
-    image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
+    image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
     source_image = models.OneToOneField(

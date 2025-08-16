@@ -760,6 +760,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
 
     serializer_class = SourceImageUploadSerializer
     permission_classes = [SourceImageUploadCRUDPermission]
+    require_project = True
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
@@ -771,6 +772,35 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     pagination_class = LimitOffsetPaginationWithPermissions
     # This is the maximum limit for manually uploaded captures
     pagination_class.default_limit = 20
+
+    def perform_create(self, serializer):
+        """
+        Save the SourceImageUpload with the current user and create the associated SourceImage.
+        """
+        from ami.base.serializers import get_current_user
+        from ami.main.models import create_source_image_from_upload
+
+        # Get current user from request
+        user = get_current_user(self.request)
+        project = self.get_active_project()
+
+        # Create the SourceImageUpload object with the user
+        obj = serializer.save(user=user)
+
+        # Get process_now flag from project feature flags
+        process_now = project.feature_flags.auto_processs_manual_uploads
+
+        # Create source image from the upload
+        source_image = create_source_image_from_upload(
+            image=obj.image,
+            deployment=obj.deployment,
+            request=self.request,
+            process_now=process_now,
+        )
+
+        # Update the source_image reference and save
+        obj.source_image = source_image
+        obj.save()
 
 
 class DetectionViewSet(DefaultViewSet, ProjectMixin):
