@@ -40,3 +40,8 @@ MINIO_DEFAULT_BUCKET=ami
 MINIO_STORAGE_USE_HTTPS=False
 MINIO_TEST_BUCKET=ami-test
 MINIO_BROWSER_REDIRECT_URL=http://minio:9001
+
+# Default processing service (local)
+DEFAULT_PROCESSING_SERVICE_NAME=Local Processing Service
+DEFAULT_PROCESSING_SERVICE_ENDPOINT=http://ml_backend:2000
+# DEFAULT_PIPELINES_ENABLED=random,constant  # When set to None, all pipelines will be enabled.

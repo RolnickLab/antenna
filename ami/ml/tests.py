@@ -188,19 +188,28 @@ class TestPipelineWithProcessingService(TestCase):
         detections. The 2 pipelines used are a random detection + random species classifier, and a
         constant species classifier.
         """
+        if not self.project.feature_flags.reprocess_existing_detections:
+            self.project.feature_flags.reprocess_existing_detections = True
+            self.project.save()
+
         # Process the images once
-        pipeline = self.processing_service_instance.pipelines.all().get(slug="random-detection-random-species")
-        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk)
+        pipeline_one = self.processing_service_instance.pipelines.all().get(slug="random-detection-random-species")
+        num_classifiers_pipeline_one = pipeline_one.algorithms.filter(task_type="classification").count()
+        pipeline_response = pipeline_one.process_images(self.test_images, project_id=self.project.pk)
         results = save_results(pipeline_response, return_created=True)
         assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.detections, "Expected detections to be returned in the results"
+        num_initial_detections = len(results.detections)
 
         # This particular pipeline produces 2 classifications per detection
         for det in results.detections:
             num_classifications = det.classifications.count()
-            assert (
-                num_classifications == 2
-            ), "Expected 2 classifications per detection (random species and random binary classifier)."
+            self.assertEqual(
+                num_classifications,
+                num_classifiers_pipeline_one,
+                f"Expected {num_classifiers_pipeline_one} classifications per detection "
+                "(random species and random binary classifier).",
+            )
 
         source_images = SourceImage.objects.filter(pk__in=[image.id for image in pipeline_response.source_images])
         detections = Detection.objects.filter(source_image__in=source_images).select_related(
@@ -211,11 +220,18 @@ class TestPipelineWithProcessingService(TestCase):
         assert detections.count() > 0
 
         # Reprocess the same images using a different pipeline
-        pipeline = self.processing_service_instance.pipelines.all().get(slug="constant")
-        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk)
+        pipeline_two = self.processing_service_instance.pipelines.all().get(slug="constant")
+        num_classifiers_pipeline_two = pipeline_two.algorithms.filter(task_type="classification").count()
+        pipeline_response = pipeline_two.process_images(self.test_images, project_id=self.project.pk)
         reprocessed_results = save_results(pipeline_response, return_created=True)
         assert reprocessed_results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert reprocessed_results.detections, "Expected detections to be returned in the results"
+        num_reprocessed_detections = len(reprocessed_results.detections)
+        self.assertEqual(
+            num_reprocessed_detections,
+            num_initial_detections,
+            "Expected the same number of detections after reprocessing with a different pipeline.",
+        )
 
         source_images = SourceImage.objects.filter(pk__in=[image.id for image in pipeline_response.source_images])
         detections = Detection.objects.filter(source_image__in=source_images).select_related(
@@ -230,11 +246,14 @@ class TestPipelineWithProcessingService(TestCase):
             f"but found {initial_detection_ids} != {reprocessed_detection_ids}"
         )
 
-        # The constant pipeline produces 1 classification per detection
+        # The constant pipeline produces 1 classification per detection (added to the existing classifications)
         for detection in detections:
-            assert (
-                detection.classifications.count() == 3
-            ), "Expected 3 classifications per detection (2 random classifiers + constant classifier)."
+            self.assertEqual(
+                detection.classifications.count(),
+                num_classifiers_pipeline_one + num_classifiers_pipeline_two,
+                f"Expected {num_classifiers_pipeline_one + num_classifiers_pipeline_two} "
+                "classifications per detection (2 random classifiers + constant classifier).",
+            )
 
 
 class TestPipeline(TestCase):

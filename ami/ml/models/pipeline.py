@@ -26,6 +26,7 @@ from ami.main.models import (
     Deployment,
     Detection,
     Occurrence,
+    Project,
     SourceImage,
     SourceImageCollection,
     TaxaList,
@@ -264,6 +265,15 @@ def process_images(
         job = Job.objects.get(pk=job_id)
         task_logger = job.logger
 
+    if project_id:
+        project = Project.objects.get(pk=project_id)
+    else:
+        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
+        project = None
+
+    pipeline_config = pipeline.get_config(project_id=project_id)
+    task_logger.info(f"Using pipeline config: {pipeline_config}")
+
     prefiltered_images = list(images)
     images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
     if len(images) < len(prefiltered_images):
@@ -280,6 +290,13 @@ def process_images(
     source_image_requests: list[SourceImageRequest] = []
     detection_requests: list[DetectionRequest] = []
 
+    reprocess_existing_detections = False
+    # Check if feature flag is enabled to reprocess existing detections
+    if project and project.feature_flags.reprocess_existing_detections:
+        # Check if the user wants to reprocess existing detections or ignore them
+        if pipeline_config.get("reprocess_existing_detections", True):
+            reprocess_existing_detections = True
+
     for source_image, url in zip(images, urls):
         if url:
             source_image_request = SourceImageRequest(
@@ -287,39 +304,50 @@ def process_images(
                 url=url,
             )
             source_image_requests.append(source_image_request)
-            # Re-process all existing detections if they exist
-            for detection in source_image.detections.all():
-                bbox = detection.get_bbox()
-                if bbox and detection.detection_algorithm:
-                    detection_requests.append(
-                        DetectionRequest(
-                            source_image=source_image_request,
-                            bbox=bbox,
-                            crop_image_url=detection.url(),
-                            algorithm=AlgorithmReference(
-                                name=detection.detection_algorithm.name,
-                                key=detection.detection_algorithm.key,
-                            ),
-                        )
-                    )
-        else:
-            task_logger.error(
-                f"Source image {source_image.pk} has no public url. Can't process it with the pipeline {pipeline}."
-            )
-    if not project_id:
-        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
 
-    config = pipeline.get_config(project_id=project_id)
-    task_logger.info(f"Using pipeline config: {config}")
+            if reprocess_existing_detections:
+                detection_requests += collect_detections(source_image, source_image_request)
+
+    if reprocess_existing_detections:
+        task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
+    else:
+        task_logger.info("Reprocessing of existing detections is disabled, sending images without detections.")
 
     task_logger.info(f"Found {len(detection_requests)} existing detections.")
 
     # Submit task to celery queue as an argument
     tasks_to_watch = submit_pipeline_requests(
-        pipeline.slug, source_image_requests, images, config, detection_requests, job_id, task_logger
+        pipeline.slug, source_image_requests, images, pipeline_config, detection_requests, job_id, task_logger
     )
 
     task_logger.info(f"Submitted {len(tasks_to_watch)} prediction task(s).")
+
+
+def collect_detections(
+    source_image: SourceImage,
+    source_image_request: SourceImageRequest,
+) -> list[DetectionRequest]:
+    """
+    Collect existing detections for a source image and send them with pipeline request.
+    """
+    detection_requests: list[DetectionRequest] = []
+    # Re-process all existing detections if they exist
+    for detection in source_image.detections.all():
+        bbox = detection.get_bbox()
+        if bbox and detection.detection_algorithm:
+            detection_requests.append(
+                DetectionRequest(
+                    source_image=source_image_request,
+                    bbox=bbox,
+                    crop_image_url=detection.url(),
+                    algorithm=AlgorithmReference(
+                        name=detection.detection_algorithm.name,
+                        key=detection.detection_algorithm.key,
+                    ),
+                )
+            )
+
+    return detection_requests
 
 
 def get_or_create_algorithm_and_category_map(
@@ -957,6 +985,40 @@ class PipelineStage(ConfigurableStage):
     """A configurable stage of a pipeline."""
 
 
+class PipelineQuerySet(models.QuerySet):
+    """Custom QuerySet for Pipeline model."""
+
+    def enabled(self, project: Project) -> PipelineQuerySet:
+        """
+        Return pipelines that are enabled for a given project.
+
+        # @TODO how can this automatically filter based on the pipeline's projects
+        # or the current query without having to specify the project? (e.g. with OuterRef?)
+        """
+        return self.filter(
+            projects=project,
+            project_pipeline_configs__enabled=True,
+            project_pipeline_configs__project=project,
+            processing_services__projects=project,
+        ).distinct()
+
+    def online(self, project: Project) -> PipelineQuerySet:
+        """
+        Return pipelines that are available at least one online processing service.
+        """
+        return self.filter(
+            processing_services__projects=project,
+            processing_services__last_checked_live=True,
+        ).distinct()
+
+
+class PipelineManager(models.Manager):
+    """Custom Manager for Pipeline model."""
+
+    def get_queryset(self) -> PipelineQuerySet:
+        return PipelineQuerySet(self.model, using=self._db)
+
+
 @typing.final
 class Pipeline(BaseModel):
     """A pipeline of algorithms"""
@@ -988,6 +1050,9 @@ class Pipeline(BaseModel):
             "and the processing service."
         ),
     )
+
+    objects = PipelineManager()
+
     processing_services: models.QuerySet[ProcessingService]
     project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
     jobs: models.QuerySet[Job]

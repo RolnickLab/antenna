@@ -136,6 +136,10 @@ class DetectionResponse(pydantic.BaseModel):
 
 
 class Detection(BaseImage):
+    """
+    An internal representation of a detection with reference to a source image instance.
+    """
+
     source_image: SourceImage  # the 'original' uncropped image
     bbox: BoundingBox
     inference_time: float | None = None

@@ -15,8 +15,17 @@ def create_roles(sender, **kwargs):
     """Creates predefined roles with specific permissions ."""
 
     logger.info("Creating roles for all projects")
-    for project in Project.objects.all():
-        create_roles_for_project(project)
+    try:
+        for project in Project.objects.all():
+            try:
+                create_roles_for_project(project)
+            except Exception as e:
+                logger.warning(f"Failed to create roles for project {project.pk} ({project.name}): {e}")
+                continue
+    except Exception as e:
+        logger.warning(
+            f"Failed to create roles during migration: {e}. This can be run manually via management command."
+        )
 
 
 @receiver(m2m_changed, sender=Group.user_set.through)

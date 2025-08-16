@@ -216,7 +216,7 @@ class PipelineRequest(pydantic.BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "pipeline": "random",
+                "pipeline": "constant",
                 "source_images": [
                     {
                         "id": "123",
