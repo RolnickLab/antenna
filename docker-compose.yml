@@ -23,6 +23,7 @@ services:
       - postgres
       - redis
       - minio-init
+      - rabbitmq
     volumes:
       - .:/app:z
     env_file:
@@ -84,6 +85,10 @@ services:
   redis:
     image: redis:6
     container_name: ami_local_redis
+    networks:
+      - antenna_network
+    ports:
+      - "6379:6379" # expose redis port for setting celery task locks
 
   celeryworker:
     <<: *django
@@ -91,6 +96,10 @@ services:
     scale: 1
     ports: []
     command: /start-celeryworker
+    environment:
+      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+    depends_on:
+      - rabbitmq
 
   celerybeat:
     <<: *django
@@ -106,6 +115,17 @@ services:
     command: /start-flower
     volumes:
       - ./data/flower/:/data/
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    networks:
+      - antenna_network
 
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
@@ -155,6 +175,22 @@ services:
       default:
         aliases:
           - processing_service
+    depends_on:
+      - celeryworker_ml
+
+  celeryworker_ml:
+    build:
+      context: ./processing_services/minimal
+    command: ./celery_worker/start_celery.sh
+    environment:
+      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+    volumes: # fixes drift issue
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
 
 networks:
   antenna_network:
