@@ -4,6 +4,8 @@ services:
       context: .
     volumes:
       - ./:/app:z
+      - ./huggingface_cache:/root/.cache/huggingface
+      - ./pytorch_cache:/root/.cache/torch
     ports:
       - "2003:2000"
     extra_hosts:
