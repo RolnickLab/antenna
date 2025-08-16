@@ -223,7 +223,7 @@ def process_images(
             source_image_requests.append(source_image_request)
 
             if reprocess_existing_detections:
-                detection_requests = collect_detections(source_image, source_image_request)
+                detection_requests += collect_detections(source_image, source_image_request)
 
     if reprocess_existing_detections:
         task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
