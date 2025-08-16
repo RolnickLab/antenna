@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ami.ml.models import ProcessingService, ProjectPipelineConfig
     from ami.jobs.models import Job
-    from ami.main.models import Project
 
 import collections
 import dataclasses
@@ -28,6 +27,7 @@ from ami.main.models import (
     Deployment,
     Detection,
     Occurrence,
+    Project,
     SourceImage,
     SourceImageCollection,
     TaxaList,
@@ -178,6 +178,15 @@ def process_images(
         job = Job.objects.get(pk=job_id)
         task_logger = job.logger
 
+    if project_id:
+        project = Project.objects.get(pk=project_id)
+    else:
+        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
+        project = None
+
+    pipeline_config = pipeline.get_config(project_id=project_id)
+    task_logger.info(f"Using pipeline config: {pipeline_config}")
+
     prefiltered_images = list(images)
     images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
     if len(images) < len(prefiltered_images):
@@ -198,6 +207,13 @@ def process_images(
     source_image_requests: list[SourceImageRequest] = []
     detection_requests: list[DetectionRequest] = []
 
+    reprocess_existing_detections = False
+    # Check if feature flag is enabled to reprocess existing detections
+    if project and project.feature_flags.reprocess_existing_detections:
+        # Check if the user wants to reprocess existing detections or ignore them
+        if pipeline_config.get("reprocess_existing_detections", True):
+            reprocess_existing_detections = True
+
     for source_image, url in zip(images, urls):
         if url:
             source_image_request = SourceImageRequest(
@@ -205,36 +221,22 @@ def process_images(
                 url=url,
             )
             source_image_requests.append(source_image_request)
-            # Re-process all existing detections if they exist
-            for detection in source_image.detections.all():
-                bbox = detection.get_bbox()
-                if bbox and detection.detection_algorithm:
-                    detection_requests.append(
-                        DetectionRequest(
-                            source_image=source_image_request,
-                            bbox=bbox,
-                            crop_image_url=detection.url(),
-                            algorithm=AlgorithmReference(
-                                name=detection.detection_algorithm.name,
-                                key=detection.detection_algorithm.key,
-                            ),
-                        )
-                    )
 
-    if not project_id:
-        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
+            if reprocess_existing_detections:
+                detection_requests = collect_detections(source_image, source_image_request)
 
-    config = pipeline.get_config(project_id=project_id)
-    task_logger.info(f"Using pipeline config: {config}")
-
-    task_logger.info(f"Found {len(detection_requests)} existing detections.")
+    if reprocess_existing_detections:
+        task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
+    else:
+        task_logger.info("Reprocessing of existing detections is disabled, sending images without detections.")
 
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
         source_images=source_image_requests,
-        config=config,
+        config=pipeline_config,
         detections=detection_requests,
     )
+    task_logger.debug(f"Pipeline request data: {request_data}")
 
     session = create_session()
     resp = session.post(endpoint_url, json=request_data.dict())
@@ -273,6 +275,33 @@ def process_images(
         )
 
     return results
+
+
+def collect_detections(
+    source_image: SourceImage,
+    source_image_request: SourceImageRequest,
+) -> list[DetectionRequest]:
+    """
+    Collect existing detections for a source image and send them with pipeline request.
+    """
+    detection_requests: list[DetectionRequest] = []
+    # Re-process all existing detections if they exist
+    for detection in source_image.detections.all():
+        bbox = detection.get_bbox()
+        if bbox and detection.detection_algorithm:
+            detection_requests.append(
+                DetectionRequest(
+                    source_image=source_image_request,
+                    bbox=bbox,
+                    crop_image_url=detection.url(),
+                    algorithm=AlgorithmReference(
+                        name=detection.detection_algorithm.name,
+                        key=detection.detection_algorithm.key,
+                    ),
+                )
+            )
+
+    return detection_requests
 
 
 def get_or_create_algorithm_and_category_map(
