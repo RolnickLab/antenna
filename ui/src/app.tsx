@@ -23,6 +23,7 @@ import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Algorithms } from 'pages/project/algorithms/algorithms'
 import { Collections } from 'pages/project/collections/collections'
+import { DefaultFilters } from 'pages/project/default-filters/default-filters'
 import { Devices } from 'pages/project/entities/devices'
 import { Sites } from 'pages/project/entities/sites'
 import { Exports } from 'pages/project/exports/exports'
@@ -118,6 +119,7 @@ export const App = () => (
             <Route path="sites" element={<Sites />} />
             <Route path="devices" element={<Devices />} />
             <Route path="general" element={<General />} />
+            <Route path="default-filters" element={<DefaultFilters />} />
             <Route path="storage" element={<Storage />} />
           </Route>
           <Route path="jobs/:id?" element={<Jobs />} />

@@ -13,5 +13,8 @@ export const convertToServerFormData = (fieldValues: any) => {
     data.append('image', '')
   }
 
+  // TODO: Remove console log and include default filters as form data
+  console.log('update project: ', fieldValues)
+
   return data
 }
