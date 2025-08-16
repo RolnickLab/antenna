@@ -13,6 +13,7 @@ import PIL.Image
 import pydantic
 from django.apps import apps
 from django.conf import settings
+from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
@@ -24,6 +25,7 @@ from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
+from guardian.shortcuts import get_perms
 
 import ami.tasks
 import ami.utils
@@ -304,10 +306,12 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Job permissions
         CREATE_JOB = "create_job"
         UPDATE_JOB = "update_job"
-        RUN_JOB = "run_job"
+        RUN_ML_JOB = "run_ml_job"
+        RUN_SINGLE_IMAGE_JOB = "run_single_image_ml_job"
+        RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
+        RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
+        RUN_DATA_EXPORT_JOB = "run_data_export_job"
         DELETE_JOB = "delete_job"
-        RETRY_JOB = "retry_job"
-        CANCEL_JOB = "cancel_job"
 
         # Deployment permissions
         CREATE_DEPLOYMENT = "create_deployment"
@@ -362,10 +366,12 @@ class Project(ProjectSettingsMixin, BaseModel):
             # Job permissions
             ("create_job", "Can create a job"),
             ("update_job", "Can update a job"),
-            ("run_job", "Can run a job"),
+            ("run_ml_job", "Can run/retry/cancel ML jobs"),
+            ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
+            ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
+            ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
+            ("run_single_image_ml_job", "Can process a single capture"),
             ("delete_job", "Can delete a job"),
-            ("retry_job", "Can retry a job"),
-            ("cancel_job", "Can cancel a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
             ("delete_deployment", "Can delete a deployment"),
@@ -1726,6 +1732,30 @@ class SourceImage(BaseModel):
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        project = self.get_project() if hasattr(self, "get_project") else None
+        if action in ["star", "unstar"]:
+            return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
+
+    def get_custom_user_permissions(self, user) -> list[str]:
+        project = self.get_project()
+        if not project:
+            return []
+
+        custom_perms = set()
+        perms = get_perms(user, project)
+        for perm in perms:
+            # permissions are in the format "action_modelname"
+            if perm.endswith("_sourceimage"):
+                # process_single_image_sourceimage
+                action = perm.split("_", 1)[0]
+                # make sure to exclude standard CRUD actions
+                if action not in ["view", "create", "update", "delete"]:
+                    custom_perms.add(action)
+        if Project.Permissions.RUN_SINGLE_IMAGE_JOB in perms:
+            custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
+        return list(custom_perms)
+
     class Meta:
         ordering = ("deployment", "event", "timestamp")
 
@@ -2034,6 +2064,21 @@ class Identification(BaseModel):
 
         # Allow the update_occurrence_determination to determine the next best ID
         update_occurrence_determination(self.occurrence, current_determination=self.taxon)
+
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        """Custom permission check logic for Identification model."""
+        import ami.users.roles as roles
+
+        project = self.get_project()
+        if not project:
+            return False
+
+        if action == "destroy":
+            # Allow if user is superuser, project manager, or owner of the identification
+            return user.is_superuser or roles.ProjectManager.has_role(user, project) or self.user == user
+
+        # Fallback to base class permission checks
+        return super().check_permission(user, action)
 
 
 @final

@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0059_alter_project_options"),
+        ("main", "0058_alter_project_options"),
     ]
 
     operations = [
