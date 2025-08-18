@@ -1309,7 +1309,7 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
                 "job": {
-                    "create": False,
+                    "create": True,
                     "update": False,
                     "delete": False,
                     "run_single_image": True,
@@ -1329,7 +1329,7 @@ class TestRolePermissions(APITestCase):
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
                 "job": {
-                    "create": False,
+                    "create": True,
                     "update": False,
                     "delete": False,
                     "run_single_image": True,
