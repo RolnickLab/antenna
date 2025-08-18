@@ -8,13 +8,13 @@ In this directory, we define locally-run processing services as FastAPI apps. A 
 - `/info`: returns data about what pipelines and algorithms are supported by the service.
 - `/livez`
 - `/readyz`
-- `/process`: receives source images via a `PipelineRequest` and returns a `PipelineResponse` containing detections
+- `/process`: receives source images and existing detections via a `PipelineRequest` and returns a `PipelineResponse` containing detections
 
 `processing_services` contains 2 apps:
 - `example`: demos how to add custom pipelines/algorithms.
 - `minimal`: a simple ML backend for basic testing of the processing service API. This minimal app also runs within the main Antenna docker compose stack.
 
-If your goal is to run an ML backend locally, simply copy the `example` directory and follow the steps below.
+If your goal is to run an ML backend locally, simply copy the `example` app and follow the steps below.
 
 ## Environment Set Up
 
@@ -38,26 +38,56 @@ If your goal is to run an ML backend locally, simply copy the `example` director
 3. Implement the `run()` function. Some important considerations:
     - Always run `_get_pipeline_response` at the end of `run()` to get a valid `PipelineResultsResponse`
     - Each algorithm/stage in a pipeline should take a list of `SourceImage`s or `Detection`s and produce a list of `Detection`s (with or without classifications). The class member function `_get_detections()` handles this general stage structure; it batchifys the inputs and produces output detections.
-    - 2 example pipelines are already implemented:
-        - `ZeroShotHFClassifierPipeline`: localizer + classifier
-        - `ZeroShotObjectDetectorPipeline`: detector
+    - 4 example pipelines are already implemented. See the table at the end of the README for examples of what detections from each pipeline look like.
+        - `ZeroShotHFClassifierPipeline`
+        - `ZeroShotObjectDetectorPipeline`
+        - `ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline`
+        - `ZeroShotObjectDetectorWithConstantClassifierPipeline`
 
 4. Add `NewPipeline` to `processing_services/example/api/api.py`
 
 ```
-from .pipelines import Pipeline, ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline, NewPipeline
-
+from .pipelines import (
+    Pipeline,
+    ZeroShotHFClassifierPipeline,
+    ZeroShotObjectDetectorPipeline,
+    ZeroShotObjectDetectorWithConstantClassifierPipeline,
+    ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
+    NewPipeline
+)
 ...
 
-pipelines: list[type[Pipeline]] = [ZeroShotHFClassifierPipeline, ZeroShotObjectDetectorPipeline, NewPipeline ]
-
-...
-
+pipelines: list[type[Pipeline]] = [
+    ZeroShotHFClassifierPipeline,
+    ZeroShotObjectDetectorPipeline,
+    ZeroShotObjectDetectorWithConstantClassifierPipeline,
+    ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
+    NewPipeline,
+]
 ```
 5. Update `PipelineChoice` in `processing_services/example/api/schemas.py` to include the slug of the new pipeline, as defined in `NewPipeline`'s config.
 
 ```
 PipelineChoice = typing.Literal[
-    "zero-shot-hf-classifier-pipeline", "zero-shot-object-detector-pipeline", "new-pipeline"
+    "zero-shot-hf-classifier-pipeline",
+    "zero-shot-object-detector-pipeline",
+    "zero-shot-object-detector-with-constant-classifier-pipeline",
+    "zero-shot-object-detector-with-random-species-classifier-pipeline",
+    "new-pipeline-slug",
 ]
 ```
+## Demo
+
+## `minimal` Pipelines and Output Images
+
+- `ConstantPipeline` and `RandomDetectionRandomSpeciesPipeline`
+![MinimalReprocessing](images/MinimalReprocessing.png)
+
+
+## `example` Pipelines and Output Images
+
+- `ZeroShotHFClassifierPipeline`
+![ZeroShotHFClassifierPipeline](images/ZeroShotHFClassifierPipeline.png)
+
+- `ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline` and `ZeroShotObjectDetectorWithConstantClassifierPipeline` (using reprocessing, skips the Zero Shot Object Detector if there are existing detections)
+![ZeroShotReprocessing](images/ZeroShotReprocessing.png)

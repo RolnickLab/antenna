@@ -15,7 +15,9 @@ services:
     command: /start
 
   postgres:
-    image: postgres:13
+    build:
+      context: .
+      dockerfile: ./compose/local/postgres/Dockerfile
     env_file:
       - ./.envs/.ci/.postgres
 
@@ -32,6 +34,11 @@ services:
     command: minio server --console-address ":9001" /data
     env_file:
       - ./.envs/.ci/.django
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   minio-init:
     image: minio/mc:RELEASE.2025-03-12T17-29-24Z

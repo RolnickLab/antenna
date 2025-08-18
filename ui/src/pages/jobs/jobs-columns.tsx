@@ -102,7 +102,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'source-image-collection',
     sortField: 'source_image_collection',
-    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
+    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
     renderCell: (item: Job) =>
       item.sourceImages ? (
         <Link

@@ -26,6 +26,7 @@ from .models import (
     Site,
     SourceImage,
     SourceImageCollection,
+    Tag,
     TaxaList,
     Taxon,
 )
@@ -75,9 +76,33 @@ class ProjectAdmin(GuardedModelAdmin):
     filter_horizontal = ("members",)
 
     inlines = [ProjectPipelineConfigInline]
+    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
 
     fieldsets = (
-        (None, {"fields": ("name", "description", "priority", "active")}),
+        (
+            None,
+            {
+                "fields": (
+                    "name",
+                    "description",
+                    "priority",
+                    "active",
+                    "feature_flags",
+                )
+            },
+        ),
+        (
+            "Settings",
+            {
+                "fields": (
+                    "default_processing_pipeline",
+                    "session_time_gap_seconds",
+                    "default_filters_score_threshold",
+                    "default_filters_include_taxa",
+                    "default_filters_exclude_taxa",
+                ),
+            },
+        ),
         (
             "Ownership & Access",
             {
@@ -455,6 +480,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
         "rank",
         "parent",
         "parent_names",
+        "tag_list",
         "list_names",
         "created_at",
         "updated_at",
@@ -475,10 +501,10 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
 
         return qs.annotate(occurrence_count=models.Count("occurrences")).order_by("-occurrence_count")
 
-    @admin.display(
-        description="Occurrences",
-        ordering="occurrence_count",
-    )
+    @admin.display(description="Tags")
+    def tag_list(self, obj) -> str:
+        return ", ".join([tag.name for tag in obj.tags.all()])
+
     def occurrence_count(self, obj) -> int:
         return obj.occurrence_count
 
@@ -596,3 +622,10 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "project")
+    list_filter = ("project",)
+    search_fields = ("name",)
