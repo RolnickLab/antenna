@@ -8,7 +8,7 @@ import {
 import { FormConfig } from 'components/form/types'
 import { AddTaxon } from 'components/taxon-search/add-taxon'
 import { TaxonSelect } from 'components/taxon-search/taxon-select'
-import { Project } from 'data-services/models/project'
+import { ProjectDetails } from 'data-services/models/project-details'
 import { InputContent } from 'design-system/components/input/input'
 import { CheckIcon, Loader2Icon, XIcon } from 'lucide-react'
 import { Button, Slider } from 'nova-ui-kit'
@@ -18,9 +18,9 @@ import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 
 interface DefaultFiltersFormValues {
-  scoreThreshold?: any
-  includeTaxa?: any
-  excludeTaxa?: any
+  scoreThreshold: number
+  includeTaxa: { id: string; name: string }[]
+  excludeTaxa: { id: string; name: string }[]
 }
 
 const config: FormConfig = {
@@ -44,31 +44,31 @@ export const DefaultFiltersForm = ({
   isLoading,
   isSuccess,
   onSubmit,
+  project,
 }: {
   error?: unknown
   isLoading?: boolean
   isSuccess?: boolean
   onSubmit: (data: DefaultFiltersFormValues) => void
-  project: Project
+  project: ProjectDetails
 }) => {
   const {
     control,
     handleSubmit,
     setError: setFieldError,
   } = useForm<DefaultFiltersFormValues>({
-    // TODO: Replace default values with stored values for project
-    defaultValues: {
-      scoreThreshold: 0.6,
-      includeTaxa: [],
-      excludeTaxa: [],
-    },
+    defaultValues: project.defaultFilters,
     mode: 'onChange',
   })
 
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
-    <form onSubmit={handleSubmit((values) => onSubmit(values))}>
+    <form
+      onSubmit={handleSubmit((values) => {
+        onSubmit(values)
+      })}
+    >
       {errorMessage && (
         <FormError
           inDialog

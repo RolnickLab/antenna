@@ -13,8 +13,18 @@ export const convertToServerFormData = (fieldValues: any) => {
     data.append('image', '')
   }
 
-  // TODO: Remove console log and include default filters as form data
-  console.log('update project: ', fieldValues)
+  // TODO: Investigate why settings are not being saved
+  if (fieldValues.defaultFilters) {
+    data.append(
+      'settings',
+      JSON.stringify({
+        default_filters_score_threshold:
+          fieldValues.defaultFilters.scoreThreshold,
+        default_filters_include_taxa: fieldValues.defaultFilters.includeTaxa,
+        default_filters_exclude_taxa: fieldValues.defaultFilters.excludeTaxa,
+      })
+    )
+  }
 
   return data
 }

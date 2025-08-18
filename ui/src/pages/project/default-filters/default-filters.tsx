@@ -1,6 +1,6 @@
 import classNames from 'classnames'
 import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
-import { Project } from 'data-services/models/project'
+import { ProjectDetails } from 'data-services/models/project-details'
 import styles from 'design-system/components/dialog/dialog.module.scss'
 import { DefaultFiltersForm } from 'pages/project-details/default-filters-form'
 import { useEffect } from 'react'
@@ -11,7 +11,7 @@ import { STRING, translate } from 'utils/language'
 export const DefaultFilters = () => {
   const navigate = useNavigate()
   const { project } = useOutletContext<{
-    project: Project
+    project: ProjectDetails
   }>()
   const { updateProject, isLoading, isSuccess, error } = useUpdateProject(
     project.id
@@ -40,7 +40,7 @@ export const DefaultFilters = () => {
             error={error}
             isLoading={isLoading}
             isSuccess={isSuccess}
-            onSubmit={(data) => updateProject(data)}
+            onSubmit={(data) => updateProject({ defaultFilters: data })}
             project={project}
           />
         </div>
