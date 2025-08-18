@@ -33,6 +33,7 @@ from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
 from ami.main.models_future.projects import ProjectSettingsMixin
+from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp
 from ami.utils.schemas import OrderedEnum
@@ -204,7 +205,8 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     """
 
     tags: bool = False  # Whether the project supports tagging taxa
-    auto_processs_manual_uploads: bool = False  # Whether to automatically process uploaded images
+    auto_process_manual_uploads: bool = False  # Whether to automatically process uploaded images
+    reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
 
 
 default_feature_flags = ProjectFeatureFlags()
@@ -2307,6 +2309,17 @@ class Detection(BaseModel):
     classifications: models.QuerySet["Classification"]
     source_image_id: int
     detection_algorithm_id: int
+
+    def get_bbox(self):
+        if self.bbox:
+            return BoundingBox(
+                x1=self.bbox[0],
+                y1=self.bbox[1],
+                x2=self.bbox[2],
+                y2=self.bbox[3],
+            )
+        else:
+            return None
 
     # def bbox(self):
     #     return (

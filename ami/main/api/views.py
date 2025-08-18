@@ -773,7 +773,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
         obj = serializer.save(user=user)
 
         # Get process_now flag from project feature flags
-        process_now = project.feature_flags.auto_processs_manual_uploads
+        process_now = project.feature_flags.auto_process_manual_uploads
 
         # Create source image from the upload
         source_image = create_source_image_from_upload(
