@@ -1,4 +1,7 @@
 from django.db import migrations
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def delete_deprecated_permissions(apps, schema_editor):
@@ -16,7 +19,7 @@ def delete_deprecated_permissions(apps, schema_editor):
 
     permissions = Permission.objects.filter(codename__in=deprecated_codenames)
     for perm in permissions:
-        print(f"Deleting permission: {perm.codename}")
+        logger.info(f"Deleting permission: {perm.codename}")
         perm.delete()
 
 
