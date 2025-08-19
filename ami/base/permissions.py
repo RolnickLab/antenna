@@ -7,7 +7,6 @@ from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
 from ami.main.models import BaseModel
-from ami.users.roles import BasicMember
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +40,6 @@ def filter_permissions(permissions, model_name):
         if perm.endswith(f"_{model_name}")  # Ensure it matches the model
     }
     return filtered_permissions
-
-
-def user_can_view_draft_project(project, user) -> bool:
-    """
-    Returns True if the user is allowed to view the draft project.
-    Only superusers, project owners, or members are allowed.
-    """
-    if not project.draft:
-        return True  # All users can view non-draft projects
-
-    if user.is_superuser:
-        return True
-
-    if project.owner == user:
-        return True
-
-    return BasicMember.has_role(user, project)
 
 
 def add_object_level_permissions(

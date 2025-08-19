@@ -1,6 +1,6 @@
 from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.db import models
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from guardian.shortcuts import get_perms
 
 import ami.tasks
@@ -10,37 +10,31 @@ class BaseQuerySet(QuerySet):
     def visible_draft_projects_only(self, user, project_accessor="project"):
         """
         Filter queryset to include only objects whose related draft projects
-        are visible to the given user.
+        are visible to the given user. Only superusers, project owners,
+        or members are allowed to view draft projects and their related objects.
         """
-        from ami.base.permissions import user_can_view_draft_project
         from ami.main.models import Project
 
         if user.is_superuser:
             return self
 
-        # If this is a queryset of Projects, filter directly
-        if self.model == Project:
-            return self.filter(
-                models.Q(draft=False) | models.Q(id__in=[p.id for p in self if user_can_view_draft_project(p, user)])
-            )
-
-        # If project_accessor is empty, skip filtering
-        if project_accessor in ("", None):
+        # AnonymousUser cannot be used in user-related filters like `owner=user` or `members=user`,
+        # because Django tries to cast it to an integer user ID, which raises a TypeError.
+        if isinstance(user, AnonymousUser):
             return self
 
-        # Filter using get_project
-        related_objects = self.select_related(project_accessor)
-        filtered_ids = []
+        if self.model == Project:
+            return self.filter(Q(draft=False) | Q(owner=user) | Q(members=user)).distinct()
 
-        for obj in related_objects:
-            try:
-                project = obj.get_project()
-                if project and user_can_view_draft_project(project, user):
-                    filtered_ids.append(obj.pk)
-            except AttributeError:
-                continue
+        if not project_accessor:
+            return self
 
-        return self.filter(pk__in=filtered_ids)
+        project_field = f"{project_accessor}__"
+        return self.filter(
+            Q(**{f"{project_field}draft": False})
+            | Q(**{f"{project_field}owner": user})
+            | Q(**{f"{project_field}members": user})
+        ).distinct()
 
 
 class BaseModel(models.Model):
