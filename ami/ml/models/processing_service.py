@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class ProcessingService(BaseModel):
     """An ML processing service"""
 
+    project_accessor = ""
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
