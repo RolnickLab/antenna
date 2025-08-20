@@ -56,6 +56,8 @@ class BasicMember(Role):
     permissions = Role.permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
         Project.Permissions.STAR_SOURCE_IMAGE,
+        Project.Permissions.CREATE_JOB,
+        Project.Permissions.RUN_SINGLE_IMAGE_JOB,
     }
 
 
@@ -75,9 +77,11 @@ class MLDataManager(Role):
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
-        Project.Permissions.RUN_JOB,
-        Project.Permissions.RETRY_JOB,
-        Project.Permissions.CANCEL_JOB,
+        # RUN ML jobs is revoked for now
+        # Project.Permissions.RUN_ML_JOB,
+        Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB,
+        Project.Permissions.RUN_DATA_STORAGE_SYNC_JOB,
+        Project.Permissions.RUN_DATA_EXPORT_JOB,
         Project.Permissions.DELETE_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
     }
@@ -90,7 +94,6 @@ class ProjectManager(Role):
         | Identifier.permissions
         | MLDataManager.permissions
         | {
-            Project.Permissions.CHANGE,
             Project.Permissions.CHANGE,
             Project.Permissions.DELETE,
             Project.Permissions.IMPORT_DATA,
