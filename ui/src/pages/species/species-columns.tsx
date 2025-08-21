@@ -15,9 +15,24 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Species>[] = (
+export const columns: (project: {
   projectId: string
-) => [
+  featureFlags?: { [key: string]: boolean }
+}) => TableColumn<Species>[] = ({ projectId, featureFlags }) => [
+  {
+    id: 'cover-image',
+    name: 'Cover image',
+    sortField: 'cover_image_url',
+    renderCell: (item: Species) => {
+      return (
+        <ImageTableCell
+          images={item.coverImage ? [{ src: item.coverImage.url }] : []}
+          theme={ImageCellTheme.Light}
+          to={APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id })}
+        />
+      )
+    },
+  },
   {
     id: 'cover-image',
     name: 'Cover image',
@@ -47,14 +62,16 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
           >
             <TaxonDetails compact taxon={item} />
           </Link>
-          <div className="flex flex-wrap gap-1 w-64">
-            {item.isUnknown ? (
-              <Tag name="Unknown species" className="bg-success" />
-            ) : null}
-            {item.tags.map((tag) => (
-              <Tag key={tag.id} name={tag.name} />
-            ))}
-          </div>
+          {featureFlags?.tags && item.tags.length ? (
+            <div className="flex flex-wrap gap-1">
+              {item.isUnknown ? (
+                <Tag name="Unknown species" className="bg-success" />
+              ) : null}
+              {item.tags.map((tag) => (
+                <Tag key={tag.id} name={tag.name} />
+              ))}
+            </div>
+          ) : null}
         </div>
       </BasicTableCell>
     ),

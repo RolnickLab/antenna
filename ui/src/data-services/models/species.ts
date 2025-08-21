@@ -8,17 +8,10 @@ export type Tag = { id: number; name: string }
 
 export class Species extends Taxon {
   protected readonly _species: ServerSpecies
-  private readonly _images: { src: string }[] = []
 
   public constructor(species: ServerSpecies) {
     super(species)
     this._species = species
-
-    if (species.occurrence_images?.length) {
-      this._images = species.occurrence_images.map((image: any) => ({
-        src: image,
-      }))
-    }
   }
 
   get coverImage(): { url: string; caption?: string } | undefined {
@@ -39,8 +32,11 @@ export class Species extends Taxon {
   }
 
   get djangoAdminUrl(): string {
-    // TODO: Replace hard coded URL when available from API
-    return `https://api-ood.antenna.insectai.org/admin/main/taxon/${this._species.id}/`
+    // Construct a link to edit this species in the Django admin.
+    // Use the API hostname if available, otherwise default to relative path (/admin)
+    const path = `/admin/main/taxon/${this._species.id}/`
+    const baseUrl = (import.meta as any).env.VITE_API_PROXY_TARGET
+    return baseUrl ? `${baseUrl}${path}` : path
   }
 
   get isUnknown(): boolean {

@@ -1,21 +1,23 @@
 import collections
 import datetime
 import functools
-import hashlib
 import logging
 import textwrap
 import time
 import typing
 import urllib.parse
+from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import PIL.Image
 import pydantic
 from django.apps import apps
 from django.conf import settings
+from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
-from django.db import IntegrityError, models
+from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
@@ -23,6 +25,7 @@ from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
+from guardian.shortcuts import get_perms
 from pgvector.django import CosineDistance, L2Distance, VectorField
 
 import ami.tasks
@@ -30,12 +33,16 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel
 from ami.main import charts
+from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.clustering_algorithms.cluster_detections import cluster_detections
+from ami.ml.schemas import BoundingBox
 from ami.users.models import User
+from ami.utils.media import calculate_file_checksum, extract_timestamp
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
+    from ami.ml.models import Pipeline, ProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +98,61 @@ def get_media_url(path: str) -> str:
 as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 
-def create_default_device(project: "Project") -> "Device":
+def get_or_create_default_device(project: "Project") -> "Device":
     """Create a default device for a project."""
     device, _created = Device.objects.get_or_create(name="Default device", project=project)
     logger.info(f"Created default device for project {project}")
     return device
 
 
-def create_default_research_site(project: "Project") -> "Site":
+def get_or_create_default_research_site(project: "Project") -> "Site":
     """Create a default research site for a project."""
     site, _created = Site.objects.get_or_create(name="Default site", project=project)
     logger.info(f"Created default research site for project {project}")
     return site
+
+
+def get_or_create_default_deployment(
+    project: "Project", site: "Site | None" = None, device: "Device | None" = None
+) -> "Deployment":
+    """Create a default deployment for a project."""
+    deployment, _created = Deployment.objects.get_or_create(
+        name="Default Station",
+        project=project,
+        research_site=site,
+        device=device,
+    )
+    logger.info(f"Created default deployment for project {project}")
+    return deployment
+
+
+def get_or_create_default_collection(project: "Project") -> "SourceImageCollection":
+    """
+    Create a default collection for a project for all images.
+
+    @TODO Consider ways to update this collection automatically. With a query-only collection
+    or a periodic task that runs the populate_collection method.
+    """
+    collection, _created = SourceImageCollection.objects.get_or_create(
+        name="All Images",
+        project=project,
+        method="full",
+    )
+    logger.info(f"Created default collection for project {project}")
+    return collection
+
+
+def get_or_create_default_project(user: User) -> "Project":
+    """
+    Create a default project for a user.
+
+    Default related objects like devices and research sites will be created
+    when the project is saved for the first time.
+    If the project already exists, it will be returned without modification.
+    """
+    project, _created = Project.objects.get_or_create(name="Scratch Project", owner=user, create_defaults=True)
+    logger.info(f"Created default project for user {user}")
+    return project
 
 
 class ProjectQuerySet(models.QuerySet):
@@ -117,16 +167,72 @@ class ProjectManager(models.Manager):
     def get_queryset(self) -> ProjectQuerySet:
         return ProjectQuerySet(self.model, using=self._db)
 
+    def create(self, create_defaults: bool = True, **kwargs) -> "Project":
+        """
+        Create a new Project and related models with defaults.
+
+        Args:
+            create_defaults: Whether to create default related models
+            **kwargs: Model field values
+
+        Returns:
+            Created Project instance
+        """
+        with transaction.atomic():
+            project_instance = super().create(**kwargs)
+            logger.info(f"Created project: {project_instance.name}")
+
+            if create_defaults:
+                self.create_related_defaults(project_instance)
+
+            return project_instance
+
+    def create_related_defaults(self, project: "Project"):
+        """Create default device, and other related models for this project if they don't exist."""
+        device = get_or_create_default_device(project=project)
+        site = get_or_create_default_research_site(project=project)
+        if not project.deployments.exists():
+            get_or_create_default_deployment(project=project, site=site, device=device)
+        if not project.sourceimage_collections.exists():
+            get_or_create_default_collection(project=project)
+        if not project.processing_services.exists():
+            from ami.ml.models.processing_service import get_or_create_default_processing_service
+
+            get_or_create_default_processing_service(project=project)
+
+
+class ProjectFeatureFlags(pydantic.BaseModel):
+    """
+    Feature flags for the project.
+    """
+
+    tags: bool = False  # Whether the project supports tagging taxa
+    auto_process_manual_uploads: bool = False  # Whether to automatically process uploaded images
+    reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
+
+
+default_feature_flags = ProjectFeatureFlags()
+
 
 @final
-class Project(BaseModel):
+class Project(ProjectSettingsMixin, BaseModel):
     """ """
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
-    description = models.TextField()
+    description = models.TextField(blank=True)
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+
+    feature_flags = SchemaField(
+        ProjectFeatureFlags,
+        default=default_feature_flags,
+        null=False,
+        blank=True,
+    )
+
+    active = models.BooleanField(default=True)
+    priority = models.IntegerField(default=1)
 
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
@@ -135,13 +241,12 @@ class Project(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
     taxa: models.QuerySet["Taxon"]
     taxa_lists: models.QuerySet["TaxaList"]
-
-    active = models.BooleanField(default=True)
-    priority = models.IntegerField(default=1)
-
     devices: models.QuerySet["Device"]
     sites: models.QuerySet["Site"]
     jobs: models.QuerySet["Job"]
+    sourceimage_collections: models.QuerySet["SourceImageCollection"]
+    processing_services: models.QuerySet["ProcessingService"]
+    pipelines: models.QuerySet["Pipeline"]
     tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
@@ -180,21 +285,10 @@ class Project(BaseModel):
 
         return plots
 
-    def create_related_defaults(self):
-        """Create default device, and other related models for this project if they don't exist."""
-        if not self.devices.exists():
-            create_default_device(project=self)
-        if not self.sites.exists():
-            create_default_research_site(project=self)
-
     def save(self, *args, **kwargs):
-        new_project = bool(self._state.adding)
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
-        if new_project:
-            logger.info(f"Created new project {self}")
-            self.create_related_defaults()
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
@@ -214,10 +308,12 @@ class Project(BaseModel):
         # Job permissions
         CREATE_JOB = "create_job"
         UPDATE_JOB = "update_job"
-        RUN_JOB = "run_job"
+        RUN_ML_JOB = "run_ml_job"
+        RUN_SINGLE_IMAGE_JOB = "run_single_image_ml_job"
+        RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
+        RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
+        RUN_DATA_EXPORT_JOB = "run_data_export_job"
         DELETE_JOB = "delete_job"
-        RETRY_JOB = "retry_job"
-        CANCEL_JOB = "cancel_job"
 
         # Deployment permissions
         CREATE_DEPLOYMENT = "create_deployment"
@@ -272,10 +368,12 @@ class Project(BaseModel):
             # Job permissions
             ("create_job", "Can create a job"),
             ("update_job", "Can update a job"),
-            ("run_job", "Can run a job"),
+            ("run_ml_job", "Can run/retry/cancel ML jobs"),
+            ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
+            ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
+            ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
+            ("run_single_image_ml_job", "Can process a single capture"),
             ("delete_job", "Can delete a job"),
-            ("retry_job", "Can retry a job"),
-            ("cancel_job", "Can cancel a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
             ("delete_deployment", "Can delete a deployment"),
@@ -613,8 +711,8 @@ class Deployment(BaseModel):
             job.progress.add_stage("Update deployment cache")
             job.update_progress()
 
-        self.save()
-        self.update_calculated_fields(save=True)
+        # If new images were added, ensure the regroup happens now, not queued as an async task.
+        self.save(regroup_async=False)
 
         if job:
             job.progress.update_stage("Update deployment cache", progress=1)
@@ -755,25 +853,15 @@ class Deployment(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
-    def save(self, update_calculated_fields=True, *args, **kwargs):
-        if self.pk:
-            events_last_updated = min(
-                [
-                    self.events.aggregate(latest_updated_at=models.Max("updated_at")).get("latest_update_at")
-                    or datetime.datetime.max,
-                    self.updated_at,
-                ]
-            )
-        else:
-            events_last_updated = datetime.datetime.min
-
+    def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
-            # @TODO Use "dirty" flag strategy to only update when needed
-            new_or_updated_captures = self.captures.filter(updated_at__gte=events_last_updated).count()
-            deleted_captures = True if self.captures.count() < (self.captures_count or 0) else False
-            if new_or_updated_captures or deleted_captures:
-                ami.tasks.regroup_events.delay(self.pk)
+            if deployment_events_need_update(self):
+                logger.info(f"Deployment {self} has events that need to be regrouped")
+                if regroup_async:
+                    ami.tasks.regroup_events.delay(self.pk)
+                else:
+                    group_images_into_events(self)
             self.update_calculated_fields(save=True)
             if self.project:
                 self.update_children()
@@ -997,6 +1085,28 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def audit_event_lengths(deployment: Deployment):
+    logger.info("Checking for unusual event durations")
+
+    events_over_24_hours = Event.objects.filter(
+        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
+    ).count()
+    if events_over_24_hours:
+        logger.warning(f"Found {events_over_24_hours} event(s) over 24 hours in deployment {deployment}. ")
+
+    events_starting_before_noon = Event.objects.filter(
+        deployment=deployment, start__hour__lt=12  # Before hour 12
+    ).count()
+    if events_starting_before_noon:
+        logger.warning(
+            f"Found {events_starting_before_noon} event(s) starting before noon in deployment {deployment}. "
+        )
+
+    events_ending_before_start = Event.objects.filter(deployment=deployment, start__gt=models.F("end")).count()
+    if events_ending_before_start:
+        logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
+
+
 def group_images_into_events(
     deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
 ) -> list[Event]:
@@ -1073,25 +1183,57 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
-    logger.info("Checking for unusual statistics of events")
-    events_over_24_hours = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("end") - datetime.timedelta(days=1)
-    )
-    if events_over_24_hours.count():
-        logger.warning(f"Found {events_over_24_hours.count()} events over 24 hours in deployment {deployment}. ")
-    events_starting_before_noon = Event.objects.filter(
-        deployment=deployment, start__lt=models.F("start") + datetime.timedelta(hours=12)
-    )
-    if events_starting_before_noon.count():
-        logger.warning(
-            f"Found {events_starting_before_noon.count()} events starting before noon in deployment {deployment}. "
-        )
-
     logger.info("Updating relevant cached fields on deployment")
     deployment.events_count = len(events)
     deployment.save(update_calculated_fields=False, update_fields=["events_count"])
 
+    audit_event_lengths(deployment)
+
     return events
+
+
+def deployment_events_need_update(deployment: Deployment) -> bool:
+    """
+    Returns True if there are any SourceImages in the deployment
+    that haven't been assigned to an `Event`.
+
+    Note: This does not detect if images were deleted from the deployment
+    after being grouped. We currently have limited support for image deletion,
+    so handling that is out of scope for this check.
+    """
+
+    capture_counts_differ = deployment.captures_count != deployment.captures.count()
+
+    ungrouped_images = models.Q(event__isnull=True)
+
+    events_last_updated = (
+        deployment.events.aggregate(
+            latest_updated_at=models.Max("updated_at"),
+        )["latest_updated_at"]
+        or deployment.updated_at
+        or datetime.datetime.min
+    )
+    images_updated_after_events = models.Q(updated_at__gt=events_last_updated)
+
+    new_or_ungrouped_images = (
+        SourceImage.objects.filter(deployment=deployment).filter(ungrouped_images | images_updated_after_events)
+    ).exists()
+
+    images_in_deployment_but_another_event = (
+        SourceImage.objects.filter(deployment=deployment).exclude(event__deployment=deployment).exists()
+    )
+
+    needs_update = new_or_ungrouped_images or capture_counts_differ or images_in_deployment_but_another_event
+
+    if needs_update:
+        logger.info(
+            f"Deployment {deployment} events need updating: "
+            f"capture_counts_differ={capture_counts_differ}, "
+            f"new_or_ungrouped_images={new_or_ungrouped_images}, "
+            f"images_in_deployment_but_another_event={images_in_deployment_but_another_event}"
+        )
+
+    return needs_update
 
 
 def delete_empty_events(deployment: Deployment, dry_run=False):
@@ -1159,6 +1301,7 @@ class S3StorageSource(BaseModel):
     # last_check_duration = models.DurationField(null=True, blank=True)
     # use_signed_urls = models.BooleanField(default=False)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
+    # @TODO allow multiple projects to share the same S3StorageSource
 
     deployments: models.QuerySet["Deployment"]
 
@@ -1248,11 +1391,37 @@ def validate_filename_timestamp(filename: str) -> None:
         raise ValidationError("Image filename does not contain a valid timestamp (e.g. YYYYMMDDHHMMSS-snapshot.jpg).")
 
 
-def create_source_image_from_upload(image: ImageFieldFile, deployment: Deployment, request=None) -> "SourceImage":
+def create_source_image_from_upload(
+    image: ImageFieldFile,
+    deployment: Deployment,
+    request=None,
+    process_now=True,
+) -> "SourceImage":
     """Create a complete SourceImage from an uploaded file."""
-    # md5 checksum from file
-    checksum = hashlib.md5(image.read()).hexdigest()
-    checksum_algorithm = "md5"
+
+    # Read file content once
+    image.seek(0)
+    file_content = image.read()
+
+    # Calculate a checksum for the image content
+    checksum, checksum_algorithm = calculate_file_checksum(file_content)
+
+    # Create PIL image from file content (no additional file reads)
+    image_stream = BytesIO(file_content)
+    pil_image = PIL.Image.open(image_stream)
+
+    timestamp = extract_timestamp(filename=image.name, image=pil_image)
+    if not timestamp:
+        logger.warning(
+            "A valid timestamp could not be found in the image's EXIF data or filename. "
+            "Please rename the file to include a timestamp "
+            "(e.g. YYYYMMDDHHMMSS-snapshot.jpg). "
+            "Falling back to the current time for the image captured timestamp."
+        )
+        timestamp = timezone.now()
+    width = pil_image.width
+    height = pil_image.height
+    size = len(file_content)
 
     # get full public media url of image:
     if request:
@@ -1260,22 +1429,26 @@ def create_source_image_from_upload(image: ImageFieldFile, deployment: Deploymen
     else:
         base_url = settings.MEDIA_URL
 
-    source_image = SourceImage(
+    source_image = SourceImage.objects.create(
         path=image.name,  # Includes relative path from MEDIA_ROOT
         public_base_url=base_url,  # @TODO how to merge this with the data source?
         project=deployment.project,
         deployment=deployment,
-        timestamp=None,  # Will be calculated from filename or EXIF data on save
+        timestamp=timestamp,
         event=None,  # Will be assigned when the image is grouped into events
-        size=image.size,
+        size=size,
         checksum=checksum,
         checksum_algorithm=checksum_algorithm,
-        width=image.width,
-        height=image.height,
+        width=width,
+        height=height,
         test_image=True,
         uploaded_by=request.user if request else None,
     )
-    source_image.save()
+    deployment.save(regroup_async=False)
+    if process_now:
+        from ami.ml.orchestration.processing import process_single_source_image
+
+        process_single_source_image(source_image=source_image)
     return source_image
 
 
@@ -1292,7 +1465,7 @@ class SourceImageUpload(BaseModel):
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
 
-    image = models.ImageField(upload_to=upload_to_with_deployment, validators=[validate_filename_timestamp])
+    image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
     source_image = models.OneToOneField(
@@ -1302,11 +1475,6 @@ class SourceImageUpload(BaseModel):
     def get_project(self):
         """Get the project associated with the model instance."""
         return self.deployment.get_project()
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
-        self.deployment.save()
 
 
 @receiver(pre_delete, sender=SourceImageUpload)
@@ -1565,6 +1733,30 @@ class SourceImage(BaseModel):
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        project = self.get_project() if hasattr(self, "get_project") else None
+        if action in ["star", "unstar"]:
+            return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
+
+    def get_custom_user_permissions(self, user) -> list[str]:
+        project = self.get_project()
+        if not project:
+            return []
+
+        custom_perms = set()
+        perms = get_perms(user, project)
+        for perm in perms:
+            # permissions are in the format "action_modelname"
+            if perm.endswith("_sourceimage"):
+                # process_single_image_sourceimage
+                action = perm.split("_", 1)[0]
+                # make sure to exclude standard CRUD actions
+                if action not in ["view", "create", "update", "delete"]:
+                    custom_perms.add(action)
+        if Project.Permissions.RUN_SINGLE_IMAGE_JOB in perms:
+            custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
+        return list(custom_perms)
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")
@@ -1873,6 +2065,21 @@ class Identification(BaseModel):
         # Allow the update_occurrence_determination to determine the next best ID
         update_occurrence_determination(self.occurrence, current_determination=self.taxon)
 
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        """Custom permission check logic for Identification model."""
+        import ami.users.roles as roles
+
+        project = self.get_project()
+        if not project:
+            return False
+
+        if action == "destroy":
+            # Allow if user is superuser, project manager, or owner of the identification
+            return user.is_superuser or roles.ProjectManager.has_role(user, project) or self.user == user
+
+        # Fallback to base class permission checks
+        return super().check_permission(user, action)
+
 
 @final
 class ClassificationResult(BaseModel):
@@ -2137,6 +2344,17 @@ class Detection(BaseModel):
     classifications: models.QuerySet["Classification"]
     source_image_id: int
     detection_algorithm_id: int
+
+    def get_bbox(self):
+        if self.bbox:
+            return BoundingBox(
+                x1=self.bbox[0],
+                y1=self.bbox[1],
+                x2=self.bbox[2],
+                y2=self.bbox[3],
+            )
+        else:
+            return None
 
     # def bbox(self):
     #     return (
@@ -2917,6 +3135,7 @@ class Taxon(BaseModel):
     sort_phylogeny = models.BigIntegerField(blank=True, null=True)
     tags = models.ManyToManyField("Tag", related_name="taxa", blank=True)
     unknown_species = models.BooleanField(default=False, help_text="Is this a clustering-generated taxon")
+
     objects: TaxonManager = TaxonManager()
 
     # Type hints for auto-generated fields
@@ -3242,7 +3461,7 @@ class Page(BaseModel):
 
 
 _SOURCE_IMAGE_SAMPLING_METHODS = [
-    "common_combined",
+    "full",
     "random",
     "stratified_random",
     "interval",
@@ -3252,6 +3471,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "last_and_random_from_each_event",
     "greatest_file_size_from_each_event",
     "detections_only",
+    "common_combined",  # Deprecated
 ]
 
 
@@ -3334,7 +3554,7 @@ class SourceImageCollection(BaseModel):
     method = models.CharField(
         max_length=255,
         choices=as_choices(_SOURCE_IMAGE_SAMPLING_METHODS),
-        default="common_combined",
+        default="full",
     )
     # @TODO this should be a JSON field with a schema, use a pydantic model
     kwargs = models.JSONField(
@@ -3377,7 +3597,11 @@ class SourceImageCollection(BaseModel):
         # This should always be pre-populated using queryset annotations
         return None
 
-    def get_queryset(self):
+    def get_queryset(
+        self,
+        *args,
+        **kwargs,
+    ):
         return SourceImage.objects.filter(project=self.project)
 
     @classmethod
@@ -3404,40 +3628,9 @@ class SourceImageCollection(BaseModel):
             self.save()
             task_logger.info(f"Done sampling and saving captures to {self}")
 
-    def cluster_detections(self, job: "Job | None" = None):
-        if job:
-            task_logger = job.logger
-            params = job.params
-        else:
-            task_logger = logger
-            params = {
-                "algorithm": "agglomerative",
-                "ood_threshold": 0.5,
-                "algorithm_kwargs": {
-                    "distance_threshold": 0.5,
-                },
-                "pca": {"n_components": 384},
-            }
-
-        cluster_detections(collection=self, params=params or {}, job=job, task_logger=task_logger)
-
-    def sample_random(self, size: int = 100):
-        """Create a random sample of source images"""
-
-        qs = self.get_queryset()
-        return qs.order_by("?")[:size]
-
-    def sample_manual(self, image_ids: list[int]):
-        """Create a sample of source images based on a list of source image IDs"""
-
-        qs = self.get_queryset()
-        return qs.filter(id__in=image_ids)
-
-    def sample_common_combined(
+    def _filter_sample(
         self,
-        minute_interval: int | None = None,
-        max_num: int | None = None,
-        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
+        qs: models.QuerySet,
         hour_start: int | None = None,
         hour_end: int | None = None,
         month_start: int | None = None,
@@ -3445,11 +3638,15 @@ class SourceImageCollection(BaseModel):
         date_start: str | None = None,
         date_end: str | None = None,
         deployment_ids: list[int] | None = None,
-    ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
-        qs = self.get_queryset()
-
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
+    ):
         if deployment_ids is not None:
             qs = qs.filter(deployment__in=deployment_ids)
+        if research_site_ids is not None:
+            qs = qs.filter(deployment__research_site__in=research_site_ids)
+        if event_ids is not None:
+            qs = qs.filter(event__in=event_ids)
         if date_start is not None:
             qs = qs.filter(timestamp__date__gte=DateStringField.to_date(date_start))
         if date_end is not None:
@@ -3472,6 +3669,74 @@ class SourceImageCollection(BaseModel):
         elif hour_end is not None:
             qs = qs.filter(timestamp__hour__lte=hour_end)
 
+        return qs
+
+    def sample_random(
+        self,
+        size: int = 100,
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
+    ):
+        """Create a random sample of source images"""
+
+        qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
+        )
+        return qs.order_by("?")[:size]
+
+    def sample_manual(self, image_ids: list[int]):
+        """Create a sample of source images based on a list of source image IDs"""
+
+        qs = self.get_queryset()
+        return qs.filter(id__in=image_ids)
+
+    # Deprecated
+    def sample_common_combined(
+        self,
+        minute_interval: int | None = None,
+        max_num: int | None = None,
+        shuffle: bool = True,  # This is applicable if max_num is set and minute_interval is not set
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
+    ) -> models.QuerySet | typing.Generator[SourceImage, None, None]:
+        qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
+        )
+
         if minute_interval is not None:
             # @TODO can this be done in the database and return a queryset?
             # this currently returns a list of source images
@@ -3487,11 +3752,35 @@ class SourceImageCollection(BaseModel):
         return qs
 
     def sample_interval(
-        self, minute_interval: int = 10, exclude_events: list[int] = [], deployment_id: int | None = None
+        self,
+        minute_interval: int = 10,
+        exclude_events: list[int] = [],
+        deployment_id: int | None = None,  # Deprecated
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
     ):
         """Create a sample of source images based on a time interval"""
 
         qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
+        )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
         if exclude_events:
@@ -3551,6 +3840,35 @@ class SourceImageCollection(BaseModel):
         qs = self.get_queryset()
         return qs.filter(detections__isnull=False).distinct()
 
+    def sample_full(
+        self,
+        hour_start: int | None = None,
+        hour_end: int | None = None,
+        month_start: int | None = None,
+        month_end: int | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+        deployment_ids: list[int] | None = None,
+        research_site_ids: list[int] | None = None,
+        event_ids: list[int] | None = None,
+    ):
+        """Sample all source images"""
+
+        qs = self.get_queryset()
+        qs = self._filter_sample(
+            qs=qs,
+            hour_start=hour_start,
+            hour_end=hour_end,
+            month_start=month_start,
+            month_end=month_end,
+            date_start=date_start,
+            date_end=date_end,
+            deployment_ids=deployment_ids,
+            research_site_ids=research_site_ids,
+            event_ids=event_ids,
+        )
+        return qs.all().distinct()
+
     @classmethod
     def get_or_create_starred_collection(cls, project: Project) -> "SourceImageCollection":
         """
@@ -3571,3 +3889,20 @@ class SourceImageCollection(BaseModel):
                 name="Starred Images",  # @TODO make this translatable
             )
         return collection
+
+    def cluster_detections(self, job: "Job | None" = None):
+        if job:
+            task_logger = job.logger
+            params = job.params
+        else:
+            task_logger = logger
+            params = {
+                "algorithm": "agglomerative",
+                "ood_threshold": 0.5,
+                "algorithm_kwargs": {
+                    "distance_threshold": 0.5,
+                },
+                "pca": {"n_components": 384},
+            }
+
+        cluster_detections(collection=self, params=params or {}, job=job, task_logger=task_logger)
