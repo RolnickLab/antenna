@@ -34,6 +34,20 @@ export const columns: (project: {
     },
   },
   {
+    id: 'cover-image',
+    name: 'Cover image',
+    sortField: 'cover_image_url',
+    renderCell: (item: Species) => {
+      return (
+        <ImageTableCell
+          images={item.coverImage ? [{ src: item.coverImage.url }] : []}
+          theme={ImageCellTheme.Light}
+          to={APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id })}
+        />
+      )
+    },
+  },
+  {
     id: 'name',
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_TAXON),
@@ -50,6 +64,9 @@ export const columns: (project: {
           </Link>
           {featureFlags?.tags && item.tags.length ? (
             <div className="flex flex-wrap gap-1">
+              {item.isUnknown ? (
+                <Tag name="Unknown species" className="bg-success" />
+              ) : null}
               {item.tags.map((tag) => (
                 <Tag key={tag.id} name={tag.name} />
               ))}

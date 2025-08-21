@@ -20,6 +20,10 @@ export const AVAILABLE_FILTERS: {
     field: 'classification_threshold',
   },
   {
+    label: translate(STRING.FIELD_LABEL_OOD_SCORE_THRESHOLD),
+    field: 'determination_ood_score',
+  },
+  {
     label: 'Collection',
     field: 'collection', // This is for viewing Occurrences by collection
   },
@@ -96,6 +100,10 @@ export const AVAILABLE_FILTERS: {
   {
     label: 'Taxon',
     field: 'taxon',
+  },
+  {
+    label: 'Known status',
+    field: 'unknown_species',
   },
   {
     label: 'Taxa list',

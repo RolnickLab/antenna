@@ -31,6 +31,18 @@ export class Species extends Taxon {
     })
   }
 
+  get djangoAdminUrl(): string {
+    // Construct a link to edit this species in the Django admin.
+    // Use the API hostname if available, otherwise default to relative path (/admin)
+    const path = `/admin/main/taxon/${this._species.id}/`
+    const baseUrl = (import.meta as any).env.VITE_API_PROXY_TARGET
+    return baseUrl ? `${baseUrl}${path}` : path
+  }
+
+  get isUnknown(): boolean {
+    return this._species.unknown_species
+  }
+
   get lastSeenLabel() {
     if (!this._species.last_detected) {
       return undefined

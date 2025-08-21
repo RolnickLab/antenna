@@ -9,6 +9,7 @@ import time
 from urllib.request import urlopen
 
 from django.core.management.base import BaseCommand, CommandError  # noqa
+from django.db.models import Q
 
 # import progress bar
 from tqdm import tqdm
@@ -265,16 +266,15 @@ class Command(BaseCommand):
             taxon_data = fix_values(taxon_data)
             logger.debug(f"Parsed taxon data: {taxon_data}")
             if taxon_data:
-                created_taxa, updated_taxa = self.create_taxon(taxon_data, root_taxon_parent)
+                created_taxa, updated_taxa, specific_taxon = self.create_taxon(taxon_data, root_taxon_parent)
                 taxa_to_refresh.update(created_taxa)
                 taxa_to_refresh.update(updated_taxa)
+                taxalist.taxa.add(specific_taxon)
                 if created_taxa:
                     logger.debug(f"Created {len(created_taxa)} taxa from incoming row {i}")
-                    taxalist.taxa.add(*created_taxa)
                     total_created_taxa += len(created_taxa)
                 if updated_taxa:
                     logger.debug(f"Updated {len(updated_taxa)} taxa from incoming row {i}")
-                    taxalist.taxa.add(*updated_taxa)
                     total_updated_taxa += len(updated_taxa)
             if not taxon_data:
                 raise ValueError(f"Could not find any data to import in {taxon_data}")
@@ -293,7 +293,7 @@ class Command(BaseCommand):
         for taxon in tqdm(taxa_to_refresh):
             taxon.save(update_calculated_fields=True)
 
-    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon]]:
+    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon], Taxon]:
         taxa_in_row = []
         created_taxa = set()
         updated_taxa = set()
@@ -309,13 +309,30 @@ class Command(BaseCommand):
             # Assume ranks are in order of rank
             if rank.name.lower() in taxon_data.keys() and taxon_data[rank.name.lower()]:
                 name = taxon_data[rank.name.lower()]
+                gbif_taxon_key = taxon_data.get("gbif_taxon_key", None)
                 rank = rank.name.upper()
-                logger.debug(f"Taxon found in incoming row {i}: {rank} {name}")
-                try:
-                    taxon, created = Taxon.objects.get_or_create(name=name, defaults={"rank": rank})
-                except (Taxon.MultipleObjectsReturned, Exception) as e:
-                    logger.error(f"Error creating taxon {name} {rank}: {e}")
-                    raise
+                logger.debug(f"Taxon found in incoming row {i}: {rank} {name} (GBIF: {gbif_taxon_key})")
+                # Look up existing taxon by name or gbif_taxon_key
+                # If the taxon already exists, use it and maybe update it
+                taxon = None
+                matches = Taxon.objects.filter(Q(name=name))
+                if len(matches) > 1:
+                    msg = f"Found multiple taxa with name {name}: {matches}"
+                    logger.error(msg)
+                    raise ValueError(msg)
+                else:
+                    taxon = matches.first()
+                    logger.info(f"Found existing taxon {taxon}")
+                    created = False
+
+                if not taxon:
+                    taxon = Taxon.objects.create(
+                        name=name,
+                        rank=rank,
+                        gbif_taxon_key=gbif_taxon_key,
+                        parent=parent_taxon,
+                    )
+                    created = True
 
                 taxa_in_row.append(taxon)
 
@@ -342,7 +359,7 @@ class Command(BaseCommand):
                         parent = None
                     if taxon.parent != parent:
                         if not created:
-                            logger.warn(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
+                            logger.warning(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
                         taxon.parent = parent
                         taxon.save(update_calculated_fields=False)
                         if not created:
@@ -377,6 +394,9 @@ class Command(BaseCommand):
             "common_name_en",
             "notes",
             "sort_phylogeny",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
         is_new = specific_taxon in created_taxa
@@ -417,4 +437,4 @@ class Command(BaseCommand):
 
         #
 
-        return created_taxa, updated_taxa
+        return created_taxa, updated_taxa, specific_taxon

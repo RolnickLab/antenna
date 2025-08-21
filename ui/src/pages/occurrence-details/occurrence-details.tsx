@@ -2,6 +2,7 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import { OODScore } from 'components/ood-score'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import {
   InfoBlockField,
@@ -232,6 +233,13 @@ export const OccurrenceDetails = ({
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
                   <div className="grid gap-6">
+                    <InfoBlockField
+                      label={translate(STRING.FIELD_LABEL_OOD_SCORE)}
+                    >
+                      <div>
+                        <OODScore occurrence={occurrence} />
+                      </div>
+                    </InfoBlockField>
                     {fields.map((field, index) => (
                       <InfoBlockField key={index} label={field.label}>
                         <InfoBlockFieldValue

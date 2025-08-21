@@ -1318,6 +1318,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@lucide/lab@npm:^0.1.2":
+  version: 0.1.2
+  resolution: "@lucide/lab@npm:0.1.2"
+  checksum: daf4d1e6e6c9ba3ed3d4bb44153bf5f2227c200f65e95c1f3421f2b3d945bc8bda62d867d0b0cea36d1f2600bcbf43d0c0ddf0739556947f8554432ec2402ca2
+  languageName: node
+  linkType: hard
+
 "@mapbox/geojson-rewind@npm:^0.5.2":
   version: 0.5.2
   resolution: "@mapbox/geojson-rewind@npm:0.5.2"
@@ -4897,6 +4904,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "ami-platform@workspace:."
   dependencies:
+    "@lucide/lab": "npm:^0.1.2"
     "@radix-ui/react-accordion": "npm:^1.1.2"
     "@radix-ui/react-checkbox": "npm:^1.0.3"
     "@radix-ui/react-dialog": "npm:^1.0.4-rc.9"

@@ -92,6 +92,7 @@ THIRD_PARTY_APPS = [
     "anymail",
     "cachalot",
     "guardian",
+    "pgvector.django",
 ]
 
 LOCAL_APPS = [

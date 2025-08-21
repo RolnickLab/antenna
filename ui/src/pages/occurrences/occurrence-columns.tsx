@@ -1,4 +1,5 @@
 import { DeterminationScore } from 'components/determination-score'
+import { OODScore } from 'components/ood-score'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -84,6 +85,16 @@ export const columns: (
                 })
           }
         />
+      </BasicTableCell>
+    ),
+  },
+  {
+    id: 'ood-score',
+    name: translate(STRING.FIELD_LABEL_OOD_SCORE),
+    sortField: 'determination_ood_score',
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell>
+        <OODScore occurrence={item} />
       </BasicTableCell>
     ),
   },

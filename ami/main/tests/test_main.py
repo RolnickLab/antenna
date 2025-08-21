@@ -780,7 +780,7 @@ class TestTaxonomyViews(TestCase):
         response = self.client.get(
             "/api/v2/taxa/",
             {
-                "project": self.project_one.pk,
+                "project_id": self.project_one.pk,
                 "rank": TaxonRank.SPECIES.name,
             },
         )
@@ -831,7 +831,7 @@ class TestTaxonomyViews(TestCase):
         taxon = Taxon.objects.last()
         assert taxon is not None
         print("Testing taxon", taxon, taxon.pk)
-        response = self.client.get(f"/api/v2/taxa/{taxon.pk}/")
+        response = self.client.get(f"/api/v2/taxa/{taxon.pk}/?project_id={self.project_one.pk}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], taxon.name)
 

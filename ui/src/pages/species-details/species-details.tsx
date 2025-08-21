@@ -17,12 +17,16 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
+import { SpeciesNameForm } from './species-name-form'
+import { SpeciesParentForm } from './species-parent-form'
 
 export const SpeciesDetails = ({ species }: { species: Species }) => {
   const { projectId } = useParams()
   const navigate = useNavigate()
-  const { project } = useProjectDetails(projectId as string, true)
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
+  const hasResources =
+    !species.isUnknown || !!species.fieldguideUrl || canUpdate
+  const { project } = useProjectDetails(projectId as string, true)
   const hasChildren = species.rank !== 'SPECIES'
 
   return (
@@ -45,10 +49,35 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           size="lg"
           taxon={species}
         />
+        {species.isUnknown ? (
+          <Tag name="Unknown species" className="bg-success" />
+        ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>
           <div className="grid gap-6">
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_NAME)}
+              className="relative no-print"
+            >
+              <InfoBlockFieldValue value={species.name} />
+              {species.isUnknown && canUpdate ? (
+                <div className="absolute top-[-9px] right-0">
+                  <SpeciesNameForm species={species} />
+                </div>
+              ) : null}
+            </InfoBlockField>
+            <InfoBlockField
+              label={translate(STRING.FIELD_LABEL_PARENT)}
+              className="relative no-print"
+            >
+              <InfoBlockFieldValue value={species.parentName} />
+              {species.isUnknown && canUpdate ? (
+                <div className="absolute top-[-9px] right-0">
+                  <SpeciesParentForm species={species} />
+                </div>
+              ) : null}
+            </InfoBlockField>
             {project?.featureFlags.tags ? (
               <InfoBlockField
                 label={translate(STRING.FIELD_LABEL_TAGS)}
@@ -117,37 +146,54 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 />
               </div>
             </InfoBlockField>
-            <InfoBlockField
-              className="no-print"
-              label={translate(STRING.EXTERNAL_RESOURCES)}
-            >
-              <div className="py-1 flex items-center gap-3">
-                <Link
-                  className={buttonVariants({
-                    size: 'small',
-                    variant: 'outline',
-                  })}
-                  to={species.gbifUrl}
-                  target="_blank"
-                >
-                  <span>GBIF</span>
-                  <ExternalLinkIcon className="w-4 h-4" />
-                </Link>
-                {species.fieldguideUrl ? (
-                  <Link
-                    className={buttonVariants({
-                      size: 'small',
-                      variant: 'outline',
-                    })}
-                    to={species.fieldguideUrl}
-                    target="_blank"
-                  >
-                    <span>Fieldguide</span>
-                    <ExternalLinkIcon className="w-4 h-4" />
-                  </Link>
-                ) : null}
-              </div>
-            </InfoBlockField>
+            {hasResources ? (
+              <InfoBlockField
+                className="no-print"
+                label={translate(STRING.EXTERNAL_RESOURCES)}
+              >
+                <div className="py-1 flex flex-col items-start gap-3">
+                  {!species.isUnknown ? (
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.gbifUrl}
+                      target="_blank"
+                    >
+                      <span>GBIF</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  ) : null}
+                  {species.fieldguideUrl ? (
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.fieldguideUrl}
+                      target="_blank"
+                    >
+                      <span>Fieldguide</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  ) : null}
+                  {canUpdate ? (
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.djangoAdminUrl}
+                      target="_blank"
+                    >
+                      <span>Django admin</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                  ) : null}
+                </div>
+              </InfoBlockField>
+            ) : null}
           </div>
         </div>
         <div className={styles.blueprintWrapper}>

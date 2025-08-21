@@ -28,7 +28,8 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.serializers import TagSerializer
+from ami.jobs.models import DetectionClusteringJob, Job
+from ami.main.api.serializers import ClusterDetectionsSerializer, TagSerializer
 from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
@@ -57,6 +58,7 @@ from ..models import (
 from .serializers import (
     ClassificationListSerializer,
     ClassificationSerializer,
+    ClassificationSimilaritySerializer,
     ClassificationWithTaxaSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
@@ -731,6 +733,27 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             }
         )
 
+    @action(detail=True, methods=["post"], name="cluster detections")
+    def cluster_detections(self, request, pk=None):
+        """
+        Trigger a background job to cluster detections from this collection.
+        """
+
+        collection: SourceImageCollection = self.get_object()
+        serializer = ClusterDetectionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
+        job = Job.objects.create(
+            name=f"Clustering detections for collection {collection.pk}",
+            project=collection.project,
+            source_image_collection=collection,
+            job_type_key=DetectionClusteringJob.key,
+            params=params,
+        )
+        job.enqueue()
+        logger.info(f"Triggered clustering job for collection {collection.pk}")
+        return Response({"job_id": job.pk, "project_id": collection.project.pk})
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -1045,6 +1068,7 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
 OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
     query_param="classification_threshold", filter_param="determination_score"
 )
+OccurrenceOODScoreFilter = ThresholdFilter.create("determination_ood_score")
 
 
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
@@ -1065,6 +1089,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
         OccurrenceDeterminationScoreFilter,
+        OccurrenceOODScoreFilter,
     ]
     filterset_fields = [
         "event",
@@ -1082,6 +1107,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination",
         "determination__name",
         "determination_score",
+        "determination_ood_score",
         "event",
         "detections_count",
     ]
@@ -1108,7 +1134,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
 
-        if self.action != "list":
+        if self.action == "list":
+            qs = qs.has_determination()  # type: ignore
+        else:
+            # Fetch all detections for the occurrence detail view only
             qs = qs.prefetch_related(
                 Prefetch(
                     "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
@@ -1123,6 +1152,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             OpenApiParameter(
                 name="classification_threshold",
                 description="Filter occurrences by minimum determination score.",
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="determination_ood_score",
+                description="Filter occurrences by minimum out-of-distribution score.",
                 required=False,
                 type=OpenApiTypes.FLOAT,
             ),
@@ -1172,7 +1207,22 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
-TaxonBestScoreFilter = ThresholdFilter.create("best_determination_score")
+class TaxonUnknownSpeciesFilter(filters.BaseFilterBackend):
+    """
+    Filter taxa that is or is not marked as "Unknown species".
+    """
+
+    query_param = "unknown_species"
+
+    def filter_queryset(self, request: Request, queryset, view):
+        if self.query_param in request.query_params:
+            unknown_species = BooleanField(required=False).clean(request.query_params.get(self.query_param))
+            if unknown_species:
+                queryset = queryset.filter(unknown_species=True)
+            else:
+                queryset = queryset.exclude(unknown_species=True)
+
+        return queryset
 
 
 class TaxonTagFilter(filters.BaseFilterBackend):
@@ -1198,10 +1248,15 @@ class TagInverseFilter(filters.BaseFilterBackend):
         return queryset.distinct()
 
 
+TaxonBestScoreFilter = ThresholdFilter.create("best_determination_score")
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
     """
+
+    require_project = True  # Taxa are always associated with a project
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
@@ -1209,6 +1264,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         CustomTaxonFilter,
         TaxonCollectionFilter,
         TaxonTaxaListFilter,
+        TaxonUnknownSpeciesFilter,
         TaxonBestScoreFilter,
         TaxonTagFilter,
         TagInverseFilter,
@@ -1229,6 +1285,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "last_detected",
         "best_determination_score",
         "name",
+        "cover_image_url",
     ]
     search_fields = ["name", "parent__name"]
 
@@ -1246,8 +1303,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         if query and len(query) >= min_query_length:
             taxa = (
-                Taxon.objects.filter(active=True)
-                # .select_related("parent")
+                self.get_queryset()
                 .filter(models.Q(name__icontains=query) | models.Q(search_names__icontains=query))
                 .annotate(
                     # Calculate similarity for the name field
@@ -1334,13 +1390,28 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         and add extra data about the occurrences.
         Otherwise return all taxa that are active.
         """
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(active=True)
         project = self.get_active_project()
         qs = self.attach_tags_by_project(qs, project)
 
         if project:
-            # Allow showing detail views for unobserved taxa
-            include_unobserved = True
+            # Filter by project, but also include global taxa
+            # @TODO IMPORTANT: if taxa belongs to a project, ensure user has permission to view it
+            qs = qs.filter(models.Q(projects=project) | models.Q(projects__isnull=True))
+
+            include_unobserved = True  # Show detail views for unobserved taxa instead of 404
+            # @TODO move to a QuerySet manager
+            qs = qs.annotate(
+                best_detection_image_path=models.Subquery(
+                    Occurrence.objects.filter(
+                        self.get_occurrence_filters(project),
+                        determination_id=models.OuterRef("id"),
+                    )
+                    .order_by("-determination_score")
+                    .values("best_detection__path")[:1],
+                    output_field=models.TextField(),
+                )
+            )
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
             qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
@@ -1420,7 +1491,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             )
         return qs
 
-    def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
+    def attach_tags_by_project(self, qs: QuerySet, project: Project | None) -> QuerySet:
         """
         Prefetch and override the `.tags` attribute on each Taxon
         with only the tags belonging to the given project.
@@ -1469,7 +1540,9 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         qs = super().get_queryset()
         project = self.get_active_project()
         if project:
-            return qs.filter(projects=project)
+            # Filter by project, but also include global taxa
+            # @TODO IMPORTANT: if taxa belongs to a project, ensure user has permission to view it
+            return qs.filter(models.Q(projects=project) | models.Q(projects__isnull=True))
         return qs
 
     serializer_class = TaxaListSerializer
@@ -1528,6 +1601,17 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
             return ClassificationWithTaxaSerializer
         else:
             return ClassificationSerializer
+
+    @action(detail=True, methods=["get"])
+    def similar(self, request, pk=None):
+        try:
+            ref_classification = self.get_object()
+            similar_qs = ref_classification.get_similar_classifications(distance_metric="cosine")
+            serializer = ClassificationSimilaritySerializer(similar_qs, many=True, context={"request": request})
+            return Response(serializer.data)
+
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SummaryView(GenericAPIView, ProjectMixin):
