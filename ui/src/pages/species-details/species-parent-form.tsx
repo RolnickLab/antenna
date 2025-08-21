@@ -5,11 +5,13 @@ import { Taxon } from 'data-services/models/taxa'
 import { CheckIcon, Loader2Icon, PenIcon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 const CLOSE_TIMEOUT = 1000
 
 export const SpeciesParentForm = ({ species }: { species: Species }) => {
+  const { projectId } = useParams()
   const [open, setOpen] = useState(false)
   const [formValue, setFormValue] = useState<Taxon>()
   const { updateSpecies, isLoading, isSuccess } = useUpdateSpecies(
@@ -53,7 +55,12 @@ export const SpeciesParentForm = ({ species }: { species: Species }) => {
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              onClick={() => updateSpecies({ parentId: formValue?.id })}
+              onClick={() =>
+                updateSpecies({
+                  fieldValues: { parentId: formValue?.id },
+                  projectId: projectId as string,
+                })
+              }
               size="small"
               variant="success"
             >

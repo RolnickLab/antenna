@@ -147,22 +147,24 @@ export const OccurrenceDetails = ({
           taxon={occurrence.determinationTaxon}
         />
         <div className={styles.taxonActions}>
-          <BasicTooltip
-            content={
-              occurrence.determinationVerified
-                ? translate(STRING.VERIFIED_BY, {
-                    name: occurrence.determinationVerifiedBy?.name,
-                  })
-                : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: `${occurrence.determinationScore}`,
-                  })
-            }
-          >
-            <IdentificationScore
-              confirmed={occurrence.determinationVerified}
-              confidenceScore={occurrence.determinationScore}
-            />
-          </BasicTooltip>
+          {occurrence.determinationScore !== undefined ? (
+            <BasicTooltip
+              content={
+                occurrence.determinationVerified
+                  ? translate(STRING.VERIFIED_BY, {
+                      name: occurrence.determinationVerifiedBy?.name,
+                    })
+                  : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                      score: `${occurrence.determinationScore}`,
+                    })
+              }
+            >
+              <IdentificationScore
+                confirmed={occurrence.determinationVerified}
+                confidenceScore={occurrence.determinationScore}
+              />
+            </BasicTooltip>
+          ) : null}
           {canUpdate && (
             <>
               <Agree

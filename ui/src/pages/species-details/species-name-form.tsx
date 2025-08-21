@@ -3,11 +3,13 @@ import { Species } from 'data-services/models/species'
 import { CheckIcon, Loader2Icon, PenIcon } from 'lucide-react'
 import { Button, Input, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 const CLOSE_TIMEOUT = 1000
 
 export const SpeciesNameForm = ({ species }: { species: Species }) => {
+  const { projectId } = useParams()
   const [open, setOpen] = useState(false)
   const [formValue, setFormValue] = useState(species.name)
   const { updateSpecies, isLoading, isSuccess } = useUpdateSpecies(
@@ -51,7 +53,12 @@ export const SpeciesNameForm = ({ species }: { species: Species }) => {
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              onClick={() => updateSpecies({ name: formValue })}
+              onClick={() =>
+                updateSpecies({
+                  fieldValues: { name: formValue },
+                  projectId: projectId as string,
+                })
+              }
               size="small"
               variant="success"
             >

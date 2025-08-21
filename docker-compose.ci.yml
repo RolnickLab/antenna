@@ -18,7 +18,6 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/postgres/Dockerfile
-
     env_file:
       - ./.envs/.ci/.postgres
 
@@ -31,13 +30,18 @@ services:
     command: /start-celeryworker
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     command: minio server --console-address ":9001" /data
     env_file:
       - ./.envs/.ci/.django
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   minio-init:
-    image: minio/mc
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
     env_file:
       - ./.envs/.ci/.django
     depends_on:

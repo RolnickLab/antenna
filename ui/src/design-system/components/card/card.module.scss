@@ -36,7 +36,7 @@
 .content {
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   flex-direction: column;
   flex: 1;
   padding: 16px;
@@ -54,7 +54,10 @@
 
   &.large {
     @include paragraph-medium();
-    margin-bottom: 2px;
+
+    &:not(:last-child) {
+      margin-bottom: 2px;
+    }
   }
 }
 

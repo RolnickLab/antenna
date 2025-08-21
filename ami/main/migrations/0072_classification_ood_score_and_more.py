@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0061_classification_features_squashed_0062_remove_classification_features_and_more"),
+        ("main", "0071_add_feature_vectors"),
     ]
 
     operations = [

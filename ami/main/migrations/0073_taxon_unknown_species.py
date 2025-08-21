@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0062_classification_ood_score_and_more"),
+        ("main", "0072_classification_ood_score_and_more"),
     ]
 
     operations = [

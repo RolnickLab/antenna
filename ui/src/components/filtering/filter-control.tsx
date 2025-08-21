@@ -25,6 +25,7 @@ const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
   algorithm: AlgorithmFilter,
+  best_determination_score: ScoreFilter,
   classification_threshold: ScoreFilter,
   determination_ood_score: OODScoreFilter,
   collection: CollectionFilter,
@@ -33,6 +34,7 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
+  include_unobserved: BooleanFilter,
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,
   pipeline: PipelineFilter,
@@ -46,7 +48,6 @@ const ComponentMap: {
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
   unknown_species: UnknownSpeciesFilter,
-  include_unobserved: BooleanFilter,
 }
 
 interface FilterControlProps {

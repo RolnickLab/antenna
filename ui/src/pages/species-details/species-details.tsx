@@ -1,6 +1,8 @@
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
+import { DeterminationScore } from 'components/determination-score'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import {
   InfoBlockField,
@@ -24,6 +26,8 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
   const hasResources =
     !species.isUnknown || !!species.fieldguideUrl || canUpdate
+  const { project } = useProjectDetails(projectId as string, true)
+  const hasChildren = species.rank !== 'SPECIES'
 
   return (
     <div className={styles.wrapper}>
@@ -74,37 +78,51 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 </div>
               ) : null}
             </InfoBlockField>
-            <InfoBlockField
-              label={translate(STRING.FIELD_LABEL_TAGS)}
-              className="relative"
-            >
-              <div className="flex flex-col items-start gap-2 no-print">
-                {species.tags.length ? (
-                  <div className="flex flex-wrap gap-1">
-                    {species.tags.map((tag) => (
-                      <Tag key={tag.id} name={tag.name} />
-                    ))}
-                  </div>
-                ) : (
-                  <span>n/a</span>
-                )}
-                {canUpdate ? (
-                  <div className="absolute top-[-9px] right-0">
-                    <TagsForm species={species} />
-                  </div>
-                ) : null}
-              </div>
-            </InfoBlockField>
+            {project?.featureFlags.tags ? (
+              <InfoBlockField
+                label={translate(STRING.FIELD_LABEL_TAGS)}
+                className="relative"
+              >
+                <div className="flex flex-col items-start gap-2 no-print">
+                  {species.tags.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {species.tags.map((tag) => (
+                        <Tag key={tag.id} name={tag.name} />
+                      ))}
+                    </div>
+                  ) : (
+                    <span>n/a</span>
+                  )}
+                  {canUpdate ? (
+                    <div className="absolute top-[-9px] right-0">
+                      <TagsForm species={species} />
+                    </div>
+                  ) : null}
+                </div>
+              </InfoBlockField>
+            ) : null}
             <InfoBlockField label="Last seen">
               <InfoBlockFieldValue value={species.lastSeenLabel} />
             </InfoBlockField>
-            <InfoBlockField label={translate(STRING.FIELD_LABEL_OCCURRENCES)}>
+            {hasChildren ? (
+              <InfoBlockField label="Child taxa">
+                <InfoBlockFieldValue
+                  value="View all"
+                  to={getAppRoute({
+                    to: APP_ROUTES.TAXA({
+                      projectId: projectId as string,
+                    }),
+                    filters: { taxon: species.id },
+                  })}
+                />
+              </InfoBlockField>
+            ) : null}
+            <InfoBlockField label="Occurrences">
               <InfoBlockFieldValue
-                value={
-                  species.numOccurrences !== null
-                    ? species.numOccurrences
-                    : 'View all'
-                }
+                value={`Direct: ${species.numOccurrences ?? 0}`}
+              />
+              <InfoBlockFieldValue
+                value="View all"
                 to={getAppRoute({
                   to: APP_ROUTES.OCCURRENCES({
                     projectId: projectId as string,
@@ -113,10 +131,25 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 })}
               />
             </InfoBlockField>
+            <InfoBlockField label={translate(STRING.FIELD_LABEL_BEST_SCORE)}>
+              <div>
+                <DeterminationScore
+                  score={species.score}
+                  scoreLabel={species.scoreLabel}
+                  tooltip={
+                    species.score
+                      ? translate(STRING.MACHINE_PREDICTION_SCORE, {
+                          score: `${species.score}`,
+                        })
+                      : undefined
+                  }
+                />
+              </div>
+            </InfoBlockField>
             {hasResources ? (
               <InfoBlockField
-                className={'no-print'}
-                label={translate(STRING.RESOURCES)}
+                className="no-print"
+                label={translate(STRING.EXTERNAL_RESOURCES)}
               >
                 <div className="py-1 flex flex-col items-start gap-3">
                   {!species.isUnknown ? (

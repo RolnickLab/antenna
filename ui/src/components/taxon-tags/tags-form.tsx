@@ -66,7 +66,9 @@ export const TagsForm = ({ species }: { species: Species }) => {
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              onClick={() => assignTags(formValues)}
+              onClick={() =>
+                assignTags({ projectId: projectId as string, tags: formValues })
+              }
               size="small"
               variant="success"
             >
@@ -105,8 +107,7 @@ const FormRow = ({
       htmlFor={`tag-${tag.id}`}
       className="flex items-center gap-2 body-small"
     >
-      <div className="w-2 h-2 rounded-full bg-primary" />
-      {tag.name.toLowerCase()}
+      {tag.name}
     </label>
   </div>
 )

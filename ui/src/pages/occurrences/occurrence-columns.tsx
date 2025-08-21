@@ -1,3 +1,4 @@
+import { DeterminationScore } from 'components/determination-score'
 import { OODScore } from 'components/ood-score'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -8,8 +9,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { IdentificationScore, TaxonDetails } from 'nova-ui-kit'
+import { TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
@@ -69,7 +69,24 @@ export const columns: (
     id: 'score',
     name: translate(STRING.FIELD_LABEL_SCORE),
     sortField: 'determination_score',
-    renderCell: (item: Occurrence) => <ScoreCell item={item} />,
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell>
+        <DeterminationScore
+          confirmed={item.determinationVerified}
+          score={item.determinationScore}
+          scoreLabel={item.determinationScoreLabel}
+          tooltip={
+            item.determinationVerified
+              ? translate(STRING.VERIFIED_BY, {
+                  name: item.determinationVerifiedBy?.name,
+                })
+              : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                  score: `${item.determinationScore}`,
+                })
+          }
+        />
+      </BasicTableCell>
+    ),
   },
   {
     id: 'ood-score',
@@ -180,7 +197,7 @@ const TaxonCell = ({
 
   return (
     <div id={id} className={styles.taxonCell}>
-      <BasicTableCell>
+      <BasicTableCell style={{ minWidth: '320px' }}>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
             <TaxonDetails compact taxon={item.determinationTaxon} />
@@ -210,31 +227,3 @@ const TaxonCell = ({
     </div>
   )
 }
-
-const ScoreCell = ({ item }: { item: Occurrence }) => (
-  <div className={styles.scoreCell}>
-    <BasicTableCell>
-      <BasicTooltip
-        content={
-          item.determinationVerified
-            ? translate(STRING.VERIFIED_BY, {
-                name: item.determinationVerifiedBy?.name,
-              })
-            : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                score: `${item.determinationScore}`,
-              })
-        }
-      >
-        <div className={styles.scoreCellContent}>
-          <IdentificationScore
-            confirmed={item.determinationVerified}
-            confidenceScore={item.determinationScore}
-          />
-          <span className={styles.scoreCellLabel}>
-            {item.determinationScoreLabel}
-          </span>
-        </div>
-      </BasicTooltip>
-    </BasicTableCell>
-  </div>
-)

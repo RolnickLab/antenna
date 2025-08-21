@@ -15,7 +15,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { PopulateCollection } from './collection-actions'
-import { editableSamplingMethods } from './constants'
+import { SERVER_SAMPLING_METHODS } from './constants'
 
 export const columns: (projectId: string) => TableColumn<Collection>[] = (
   projectId: string
@@ -23,9 +23,8 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
-    renderCell: (item: Collection) => (
-      <BasicTableCell value={item.id} theme={CellTheme.Primary} />
-    ),
+    sortField: 'id',
+    renderCell: (item: Collection) => <BasicTableCell value={item.id} />,
   },
   {
     id: 'name',
@@ -40,13 +39,12 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     ),
   },
   {
-    id: 'sampling-method',
-    name: translate(STRING.FIELD_LABEL_SAMPLING_METHOD),
-    sortField: 'method',
+    id: 'settings',
+    name: 'Settings',
     renderCell: (item: Collection) => (
       <BasicTableCell
-        value={item.methodNameDisplay}
-        details={item.methodDetailsDisplay}
+        value={item.settingsDisplay}
+        details={item.settingsDetailsDisplay}
       />
     ),
   },
@@ -144,7 +142,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     renderCell: (item: Collection) => (
       <div className={styles.entityActions}>
         {item.canPopulate && <PopulateCollection collection={item} />}
-        {item.canUpdate && editableSamplingMethods.includes(item.method) && (
+        {item.canUpdate && SERVER_SAMPLING_METHODS.includes(item.method) && (
           <UpdateEntityDialog
             collection={API_ROUTES.COLLECTIONS}
             entity={item}

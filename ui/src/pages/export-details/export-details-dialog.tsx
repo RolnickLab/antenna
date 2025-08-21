@@ -2,6 +2,7 @@ import classNames from 'classnames'
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { useExportDetails } from 'data-services/hooks/exports/useExportDetails'
 import { Export } from 'data-services/models/export'
+import { JobStatusType } from 'data-services/models/job'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import inputStyles from 'design-system/components/input/input.module.scss'
@@ -124,7 +125,8 @@ const ExportDetailsContent = ({ exportDetails }: { exportDetails: Export }) => {
       </FormSection>
       <FormSection title={translate(STRING.FIELD_LABEL_RESULT)}>
         <div>
-          {exportDetails.job && exportDetails.job.progress.value !== 1 ? (
+          {exportDetails.job &&
+          exportDetails.job.status.type !== JobStatusType.Success ? (
             <StatusBar
               color={exportDetails.job.status.color}
               progress={exportDetails.job.progress.value}
