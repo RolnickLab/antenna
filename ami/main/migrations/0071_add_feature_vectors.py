@@ -5,10 +5,10 @@ import pgvector.django.vector
 
 
 class Migration(migrations.Migration):
-    replaces = [("main", "0061_classification_features"), ("main", "0062_remove_classification_features_and_more")]
+    replaces = [("main", "0071_classification_features"), ("main", "0072_remove_classification_features_and_more")]
 
     dependencies = [
-        ("main", "0060_add_pgvector_extension"),
+        ("main", "0070_add_pgvector_extension"),
     ]
 
     operations = [

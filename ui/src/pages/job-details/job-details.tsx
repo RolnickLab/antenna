@@ -132,7 +132,7 @@ const JobSummary = ({ job }: { job: Job }) => {
           />
         ) : job.sourceImages ? (
           <InputValue
-            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}
+            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION)}
             to={APP_ROUTES.COLLECTION_DETAILS({
               projectId: projectId as string,
               collectionId: job.sourceImages.id,

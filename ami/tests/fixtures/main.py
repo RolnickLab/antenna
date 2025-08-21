@@ -39,9 +39,9 @@ def update_site_settings(**kwargs):
     return site
 
 
-def create_processing_service(project):
+def create_processing_service(project: Project, name: str = "Test Processing Service") -> ProcessingService:
     processing_service_to_add = {
-        "name": "Test Processing Service",
+        "name": name,
         "projects": [{"name": project.name}],
         # "endpoint_url": "http://processing_service:2000",
         "endpoint_url": "http://ml_backend:2000",
@@ -96,7 +96,7 @@ def create_deployment(
     return deployment
 
 
-def create_test_project(name: str | None) -> Project:
+def create_test_project(name: str | None) -> tuple[Project, str]:
     short_id = uuid.uuid4().hex[:8]
     name = name or f"Test Project {short_id}"
 
@@ -107,8 +107,8 @@ def create_test_project(name: str | None) -> Project:
         project = Project.objects.create(name=name, owner=admin_user, description="Test description")
         data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
         create_deployment(project, data_source, f"Test Deployment {short_id}")
-        create_processing_service(project)
-        return project
+        create_processing_service(project, f"Test Processing Service {short_id}")
+        return project, short_id
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
@@ -116,16 +116,17 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
     Always return a valid project and deployment, creating them if necessary.
     """
     project = None
+    short_id = ""
     shared_test_project_name = "Shared Test Project"
 
     if reuse:
         project = Project.objects.filter(name=shared_test_project_name).first()
         if not project:
-            project = create_test_project(name=shared_test_project_name)
+            project, short_id = create_test_project(name=shared_test_project_name)
     else:
-        project = create_test_project(name=None)
+        project, short_id = create_test_project(name=None)
 
-    deployment = Deployment.objects.filter(project=project).first()
+    deployment = Deployment.objects.filter(project=project).filter(name__contains=short_id).latest("created_at")
     assert deployment, f"No deployment found for project {project}. Recreate the project."
     return project, deployment
 
@@ -136,6 +137,7 @@ def create_captures(
     images_per_night: int = 3,
     interval_minutes: int = 10,
     subdir: str = "test",
+    update_deployment: bool = True,
 ):
     # Create some images over a few monitoring nights
     first_night = datetime.datetime.now()
@@ -160,6 +162,10 @@ def create_captures(
         name="Test Source Image Collection",
     )
     collection.images.set(created)
+
+    if update_deployment:
+        # This should only be set to False when manually testing grouping images into events
+        deployment.save(update_calculated_fields=True, regroup_async=False)
 
     return created
 

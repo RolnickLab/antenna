@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0063_taxon_unknown_species"),
+        ("main", "0073_taxon_unknown_species"),
     ]
 
     operations = [

@@ -1,6 +1,5 @@
 import datetime
 
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -8,11 +7,11 @@ from rest_framework.fields import Field
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
-from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
+from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.jobs.models import Job
-from ami.main.models import Tag, create_source_image_from_upload
-from ami.ml.models import Algorithm
-from ami.ml.serializers import AlgorithmSerializer
+from ami.main.models import Tag
+from ami.ml.models import Algorithm, Pipeline
+from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
 
@@ -26,6 +25,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectSettingsMixin,
     S3StorageSource,
     Site,
     SourceImage,
@@ -34,7 +34,6 @@ from ..models import (
     TaxaList,
     Taxon,
     get_media_url,
-    validate_filename_timestamp,
 )
 
 
@@ -257,6 +256,48 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
         ]
 
 
+class TaxonCoverImageField(Field):
+    """
+    A custom field for retrieving a taxon's cover image URL.
+
+    This field handles the logic for determining the appropriate cover image URL:
+    1. Uses the taxon's cover_image_url if available
+    2. Falls back to the best_detection_image_path (added by QuerySet annotation)
+    3. Returns None if no image is available
+    """
+
+    def __init__(self, **kwargs):
+        kwargs["source"] = "*"  # Use the entire object as the source
+        kwargs["read_only"] = True
+        super().__init__(**kwargs)
+
+    def to_representation(self, obj):
+        if obj.cover_image_url:
+            return obj.cover_image_url
+        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
+            # This attribute is added by a QuerySet annotation
+            return get_media_url(obj.best_detection_image_path)
+        else:
+            return None
+
+
+class TaxonNoParentNestedSerializer(DefaultSerializer):
+    cover_image_url = TaxonCoverImageField()
+
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+            "gbif_taxon_key",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
+        ]
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
 
@@ -274,9 +315,51 @@ class ProjectListSerializer(DefaultSerializer):
         ]
 
 
+class ProjectSettingsSerializer(DefaultSerializer):
+    default_processing_pipeline = PipelineNestedSerializer(read_only=True)
+    default_processing_pipeline_id = serializers.PrimaryKeyRelatedField(
+        queryset=Pipeline.objects.all(),
+        source="default_processing_pipeline",
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    default_filters_include_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_include_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_include_taxa",
+        write_only=True,
+        required=False,
+    )
+    default_filters_exclude_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_exclude_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_exclude_taxa",
+        write_only=True,
+        required=False,
+    )
+
+    class Meta:
+        model = Project
+        fields = ProjectSettingsMixin.get_settings_field_names() + [
+            "default_processing_pipeline_id",
+            "default_filters_include_taxa_ids",
+            "default_filters_exclude_taxa_ids",
+        ]
+
+
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
+    feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
+    settings = ProjectSettingsSerializer(source="*", required=False)
+
+    def get_feature_flags(self, obj):
+        if obj.feature_flags:
+            return obj.feature_flags.dict()
+        return {}
 
     class Meta:
         model = Project
@@ -284,6 +367,8 @@ class ProjectSerializer(DefaultSerializer):
             "deployments",
             "summary_data",  # @TODO move to a 2nd request, it's too slow
             "owner",
+            "feature_flags",
+            "settings",
         ]
 
 
@@ -325,6 +410,8 @@ class EventListSerializer(DefaultSerializer):
             "taxa_count",
             "captures",
             "example_captures",
+            "created_at",
+            "updated_at",
         ]
 
     def get_captures(self, obj):
@@ -448,48 +535,6 @@ class DeploymentSerializer(DeploymentListSerializer):
             request=self.context.get("request"),
             params={"deployment": obj.pk},
         )
-
-
-class TaxonCoverImageField(Field):
-    """
-    A custom field for retrieving a taxon's cover image URL.
-
-    This field handles the logic for determining the appropriate cover image URL:
-    1. Uses the taxon's cover_image_url if available
-    2. Falls back to the best_detection_image_path (added by QuerySet annotation)
-    3. Returns None if no image is available
-    """
-
-    def __init__(self, **kwargs):
-        kwargs["source"] = "*"  # Use the entire object as the source
-        kwargs["read_only"] = True
-        super().__init__(**kwargs)
-
-    def to_representation(self, obj):
-        if obj.cover_image_url:
-            return obj.cover_image_url
-        elif hasattr(obj, "best_detection_image_path") and obj.best_detection_image_path:
-            # This attribute is added by a QuerySet annotation
-            return get_media_url(obj.best_detection_image_path)
-        else:
-            return None
-
-
-class TaxonNoParentNestedSerializer(DefaultSerializer):
-    cover_image_url = TaxonCoverImageField()
-
-    class Meta:
-        model = Taxon
-        fields = [
-            "id",
-            "name",
-            "rank",
-            "details",
-            "gbif_taxon_key",
-            "fieldguide_id",
-            "cover_image_url",
-            "cover_image_credit",
-        ]
 
 
 class TaxonParentSerializer(serializers.Serializer):
@@ -1107,30 +1152,6 @@ class SourceImageUploadSerializer(DefaultSerializer):
             "created_at",
         ]
 
-    def create(self, validated_data):
-        # Add the user to the validated data
-        request = self.context.get("request")
-        user = get_current_user(request)
-        # @TODO IMPORTANT ensure current user is a member of the deployment's project
-        obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        source_image = create_source_image_from_upload(
-            obj.image,
-            obj.deployment,
-            request,
-        )
-        if source_image is not None:
-            obj.source_image = source_image  # type: ignore
-            obj.save()
-        return obj
-
-    def validate_image(self, value):
-        # Ensure that image filename contains a timestamp
-        try:
-            validate_filename_timestamp(value.name)
-        except DjangoValidationError as e:
-            raise serializers.ValidationError(str(e))
-        return value
-
 
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     # The most common kwargs for the sampling methods
@@ -1155,6 +1176,20 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
         allow_empty=True,
     )
 
+    event_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
+    research_site_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
     # Kwargs for other sampling methods, this is not complete
     # see the SourceImageCollection model for all available kwargs.
     size = serializers.IntegerField(required=False, allow_null=True)
@@ -1170,8 +1205,6 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
-    # @TODO can sampling kwargs be a nested serializer instead??
-
     source_images = serializers.SerializerMethodField()
     kwargs = SourceImageCollectionCommonKwargsSerializer(required=False, partial=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
@@ -1416,6 +1449,8 @@ class EventSerializer(DefaultSerializer):
             "first_capture",
             "summary_data",
             "capture_page_offset",
+            "created_at",
+            "updated_at",
         ]
 
     def get_captures(self, obj):
