@@ -33,7 +33,7 @@ class BoundingBox(pydantic.BaseModel):
         return (self.x1, self.y1, self.x2, self.y2)
 
 
-class SourceImage(pydantic.BaseModel):
+class BaseImage(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     id: str
@@ -66,6 +66,10 @@ class SourceImage(pydantic.BaseModel):
         if self._pil:
             self.width, self.height = self._pil.size
         return self._pil
+
+
+class SourceImage(BaseImage):
+    pass
 
 
 class AlgorithmReference(pydantic.BaseModel):
@@ -105,16 +109,6 @@ class ClassificationResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
 
 
-class DetectionResponse(pydantic.BaseModel):
-    source_image_id: str
-    bbox: BoundingBox
-    inference_time: float | None = None
-    algorithm: AlgorithmReference
-    timestamp: datetime.datetime
-    crop_image_url: str | None = None
-    classifications: list[ClassificationResponse] = []
-
-
 class SourceImageRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="ignore")
 
@@ -129,6 +123,31 @@ class SourceImageResponse(pydantic.BaseModel):
 
     id: str
     url: str
+
+
+class DetectionRequest(pydantic.BaseModel):
+    source_image: SourceImageRequest  # the 'original' image
+    bbox: BoundingBox
+    crop_image_url: str | None = None
+    algorithm: AlgorithmReference
+
+
+class DetectionResponse(pydantic.BaseModel):
+    source_image_id: str
+    bbox: BoundingBox
+    inference_time: float | None = None
+    algorithm: AlgorithmReference
+    timestamp: datetime.datetime
+    crop_image_url: str | None = None
+    classifications: list[ClassificationResponse] = []
+
+
+class Detection(BaseImage):
+    source_image: SourceImage  # the 'original' uncropped image
+    bbox: BoundingBox
+    inference_time: float | None = None
+    algorithm: AlgorithmReference
+    classifications: list[ClassificationResponse] = []
 
 
 class AlgorithmCategoryMapResponse(pydantic.BaseModel):
@@ -192,12 +211,13 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["random", "constant"]
+PipelineChoice = typing.Literal["random", "constant", "random-detection-random-species"]
 
 
 class PipelineRequest(pydantic.BaseModel):
     pipeline: PipelineChoice
     source_images: list[SourceImageRequest]
+    detections: list[DetectionRequest] | None = None
     config: dict
 
     # Example for API docs:

@@ -11,6 +11,7 @@ from celery.result import AsyncResult
 from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
+from guardian.shortcuts import get_perms
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
@@ -967,6 +968,37 @@ class Job(BaseModel):
         logger.debug(f"Saved job {self}")
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        job_type = self.job_type_key.lower()
+        if self.source_image_single:
+            action = "run_single_image"
+        if action in ["run", "cancel", "retry"]:
+            permission_codename = f"run_{job_type}_job"
+        else:
+            permission_codename = f"{action}_{job_type}_job"
+
+        project = self.get_project() if hasattr(self, "get_project") else None
+        return user.has_perm(permission_codename, project)
+
+    def get_custom_user_permissions(self, user) -> list[str]:
+        project = self.get_project()
+        if not project:
+            return []
+
+        custom_perms = set()
+        model_name = "job"
+        perms = get_perms(user, project)
+        job_type = self.job_type_key.lower()
+        for perm in perms:
+            # permissions are in the format "action_modelname"
+            if perm.endswith(f"{job_type}_{model_name}"):
+                action = perm[: -len(f"_{job_type}_{model_name}")]
+                # make sure to exclude standard CRUD actions
+                if action not in ["view", "create", "update", "delete"]:
+                    custom_perms.add(action)
+        logger.debug(f"Custom permissions for user {user} on project {self}, with jobtype {job_type}: {custom_perms}")
+        return list(custom_perms)
 
     @classmethod
     def default_progress(cls) -> JobProgress:

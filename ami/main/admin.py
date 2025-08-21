@@ -77,9 +77,33 @@ class ProjectAdmin(GuardedModelAdmin):
     filter_horizontal = ("members",)
 
     inlines = [ProjectPipelineConfigInline]
+    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
 
     fieldsets = (
-        (None, {"fields": ("name", "description", "priority", "active")}),
+        (
+            None,
+            {
+                "fields": (
+                    "name",
+                    "description",
+                    "priority",
+                    "active",
+                    "feature_flags",
+                )
+            },
+        ),
+        (
+            "Settings",
+            {
+                "fields": (
+                    "default_processing_pipeline",
+                    "session_time_gap_seconds",
+                    "default_filters_score_threshold",
+                    "default_filters_include_taxa",
+                    "default_filters_exclude_taxa",
+                ),
+            },
+        ),
         (
             "Ownership & Access",
             {

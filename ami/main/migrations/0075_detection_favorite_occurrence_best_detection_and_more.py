@@ -8,7 +8,7 @@ import pgvector.django.vector
 class Migration(migrations.Migration):
     dependencies = [
         ("ml", "0023_alter_algorithm_task_type"),
-        ("main", "0064_taxon_cover_image_credit_taxon_cover_image_url_and_more"),
+        ("main", "0074_taxon_cover_image_credit_taxon_cover_image_url_and_more"),
     ]
 
     operations = [

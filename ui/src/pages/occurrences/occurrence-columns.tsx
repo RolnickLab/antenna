@@ -200,7 +200,7 @@ const TaxonCell = ({
 
   return (
     <div id={id} className={styles.taxonCell}>
-      <BasicTableCell>
+      <BasicTableCell style={{ minWidth: '320px' }}>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
             <TaxonDetails compact taxon={item.determinationTaxon} />

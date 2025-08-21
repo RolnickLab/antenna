@@ -45,12 +45,12 @@ export class Collection extends Entity {
     )
   }
 
-  get method(): string {
-    return this._data.method
+  get kwargs(): { [key: string]: string | number } {
+    return this._data.kwargs || {}
   }
 
-  get kwargs(): object {
-    return this._data.kwargs || {}
+  get method(): string {
+    return this._data.method
   }
 
   get methodNameDisplay(): string {
@@ -95,5 +95,15 @@ export class Collection extends Entity {
 
   get numTaxa(): number {
     return this._data.taxa_count
+  }
+
+  get settingsDisplay(): string {
+    return snakeCaseToSentenceCase(this.method)
+  }
+
+  get settingsDetailsDisplay(): string[] {
+    return Object.entries(this._data.kwargs).map(
+      ([key, value]) => `${snakeCaseToSentenceCase(key)}: ${value}`
+    )
   }
 }

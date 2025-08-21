@@ -19,7 +19,7 @@ def clear_projects_for_existing_taxa(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0067_tag_taxon_tags"),
+        ("main", "0076_populate_cached_occurence_fields"),
     ]
 
     operations = [
