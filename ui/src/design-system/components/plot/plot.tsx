@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import _Plot from 'react-plotly.js'
+import PlotlyPlot from 'react-plotly.js'
 import styles from './plot.module.scss'
 import { PlotProps } from './types'
 
@@ -21,7 +21,7 @@ const Plot = ({
   <div
     className={classNames(styles.plot, { [styles.round]: data.x.length >= 3 })}
   >
-    <_Plot
+    <PlotlyPlot
       data={[
         {
           orientation,
