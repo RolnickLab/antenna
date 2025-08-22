@@ -109,6 +109,7 @@ def get_or_create_default_research_site(project: "Project") -> "Site":
     logger.info(f"Created default research site for project {project}")
     return site
 
+
 def get_or_create_default_deployment(
     project: "Project", site: "Site | None" = None, device: "Device | None" = None
 ) -> "Deployment":
@@ -1457,7 +1458,7 @@ class SourceImageUpload(BaseModel):
 
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
-    
+
     project_accessor = "deployment__project"
     image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
