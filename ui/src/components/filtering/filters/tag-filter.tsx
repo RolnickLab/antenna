@@ -5,7 +5,11 @@ export const TagFilter = ({ data = [], value, onAdd }: FilterProps) => {
   const tags = data as { id: number; name: string }[]
 
   return (
-    <Select.Root value={value ?? ''} onValueChange={onAdd}>
+    <Select.Root
+      disabled={tags.length === 0}
+      value={value ?? ''}
+      onValueChange={onAdd}
+    >
       <Select.Trigger>
         <Select.Value placeholder="Select a value" />
       </Select.Trigger>

@@ -4,14 +4,14 @@ from io import BytesIO
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
-from django.test import TestCase
-from guardian.shortcuts import get_perms
+from django.test import TestCase, override_settings
+from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
-from ami.jobs.models import Job
+from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.models import (
     Deployment,
     Device,
@@ -29,11 +29,177 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.ml.models.pipeline import Pipeline
+from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, ProjectManager
 
 logger = logging.getLogger(__name__)
+
+
+class TestProjectSetup(TestCase):
+    def test_project_creation(self):
+        project = Project.objects.create(name="New Project with Defaults", create_defaults=True)
+        self.assertIsInstance(project, Project)
+
+    def test_default_related_models(self):
+        """Test that the default related models are created correctly when a project is created."""
+        project = Project.objects.create(name="New Project with Defaults", create_defaults=True)
+
+        # Check that the project has a default deployment
+        self.assertGreaterEqual(project.deployments.count(), 1)
+        deployment = project.deployments.first()
+        self.assertIsInstance(deployment, Deployment)
+
+        # Check that the deployment has a default site
+        self.assertGreaterEqual(project.sites.count(), 1)
+        site = project.sites.first()
+        self.assertIsInstance(site, Site)
+
+        # Check that the deployment has a default device
+        self.assertGreaterEqual(project.devices.count(), 1)
+        device = project.devices.first()
+        self.assertIsInstance(device, Device)
+
+        # Check that the project has a default source image collection
+        self.assertGreaterEqual(project.sourceimage_collections.count(), 1)
+        collection = project.sourceimage_collections.first()
+        self.assertIsInstance(collection, SourceImageCollection)
+
+    # Disable this test for now, as it requires a more complex setup
+    def no_test_default_permissions(self):
+        pass
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2009/",
+    )
+    def test_processing_service_if_configured(self):
+        """
+        Test that the default processing service is created if the environment variables are set.
+        """
+        from ami.ml.models.processing_service import get_or_create_default_processing_service
+
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=False)
+
+        service = get_or_create_default_processing_service(project=project, register_pipelines=False)
+        self.assertIsNotNone(service, "Default processing service should be created if environment variables are set.")
+        assert service is not None  # For type checking
+        self.assertIsNotNone(service.endpoint_url)
+        self.assertIsNotNone(service.name)
+        self.assertGreaterEqual(project.processing_services.count(), 1)
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME=None,
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT=None,
+    )
+    def test_processing_service_if_not_configured(self):
+        """
+        Test that the default processing service is not created if the environment variables are not set.
+        """
+        from ami.ml.models.processing_service import get_or_create_default_processing_service
+
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=False)
+
+        service = get_or_create_default_processing_service(project=project)
+        self.assertIsNone(
+            service, "Default processing service should not be created if environment variables are not set."
+        )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",
+        DEFAULT_PIPELINES_ENABLED=[],  # All pipelines DISABLED by default
+    )
+    def test_processing_service_with_disabled_pipelines(self):
+        """
+        Test that the default processing service is created with all pipelines disabled
+        if DEFAULT_PIPELINES_ENABLED is any empty list.
+        """
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=True)
+        processing_service = project.processing_services.first()
+        assert processing_service is not None
+        # There should be at least two pipelines created by default
+        self.assertGreaterEqual(processing_service.pipelines.count(), 2)
+        # All pipelines should be disabled by default
+        project_pipeline_configs = ProjectPipelineConfig.objects.filter(project=project)
+        for config in project_pipeline_configs:
+            self.assertFalse(
+                config.enabled,
+                f"Pipeline {config.pipeline.name} should be disabled for project {project.name}.",
+            )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",
+        DEFAULT_PIPELINES_ENABLED=None,  # All pipelines ENABLED by default
+    )
+    def test_processing_service_with_enabled_pipelines(self):
+        """
+        Test that the default processing service is created with all pipelines enabled
+        if the DEFAULT_PIPELINES_ENABLED setting is None (or missing).
+        """
+        project = Project.objects.create(name="Test Project for Processing Service", create_defaults=True)
+        processing_service = project.processing_services.first()
+        assert processing_service is not None
+        # There should be at least two pipelines created by default
+        self.assertGreaterEqual(processing_service.pipelines.count(), 2)
+        # All pipelines should be enabled by default
+        project_pipeline_configs = ProjectPipelineConfig.objects.filter(project=project)
+        for config in project_pipeline_configs:
+            self.assertTrue(
+                config.enabled,
+                f"Pipeline {config.pipeline.name} should be enabled for project {project.name}.",
+            )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",  # should have at least two pipelines
+        DEFAULT_PIPELINES_ENABLED=["constant"],
+    )
+    def test_existing_processing_service_new_project(self):
+        """
+        Create a new project, enable all pipelines.
+        Create a 2nd project, ensure that the same processing service is used and only the enabled pipelines are
+        registered.
+        """
+        enabled_pipelines = ["constant"]
+
+        project_one = Project.objects.create(name="Test Project One", create_defaults=True)
+
+        # Enable all pipelines for the first project
+        ProjectPipelineConfig.objects.filter(project=project_one).update(enabled=True)
+
+        project_two = Project.objects.create(name="Test Project Two", create_defaults=True)
+
+        project_one_processing_service = project_one.processing_services.first()
+        project_two_processing_service = project_two.processing_services.first()
+
+        assert project_one_processing_service is not None
+        assert project_two_processing_service is not None
+
+        # Ensure only the same processing service instance is used (and they are not None)
+        self.assertEqual(
+            project_one_processing_service,
+            project_two_processing_service,
+            "Both projects should use the same processing service instance.",
+        )
+
+        # Ensure that only the enabled pipelines are enabled for the second project
+        project_two_pipeline_configs = ProjectPipelineConfig.objects.filter(project=project_two)
+        self.assertGreaterEqual(project_two_pipeline_configs.count(), 2, "Project should have at least two pipelines.")
+        for config in project_two_pipeline_configs:
+            if config.pipeline.slug in enabled_pipelines:
+                self.assertTrue(
+                    config.enabled,
+                    f"Pipeline {config.pipeline.name} should be enabled for project {project_two.name}.",
+                )
+            else:
+                self.assertFalse(
+                    config.enabled,
+                    f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
+                )
 
 
 class TestImageGrouping(TestCase):
@@ -1122,7 +1288,15 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": True, "update": True, "delete": True},
                 "site": {"create": True, "update": True, "delete": True},
                 "device": {"create": True, "update": True, "delete": True},
-                "job": {"create": True, "update": True, "delete": True, "run": True, "retry": True, "cancel": True},
+                "job": {
+                    "create": True,
+                    "update": True,
+                    "delete": True,
+                    "run_single_image": True,
+                    "run": False,
+                    "retry": False,
+                    "cancel": False,
+                },
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
             },
@@ -1135,9 +1309,10 @@ class TestRolePermissions(APITestCase):
                 "sourceimageupload": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
                 "job": {
-                    "create": False,
+                    "create": True,
                     "update": False,
                     "delete": False,
+                    "run_single_image": True,
                     "run": False,
                     "retry": False,
                     "cancel": False,
@@ -1154,9 +1329,10 @@ class TestRolePermissions(APITestCase):
                 "site": {"create": False, "update": False, "delete": False},
                 "device": {"create": False, "update": False, "delete": False},
                 "job": {
-                    "create": False,
+                    "create": True,
                     "update": False,
                     "delete": False,
+                    "run_single_image": True,
                     "run": False,
                     "retry": False,
                     "cancel": False,
@@ -1176,6 +1352,7 @@ class TestRolePermissions(APITestCase):
                     "create": False,
                     "update": False,
                     "delete": False,
+                    "run_single_image": False,
                     "run": False,
                     "retry": False,
                     "cancel": False,
@@ -1203,7 +1380,7 @@ class TestRolePermissions(APITestCase):
         )
 
     def _create_job(self):
-        self.job = Job.objects.create(name="Test Job", project=self.project)
+        self.job = Job.objects.create(name="Test Job", project=self.project, job_type_key="ml")
 
     def _create_source_image_upload_file(self):
         image_buffer = BytesIO()
@@ -1333,7 +1510,11 @@ class TestRolePermissions(APITestCase):
                 object_id = entity_ids[entity]
                 obj = next((r for r in results if r["id"] == object_id), None)
                 if obj:
-                    self.assertEqual(set(obj.get("user_permissions", [])), set(object_permissions))
+                    self.assertEqual(
+                        set(obj.get("user_permissions", [])),
+                        set(object_permissions),
+                        f"Object permissions mismatch for {entity}",
+                    )
 
             # Step 2: Test Update
             logger.info(f"Testing {role_class} update permission for {entity} , actions {actions}")
@@ -1357,7 +1538,11 @@ class TestRolePermissions(APITestCase):
                     if action in actions:
                         response = self.client.post(f"{endpoints[entity]}{entity_ids[entity]}/{action}/")
                         expected_status = status.HTTP_200_OK if actions[action] else status.HTTP_403_FORBIDDEN
-                        self.assertEqual(response.status_code, expected_status)
+                        self.assertEqual(
+                            response.status_code,
+                            expected_status,
+                            f"{role_class} {action} permission failed for {entity}",
+                        )
 
             if entity == "collection" and entity_ids[entity] and "populate" in actions:
                 logger.info(f"Testing {role_class} for  collection populate custom permission")
@@ -1370,12 +1555,12 @@ class TestRolePermissions(APITestCase):
             can_star = permissions_map["capture"].get("star", False)
             response = self.client.post(endpoints["capture_star"])
             expected_status = status.HTTP_200_OK if can_star else status.HTTP_403_FORBIDDEN
-            self.assertEqual(response.status_code, expected_status)
+            self.assertEqual(response.status_code, expected_status, f"{role_class} star permission failed")
             logger.info(f"Testing {role_class} for  capture unstar permission ")
             can_unstar = permissions_map["capture"].get("unstar", False)
             response = self.client.post(endpoints["capture_unstar"])
             expected_status = status.HTTP_200_OK if can_unstar else status.HTTP_403_FORBIDDEN
-            self.assertEqual(response.status_code, expected_status)
+            self.assertEqual(response.status_code, expected_status, f"{role_class} unstar permission failed")
         logger.info(f"{role_class}: entity_ids: {entity_ids}")
         # Step 5: Unassign Role and Verify Permissions are Revoked
         if role_class:
@@ -1429,7 +1614,7 @@ class TestRolePermissions(APITestCase):
                     response = self.client.delete(f"{endpoints[entity]}{entity_ids[entity]}/")
                     logger.info(f"{role_class} delete response status for {entity} : {response.status_code}")
                     expected_status = status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN
-                    self.assertEqual(response.status_code, expected_status)
+                    self.assertEqual(response.status_code, expected_status, f"Delete permission failed for {entity}")
 
             # try to delete the project
             entity = "project"
@@ -1452,7 +1637,11 @@ class TestRolePermissions(APITestCase):
         # --- Test Create ---
         response = self.client.post(
             list_url,
-            {"image": self._create_source_image_upload_file(), "deployment": self.deployment.id},
+            {
+                "image": self._create_source_image_upload_file(),
+                "deployment": self.deployment.pk,
+                "project_id": self.project.pk,
+            },
             format="multipart",
         )
 
@@ -1561,4 +1750,211 @@ class TestRolePermissions(APITestCase):
         )
         self._test_sourceimageupload_permissions(
             user=self.project_manager, permission_map=self.PERMISSIONS_MAPS["project_manager"]["sourceimageupload"]
+        )
+
+
+class TestDeploymentSyncCreatesEvents(TestCase):
+    def test_sync_creates_events_and_updates_counts(self):
+        # Set up a new project and deployment with test data
+        project, deployment = setup_test_project(reuse=False)
+
+        # Populate the object store with image data
+        assert deployment.data_source is not None
+        populate_bucket(
+            config=deployment.data_source.config,
+            subdir=f"deployment_{deployment.pk}",
+            skip_existing=False,
+        )
+
+        # Sync captures
+        deployment.sync_captures()
+
+        # Refresh and check results
+        deployment.refresh_from_db()
+        initial_events = Event.objects.filter(deployment=deployment)
+        initial_events_count = initial_events.count()
+
+        # Assertions
+        self.assertTrue(initial_events.exists(), "Expected events to be created")
+        self.assertEqual(
+            deployment.events_count, initial_events.count(), "Deployment events_count should match actual events"
+        )
+        # Simulate new images added to object store
+        populate_bucket(
+            config=deployment.data_source.config,
+            subdir=f"deployment_{deployment.pk}",
+            skip_existing=False,
+            num_nights=2,
+            images_per_day=5,
+            minutes_interval=120,
+        )
+
+        # Sync again
+        deployment.sync_captures()
+        deployment.refresh_from_db()
+        updated_events = Event.objects.filter(deployment=deployment)
+
+        # Assertions for second sync
+        self.assertGreater(
+            updated_events.count(), initial_events_count, "New events should be created after adding new images"
+        )
+        self.assertEqual(
+            deployment.events_count,
+            updated_events.count(),
+            "Deployment events_count should reflect updated event count",
+        )
+        logger.info(f"Initial events count: {initial_events_count}, Updated events count: {updated_events.count()}")
+
+
+class TestFineGrainedJobRunPermission(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            email="regularuser@insectai.org",
+            password="password123",
+        )
+        self.client.force_authenticate(self.user)
+
+        self.project = Project.objects.create(
+            name="Job Permission Project", description="For testing job run permission"
+        )
+        assign_perm(Project.Permissions.CREATE_JOB, self.user, self.project)
+        self.valid_job_keys = [cls.key for cls in VALID_JOB_TYPES if cls.key != "unknown"]
+
+    def _create_job(self, job_type_key):
+        job = Job.objects.create(name="Test Job", project=self.project, job_type_key=job_type_key)
+        return job
+
+    def assign_run_permission(self, key):
+        perm = f"main.run_{key}_job"
+        assign_perm(perm, self.user, self.project)
+
+    def remove_run_permission(self, key):
+        perm = f"main.run_{key}_job"
+        remove_perm(perm, self.user, self.project)
+
+    def test_can_only_run_permitted_job_type(self):
+        allowed_key = self.valid_job_keys[0]
+        self.assign_run_permission(allowed_key)
+
+        for job_type_key in self.valid_job_keys:
+            job = self._create_job(job_type_key)
+            response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+            if job_type_key == allowed_key:
+                self.assertEqual(response.status_code, status.HTTP_200_OK, f"{job_type_key} should run successfully")
+            else:
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{job_type_key} should be denied")
+
+    def test_can_run_multiple_if_permitted(self):
+        allowed_keys = self.valid_job_keys[:2]
+        for key in allowed_keys:
+            self.assign_run_permission(key)
+
+        for job_type_key in self.valid_job_keys:
+            job = self._create_job(job_type_key)
+            response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+
+            if job_type_key in allowed_keys:
+                self.assertEqual(response.status_code, status.HTTP_200_OK, f"{job_type_key} should run successfully")
+            else:
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{job_type_key} should be denied")
+
+    def test_cannot_run_any_without_permission(self):
+        for job_type_key in self.valid_job_keys:
+            job = self._create_job(job_type_key)
+            response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, f"{job_type_key} should be denied")
+
+    def test_user_permissions_reflected_in_job_detail(self):
+        job = self._create_job(job_type_key="ml")
+
+        # By default, the user shouldn't have any job-related perms
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data.get("user_permissions"), [], "User should not have any job perms initially")
+
+        # Assign run permission and check if it's reflected
+        assign_perm(Project.Permissions.RUN_ML_JOB, self.user, self.project)
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run", response.data.get("user_permissions", []))
+
+        # Remove run permission and confirm it's removed
+        remove_perm(Project.Permissions.RUN_ML_JOB, self.user, self.project)
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("run", response.data.get("user_permissions", []))
+
+
+class TestRunSingleImageJobPermission(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            email="regularuser@insectai.org",
+            password="password123",
+        )
+        self.project = Project.objects.create(name="Single Image Project", description="Testing single image job")
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML pipeline",
+            description="Test ML pipeline",
+        )
+        self.pipeline.projects.add(self.project)
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        self.capture = self.deployment.captures.first()
+        self.client.force_authenticate(self.user)
+
+    def _grant_create_job__and_run_single_image_perm(self):
+        """Grants run_single_image_job permission on a specific capture to the user."""
+        assign_perm(Project.Permissions.CREATE_JOB, self.user, self.project)
+        assign_perm(Project.Permissions.RUN_SINGLE_IMAGE_JOB, self.user, self.project)
+
+    def _remove_run_single_image_perm(self):
+        remove_perm(Project.Permissions.RUN_SINGLE_IMAGE_JOB, self.user, self.project)
+
+    def test_user_can_run_single_image_job_and_perm_is_reflected(self):
+        self._grant_create_job__and_run_single_image_perm()
+
+        # Verify permission is reflected in capture detail response
+        capture_detail_url = f"/api/v2/captures/{self.capture.pk}/"
+        response = self.client.get(capture_detail_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "run_single_image_ml_job",
+            response.data.get("user_permissions", []),
+            "run_single_image permission not reflected",
+        )
+
+        # Try to run a job using source_image_single_id
+        run_url = "/api/v2/jobs/?start_now"
+        payload = {
+            "delay": 0,
+            "name": f"Capture #{self.capture.pk}",
+            "project_id": str(self.project.pk),
+            "pipeline_id": str(self.pipeline.pk),
+            "source_image_single_id": str(self.capture.pk),
+        }
+        response = self.client.post(run_url, payload, format="json")
+        self.assertEqual(
+            response.status_code, 201, f"User should be able to run single image job, got {response.status_code}"
+        )
+        # Remove permission
+        self._remove_run_single_image_perm()
+
+        # Permission should no longer appear in capture detail
+        response = self.client.get(capture_detail_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(
+            "run_single_image_ml_job",
+            response.data.get("user_permissions", []),
+            "run_single_image permission should be removed but still present",
+        )
+
+        # Should not be able to run job now
+        response = self.client.post(run_url, payload, format="json")
+        self.assertEqual(
+            response.status_code,
+            403,
+            f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
         )

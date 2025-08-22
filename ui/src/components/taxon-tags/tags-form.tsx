@@ -107,8 +107,7 @@ const FormRow = ({
       htmlFor={`tag-${tag.id}`}
       className="flex items-center gap-2 body-small"
     >
-      <div className="w-2 h-2 rounded-full bg-primary" />
-      {tag.name.toLowerCase()}
+      {tag.name}
     </label>
   </div>
 )
