@@ -98,7 +98,6 @@ class BaseModel(models.Model):
         CRUD operations or custom actions on the model instance.
         """
         from ami.users.roles import BasicMember
-
         project = self.get_project() if hasattr(self, "get_project") else None
         if not project:
             return False
@@ -107,7 +106,6 @@ class BaseModel(models.Model):
                 # Allow view permission for members and owners of draft projects
                 return BasicMember.has_role(user, project) or user == project.owner or user.is_superuser
             return True
-
         model = self._meta.model_name
         crud_map = {
             "create": f"create_{model}",
