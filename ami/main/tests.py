@@ -1805,6 +1805,7 @@ class TestDeploymentSyncCreatesEvents(TestCase):
         )
         logger.info(f"Initial events count: {initial_events_count}, Updated events count: {updated_events.count()}")
 
+
 class TestFineGrainedJobRunPermission(APITestCase):
     def setUp(self):
         super().setUp()

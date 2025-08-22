@@ -98,6 +98,7 @@ class BaseModel(models.Model):
         CRUD operations or custom actions on the model instance.
         """
         from ami.users.roles import BasicMember
+
         project = self.get_project() if hasattr(self, "get_project") else None
         if not project:
             return False
