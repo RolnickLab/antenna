@@ -23,6 +23,10 @@ class BaseQuerySet(QuerySet):
 
         # Use model-defined project accessor if available
         project_accessor = getattr(self.model, "project_accessor", "project")
+        # For models that have many2many relationship with the project model
+        # or no relationship just return the qs without filtering
+        if not project_accessor and not is_project_model:
+            return self
         project_field = "" if is_project_model else f"{project_accessor}__"
 
         # Build Q filters
