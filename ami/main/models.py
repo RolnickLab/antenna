@@ -113,9 +113,8 @@ class ProjectQuerySet(BaseQuerySet):
         return self.filter(members=user)
 
 
-class ProjectManager(models.Manager):
-    def get_queryset(self) -> ProjectQuerySet:
-        return ProjectQuerySet(self.model, using=self._db)
+class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
+    pass
 
 
 @final
@@ -372,14 +371,12 @@ class Site(BaseModel):
 
 
 @final
-class DeploymentManager(models.Manager):
+class DeploymentManager(models.Manager.from_queryset(ProjectQuerySet)):
     """
     Custom manager that adds counts of related objects to the default queryset.
     """
 
-    def get_queryset(self):
-        # Add any common annotations or optimizations here
-        return BaseQuerySet(self.model, using=self._db)
+    pass
 
 
 def _create_source_image_for_sync(
@@ -1348,9 +1345,8 @@ class SourceImageQuerySet(BaseQuerySet):
         )
 
 
-class SourceImageManager(models.Manager):
-    def get_queryset(self) -> SourceImageQuerySet:
-        return SourceImageQuerySet(self.model, using=self._db)
+class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
+    pass
 
 
 @final
@@ -1943,6 +1939,7 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 class Classification(BaseModel):
     """The output of a classifier"""
 
+    project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
         "Detection",
         on_delete=models.SET_NULL,
