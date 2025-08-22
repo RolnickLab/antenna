@@ -152,6 +152,8 @@ def create_captures(
                 deployment=deployment,
                 timestamp=night_timestamp + datetime.timedelta(minutes=i * interval_minutes),
                 path=path,
+                width=4096,
+                height=2160,
             )
             created.append(img)
 
@@ -275,10 +277,18 @@ def create_detections(
     bboxes: list[tuple[float, float, float, float]],
 ):
     for i, bbox in enumerate(bboxes):
+        # Convert bbox percents to absolute coordinates
+        assert source_image.width is not None and source_image.height is not None
+        bbox_coords = [
+            bbox[0] * source_image.width,
+            bbox[1] * source_image.height,
+            bbox[2] * source_image.width,
+            bbox[3] * source_image.height,
+        ]
         detection = Detection.objects.create(
             source_image=source_image,
             timestamp=source_image.timestamp,
-            bbox=bbox,
+            bbox=bbox_coords,
         )
         assert source_image.deployment
         taxon = Taxon.objects.filter(projects=source_image.deployment.project).order_by("?").first()

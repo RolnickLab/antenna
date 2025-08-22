@@ -2238,6 +2238,37 @@ class Classification(BaseModel):
             for i, s in top_scored
         ]
 
+    def genus_scores_with_taxa(self) -> typing.Iterable[tuple[str, float]]:
+        """
+        Return the genus scores for this classification using the category map.
+        """
+        raise NotImplementedError
+        predictions = self.predictions_with_taxa()
+        genus_scores = {}
+        for taxon, score in predictions:
+            genus = taxon.get_parent(rank="GENUS")
+            if genus:
+                genus_scores[genus] = genus_scores.get(genus, 0) + score
+        return sorted(genus_scores.items(), key=lambda x: x[1], reverse=True)
+
+    def genus_scores_by_splitting_names(self) -> typing.Iterable[tuple["Taxon", float]]:
+        """
+        Return the genus scores for this classification using the category map.
+        """
+        predictions = self.predictions()
+        genus_scores = {}
+        for taxon_name, score in predictions:
+            genus_name = taxon_name.split(" ")[0]
+            if genus_name:
+                genus_scores[genus_name] = genus_scores.get(genus_name, 0) + score
+
+        # Get or make actual Taxon objects
+        genus_scores = {
+            Taxon.objects.get_or_create(name=genus_name, rank="GENUS")[0]: score
+            for genus_name, score in genus_scores.items()
+        }
+        return sorted(genus_scores.items(), key=lambda x: x[1], reverse=True)
+
     def get_similar_classifications(self, distance_metric="cosine") -> models.QuerySet:
         """
         Return  most similar classifications based on feature_2048 embeddings.
@@ -2380,13 +2411,13 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
-    def width(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[2] - self.bbox[0]
+    def width(self) -> int:
+        assert self.bbox and len(self.bbox) == 4
+        return self.bbox[2] - self.bbox[0]
 
-    def height(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[3] - self.bbox[1]
+    def height(self) -> int:
+        assert self.bbox and len(self.bbox) == 4
+        return self.bbox[3] - self.bbox[1]
 
     class Meta:
         ordering = [
