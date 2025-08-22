@@ -7,7 +7,7 @@ import ami.tasks
 
 
 class BaseQuerySet(QuerySet):
-    def visible_draft_projects_only(self, user, project_accessor="project"):
+    def visible_draft_projects_only(self, user):
         """
         Filter queryset to include only objects whose related draft projects
         are visible to the given user. Only superusers, project owners,
@@ -18,23 +18,23 @@ class BaseQuerySet(QuerySet):
         if user.is_superuser:
             return self
 
-        # AnonymousUser cannot be used in user-related filters like `owner=user` or `members=user`,
-        # because Django tries to cast it to an integer user ID, which raises a TypeError.
+        # Determine whether the model is Project itself
+        is_project_model = self.model == Project
+
+        # Use model-defined project accessor if available
+        project_accessor = getattr(self.model, "project_accessor", "project")
+        project_field = "" if is_project_model else f"{project_accessor}__"
+
+        # Build Q filters
+        non_draft_filter = Q(**{f"{project_field}draft": False})
+        # Show only non-draft projects for anonymous users
         if isinstance(user, AnonymousUser):
-            return self
+            return self.filter(non_draft_filter).distinct()
 
-        if self.model == Project:
-            return self.filter(Q(draft=False) | Q(owner=user) | Q(members=user)).distinct()
+        owner_filter = Q(**{f"{project_field}owner": user})
+        member_filter = Q(**{f"{project_field}members": user})
 
-        if not project_accessor:
-            return self
-
-        project_field = f"{project_accessor}__"
-        return self.filter(
-            Q(**{f"{project_field}draft": False})
-            | Q(**{f"{project_field}owner": user})
-            | Q(**{f"{project_field}members": user})
-        ).distinct()
+        return self.filter(non_draft_filter | owner_filter | member_filter).distinct()
 
 
 class BaseModel(models.Model):
