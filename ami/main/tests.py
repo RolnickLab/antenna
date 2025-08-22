@@ -1979,12 +1979,16 @@ class TestDraftProjectPermissions(APITestCase):
             owner=self.owner,
             draft=True,
         )
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        Job.objects.create(name="Test Job", project=self.project, job_type_key="ml")
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_taxa(project=self.project)
+        create_occurrences(deployment=self.deployment, num=1)
         self.project.members.add(self.member)
-
         self.detail_url = f"/api/v2/projects/{self.project.pk}/"
 
-        # Deployment
-        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        #
 
     def _auth_get(self, user, url):
         self.client.force_authenticate(user)
