@@ -73,9 +73,9 @@ class Command(BaseCommand):
         self.stdout.write(f"Importing data into project: {project} (ID: {project_id})")
 
         try:
+            # Call the save_results function with create_missing_source_images=True
+            results_json = pipeline_results.json()
             with transaction.atomic():
-                # Call the save_results function with create_missing_source_images=True
-                results_json = pipeline_results.json()
                 result = save_results(
                     results_json=results_json,
                     job_id=None,
@@ -85,29 +85,30 @@ class Command(BaseCommand):
                     public_base_url=public_base_url,
                 )
 
-                if result:
-                    self.stdout.write(
-                        self.style.SUCCESS(
-                            f"Successfully imported pipeline results:"
-                            f"\n  - Pipeline: {result.pipeline}"
-                            f"\n  - Source images processed: {len(result.source_images)}"
-                            f"\n  - Detections created: {len(result.detections)}"
-                            f"\n  - Classifications created: {len(result.classifications)}"
-                            f"\n  - Algorithms used: {len(result.algorithms)}"
-                            f"\n  - Total processing time: {result.total_time:.2f} seconds"
-                        )
+            if result:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Successfully imported pipeline results:"
+                        f"\n  - Pipeline: {result.pipeline}"
+                        f"\n  - Source images processed: {len(result.source_images)}"
+                        f"\n  - Detections created: {len(result.detections)}"
+                        f"\n  - Classifications created: {len(result.classifications)}"
+                        f"\n  - Algorithms used: {len(result.algorithms)}"
+                        f"\n  - Deployments used: {len(result.deployments)}"
+                        f"\n  - Total processing time: {result.total_time:.2f} seconds"
                     )
+                )
 
-                    # Re-save all deployments in the results to ensure they are up-to-date
-                    # Must loop through the source images
-                    self.stdout.write(self.style.SUCCESS("Updating sessions and stations"))
-                    deployments = {
-                        source_image.deployment for source_image in result.source_images if source_image.deployment
-                    }
-                    for deployment in deployments:
-                        deployment.save(regroup_async=False)
-                else:
-                    self.stdout.write(self.style.WARNING("Import completed but no result object returned"))
+                # Re-save all deployments in the results to ensure they are up-to-date
+                # Must loop through the source images
+                self.stdout.write(self.style.SUCCESS("Updating sessions and stations"))
+                deployments = {
+                    source_image.deployment for source_image in result.source_images if source_image.deployment
+                }
+                for deployment in deployments:
+                    deployment.save(regroup_async=False)
+            else:
+                self.stdout.write(self.style.WARNING("Import completed but no result object returned"))
 
         except Exception as e:
             raise CommandError(f"Error importing pipeline results: {e}")
