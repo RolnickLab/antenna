@@ -25,21 +25,7 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import (
-    CanDeleteIdentification,
-    CanPopulateSourceImageCollection,
-    CanStarSourceImage,
-    CanUpdateIdentification,
-    DeploymentCRUDPermission,
-    DeviceCRUDPermission,
-    IsActiveStaffOrReadOnly,
-    ProjectCRUDPermission,
-    S3StorageSourceCRUDPermission,
-    SiteCRUDPermission,
-    SourceImageCollectionCRUDPermission,
-    SourceImageCRUDPermission,
-    SourceImageUploadCRUDPermission,
-)
+from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.serializers import TagSerializer
@@ -151,7 +137,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
-    permission_classes = [ProjectCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -218,7 +204,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "last_date",
     ]
 
-    permission_classes = [DeploymentCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_serializer_class(self):
         """
@@ -481,7 +467,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "deployment__name",
         "event__start",
     ]
-    permission_classes = [CanStarSourceImage, SourceImageCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_serializer_class(self):
         """
@@ -641,8 +627,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     )
     serializer_class = SourceImageCollectionSerializer
     permission_classes = [
-        CanPopulateSourceImageCollection,
-        SourceImageCollectionCRUDPermission,
+        ObjectPermission,
     ]
     filterset_fields = ["method"]
     ordering_fields = [
@@ -759,7 +744,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     queryset = SourceImageUpload.objects.all()
 
     serializer_class = SourceImageUploadSerializer
-    permission_classes = [SourceImageUploadCRUDPermission]
+    permission_classes = [ObjectPermission]
     require_project = True
 
     def get_queryset(self) -> QuerySet:
@@ -788,7 +773,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
         obj = serializer.save(user=user)
 
         # Get process_now flag from project feature flags
-        process_now = project.feature_flags.auto_processs_manual_uploads
+        process_now = project.feature_flags.auto_process_manual_uploads
 
         # Create source image from the upload
         source_image = create_source_image_from_upload(
@@ -1666,7 +1651,8 @@ class IdentificationViewSet(DefaultViewSet):
         "updated_at",
         "user",
     ]
-    permission_classes = [CanUpdateIdentification, CanDeleteIdentification]
+
+    permission_classes = [ObjectPermission]
 
     def perform_create(self, serializer):
         """
@@ -1694,7 +1680,7 @@ class SiteViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
-    permission_classes = [SiteCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
@@ -1721,7 +1707,7 @@ class DeviceViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
-    permission_classes = [DeviceCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
@@ -1753,7 +1739,7 @@ class StorageSourceViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
-    permission_classes = [S3StorageSourceCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
