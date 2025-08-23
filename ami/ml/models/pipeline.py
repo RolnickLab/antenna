@@ -911,6 +911,7 @@ class PipelineSaveResults:
     detections: list[Detection]
     classifications: list[Classification]
     algorithms: dict[str, Algorithm]
+    deployments: dict[str, Deployment]
     total_time: float
 
 
@@ -964,6 +965,7 @@ def save_results(
 
         deployments_data = results.deployments
         source_images_data = results.source_images
+        deployments_used: dict[str, Deployment] = {}
 
         if not deployments_data:
             job_logger.warning(
@@ -971,7 +973,7 @@ def save_results(
                 "New source images will not be created without deployments data."
             )
         else:
-            get_or_create_deployments(
+            deployments_used = get_or_create_deployments(
                 deployments_data=deployments_data,
                 project_id=project_id,
                 logger=job_logger,
@@ -1099,6 +1101,7 @@ def save_results(
             detections=detections,
             classifications=classifications,
             algorithms=algorithms_used,
+            deployments=deployments_used,
             total_time=total_time,
         )
 
