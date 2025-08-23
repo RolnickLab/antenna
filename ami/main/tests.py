@@ -1148,9 +1148,9 @@ class TestProjectPermissions(APITestCase):
 
     def test_owner_permissions(self):
         # Owner has view, change, and delete permissions
-        self.assertTrue(self.owner.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertTrue(self.owner.has_perm(Project.Permissions.CHANGE, self.project))
-        self.assertTrue(self.owner.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
         # test permissions from the API
         self.client.force_authenticate(user=self.owner)
 
@@ -1166,8 +1166,8 @@ class TestProjectPermissions(APITestCase):
 
     def test_member_permissions(self):
         # Member has view and change permissions, but not delete
-        self.assertTrue(self.member.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertFalse(self.member.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.member.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertFalse(self.member.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
 
         # test permissions from the API
         # create the project
@@ -1188,9 +1188,9 @@ class TestProjectPermissions(APITestCase):
 
     def test_other_user_permissions(self):
         # Other users only have view permissions
-        self.assertTrue(self.other_user.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertFalse(self.other_user.has_perm(Project.Permissions.CHANGE, self.project))
-        self.assertFalse(self.other_user.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.other_user.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
 
         # test permissions from the API
         # Authenticate as other_user
@@ -1215,9 +1215,9 @@ class TestProjectPermissions(APITestCase):
         self.project.save()
 
         # Check the new owner has the owner permissions
-        self.assertTrue(self.new_owner.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertTrue(self.new_owner.has_perm(Project.Permissions.CHANGE, self.project))
-        self.assertTrue(self.new_owner.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
 
     def test_permissions_on_member_removal(self):
         """Test permissions are removed when a user is no longer a member of the project."""
@@ -1225,7 +1225,7 @@ class TestProjectPermissions(APITestCase):
         self.project.members.remove(self.member)
 
         # Check the removed member no longer has permissions
-        self.assertFalse(self.member.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertFalse(self.member.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
 
     def test_superuser_has_all_permissions(self):
         # Log in as the superuser
@@ -1236,9 +1236,9 @@ class TestProjectPermissions(APITestCase):
 
         # Assert that the superuser has all object-level permissions
         project_permissions = [
-            Project.Permissions.VIEW,
-            Project.Permissions.CHANGE,
-            Project.Permissions.DELETE,
+            Project.Permissions.VIEW_PROJECT,
+            Project.Permissions.UPDATE_PROJECT,
+            Project.Permissions.DELETE_PROJECT,
         ]
         for perm in project_permissions:
             self.assertIn(perm, superuser_permissions)
@@ -1958,3 +1958,127 @@ class TestRunSingleImageJobPermission(APITestCase):
             403,
             f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
         )
+
+
+class TestDraftProjectPermissions(APITestCase):
+    def setUp(self) -> None:
+        # Users
+        self.owner = User.objects.create_user(email="owner@insectai.org", is_staff=True)
+        self.member = User.objects.create_user(email="member@insectai.org", is_staff=False)
+        self.outsider = User.objects.create_user(email="outsider@insectai.org", is_staff=False)
+        self.superuser = User.objects.create_superuser(
+            email="superuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+
+        # Draft project with owner
+        self.project = Project.objects.create(
+            name="Draft Only Project",
+            description="Draft visibility test",
+            owner=self.owner,
+            draft=True,
+        )
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        Job.objects.create(name="Test Job", project=self.project, job_type_key="ml")
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_taxa(project=self.project)
+        create_occurrences(deployment=self.deployment, num=1)
+        self.project.members.add(self.member)
+        self.detail_url = f"/api/v2/projects/{self.project.pk}/"
+
+        #
+
+    def _auth_get(self, user, url):
+        self.client.force_authenticate(user)
+        return self.client.get(url)
+
+    # Project detail tests
+    def test_owner_can_view_draft_project(self):
+        resp = self._auth_get(self.owner, self.detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Owner should be able to view draft project")
+
+    def test_member_can_view_draft_project(self):
+        resp = self._auth_get(self.member, self.detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Member should be able to view draft project")
+
+    def test_member_removed_cannot_view_draft_project(self):
+        self.project.members.remove(self.member)
+        resp = self._auth_get(self.member, self.detail_url)
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+            " Member should not view draft project after removal",
+        )
+
+    def test_outsider_cannot_view_draft_project(self):
+        resp = self._auth_get(self.outsider, self.detail_url)
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+            " Non-member should not view draft project",
+        )
+
+    def test_superuser_can_view_draft_project(self):
+        resp = self._auth_get(self.superuser, self.detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Superuser should be able to view draft project")
+
+    def test_draft_project_detail_access(self):
+        url = f"/api/v2/projects/{self.project.pk}/"
+
+        assert self._auth_get(self.superuser, url).status_code == 200
+        assert self._auth_get(self.owner, url).status_code == 200
+        assert self._auth_get(self.member, url).status_code == 200
+
+        response = self._auth_get(self.outsider, url)
+        assert response.status_code in [403, 404]
+
+    def test_draft_project_list_visibility(self):
+        url = "/api/v2/projects/"
+
+        for user in [self.superuser, self.owner, self.member]:
+            self.client.force_authenticate(user)
+            response = self.client.get(url)
+            ids = [p["id"] for p in response.data["results"]]
+            assert self.project.pk in ids
+
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(url)
+        ids = [p["id"] for p in response.data["results"]]
+        assert self.project.pk not in ids
+
+    # Deployment detail & list tests
+    def test_deployment_detail_draft_project(self):
+        url = f"/api/v2/deployments/{self.deployment.pk}/"
+
+        assert self._auth_get(self.superuser, url).status_code == 200
+        assert self._auth_get(self.owner, url).status_code == 200
+        assert self._auth_get(self.member, url).status_code == 200
+
+        response = self._auth_get(self.outsider, url)
+        assert response.status_code in [403, 404]
+
+    def test_deployment_list_draft_project(self):
+        url = f"/api/v2/deployments/?project_id={self.project.pk}"
+
+        for user in [self.superuser, self.owner, self.member]:
+            self.client.force_authenticate(user)
+            response = self.client.get(url)
+            ids = [d["id"] for d in response.data["results"]]
+            assert self.deployment.pk in ids
+
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(url)
+        ids = [d["id"] for d in response.data["results"]]
+        assert self.deployment.pk not in ids
+
+    def test_access_after_publishing_project(self):
+        self.project.draft = False
+        self.project.save()
+
+        project_url = f"/api/v2/projects/{self.project.pk}/"
+        deployment_url = f"/api/v2/deployments/{self.deployment.pk}/"
+
+        assert self._auth_get(self.outsider, project_url).status_code == 200
+        assert self._auth_get(self.outsider, deployment_url).status_code == 200

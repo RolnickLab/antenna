@@ -120,6 +120,15 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def get_queryset(self):
+        qs: QuerySet = super().get_queryset()
+        assert self.queryset is not None
+
+        if hasattr(self.queryset.model, "get_project_accessor"):
+            return qs.visible_draft_projects_only(self.request.user)  # type: ignore
+
+        return qs
+
 
 class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
     pass
@@ -1536,28 +1545,44 @@ class SummaryView(GenericAPIView, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def get(self, request):
         """
-        Return counts of all models.
+        Return counts of all models, applying visibility filters for draft projects.
         """
+        user = request.user
         project = self.get_active_project()
         if project:
             data = {
-                "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
-                "deployments_count": Deployment.objects.filter(project=project).count(),
-                "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
-                "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
-                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.valid().filter(project=project).count(),  # type: ignore
-                "taxa_count": Occurrence.objects.all().unique_taxa(project=project).count(),  # type: ignore
+                "projects_count": Project.objects.visible_draft_projects_only(user).count(),  # type: ignore
+                "deployments_count": Deployment.objects.visible_draft_projects_only(user)  # type: ignore
+                .filter(project=project)
+                .count(),
+                "events_count": Event.objects.visible_draft_projects_only(user)  # type: ignore
+                .filter(deployment__project=project, deployment__isnull=False)
+                .count(),
+                "captures_count": SourceImage.objects.visible_draft_projects_only(user)  # type: ignore
+                .filter(deployment__project=project)
+                .count(),
+                "occurrences_count": Occurrence.objects.valid()
+                .visible_draft_projects_only(user)
+                .filter(project=project)
+                .count(),  # type: ignore
+                "taxa_count": Occurrence.objects.visible_draft_projects_only(user)
+                .unique_taxa(project=project)
+                .count(),  # type: ignore
             }
         else:
             data = {
-                "projects_count": Project.objects.count(),
-                "deployments_count": Deployment.objects.count(),
-                "events_count": Event.objects.filter(deployment__isnull=False).count(),
-                "captures_count": SourceImage.objects.count(),
-                # "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.valid().count(),  # type: ignore
-                "taxa_count": Occurrence.objects.all().unique_taxa().count(),  # type: ignore
+                "projects_count": Project.objects.visible_draft_projects_only(user).count(),  # type: ignore
+                "deployments_count": Deployment.objects.visible_draft_projects_only(user).count(),  # type: ignore
+                "events_count": Event.objects.visible_draft_projects_only(user)  # type: ignore
+                .filter(deployment__isnull=False)
+                .count(),
+                "captures_count": SourceImage.objects.visible_draft_projects_only(user).count(),  # type: ignore
+                "occurrences_count": Occurrence.objects.valid()
+                .visible_draft_projects_only(user)
+                .count(),  # type: ignore
+                "taxa_count": Occurrence.objects.visible_draft_projects_only(user)
+                .unique_taxa()
+                .count(),  # type: ignore
                 "last_updated": timezone.now(),
             }
 

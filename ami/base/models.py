@@ -1,8 +1,44 @@
 from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.db import models
+from django.db.models import Q, QuerySet
 from guardian.shortcuts import get_perms
 
 import ami.tasks
+
+
+class BaseQuerySet(QuerySet):
+    def visible_draft_projects_only(self, user):
+        """
+        Filter queryset to include only objects whose related draft projects
+        are visible to the given user. Only superusers, project owners,
+        or members are allowed to view draft projects and their related objects.
+        """
+        from ami.main.models import Project
+
+        if user.is_superuser:
+            return self
+
+        # Determine whether the model is Project itself
+        is_project_model = self.model == Project
+
+        # Use model-defined project accessor if available
+        project_accessor = getattr(self.model, "project_accessor", "project")
+        # For models that have many2many relationship with the project model
+        # or no relationship just return the qs without filtering
+        if not project_accessor and not is_project_model:
+            return self
+        project_field = "" if is_project_model else f"{project_accessor}__"
+
+        # Build Q filters
+        non_draft_filter = Q(**{f"{project_field}draft": False})
+        # Show only non-draft projects for anonymous users
+        if isinstance(user, AnonymousUser):
+            return self.filter(non_draft_filter).distinct()
+
+        owner_filter = Q(**{f"{project_field}owner": user})
+        member_filter = Q(**{f"{project_field}members": user})
+
+        return self.filter(non_draft_filter | owner_filter | member_filter).distinct()
 
 
 class BaseModel(models.Model):
@@ -10,10 +46,23 @@ class BaseModel(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    objects = BaseQuerySet.as_manager()
+
+    @classmethod
+    def get_project_accessor(cls):
+        return getattr(cls, "project_accessor", "project")
 
     def get_project(self):
-        """Get the project associated with the model."""
-        return self.project if hasattr(self, "project") else None
+        """Dynamically get the related project using the project_accessor."""
+        accessor = self.get_project_accessor()
+        if not accessor:
+            return self
+        project = self
+        for part in accessor.split("__"):
+            project = getattr(project, part, None)
+            if project is None:
+                break
+        return project
 
     def __str__(self) -> str:
         """All django models should have this method."""
@@ -52,13 +101,16 @@ class BaseModel(models.Model):
         This method is used to determine if the user can perform
         CRUD operations or custom actions on the model instance.
         """
+        from ami.users.roles import BasicMember
+
         project = self.get_project() if hasattr(self, "get_project") else None
         if not project:
             return False
         if action == "retrieve":
-            # Allow view
+            if project.draft:
+                # Allow view permission for members and owners of draft projects
+                return BasicMember.has_role(user, project) or user == project.owner or user.is_superuser
             return True
-
         model = self._meta.model_name
         crud_map = {
             "create": f"create_{model}",
