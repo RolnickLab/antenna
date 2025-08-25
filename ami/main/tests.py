@@ -2,6 +2,7 @@ import datetime
 import logging
 from io import BytesIO
 
+from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase, override_settings
@@ -11,9 +12,12 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
+from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.models import (
+    Classification,
     Deployment,
+    Detection,
     Device,
     Event,
     Identification,
@@ -24,11 +28,14 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    Tag,
+    TaxaList,
     Taxon,
     TaxonRank,
     group_images_into_events,
 )
 from ami.ml.models.pipeline import Pipeline
+from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.storage import populate_bucket
@@ -1971,7 +1978,7 @@ class TestDraftProjectPermissions(APITestCase):
             password="password123",
             is_staff=True,
         )
-
+        # Pre-create related test data
         # Draft project with owner
         self.project = Project.objects.create(
             name="Draft Only Project",
@@ -1988,7 +1995,31 @@ class TestDraftProjectPermissions(APITestCase):
         self.project.members.add(self.member)
         self.detail_url = f"/api/v2/projects/{self.project.pk}/"
 
-        #
+        Tag.objects.create(name="Test Tag", project=self.project)
+        DataExport.objects.create(
+            user=self.owner,
+            project=self.project,
+            format="json",
+            filters={},
+            filters_display={},
+            file_url="https://example.com/export.json",
+            record_count=123,
+            file_size=456789,
+        )
+        fake_image = SimpleUploadedFile("test.jpg", b"fake image content", content_type="image/jpeg")
+        SourceImageUpload.objects.create(image=fake_image, deployment=self.deployment)
+        occurrence = Occurrence.objects.filter(deployment=self.deployment).first()
+        Identification.objects.create(occurrence=occurrence)
+        S3StorageSource.objects.create(
+            name="Test S3 Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=self.project,
+        )
+        taxon = Taxon.objects.create(name="Draft Taxon")
+        taxon.projects.add(self.project)
+        self.non_draft_project = Project.objects.filter(draft=False).first()
 
     def _auth_get(self, user, url):
         self.client.force_authenticate(user)
@@ -2073,12 +2104,74 @@ class TestDraftProjectPermissions(APITestCase):
         ids = [d["id"] for d in response.data["results"]]
         assert self.deployment.pk not in ids
 
-    def test_access_after_publishing_project(self):
-        self.project.draft = False
-        self.project.save()
+    def test_visible_for_user_across_all_models(self):
+        all_users = {
+            "superuser": self.superuser,
+            "owner": self.owner,
+            "member": self.member,
+            "outsider": self.outsider,
+            "anonymous": AnonymousUser(),
+        }
 
-        project_url = f"/api/v2/projects/{self.project.pk}/"
-        deployment_url = f"/api/v2/deployments/{self.deployment.pk}/"
+        project_related_models = [
+            Project,
+            Device,
+            Site,
+            Deployment,
+            Event,
+            S3StorageSource,
+            SourceImage,
+            Occurrence,
+            Tag,
+            SourceImageCollection,
+            Job,
+            DataExport,
+            Taxon,
+            TaxaList,
+            ProcessingService,
+            Pipeline,
+            SourceImageUpload,
+            Identification,
+            Classification,
+            Detection,
+            ProjectPipelineConfig,
+        ]
 
-        assert self._auth_get(self.outsider, project_url).status_code == 200
-        assert self._auth_get(self.outsider, deployment_url).status_code == 200
+        for model in project_related_models:
+            project_accessor = model.get_project_accessor()
+            if project_accessor is None:
+                continue  # skip models not related to a project
+
+            # Filter only objects from the test draft project
+            try:
+                if model == Project:
+                    draft_queryset = model.objects.filter(draft=True)
+                    non_draft_queryset = model.objects.filter(draft=False)
+                else:
+                    draft_queryset = model.objects.filter(**{f"{project_accessor}": self.project})
+                    non_draft_queryset = model.objects.filter(**{f"{project_accessor}": self.non_draft_project})
+            except Exception as e:
+                raise AssertionError(
+                    f"Failed to filter querysets for {model.__name__} using accessor '{project_accessor}': {e}"
+                )
+
+            self.assertTrue(
+                draft_queryset.exists(),
+                f"No instances found for model {model.__name__} tied to the draft project",
+            )
+
+            for role, user in all_users.items():
+                visible_ids = list(draft_queryset.visible_for_user(user).values_list("id", flat=True))
+                non_draft_ids = set(non_draft_queryset.values_list("id", flat=True))
+                is_draft_viewer = role in {"superuser", "owner", "member"}
+
+                for instance in draft_queryset:
+                    msg = f"{model.__name__} visible_for_user failed for role={role}"
+
+                    is_in_non_draft = instance.id in non_draft_ids
+                    should_be_visible = is_draft_viewer or is_in_non_draft
+
+                    if should_be_visible:
+                        self.assertIn(instance.id, visible_ids, msg)
+                    else:
+                        self.assertNotIn(instance.id, visible_ids, msg)
