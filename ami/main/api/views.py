@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
+from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
@@ -124,8 +125,8 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
         qs: QuerySet = super().get_queryset()
         assert self.queryset is not None
 
-        if hasattr(self.queryset.model, "get_project_accessor"):
-            return qs.visible_draft_projects_only(self.request.user)  # type: ignore
+        if isinstance(qs, BaseQuerySet):
+            return qs.visible_for_user(self.request.user)  # type: ignore
 
         return qs
 
@@ -1551,38 +1552,34 @@ class SummaryView(GenericAPIView, ProjectMixin):
         project = self.get_active_project()
         if project:
             data = {
-                "projects_count": Project.objects.visible_draft_projects_only(user).count(),  # type: ignore
-                "deployments_count": Deployment.objects.visible_draft_projects_only(user)  # type: ignore
+                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
+                "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
                 .filter(project=project)
                 .count(),
-                "events_count": Event.objects.visible_draft_projects_only(user)  # type: ignore
+                "events_count": Event.objects.visible_for_user(user)  # type: ignore
                 .filter(deployment__project=project, deployment__isnull=False)
                 .count(),
-                "captures_count": SourceImage.objects.visible_draft_projects_only(user)  # type: ignore
+                "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
                 .filter(deployment__project=project)
                 .count(),
                 "occurrences_count": Occurrence.objects.valid()
-                .visible_draft_projects_only(user)
+                .visible_for_user(user)
                 .filter(project=project)
                 .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.visible_draft_projects_only(user)
+                "taxa_count": Occurrence.objects.visible_for_user(user)
                 .unique_taxa(project=project)
                 .count(),  # type: ignore
             }
         else:
             data = {
-                "projects_count": Project.objects.visible_draft_projects_only(user).count(),  # type: ignore
-                "deployments_count": Deployment.objects.visible_draft_projects_only(user).count(),  # type: ignore
-                "events_count": Event.objects.visible_draft_projects_only(user)  # type: ignore
+                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
+                "deployments_count": Deployment.objects.visible_for_user(user).count(),  # type: ignore
+                "events_count": Event.objects.visible_for_user(user)  # type: ignore
                 .filter(deployment__isnull=False)
                 .count(),
-                "captures_count": SourceImage.objects.visible_draft_projects_only(user).count(),  # type: ignore
-                "occurrences_count": Occurrence.objects.valid()
-                .visible_draft_projects_only(user)
-                .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.visible_draft_projects_only(user)
-                .unique_taxa()
-                .count(),  # type: ignore
+                "captures_count": SourceImage.objects.visible_for_user(user).count(),  # type: ignore
+                "occurrences_count": Occurrence.objects.valid().visible_for_user(user).count(),  # type: ignore
+                "taxa_count": Occurrence.objects.visible_for_user(user).unique_taxa().count(),  # type: ignore
                 "last_updated": timezone.now(),
             }
 
