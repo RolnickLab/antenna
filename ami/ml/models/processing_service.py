@@ -8,8 +8,8 @@ import requests
 from django.conf import settings
 from django.db import models
 
-from ami.base.models import BaseModel
-from ami.main.models import Project
+from ami.base.models import BaseQuerySet
+from ami.main.models import BaseModel, Project
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
@@ -17,7 +17,7 @@ from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoRe
 logger = logging.getLogger(__name__)
 
 
-class ProcessingServiceManager(models.Manager):
+class ProcessingServiceManager(models.Manager.from_queryset(BaseQuerySet)):
     """Custom manager for ProcessingService to handle specific queries."""
 
     def create(self, **kwargs) -> "ProcessingService":
@@ -30,7 +30,6 @@ class ProcessingServiceManager(models.Manager):
 class ProcessingService(BaseModel):
     """An ML processing service"""
 
-    project_accessor = ""
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
