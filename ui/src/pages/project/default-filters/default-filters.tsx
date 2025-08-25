@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
+import { useUpdateProjectSettings } from 'data-services/hooks/projects/useUpdateProjectSettings'
 import { ProjectDetails } from 'data-services/models/project-details'
 import styles from 'design-system/components/dialog/dialog.module.scss'
 import { DefaultFiltersForm } from 'pages/project-details/default-filters-form'
@@ -13,9 +13,8 @@ export const DefaultFilters = () => {
   const { project } = useOutletContext<{
     project: ProjectDetails
   }>()
-  const { updateProject, isLoading, isSuccess, error } = useUpdateProject(
-    project.id
-  )
+  const { updateProject, isLoading, isSuccess, error } =
+    useUpdateProjectSettings(project.id)
 
   useEffect(() => {
     if (!project.canUpdate) {
