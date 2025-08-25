@@ -1,3 +1,4 @@
+import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
@@ -90,14 +91,13 @@ export const Occurrences = () => {
           <FilterSection defaultOpen>
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
-            <FilterControl field="date_start" />
-            <FilterControl field="date_end" />
             <FilterControl field="taxon" />
             {taxaLists.length > 0 && (
               <FilterControl data={taxaLists} field="taxa_list_id" />
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
+            <DefaultFiltersControl />
           </FilterSection>
           <FilterSection
             title="More filters"
@@ -106,6 +106,8 @@ export const Occurrences = () => {
               activeFilters
             )}
           >
+            <FilterControl field="date_start" />
+            <FilterControl field="date_end" />
             <FilterControl field="collection" />
             <FilterControl field="deployment" />
             <FilterControl field="algorithm" />
