@@ -977,7 +977,6 @@ class PipelineManager(models.Manager):
 class Pipeline(BaseModel):
     """A pipeline of algorithms"""
 
-    project_accessor = ""
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True)

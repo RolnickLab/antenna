@@ -12,7 +12,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils.text import slugify
 
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, BaseQuerySet
 
 
 @typing.final
@@ -21,7 +21,6 @@ class AlgorithmCategoryMap(BaseModel):
     A list of classification labels for a given algorithm version
     """
 
-    project_accessor = ""
     data = models.JSONField(
         help_text="Complete metadata for each label, such as id, gbif_key, lookup value, source, etc."
     )
@@ -103,7 +102,7 @@ class ArrayLength(models.Func):
     function = "CARDINALITY"
 
 
-class AlgorithmQuerySet(models.QuerySet["Algorithm"]):
+class AlgorithmQuerySet(BaseQuerySet):
     def with_category_count(self):
         """
         Annotate the queryset with the number of categories in the category map
@@ -115,7 +114,6 @@ class AlgorithmQuerySet(models.QuerySet["Algorithm"]):
 class Algorithm(BaseModel):
     """A machine learning algorithm"""
 
-    project_accessor = ""
     name = models.CharField(max_length=255)
     key = models.SlugField(max_length=255, unique=True)
     task_type = models.CharField(

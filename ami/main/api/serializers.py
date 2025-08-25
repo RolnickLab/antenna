@@ -280,6 +280,7 @@ class ProjectListSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "image",
+            "draft",
         ]
 
 

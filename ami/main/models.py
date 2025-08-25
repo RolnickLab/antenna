@@ -2930,7 +2930,6 @@ class TaxonParent(pydantic.BaseModel):
 class Taxon(BaseModel):
     """A taxonomic classification"""
 
-    project_accessor = ""
     name = models.CharField(max_length=255, unique=True)
     display_name = models.CharField("Cached display name", max_length=255, null=True, blank=True, unique=True)
     rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)
@@ -3161,7 +3160,6 @@ class Taxon(BaseModel):
 class TaxaList(BaseModel):
     """A checklist of taxa"""
 
-    project_accessor = ""
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
