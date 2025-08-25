@@ -49,19 +49,19 @@ const InfoPopover = ({ project }: { project: ProjectDetails }) => (
         <FormRow>
           <InputValue
             label="Score threshold"
-            value={project.defaultFilters.scoreThreshold}
+            value={project.settings.scoreThreshold}
           />
         </FormRow>
         <FormRow>
           <InputValue
             label="Include taxa"
-            value={project.defaultFilters.includeTaxa
+            value={project.settings.includeTaxa
               .map((taxon) => taxon.name)
               .join(', ')}
           />
           <InputValue
             label="Exclude taxa"
-            value={project.defaultFilters.excludeTaxa
+            value={project.settings.excludeTaxa
               .map((taxon) => taxon.name)
               .join(', ')}
           />
@@ -70,9 +70,9 @@ const InfoPopover = ({ project }: { project: ProjectDetails }) => (
       <FormActions>
         <Link
           className={buttonVariants({ size: 'small', variant: 'outline' })}
-          to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
+          to={APP_ROUTES.PROJECT_CONFIGURATION({ projectId: project.id })}
         >
-          <span>Configure project</span>
+          <span>Project configuration</span>
           <ChevronRightIcon className="w-4 h-4" />
         </Link>
       </FormActions>

@@ -5,7 +5,7 @@ export const useRejectOptions = () => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
   const rejectOptions =
-    project?.defaultFilters.excludeTaxa.map((taxon) => ({
+    project?.settings.excludeTaxa.map((taxon) => ({
       value: taxon.id,
       label: taxon.name,
     })) ?? []

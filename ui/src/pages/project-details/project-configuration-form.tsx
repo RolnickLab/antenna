@@ -1,4 +1,5 @@
 import { FormController } from 'components/form/form-controller'
+import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
@@ -17,13 +18,22 @@ import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 
-interface DefaultFiltersFormValues {
+interface ProjectConfigurationFormValues {
+  sessionTimeGapSeconds: number
   scoreThreshold: number
   includeTaxa: { id: string; name: string }[]
   excludeTaxa: { id: string; name: string }[]
 }
 
 const config: FormConfig = {
+  sessionTimeGapSeconds: {
+    label: 'Time gap in seconds',
+    description:
+      'When captures are imported, they are grouped into sessions (a fixed period of time of monitoring) based on this time gap.',
+    rules: {
+      min: 0,
+    },
+  },
   scoreThreshold: {
     label: 'Score threshold',
     description:
@@ -39,7 +49,7 @@ const config: FormConfig = {
   },
 }
 
-export const DefaultFiltersForm = ({
+export const ProjectConfigurationForm = ({
   error,
   isLoading,
   isSuccess,
@@ -49,15 +59,15 @@ export const DefaultFiltersForm = ({
   error?: unknown
   isLoading?: boolean
   isSuccess?: boolean
-  onSubmit: (data: DefaultFiltersFormValues) => void
+  onSubmit: (data: ProjectConfigurationFormValues) => void
   project: ProjectDetails
 }) => {
   const {
     control,
     handleSubmit,
     setError: setFieldError,
-  } = useForm<DefaultFiltersFormValues>({
-    defaultValues: project.defaultFilters,
+  } = useForm<ProjectConfigurationFormValues>({
+    defaultValues: project.settings,
     mode: 'onChange',
   })
 
@@ -76,6 +86,16 @@ export const DefaultFiltersForm = ({
           message={errorMessage}
         />
       )}
+      <FormSection title="Sessions">
+        <FormRow>
+          <FormField
+            name="sessionTimeGapSeconds"
+            type="number"
+            config={config}
+            control={control}
+          />
+        </FormRow>
+      </FormSection>
       <FormSection title="Occurrences">
         <FormRow>
           <FormController

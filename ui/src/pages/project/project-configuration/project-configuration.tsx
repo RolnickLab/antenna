@@ -1,22 +1,21 @@
 import classNames from 'classnames'
-import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
-import { Project } from 'data-services/models/project'
+import { useUpdateProjectSettings } from 'data-services/hooks/projects/useUpdateProjectSettings'
+import { ProjectDetails } from 'data-services/models/project-details'
 import styles from 'design-system/components/dialog/dialog.module.scss'
 import { DeleteProjectDialog } from 'pages/project-details/delete-project-dialog'
-import { ProjectDetailsForm } from 'pages/project-details/project-details-form'
+import { ProjectConfigurationForm } from 'pages/project-details/project-configuration-form'
 import { useEffect } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const General = () => {
+export const ProjectConfiguration = () => {
   const navigate = useNavigate()
   const { project } = useOutletContext<{
-    project: Project
+    project: ProjectDetails
   }>()
-  const { updateProject, isLoading, isSuccess, error } = useUpdateProject(
-    project.id
-  )
+  const { updateProjectSettings, isLoading, isSuccess, error } =
+    useUpdateProjectSettings(project.id)
 
   useEffect(() => {
     if (!project.canUpdate) {
@@ -33,16 +32,16 @@ export const General = () => {
       <div className="bg-background border border-border rounded-md overflow-hidden">
         <div className={classNames(styles.dialogHeader, 'bg-background')}>
           <h1 className={styles.dialogTitle}>
-            {translate(STRING.NAV_ITEM_GENERAL)}
+            {translate(STRING.NAV_ITEM_PROJECT_CONFIGURATION)}
           </h1>
           {project.canDelete && <DeleteProjectDialog id={project.id} />}
         </div>
         <div>
-          <ProjectDetailsForm
+          <ProjectConfigurationForm
             error={error}
             isLoading={isLoading}
             isSuccess={isSuccess}
-            onSubmit={(data) => updateProject(data)}
+            onSubmit={updateProjectSettings}
             project={project}
           />
         </div>

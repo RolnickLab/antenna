@@ -23,9 +23,6 @@ export const APP_ROUTES = {
   COLLECTIONS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/collections`,
 
-  DEFAULT_FILTERS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/default-filters`,
-
   DEPLOYMENT_DETAILS: (params: { projectId: string; deploymentId: string }) =>
     `/projects/${params.projectId}/deployments/${params.deploymentId}`,
 
@@ -40,9 +37,6 @@ export const APP_ROUTES = {
 
   EXPORTS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/exports`,
-
-  GENERAL: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/general`,
 
   JOB_DETAILS: (params: { projectId: string; jobId: string }) =>
     `/projects/${params.projectId}/jobs/${params.jobId}`,
@@ -69,6 +63,12 @@ export const APP_ROUTES = {
 
   PROCESSING_SERVICES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/processing-services`,
+
+  PROJECT_CONFIGURATION: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/project-configuration`,
+
+  PROJECT_COVER: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/project-cover`,
 
   PROJECT_DETAILS: (params: { projectId: string }) =>
     `/projects/${params.projectId}`,
