@@ -79,6 +79,7 @@ $dialog-padding-medium: 32px;
   @include paragraph-large();
   font-weight: 600;
   color: $color-neutral-700;
+  padding-top: 2px;
 }
 
 .dialogClose {

@@ -23,7 +23,6 @@ import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
@@ -42,12 +41,9 @@ export const Species = () => {
     'created-at': false,
     'updated-at': false,
   })
-  const { userPreferences } = useUserPreferences()
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters({
-    best_determination_score: `${userPreferences.scoreThreshold}`,
-  })
+  const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -68,7 +64,6 @@ export const Species = () => {
           {taxaLists.length > 0 && (
             <FilterControl data={taxaLists} field="taxa_list_id" />
           )}
-          <FilterControl clearable={false} field="best_determination_score" />
           <FilterControl field="include_unobserved" />
           {project?.featureFlags.tags ? (
             <>

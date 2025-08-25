@@ -26,10 +26,11 @@ import { Collections } from 'pages/project/collections/collections'
 import { Devices } from 'pages/project/entities/devices'
 import { Sites } from 'pages/project/entities/sites'
 import { Exports } from 'pages/project/exports/exports'
-import { General } from 'pages/project/general/general'
 import { Pipelines } from 'pages/project/pipelines/pipelines'
 import { ProcessingServices } from 'pages/project/processing-services/processing-services'
 import Project from 'pages/project/project'
+import { ProjectConfiguration } from 'pages/project/project-configuration/project-configuration'
+import { ProjectConver } from 'pages/project/project-cover/project-cover'
 import { Storage } from 'pages/project/storage/storage'
 import { Summary } from 'pages/project/summary/summary'
 import { Projects } from 'pages/projects/projects'
@@ -117,7 +118,11 @@ export const App = () => (
             <Route path="algorithms/:id?" element={<Algorithms />} />
             <Route path="sites" element={<Sites />} />
             <Route path="devices" element={<Devices />} />
-            <Route path="general" element={<General />} />
+            <Route path="project-cover" element={<ProjectConver />} />
+            <Route
+              path="project-configuration"
+              element={<ProjectConfiguration />}
+            />
             <Route path="storage" element={<Storage />} />
           </Route>
           <Route path="jobs/:id?" element={<Jobs />} />

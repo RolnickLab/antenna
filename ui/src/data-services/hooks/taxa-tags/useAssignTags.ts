@@ -10,23 +10,18 @@ export const useAssignTags = (id: string, onSuccess?: () => void) => {
   const queryClient = useQueryClient()
 
   const { mutate, isLoading, error, isSuccess, reset } = useMutation({
-    mutationFn: ({ projectId, tags }: { projectId: string; tags: Tag[] }) => {
-      const data = new FormData()
-      data.append('tag_ids', JSON.stringify(tags.map((tag) => tag.id)))
-
-      return axios.post(
+    mutationFn: ({ projectId, tags }: { projectId: string; tags: Tag[] }) =>
+      axios.post(
         `${API_URL}/${API_ROUTES.SPECIES}/${id}/assign_tags/?project_id=${projectId}`,
-        JSON.stringify({
+        {
           tag_ids: tags.map((tag) => tag.id),
-        }),
+        },
         {
           headers: {
             ...getAuthHeader(user),
-            'Content-Type': 'application/json',
           },
         }
-      )
-    },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries([API_ROUTES.SPECIES])
       queryClient.invalidateQueries([API_ROUTES.SPECIES, id])

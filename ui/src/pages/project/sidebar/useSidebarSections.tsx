@@ -94,9 +94,14 @@ const getSidebarSections = ({
       ...(canUpdate
         ? [
             {
-              id: 'general',
-              title: translate(STRING.NAV_ITEM_GENERAL),
-              path: APP_ROUTES.GENERAL({ projectId }),
+              id: 'project-cover',
+              title: translate(STRING.NAV_ITEM_PROJECT_COVER),
+              path: APP_ROUTES.PROJECT_COVER({ projectId }),
+            },
+            {
+              id: 'project-configuration',
+              title: translate(STRING.NAV_ITEM_PROJECT_CONFIGURATION),
+              path: APP_ROUTES.PROJECT_CONFIGURATION({ projectId }),
             },
           ]
         : []),
