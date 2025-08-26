@@ -25,21 +25,7 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import (
-    CanDeleteIdentification,
-    CanPopulateSourceImageCollection,
-    CanStarSourceImage,
-    CanUpdateIdentification,
-    DeploymentCRUDPermission,
-    DeviceCRUDPermission,
-    IsActiveStaffOrReadOnly,
-    ProjectCRUDPermission,
-    S3StorageSourceCRUDPermission,
-    SiteCRUDPermission,
-    SourceImageCollectionCRUDPermission,
-    SourceImageCRUDPermission,
-    SourceImageUploadCRUDPermission,
-)
+from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.jobs.models import DetectionClusteringJob, Job
@@ -153,7 +139,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     queryset = Project.objects.filter(active=True).prefetch_related("deployments").all()
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
-    permission_classes = [ProjectCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -220,7 +206,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "last_date",
     ]
 
-    permission_classes = [DeploymentCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_serializer_class(self):
         """
@@ -483,7 +469,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "deployment__name",
         "event__start",
     ]
-    permission_classes = [CanStarSourceImage, SourceImageCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_serializer_class(self):
         """
@@ -643,11 +629,11 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     )
     serializer_class = SourceImageCollectionSerializer
     permission_classes = [
-        CanPopulateSourceImageCollection,
-        SourceImageCollectionCRUDPermission,
+        ObjectPermission,
     ]
     filterset_fields = ["method"]
     ordering_fields = [
+        "id",
         "created_at",
         "updated_at",
         "name",
@@ -781,7 +767,8 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     queryset = SourceImageUpload.objects.all()
 
     serializer_class = SourceImageUploadSerializer
-    permission_classes = [SourceImageUploadCRUDPermission]
+    permission_classes = [ObjectPermission]
+    require_project = True
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
@@ -793,6 +780,35 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     pagination_class = LimitOffsetPaginationWithPermissions
     # This is the maximum limit for manually uploaded captures
     pagination_class.default_limit = 20
+
+    def perform_create(self, serializer):
+        """
+        Save the SourceImageUpload with the current user and create the associated SourceImage.
+        """
+        from ami.base.serializers import get_current_user
+        from ami.main.models import create_source_image_from_upload
+
+        # Get current user from request
+        user = get_current_user(self.request)
+        project = self.get_active_project()
+
+        # Create the SourceImageUpload object with the user
+        obj = serializer.save(user=user)
+
+        # Get process_now flag from project feature flags
+        process_now = project.feature_flags.auto_process_manual_uploads
+
+        # Create source image from the upload
+        source_image = create_source_image_from_upload(
+            image=obj.image,
+            deployment=obj.deployment,
+            request=self.request,
+            process_now=process_now,
+        )
+
+        # Update the source_image reference and save
+        obj.source_image = source_image
+        obj.save()
 
 
 class DetectionViewSet(DefaultViewSet, ProjectMixin):
@@ -1130,7 +1146,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             ),
         )
 
-        if self.action != "list":
+        if self.action == "list":
+            qs = qs.has_determination()  # type: ignore
+        else:
+            # Fetch all detections for the occurrence detail view only
             qs = qs.prefetch_related(
                 Prefetch(
                     "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
@@ -1385,13 +1404,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset().filter(active=True)
         project = self.get_active_project()
+        qs = self.attach_tags_by_project(qs, project)
 
         if project:
             # Filter by project, but also include global taxa
             # @TODO IMPORTANT: if taxa belongs to a project, ensure user has permission to view it
             qs = qs.filter(models.Q(projects=project) | models.Q(projects__isnull=True))
-
-            qs = self.attach_tags_by_project(qs, project)
 
             include_unobserved = True  # Show detail views for unobserved taxa instead of 404
             # @TODO move to a QuerySet manager
@@ -1485,7 +1503,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             )
         return qs
 
-    def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
+    def attach_tags_by_project(self, qs: QuerySet, project: Project | None) -> QuerySet:
         """
         Prefetch and override the `.tags` attribute on each Taxon
         with only the tags belonging to the given project.
@@ -1729,7 +1747,8 @@ class IdentificationViewSet(DefaultViewSet):
         "updated_at",
         "user",
     ]
-    permission_classes = [CanUpdateIdentification, CanDeleteIdentification]
+
+    permission_classes = [ObjectPermission]
 
     def perform_create(self, serializer):
         """
@@ -1757,7 +1776,7 @@ class SiteViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
-    permission_classes = [SiteCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
@@ -1784,7 +1803,7 @@ class DeviceViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
-    permission_classes = [DeviceCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
@@ -1816,7 +1835,7 @@ class StorageSourceViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "name",
     ]
-    permission_classes = [S3StorageSourceCRUDPermission]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()

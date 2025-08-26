@@ -4,30 +4,9 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
-def add_inital_tags(apps, schema_editor):
-    """
-    Add initial tags to the database.
-    """
-    Tag = apps.get_model("main", "Tag")
-
-    # Make tags available for all projects
-    project = None
-
-    # Create initial tags
-    tags = [
-        "most wanted",
-        "also wanted",
-        "reviewed",
-        "collected",
-    ]
-
-    for tag in tags:
-        Tag.objects.get_or_create(name=tag, project=project)
-
-
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0066_populate_cached_occurence_fields"),
+        ("main", "0060_alter_sourceimagecollection_method"),
     ]
 
     operations = [
@@ -58,5 +37,4 @@ class Migration(migrations.Migration):
             name="tags",
             field=models.ManyToManyField(blank=True, related_name="taxa", to="main.tag"),
         ),
-        migrations.RunPython(add_inital_tags, migrations.RunPython.noop),
     ]

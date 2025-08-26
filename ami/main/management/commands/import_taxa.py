@@ -266,16 +266,15 @@ class Command(BaseCommand):
             taxon_data = fix_values(taxon_data)
             logger.debug(f"Parsed taxon data: {taxon_data}")
             if taxon_data:
-                created_taxa, updated_taxa = self.create_taxon(taxon_data, root_taxon_parent)
+                created_taxa, updated_taxa, specific_taxon = self.create_taxon(taxon_data, root_taxon_parent)
                 taxa_to_refresh.update(created_taxa)
                 taxa_to_refresh.update(updated_taxa)
+                taxalist.taxa.add(specific_taxon)
                 if created_taxa:
                     logger.debug(f"Created {len(created_taxa)} taxa from incoming row {i}")
-                    taxalist.taxa.add(*created_taxa)
                     total_created_taxa += len(created_taxa)
                 if updated_taxa:
                     logger.debug(f"Updated {len(updated_taxa)} taxa from incoming row {i}")
-                    taxalist.taxa.add(*updated_taxa)
                     total_updated_taxa += len(updated_taxa)
             if not taxon_data:
                 raise ValueError(f"Could not find any data to import in {taxon_data}")
@@ -294,7 +293,7 @@ class Command(BaseCommand):
         for taxon in tqdm(taxa_to_refresh):
             taxon.save(update_calculated_fields=True)
 
-    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon]]:
+    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon], Taxon]:
         taxa_in_row = []
         created_taxa = set()
         updated_taxa = set()
@@ -316,10 +315,11 @@ class Command(BaseCommand):
                 # Look up existing taxon by name or gbif_taxon_key
                 # If the taxon already exists, use it and maybe update it
                 taxon = None
-                matches = Taxon.objects.filter(Q(name=name) | Q(gbif_taxon_key=gbif_taxon_key))
+                matches = Taxon.objects.filter(Q(name=name))
                 if len(matches) > 1:
-                    logger.error(f"Found multiple taxa with name {name} or gbif_taxon_key {gbif_taxon_key}")
-                    raise ValueError(f"Found multiple taxa with name {name} or gbif_taxon_key {gbif_taxon_key}")
+                    msg = f"Found multiple taxa with name {name}: {matches}"
+                    logger.error(msg)
+                    raise ValueError(msg)
                 else:
                     taxon = matches.first()
                     logger.info(f"Found existing taxon {taxon}")
@@ -437,4 +437,4 @@ class Command(BaseCommand):
 
         #
 
-        return created_taxa, updated_taxa
+        return created_taxa, updated_taxa, specific_taxon

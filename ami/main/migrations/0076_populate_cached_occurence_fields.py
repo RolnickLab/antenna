@@ -19,7 +19,7 @@ def populate_cached_occurrence_fields(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0065_detection_favorite_occurrence_best_detection_and_more"),
+        ("main", "0075_detection_favorite_occurrence_best_detection_and_more"),
     ]
 
     operations = [

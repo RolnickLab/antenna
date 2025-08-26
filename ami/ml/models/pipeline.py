@@ -27,6 +27,7 @@ from ami.main.models import (
     Deployment,
     Detection,
     Occurrence,
+    Project,
     SourceImage,
     SourceImageCollection,
     TaxaList,
@@ -38,7 +39,9 @@ from ami.main.models import (
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
+    AlgorithmReference,
     ClassificationResponse,
+    DetectionRequest,
     DetectionResponse,
     PipelineRequest,
     PipelineRequestConfigParameters,
@@ -61,6 +64,7 @@ def filter_processed_images(
     Return only images that need to be processed by a given pipeline.
     An image needs processing if:
     1. It has no detections from the pipeline's detection algorithm
+    or
     2. It has detections but they don't have classifications from all the pipeline's classification algorithms
     """
     pipeline_algorithms = pipeline.algorithms.all()
@@ -174,6 +178,15 @@ def process_images(
         job = Job.objects.get(pk=job_id)
         task_logger = job.logger
 
+    if project_id:
+        project = Project.objects.get(pk=project_id)
+    else:
+        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
+        project = None
+
+    pipeline_config = pipeline.get_config(project_id=project_id)
+    task_logger.info(f"Using pipeline config: {pipeline_config}")
+
     prefiltered_images = list(images)
     images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
     if len(images) < len(prefiltered_images):
@@ -191,26 +204,39 @@ def process_images(
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
-    source_images = [
-        SourceImageRequest(
-            id=str(source_image.pk),
-            url=url,
-        )
-        for source_image, url in zip(images, urls)
-        if url
-    ]
+    source_image_requests: list[SourceImageRequest] = []
+    detection_requests: list[DetectionRequest] = []
 
-    if not project_id:
-        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
+    reprocess_existing_detections = False
+    # Check if feature flag is enabled to reprocess existing detections
+    if project and project.feature_flags.reprocess_existing_detections:
+        # Check if the user wants to reprocess existing detections or ignore them
+        if pipeline_config.get("reprocess_existing_detections", True):
+            reprocess_existing_detections = True
 
-    config = pipeline.get_config(project_id=project_id)
-    task_logger.info(f"Using pipeline config: {config}")
+    for source_image, url in zip(images, urls):
+        if url:
+            source_image_request = SourceImageRequest(
+                id=str(source_image.pk),
+                url=url,
+            )
+            source_image_requests.append(source_image_request)
+
+            if reprocess_existing_detections:
+                detection_requests += collect_detections(source_image, source_image_request)
+
+    if reprocess_existing_detections:
+        task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
+    else:
+        task_logger.info("Reprocessing of existing detections is disabled, sending images without detections.")
 
     request_data = PipelineRequest(
         pipeline=pipeline.slug,
-        source_images=source_images,
-        config=config,
+        source_images=source_image_requests,
+        config=pipeline_config,
+        detections=detection_requests,
     )
+    task_logger.debug(f"Pipeline request data: {request_data}")
 
     session = create_session()
     resp = session.post(endpoint_url, json=request_data.dict())
@@ -229,7 +255,8 @@ def process_images(
             pipeline=pipeline.slug,
             total_time=0,
             source_images=[
-                SourceImageResponse(id=source_image.id, url=source_image.url) for source_image in source_images
+                SourceImageResponse(id=source_image_request.id, url=source_image_request.url)
+                for source_image_request in source_image_requests
             ],
             detections=[],
             errors=msg,
@@ -248,6 +275,33 @@ def process_images(
         )
 
     return results
+
+
+def collect_detections(
+    source_image: SourceImage,
+    source_image_request: SourceImageRequest,
+) -> list[DetectionRequest]:
+    """
+    Collect existing detections for a source image and send them with pipeline request.
+    """
+    detection_requests: list[DetectionRequest] = []
+    # Re-process all existing detections if they exist
+    for detection in source_image.detections.all():
+        bbox = detection.get_bbox()
+        if bbox and detection.detection_algorithm:
+            detection_requests.append(
+                DetectionRequest(
+                    source_image=source_image_request,
+                    bbox=bbox,
+                    crop_image_url=detection.url(),
+                    algorithm=AlgorithmReference(
+                        name=detection.detection_algorithm.name,
+                        key=detection.detection_algorithm.key,
+                    ),
+                )
+            )
+
+    return detection_requests
 
 
 def get_or_create_algorithm_and_category_map(
@@ -350,23 +404,12 @@ def get_or_create_detection(
     serialized_bbox = list(detection_resp.bbox.dict().values())
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
-    assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-    try:
-        detection_algo = algorithms_used[detection_resp.algorithm.key]
-    except KeyError:
-        raise ValueError(
-            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-            "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_used.keys())}"
-        )
-
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     existing_detection = Detection.objects.filter(
         source_image=source_image,
-        detection_algorithm=detection_algo,
         bbox=serialized_bbox,
     ).first()
 
@@ -386,6 +429,16 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
+        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+        try:
+            detection_algo = algorithms_used[detection_resp.algorithm.key]
+        except KeyError:
+            raise ValueError(
+                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                "The processing service must declare it in the /info endpoint. "
+                f"Known algorithms: {list(algorithms_used.keys())}"
+            )
+
         new_detection = Detection(
             source_image=source_image,
             bbox=serialized_bbox,
@@ -597,7 +650,7 @@ def create_classification(
             score=max(classification_resp.scores),
             timestamp=classification_resp.timestamp or now(),
             logits=classification_resp.logits,
-            features_2048=classification_resp.features,
+            features_2048=classification_resp.features or None,
             ood_score=classification_resp.ood_score,
             scores=classification_resp.scores,
             terminal=classification_resp.terminal,
@@ -939,6 +992,40 @@ class PipelineStage(ConfigurableStage):
     """A configurable stage of a pipeline."""
 
 
+class PipelineQuerySet(models.QuerySet):
+    """Custom QuerySet for Pipeline model."""
+
+    def enabled(self, project: Project) -> PipelineQuerySet:
+        """
+        Return pipelines that are enabled for a given project.
+
+        # @TODO how can this automatically filter based on the pipeline's projects
+        # or the current query without having to specify the project? (e.g. with OuterRef?)
+        """
+        return self.filter(
+            projects=project,
+            project_pipeline_configs__enabled=True,
+            project_pipeline_configs__project=project,
+            processing_services__projects=project,
+        ).distinct()
+
+    def online(self, project: Project) -> PipelineQuerySet:
+        """
+        Return pipelines that are available at least one online processing service.
+        """
+        return self.filter(
+            processing_services__projects=project,
+            processing_services__last_checked_live=True,
+        ).distinct()
+
+
+class PipelineManager(models.Manager):
+    """Custom Manager for Pipeline model."""
+
+    def get_queryset(self) -> PipelineQuerySet:
+        return PipelineQuerySet(self.model, using=self._db)
+
+
 @typing.final
 class Pipeline(BaseModel):
     """A pipeline of algorithms"""
@@ -970,6 +1057,9 @@ class Pipeline(BaseModel):
             "and the processing service."
         ),
     )
+
+    objects = PipelineManager()
+
     processing_services: models.QuerySet[ProcessingService]
     project_pipeline_configs: models.QuerySet[ProjectPipelineConfig]
     jobs: models.QuerySet[Job]
@@ -1022,7 +1112,7 @@ class Pipeline(BaseModel):
         )
 
     def choose_processing_service_for_pipeline(
-        self, job_id: int, pipeline_name: str, project_id: int
+        self, job_id: int | None, pipeline_name: str, project_id: int
     ) -> ProcessingService:
         # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
 
