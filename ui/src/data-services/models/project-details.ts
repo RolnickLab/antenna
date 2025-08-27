@@ -14,7 +14,8 @@ interface SummaryData {
   orientation: 'h' | 'v'
 }
 
-interface DefaultFilters {
+interface Settings {
+  sessionTimeGapSeconds: number
   scoreThreshold: number
   includeTaxa: { id: string; name: string }[]
   excludeTaxa: { id: string; name: string }[]
@@ -25,7 +26,7 @@ export class ProjectDetails extends Project {
     super(project)
   }
 
-  get defaultFilters(): DefaultFilters {
+  get settings(): Settings {
     const includeTaxa = this._project.settings.default_filters_include_taxa.map(
       (taxon: any) => ({
         id: `${taxon.id}`,
@@ -40,6 +41,7 @@ export class ProjectDetails extends Project {
     )
 
     return {
+      sessionTimeGapSeconds: this._project.settings.session_time_gap_seconds,
       scoreThreshold: this._project.settings.default_filters_score_threshold,
       includeTaxa,
       excludeTaxa,

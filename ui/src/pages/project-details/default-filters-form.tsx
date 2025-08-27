@@ -57,7 +57,11 @@ export const DefaultFiltersForm = ({
     handleSubmit,
     setError: setFieldError,
   } = useForm<DefaultFiltersFormValues>({
-    defaultValues: project.defaultFilters,
+    defaultValues: {
+      scoreThreshold: project.settings.scoreThreshold,
+      includeTaxa: project.settings.includeTaxa,
+      excludeTaxa: project.settings.excludeTaxa,
+    },
     mode: 'onChange',
   })
 

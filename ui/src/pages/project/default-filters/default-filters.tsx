@@ -13,7 +13,7 @@ export const DefaultFilters = () => {
   const { project } = useOutletContext<{
     project: ProjectDetails
   }>()
-  const { updateProject, isLoading, isSuccess, error } =
+  const { updateProjectSettings, isLoading, isSuccess, error } =
     useUpdateProjectSettings(project.id)
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export const DefaultFilters = () => {
             error={error}
             isLoading={isLoading}
             isSuccess={isSuccess}
-            onSubmit={(data) => updateProject({ defaultFilters: data })}
+            onSubmit={(data) => updateProjectSettings(data)}
             project={project}
           />
         </div>

@@ -6,11 +6,14 @@ import { useUser } from 'utils/user/userContext'
 
 const convertToServerFieldValues = (fieldValues: any) => ({
   settings: {
-    default_filters_score_threshold: fieldValues.defaultFilters.scoreThreshold,
-    default_filters_include_taxa_ids:
-      fieldValues.defaultFilters.includeTaxa.map((taxon: any) => taxon.id),
-    default_filters_exclude_taxa_ids:
-      fieldValues.defaultFilters.excludeTaxa.map((taxon: any) => taxon.id),
+    session_time_gap_seconds: fieldValues.sessionTimeGapSeconds,
+    default_filters_score_threshold: fieldValues.scoreThreshold,
+    default_filters_include_taxa_ids: fieldValues.includeTaxa.map(
+      (taxon: any) => taxon.id
+    ),
+    default_filters_exclude_taxa_ids: fieldValues.excludeTaxa.map(
+      (taxon: any) => taxon.id
+    ),
   },
 })
 
@@ -35,5 +38,5 @@ export const useUpdateProjectSettings = (id: string) => {
     },
   })
 
-  return { updateProject: mutateAsync, isLoading, isSuccess, error }
+  return { updateProjectSettings: mutateAsync, isLoading, isSuccess, error }
 }
