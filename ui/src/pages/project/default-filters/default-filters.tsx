@@ -16,13 +16,15 @@ export const DefaultFilters = () => {
   const { updateProjectSettings, isLoading, isSuccess, error } =
     useUpdateProjectSettings(project.id)
 
+  const canView = project.canUpdate && project.featureFlags.default_filters
+
   useEffect(() => {
-    if (!project.canUpdate) {
+    if (!canView) {
       navigate(APP_ROUTES.PROJECT_DETAILS({ projectId: project.id }))
     }
-  }, [project.canUpdate])
+  }, [canView])
 
-  if (!project.canUpdate) {
+  if (!canView) {
     return null
   }
 

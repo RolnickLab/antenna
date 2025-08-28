@@ -1,3 +1,4 @@
+import { ProjectDetails } from 'data-services/models/project-details'
 import { useMemo } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -10,24 +11,20 @@ interface SidebarItem {
   title: string
 }
 
-const getSidebarSections = ({
-  projectId,
-  canUpdate,
-}: {
-  projectId: string
-  canUpdate?: boolean
-}): { title?: string; items: SidebarItem[] }[] => [
+const getSidebarSections = (
+  project: ProjectDetails
+): { title?: string; items: SidebarItem[] }[] => [
   {
     items: [
       {
         id: 'summary',
         title: translate(STRING.NAV_ITEM_SUMMARY),
-        path: APP_ROUTES.SUMMARY({ projectId }),
+        path: APP_ROUTES.SUMMARY({ projectId: project.id }),
       },
       {
         id: 'collections',
         title: translate(STRING.NAV_ITEM_COLLECTIONS),
-        path: APP_ROUTES.COLLECTIONS({ projectId }),
+        path: APP_ROUTES.COLLECTIONS({ projectId: project.id }),
         matchPath: APP_ROUTES.COLLECTION_DETAILS({
           projectId: ':projectId',
           collectionId: '*',
@@ -36,7 +33,7 @@ const getSidebarSections = ({
       {
         id: 'exports',
         title: translate(STRING.NAV_ITEM_EXPORTS),
-        path: APP_ROUTES.EXPORTS({ projectId }),
+        path: APP_ROUTES.EXPORTS({ projectId: project.id }),
       },
     ],
   },
@@ -46,7 +43,7 @@ const getSidebarSections = ({
       {
         id: 'processing-services',
         title: translate(STRING.NAV_ITEM_PROCESSING_SERVICES),
-        path: APP_ROUTES.PROCESSING_SERVICES({ projectId }),
+        path: APP_ROUTES.PROCESSING_SERVICES({ projectId: project.id }),
         matchPath: APP_ROUTES.PROCESSING_SERVICE_DETAILS({
           projectId: ':projectId',
           processingServiceId: '*',
@@ -55,7 +52,7 @@ const getSidebarSections = ({
       {
         id: 'pipelines',
         title: translate(STRING.NAV_ITEM_PIPELINES),
-        path: APP_ROUTES.PIPELINES({ projectId }),
+        path: APP_ROUTES.PIPELINES({ projectId: project.id }),
         matchPath: APP_ROUTES.PIPELINE_DETAILS({
           projectId: ':projectId',
           pipelineId: '*',
@@ -64,7 +61,7 @@ const getSidebarSections = ({
       {
         id: 'algorithms',
         title: translate(STRING.NAV_ITEM_ALGORITHMS),
-        path: APP_ROUTES.ALGORITHMS({ projectId }),
+        path: APP_ROUTES.ALGORITHMS({ projectId: project.id }),
         matchPath: APP_ROUTES.ALGORITHM_DETAILS({
           projectId: ':projectId',
           algorithmId: '*',
@@ -78,54 +75,48 @@ const getSidebarSections = ({
       {
         id: 'sites',
         title: translate(STRING.NAV_ITEM_SITES),
-        path: APP_ROUTES.SITES({ projectId }),
+        path: APP_ROUTES.SITES({ projectId: project.id }),
       },
       {
         id: 'devices',
         title: translate(STRING.NAV_ITEM_DEVICES),
-        path: APP_ROUTES.DEVICES({ projectId }),
+        path: APP_ROUTES.DEVICES({ projectId: project.id }),
       },
     ],
   },
-
   {
     title: 'Settings',
     items: [
-      ...(canUpdate
+      ...(project.canUpdate
         ? [
             {
               id: 'general',
               title: translate(STRING.NAV_ITEM_GENERAL),
-              path: APP_ROUTES.GENERAL({ projectId }),
+              path: APP_ROUTES.GENERAL({ projectId: project.id }),
             },
+          ]
+        : []),
+      ...(project.canUpdate && project.featureFlags.default_filters
+        ? [
             {
               id: 'default-filters',
               title: translate(STRING.NAV_ITEM_DEFAULT_FILTERS),
-              path: APP_ROUTES.DEFAULT_FILTERS({ projectId }),
+              path: APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id }),
             },
           ]
         : []),
       {
         id: 'storage',
         title: translate(STRING.NAV_ITEM_STORAGE),
-        path: APP_ROUTES.STORAGE({ projectId }),
+        path: APP_ROUTES.STORAGE({ projectId: project.id }),
       },
     ],
   },
 ]
 
-export const useSidebarSections = ({
-  projectId,
-  canUpdate,
-}: {
-  projectId: string
-  canUpdate?: boolean
-}) => {
+export const useSidebarSections = (project: ProjectDetails) => {
   const location = useLocation()
-  const sidebarSections = useMemo(
-    () => getSidebarSections({ projectId, canUpdate }),
-    [projectId, canUpdate]
-  )
+  const sidebarSections = useMemo(() => getSidebarSections(project), [project])
   const activeItem = useMemo(() => {
     const items = sidebarSections.map((section) => section.items).flat()
 
