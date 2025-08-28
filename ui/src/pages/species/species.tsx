@@ -1,3 +1,4 @@
+import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
@@ -71,6 +72,7 @@ export const Species = () => {
               <FilterControl data={tags} field="not_tag_id" />
             </>
           ) : null}
+          <DefaultFiltersControl />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader

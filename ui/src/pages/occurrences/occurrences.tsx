@@ -1,3 +1,4 @@
+import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
@@ -96,6 +97,7 @@ export const Occurrences = () => {
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
+            <DefaultFiltersControl />
           </FilterSection>
           <FilterSection
             title="More filters"
