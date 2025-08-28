@@ -1,5 +1,5 @@
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
-import { REJECT_OPTIONS } from './constants'
+import { useRejectOptions } from './useRejectOptions'
 
 const DISPLAY_LIST_SIZE = 5 // Limit how many identifications are displayed
 const STORAGE_LIST_SIZE = 5 // Limit how many identifications are stored
@@ -10,6 +10,7 @@ export const useRecentIdentifications = () => {
     userPreferences: { recentIdentifications },
     setUserPreferences,
   } = useUserPreferences()
+  const { rejectOptions } = useRejectOptions()
 
   return {
     recentIdentifications: recentIdentifications.slice(0, DISPLAY_LIST_SIZE),
@@ -18,7 +19,7 @@ export const useRecentIdentifications = () => {
       details?: string
       value: string
     }) => {
-      if (REJECT_OPTIONS.some((o) => o.value === identification.value)) {
+      if (rejectOptions.some((o) => o.value === identification.value)) {
         // Do not add if identification is of type reject
         return
       }
