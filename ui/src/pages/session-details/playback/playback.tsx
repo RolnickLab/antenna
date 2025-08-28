@@ -6,8 +6,7 @@ import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { useEffect, useMemo, useState } from 'react'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
+import { useEffect, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
@@ -17,9 +16,6 @@ import { SessionCapturesSlider } from './session-captures-slider/session-capture
 import { useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({ session }: { session: SessionDetails }) => {
-  const {
-    userPreferences: { scoreThreshold },
-  } = useUserPreferences()
   const { timeline = [] } = useSessionTimeline(session.id)
   const [poll, setPoll] = useState(false)
   const [showDetections, setShowDetections] = useState(true)
@@ -43,15 +39,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
     }
   }, [activeCapture])
 
-  const detections = useMemo(() => {
-    if (!activeCapture?.detections) {
-      return []
-    }
-
-    return activeCapture.detections.filter(
-      (detection) => detection.score >= scoreThreshold
-    )
-  }, [activeCapture, scoreThreshold])
+  const detections = activeCapture?.detections ?? []
 
   if (!session.firstCapture) {
     return null
