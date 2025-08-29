@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import { API_ROUTES } from 'data-services/constants'
 import { Export } from 'data-services/models/export'
+import { JobStatusType } from 'data-services/models/job'
 import { StatusBar } from 'design-system/components/status/status-bar'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import {
@@ -45,7 +46,7 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
     name: translate(STRING.FIELD_LABEL_RESULT),
     renderCell: (item: Export) => (
       <BasicTableCell>
-        {item.job && item.job.progress.value !== 1 ? (
+        {item.job && item.job.status.type !== JobStatusType.Success ? (
           <div className="w-min">
             <StatusBar
               color={item.job.status.color}
