@@ -138,7 +138,7 @@ def create_captures(
     interval_minutes: int = 10,
     subdir: str = "test",
     update_deployment: bool = True,
-):
+) -> list[SourceImage]:
     # Create some images over a few monitoring nights
     first_night = datetime.datetime.now()
 
