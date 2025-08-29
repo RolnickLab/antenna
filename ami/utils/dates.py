@@ -75,6 +75,22 @@ def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.d
         return date
 
 
+def time_ranges_overlap_or_close(
+    start1: datetime.datetime,
+    end1: datetime.datetime,
+    start2: datetime.datetime,
+    end2: datetime.datetime,
+    max_time_gap: datetime.timedelta,
+) -> bool:
+    """
+    Returns True if the two time ranges (start1 to end1 and start2 to end2)
+    overlap or are within max_time_gap of each other.
+    """
+    overlaps = start1 <= end2 and end1 >= start2
+    close_enough = abs(start1 - end2) <= max_time_gap or abs(start2 - end1) <= max_time_gap
+    return overlaps or close_enough
+
+
 def format_timedelta(duration: datetime.timedelta | None) -> str:
     """Format the duration for display.
     @TODO try the humanize library
