@@ -1207,6 +1207,7 @@ def group_images_into_events(
             # Look for overlap or proximity
             for existing_event in existing_events_qs:
                 existing_event.refresh_from_db(fields=["start", "end"])
+                assert existing_event.end is not None, "Existing event end time should not be None"
                 if ami.utils.dates.time_ranges_overlap_or_close(
                     group_start, group_end, existing_event.start, existing_event.end, max_time_gap
                 ):
@@ -1222,6 +1223,7 @@ def group_images_into_events(
 
         if event:
             # Adjust times if necessary (merge)
+            assert event.end is not None, "Event end time should not be None if event exists"
             event.start = min(event.start, group_start)
             event.end = max(event.end, group_end)
 
