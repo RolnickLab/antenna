@@ -29,7 +29,7 @@ def populate_group_by_on_rollback(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0069_merge_20250818_1201"),
+        ("main", "0070_alter_project_feature_flags"),
     ]
 
     operations = [
