@@ -10,26 +10,56 @@ export const APP_ROUTES = {
   TERMS_OF_SERVICE: '/terms-of-service',
 
   /* Dynamic app routes */
-  PROJECT_DETAILS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}`,
 
-  SUMMARY: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/summary`,
+  ALGORITHM_DETAILS: (params: { projectId: string; algorithmId: string }) =>
+    `/projects/${params.projectId}/algorithms/${params.algorithmId}`,
 
-  COLLECTIONS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/collections`,
+  ALGORITHMS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/algorithms`,
 
   COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
     `/projects/${params.projectId}/collections/${params.collectionId}`,
 
-  EXPORTS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/exports`,
+  COLLECTIONS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/collections`,
+
+  DEFAULT_FILTERS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/default-filters`,
+
+  DEPLOYMENT_DETAILS: (params: { projectId: string; deploymentId: string }) =>
+    `/projects/${params.projectId}/deployments/${params.deploymentId}`,
+
+  DEPLOYMENTS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/deployments`,
+
+  DEVICES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/devices`,
 
   EXPORT_DETAILS: (params: { projectId: string; exportId: string }) =>
     `/projects/${params.projectId}/exports/${params.exportId}`,
 
-  PROCESSING_SERVICES: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/processing-services`,
+  EXPORTS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/exports`,
+
+  GENERAL: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/general`,
+
+  JOB_DETAILS: (params: { projectId: string; jobId: string }) =>
+    `/projects/${params.projectId}/jobs/${params.jobId}`,
+
+  JOBS: (params: { projectId: string }) => `/projects/${params.projectId}/jobs`,
+
+  OCCURRENCE_DETAILS: (params: { projectId: string; occurrenceId: string }) =>
+    `/projects/${params.projectId}/occurrences/${params.occurrenceId}`,
+
+  OCCURRENCES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/occurrences`,
+
+  PIPELINE_DETAILS: (params: { projectId: string; pipelineId: string }) =>
+    `/projects/${params.projectId}/pipelines/${params.pipelineId}`,
+
+  PIPELINES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/pipelines`,
 
   PROCESSING_SERVICE_DETAILS: (params: {
     projectId: string
@@ -37,52 +67,26 @@ export const APP_ROUTES = {
   }) =>
     `/projects/${params.projectId}/processing-services/${params.processingServiceId}`,
 
-  ALGORITHMS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/algorithms`,
+  PROCESSING_SERVICES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/processing-services`,
 
-  PIPELINES: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/pipelines`,
-
-  ALGORITHM_DETAILS: (params: { projectId: string; algorithmId: string }) =>
-    `/projects/${params.projectId}/algorithms/${params.algorithmId}`,
-
-  PIPELINE_DETAILS: (params: { projectId: string; pipelineId: string }) =>
-    `/projects/${params.projectId}/pipelines/${params.pipelineId}`,
-
-  SITES: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/sites`,
-
-  DEVICES: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/devices`,
-
-  GENERAL: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/general`,
-
-  STORAGE: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/storage`,
-
-  DEPLOYMENTS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/deployments`,
-
-  DEPLOYMENT_DETAILS: (params: { projectId: string; deploymentId: string }) =>
-    `/projects/${params.projectId}/deployments/${params.deploymentId}`,
-
-  JOBS: (params: { projectId: string }) => `/projects/${params.projectId}/jobs`,
-
-  JOB_DETAILS: (params: { projectId: string; jobId: string }) =>
-    `/projects/${params.projectId}/jobs/${params.jobId}`,
-
-  SESSIONS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/sessions`,
+  PROJECT_DETAILS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}`,
 
   SESSION_DETAILS: (params: { projectId: string; sessionId: string }) =>
     `/projects/${params.projectId}/sessions/${params.sessionId}`,
 
-  OCCURRENCES: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/occurrences`,
+  SESSIONS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/sessions`,
 
-  OCCURRENCE_DETAILS: (params: { projectId: string; occurrenceId: string }) =>
-    `/projects/${params.projectId}/occurrences/${params.occurrenceId}`,
+  SITES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/sites`,
+
+  STORAGE: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/storage`,
+
+  SUMMARY: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/summary`,
 
   TAXA: (params: { projectId: string }) => `/projects/${params.projectId}/taxa`,
 

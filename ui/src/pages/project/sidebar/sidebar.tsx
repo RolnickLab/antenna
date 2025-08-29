@@ -1,15 +1,12 @@
 import classNames from 'classnames'
-import { Project } from 'data-services/models/project'
+import { ProjectDetails } from 'data-services/models/project-details'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { useSidebarSections } from './useSidebarSections'
 
-export const Sidebar = ({ project }: { project: Project }) => {
-  const { sidebarSections, activeItem } = useSidebarSections({
-    projectId: project.id,
-    canUpdate: project.canUpdate,
-  })
+export const Sidebar = ({ project }: { project: ProjectDetails }) => {
+  const { sidebarSections, activeItem } = useSidebarSections(project)
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
 
   useEffect(() => {
