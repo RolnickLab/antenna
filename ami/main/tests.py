@@ -227,14 +227,17 @@ class TestImageGrouping(TestCase):
             interval_minutes=10,
         )
 
+        self.assertEqual(self.deployment.captures.count(), num_nights * images_per_night)
+
         events = group_images_into_events(
             deployment=self.deployment,
             max_time_gap=datetime.timedelta(hours=2),
+            use_existing=False,
         )
 
-        assert len(events) == num_nights
+        self.assertEqual(len(events), num_nights)
         for event in events:
-            assert event.captures.count() == images_per_night
+            self.assertEqual(event.captures.count(), images_per_night)
 
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
