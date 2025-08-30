@@ -20,6 +20,7 @@ from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineRequest, PipelineResultsResponse
+from ami.ml.tasks import check_ml_job_status
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -321,26 +322,6 @@ class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
 
-    @staticmethod
-    def schedule_check_ml_job_status(ml_job_id: str):
-        """Schedule a periodic task to check the status of the MLJob's subtasks."""
-        from django_celery_beat.models import IntervalSchedule, PeriodicTask
-
-        schedule, _ = IntervalSchedule.objects.get_or_create(
-            # @TODO: env variable depending on prod/dev
-            # increase/decrease based on the expect time of the job?
-            # or somehow decrease the logs visible to user
-            every=15,
-            period=IntervalSchedule.SECONDS,
-        )
-        beat_task_name = f"check_ml_job_status_{ml_job_id}"
-        PeriodicTask.objects.create(
-            interval=schedule,
-            name=beat_task_name,
-            task="ami.ml.tasks.check_ml_job_status",
-            args=json.dumps([ml_job_id]),
-        )
-
     @classmethod
     def check_inprogress_subtasks(cls, job: "Job") -> bool:
         """
@@ -356,17 +337,19 @@ class MLJob(JobType):
             cls.update_job_progress(job)
             return True
 
+        save_results_tasks_to_create = []
+        inprogress_subtasks_to_update = []
         for inprogress_subtask in inprogress_subtasks:
             task_name = inprogress_subtask.task_name
             task_id = inprogress_subtask.task_id
 
             task = AsyncResult(task_id)
             if task.ready():
+                inprogress_subtasks_to_update.append(inprogress_subtask)
                 inprogress_subtask.status = (
                     MLSubtaskState.SUCCESS.name if task.successful() else MLSubtaskState.FAIL.name
                 )
                 inprogress_subtask.raw_traceback = task.traceback
-                inprogress_subtask.save(update_fields=["status", "raw_traceback"])
 
                 results_dict = task.result
                 if task_name == MLSubtaskNames.process_pipeline_request.name:
@@ -379,14 +362,11 @@ class MLJob(JobType):
                     inprogress_subtask.num_captures = num_captures
                     inprogress_subtask.num_detections = num_detections
                     inprogress_subtask.num_classifications = num_classifications
-                    inprogress_subtask.save(
-                        update_fields=["raw_results", "num_captures", "num_detections", "num_classifications"],
-                    )
 
                     if results.source_images or results.detections:
                         # Submit a save results task
                         save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
-                        save_results_task_record = MLTaskRecord.objects.create(
+                        save_results_task_record = MLTaskRecord(
                             job=job,
                             task_id=save_results_task.id,
                             task_name=MLSubtaskNames.save_results.name,
@@ -395,18 +375,66 @@ class MLJob(JobType):
                             num_detections=num_detections,
                             num_classifications=num_classifications,
                         )
-                        save_results_task_record.source_images.set(inprogress_subtask.source_images.all())
-                        save_results_task_record.save()
+                        save_results_tasks_to_create.append(
+                            (save_results_task_record, inprogress_subtask.source_images.all())
+                        )  # Keep track of source images to set after bulk create
 
                         inprogress_subtask.subtask_id = save_results_task.id
-                        inprogress_subtask.save(update_fields=["subtask_id"])
                 elif task_name == MLSubtaskNames.save_results.name:
                     pass
                 else:
                     raise Exception(f"Unexpected task_name: {task_name}")
 
-                # NOTE: Update after each completed subtask; inefficient? But it allows us to see job progress easily
-                cls.update_job_progress(job)
+                # To avoid long running jobs from taking a long time to update, bulk update every 10 tasks
+                # Bulk save the updated inprogress subtasks
+                if len(inprogress_subtasks_to_update) >= 10:
+                    MLTaskRecord.objects.bulk_update(
+                        inprogress_subtasks_to_update,
+                        [
+                            "status",
+                            "raw_traceback",
+                            "raw_results",
+                            "num_captures",
+                            "num_detections",
+                            "num_classifications",
+                            "subtask_id",
+                        ],
+                    )
+                    # Bulk create the save results tasks
+                    created_task_records = MLTaskRecord.objects.bulk_create(
+                        [t[0] for t in save_results_tasks_to_create]
+                    )
+                    for task_record, source_images in zip(
+                        created_task_records, [t[1] for t in save_results_tasks_to_create]
+                    ):
+                        task_record.source_images.set(source_images)
+
+                    cls.update_job_progress(job)
+
+                    # Reset the lists
+                    inprogress_subtasks_to_update = []
+                    save_results_tasks_to_create = []
+
+        # Bulk save the remaining items
+        # Bulk save the updated inprogress subtasks
+        MLTaskRecord.objects.bulk_update(
+            inprogress_subtasks_to_update,
+            [
+                "status",
+                "raw_traceback",
+                "raw_results",
+                "num_captures",
+                "num_detections",
+                "num_classifications",
+                "subtask_id",
+            ],
+        )
+        # Bulk create the save results tasks
+        created_task_records = MLTaskRecord.objects.bulk_create([t[0] for t in save_results_tasks_to_create])
+        for task_record, source_images in zip(created_task_records, [t[1] for t in save_results_tasks_to_create]):
+            task_record.source_images.set(source_images)
+
+        cls.update_job_progress(job)
 
         inprogress_subtasks = job.ml_task_records.filter(status=MLSubtaskState.STARTED.name)
         total_subtasks = job.ml_task_records.all().count()
@@ -662,7 +690,7 @@ class MLJob(JobType):
             # Handle the successfully submitted tasks
             subtasks = job.ml_task_records.all()
             if subtasks:
-                cls.schedule_check_ml_job_status(job.pk)
+                check_ml_job_status.apply_async([job.pk])
             else:
                 # No tasks were scheduled, mark the job as done
                 job.logger.info("No subtasks were scheduled, ending the job.")
@@ -1146,8 +1174,10 @@ class Job(BaseModel):
     @property
     def logger(self) -> logging.Logger:
         logger = logging.getLogger(f"ami.jobs.{self.pk}")
-        # Also log output to a field on thie model instance
-        logger.addHandler(JobLogHandler(self))
+        if not any(
+            isinstance(h, JobLogHandler) and h.job == self for h in logger.handlers
+        ):  # add the handler once per logger instance to avoid duplicate logs
+            logger.addHandler(JobLogHandler(self))
         logger.propagate = False
         return logger
 

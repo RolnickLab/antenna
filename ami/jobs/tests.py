@@ -1,14 +1,24 @@
 # from rich import print
 import logging
+import time
 
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
+from ami.jobs.models import (
+    Job,
+    JobProgress,
+    JobState,
+    MLJob,
+    MLSubtaskNames,
+    MLSubtaskState,
+    SourceImageCollectionPopulateJob,
+)
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -198,3 +208,154 @@ class TestJobView(APITestCase):
         # This cannot be tested until we have a way to cancel jobs
         # and a way to run async tasks in tests.
         pass
+
+
+class TestBatchProcessing(TestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        self.captures = create_captures_from_files(self.deployment, skip_existing=False)
+        self.source_image_collection = SourceImageCollection.objects.get(
+            name="Test Source Image Collection",
+            project=self.project,
+        )
+        self.processing_service_instance = create_processing_service(self.project)
+        self.processing_service = self.processing_service_instance
+        assert self.processing_service_instance.pipelines.exists()
+        self.pipeline = self.processing_service_instance.pipelines.all().get(slug="constant")
+
+    def _check_correct_job_progress(
+        self, job: Job, expected_num_process_subtasks: int, expected_num_results_subtasks: int
+    ):
+        """Helper function to check that the job progress is correct."""
+        # Check that the job stages are as expected
+        self.assertEqual(job.progress.stages[0].key, "delay")
+        self.assertEqual(job.progress.stages[1].key, "collect")
+        self.assertEqual(job.progress.stages[2].key, "process")
+        self.assertEqual(job.progress.stages[3].key, "results")
+
+        # Get all MLTaskRecords which are created
+        completed_process_subtasks = job.ml_task_records.filter(
+            task_name=MLSubtaskNames.process_pipeline_request.value,
+            status__in=[MLSubtaskState.SUCCESS.value, MLSubtaskState.FAIL.value],
+        )
+        completed_results_subtasks = job.ml_task_records.filter(
+            task_name=MLSubtaskNames.save_results.value,
+            status__in=[MLSubtaskState.SUCCESS.value, MLSubtaskState.FAIL.value],
+        )
+
+        if (
+            completed_process_subtasks.count() < expected_num_process_subtasks
+            or completed_results_subtasks.count() < expected_num_results_subtasks
+        ):
+            # If there are any in-progress subtasks, the job should be IN_PROGRESS
+            self.assertEqual(job.status, JobState.STARTED.value)
+            self.assertEqual(job.progress.summary.status, JobState.STARTED)
+            self.assertGreater(job.progress.summary.progress, 0)
+            self.assertLess(job.progress.summary.progress, 1)
+
+        if completed_process_subtasks.count() == expected_num_process_subtasks:
+            # If there are no in-progress process subtasks, the process stage should be SUCCESS
+            self.assertEqual(job.progress.stages[2].status, JobState.SUCCESS)
+            self.assertEqual(job.progress.stages[2].progress, 1)
+        else:
+            # If there are in-progress process subtasks, the process stage should be IN_PROGRESS
+            self.assertEqual(job.progress.stages[2].status, JobState.STARTED)
+            self.assertGreater(job.progress.stages[2].progress, 0)
+            self.assertLess(job.progress.stages[2].progress, 1)
+
+        if completed_results_subtasks.count() == expected_num_results_subtasks:
+            # If there are no in-progress results subtasks, the results stage should be SUCCESS
+            self.assertEqual(job.progress.stages[3].status, JobState.SUCCESS)
+            self.assertEqual(job.progress.stages[3].progress, 1)
+        else:
+            # If there are in-progress results subtasks, the results stage should be IN_PROGRESS
+            self.assertEqual(job.progress.stages[3].status, JobState.STARTED)
+            # self.assertGreater(job.progress.stages[3].progress, 0) # the results stage could be at 0 progress
+            self.assertLess(job.progress.stages[3].progress, 1)
+
+    def test_run_batch_processing_job(self):
+        """Test running a batch processing job end-to-end."""
+        logger.info(
+            f"Starting test_batch_processing_job using collection "
+            f"{self.source_image_collection} which contains "
+            f"{self.source_image_collection.images.count()} images"
+        )
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test batch processing",
+            delay=1,
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+        self.assertEqual(job.progress.stages[0].key, "delay")
+        self.assertEqual(job.progress.stages[0].progress, 0)
+        self.assertEqual(job.progress.stages[0].status, JobState.CREATED)
+        self.assertEqual(job.progress.stages[1].key, "collect")
+        self.assertEqual(job.progress.stages[1].progress, 0)
+        self.assertEqual(job.progress.stages[1].status, JobState.CREATED)
+        self.assertEqual(job.progress.stages[2].key, "process")
+        self.assertEqual(job.progress.stages[2].progress, 0)
+        self.assertEqual(job.progress.stages[2].status, JobState.CREATED)
+        self.assertEqual(job.progress.stages[3].key, "results")
+        self.assertEqual(job.progress.stages[3].progress, 0)
+        self.assertEqual(job.progress.stages[3].status, JobState.CREATED)
+
+        self.assertEqual(job.status, JobState.CREATED.value)
+        self.assertEqual(job.progress.summary.progress, 0)
+        self.assertEqual(job.progress.summary.status, JobState.CREATED)
+
+        job.run()
+
+        start_time = time.time()
+        timeout = 600  # seconds
+        elapsed_time = 0
+        while elapsed_time < timeout:
+            job.check_inprogress_subtasks()
+            if job.status == JobState.SUCCESS.value or job.status == JobState.FAILURE.value:
+                break
+            elapsed_time = time.time() - start_time
+            logger.info(f"Waiting for job to complete... elapsed time: {elapsed_time:.2f} seconds")
+            self._check_correct_job_progress(job, expected_num_process_subtasks=6, expected_num_results_subtasks=6)
+            time.sleep(3)
+
+        # Check all subtasks were successful
+        ml_subtask_records = job.ml_task_records.all()
+        self.assertEqual(
+            ml_subtask_records.count(), self.source_image_collection.images.count() * 2
+        )  # 2 subtasks per image (process and results)
+        self.assertTrue(all(subtask.status == MLSubtaskState.SUCCESS.value for subtask in ml_subtask_records))
+
+        # Check all the progress stages are marked as SUCCESS
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        self.assertEqual(job.progress.stages[0].key, "delay")
+        self.assertEqual(job.progress.stages[0].progress, 1)
+        self.assertEqual(job.progress.stages[0].status, JobState.SUCCESS)
+        self.assertEqual(job.progress.stages[1].key, "collect")
+        self.assertEqual(job.progress.stages[1].progress, 1)
+        self.assertEqual(job.progress.stages[1].status, JobState.SUCCESS)
+        self.assertEqual(job.progress.stages[2].key, "process")
+        self.assertEqual(job.progress.stages[2].progress, 1)
+        self.assertEqual(job.progress.stages[2].status, JobState.SUCCESS)
+        self.assertEqual(job.progress.stages[3].key, "results")
+        self.assertEqual(job.progress.stages[3].progress, 1)
+        self.assertEqual(job.progress.stages[3].status, JobState.SUCCESS)
+
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        self.assertEqual(job.progress.summary.progress, 1)
+        self.assertEqual(job.progress.summary.status, JobState.SUCCESS)
+        job.save()
+
+        # Check that the detections were created correctly (i.e. 1 per image)
+        # Get the source image processed by the job
+        for image in self.source_image_collection.images.all():
+            jobs = image.jobs.filter(id=job.pk)
+            if job in jobs:
+                logger.info(f"Image {image.id} was processed by job {job.pk}")
+                detections = image.detections.all()
+                # log the detections for debugging
+                logger.info(f"Image {image.id} has detections: {detections}")
+                num_detections = image.get_detections_count()
+                assert num_detections == 1, f"Image {image.id} has {num_detections} detections instead of 1"
+            else:
+                logger.error(f"Image {image.id} was NOT processed by job {job.pk}")

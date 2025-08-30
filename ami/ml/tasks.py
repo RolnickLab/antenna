@@ -1,13 +1,10 @@
 import logging
 import time
 
-import redis
-
 from ami.ml.media import create_detection_images_from_source_image
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
-REDIS_CONN = redis.Redis(host="redis", port=6379)  # TODO: will prod work the same way?
 logger = logging.getLogger(__name__)
 
 
@@ -117,41 +114,22 @@ def check_ml_job_status(ml_job_id: int):
     """
     Check the status of a specific ML job's inprogress subtasks and update its status accordingly.
     """
-    from django_celery_beat.models import PeriodicTask
-
     from ami.jobs.models import Job, MLJob
 
     job = Job.objects.get(pk=ml_job_id)
     assert job.job_type_key == MLJob.key, f"{ml_job_id} is not an ML job."
 
-    # NOTE: lock is used to ensure we only have one instance of check_ml_job_status running at a time
-    # TODO: configure lock expiration based on dev/prod
-    # expire lock after 10 minutes; prevents lock hanging forever if the beat task crashes before releasing
-    # the lock expiration must be as long as it takes to **successfully** complete check_ml_job_status
-    # this depends on the number of subtasks in the job and how many jobs are running at a time
-    LOCK_EXP = 60 * 10
-    LOCK_KEY = f"lock:check_ml_job_status:{ml_job_id}"
-    got_lock = REDIS_CONN.set(LOCK_KEY, 1, nx=True, ex=LOCK_EXP)
-
-    if not got_lock:  # Lock already exists
-        logger.info(f"Another task is already running for this ml_job_id={ml_job_id}.")
-        return f"Don't reschedule, another task is already running for this ml_job_id={ml_job_id}."
-
     try:
-        try:
-            jobs_complete = job.check_inprogress_subtasks()
-            logger.info(f"Successfully checked status for job {job}. .")
-        except Job.DoesNotExist:
-            raise ValueError(f"Job with ID {ml_job_id} does not exist.")
-        except Exception as e:
-            raise Exception(f"Error checking status for job with ID {ml_job_id}: {e}")
+        jobs_complete = job.check_inprogress_subtasks()
+        logger.info(f"Successfully checked status for job {job}. .")
+    except Job.DoesNotExist:
+        raise ValueError(f"Job with ID {ml_job_id} does not exist.")
+    except Exception as e:
+        raise Exception(f"Error checking status for job with ID {ml_job_id}: {e}")
 
-        if jobs_complete:
-            PeriodicTask.objects.get(name=f"check_ml_job_status_{ml_job_id}").delete()
-            logger.info(f"Deleted periodic task check_ml_job_status_{ml_job_id} since job is complete.")
-            job.logger.info(f"Deleted periodic task check_ml_job_status_{ml_job_id} since job is complete.")
-        else:
-            logger.info(f"Job {ml_job_id} still in progress. Will check again later.")
-    finally:
-        REDIS_CONN.delete(LOCK_KEY)  # manually release
-        logger.info("Finsihed an instance of check_ml_job_status, releasing the lock so it can run again as needed.")
+    if jobs_complete:
+        logger.info(f"ML Job {ml_job_id} is complete.")
+        job.logger.info(f"ML Job {ml_job_id} is complete.")
+    else:
+        logger.info(f"ML Job {ml_job_id} still in progress. Checking again for completed tasks.")
+        check_ml_job_status.apply_async([ml_job_id], countdown=10)  # check again in 10 seconds
