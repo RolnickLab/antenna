@@ -320,7 +320,7 @@ def process_images(
         pipeline.slug, source_image_requests, images, pipeline_config, detection_requests, job_id, task_logger
     )
 
-    task_logger.info(f"Submitted {len(tasks_to_watch)} prediction task(s).")
+    task_logger.info(f"Submitted {len(tasks_to_watch)} batch image processing task(s).")
 
 
 def collect_detections(
@@ -369,22 +369,35 @@ def get_or_create_algorithm_and_category_map(
     category_map_data = algorithm_config.category_map
     if category_map_data:
         labels_hash = AlgorithmCategoryMap.make_labels_hash(category_map_data.labels)
-        category_map, _created = AlgorithmCategoryMap.objects.get_or_create(
-            # @TODO this is creating a new category map every time
-            # Will create a new category map if the labels are different
+        category_map = AlgorithmCategoryMap.objects.filter(
             labels_hash=labels_hash,
             version=category_map_data.version,
-            defaults={
-                "data": category_map_data.data,
-                "labels": category_map_data.labels,
-                "description": category_map_data.description,
-                "uri": category_map_data.uri,
-            },
-        )
-        if _created:
+        ).first()  # @TODO: is this ok?
+
+        if not category_map:
+            category_map = AlgorithmCategoryMap.objects.create(
+                labels_hash=labels_hash,
+                version=category_map_data.version,
+                data=category_map_data.data,
+                labels=category_map_data.labels,
+                description=category_map_data.description,
+                uri=category_map_data.uri,
+            )
             logger.info(f"Registered new category map {category_map}")
         else:
             logger.info(f"Assigned existing category map {category_map}")
+            # Will update the category map if the labels are different
+            category_map = AlgorithmCategoryMap.objects.filter(
+                labels_hash=labels_hash,
+                version=category_map_data.version,
+            ).first()
+            if category_map:
+                AlgorithmCategoryMap.objects.filter(pk=category_map.pk).update(
+                    data=category_map_data.data,
+                    labels=category_map_data.labels,
+                    description=category_map_data.description,
+                    uri=category_map_data.uri,
+                )
     else:
         logger.warning(
             f"No category map found for algorithm {algorithm_config.key} in response."
