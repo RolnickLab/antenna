@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # @TODO: Deprecate this? is this still needed?
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
-def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
+def process_source_images_async(pipeline_choice: str, image_ids: list[int], job_id: int | None):
     from ami.jobs.models import Job
     from ami.main.models import SourceImage
     from ami.ml.models.pipeline import Pipeline, process_images, save_results
@@ -28,7 +28,6 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
 
     results = process_images(
         pipeline=pipeline,
-        endpoint_url=endpoint_url,
         images=images,
         job_id=job_id,
     )

@@ -129,9 +129,7 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
         project = pipeline.projects.first()
         if not project:
             raise api_exceptions.ValidationError("Pipeline has no project associated with it.")
-        tasks_to_watch = pipeline.process_images(images=[random_image], project_id=project.pk, job_id=None)
-        logger.info(f"Tasks to watch: {tasks_to_watch}")
-        results = pipeline.watch_batch_tasks(tasks_to_watch)
+        results = pipeline.process_images(images=[random_image], project_id=project.pk, job_id=None, process_sync=True)
         return Response(results.dict())
 
 

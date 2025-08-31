@@ -12,7 +12,9 @@ import logging
 import time
 import typing
 import uuid
+from urllib.parse import urljoin
 
+import requests
 from celery.result import AsyncResult
 from django.db import models
 from django.utils.text import slugify
@@ -46,8 +48,10 @@ from ami.ml.schemas import (
     PipelineRequestConfigParameters,
     PipelineResultsResponse,
     SourceImageRequest,
+    SourceImageResponse,
 )
 from ami.ml.tasks import celery_app, create_detection_images
+from ami.utils.requests import create_session
 from config.celery_app import PIPELINE_EXCHANGE
 
 logger = logging.getLogger(__name__)
@@ -251,7 +255,8 @@ def process_images(
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
     project_id: int | None = None,
-):
+    process_sync: bool = False,  # return a PipelineResultsResponse
+) -> PipelineResultsResponse | None:
     """
     Process images using ML batch processing.
     Returns a list of task IDs for the submitted tasks.
@@ -281,9 +286,16 @@ def process_images(
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
 
     if not images:
-        task_logger.info("No images to process, no tasks submitted.")
-        return  # No tasks submitted
-
+        task_logger.info("No images to process.")
+        if process_sync:
+            return PipelineResultsResponse(
+                pipeline=pipeline.slug,
+                source_images=[],
+                detections=[],
+                total_time=0,
+            )
+        else:
+            return None
     task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
     urls = [source_image.public_url() for source_image in images if source_image.public_url()]
 
@@ -315,12 +327,71 @@ def process_images(
 
     task_logger.info(f"Found {len(detection_requests)} existing detections.")
 
-    # Submit task to celery queue as an argument
-    tasks_to_watch = submit_pipeline_requests(
-        pipeline.slug, source_image_requests, images, pipeline_config, detection_requests, job_id, task_logger
-    )
+    if not process_sync:
+        # Submit task to celery queue as an argument
+        tasks_to_watch = submit_pipeline_requests(
+            pipeline.slug, source_image_requests, images, pipeline_config, detection_requests, job_id, task_logger
+        )
 
-    task_logger.info(f"Submitted {len(tasks_to_watch)} batch image processing task(s).")
+        task_logger.info(f"Submitted {len(tasks_to_watch)} batch image processing task(s).")
+    else:
+        if project_id is None:
+            raise ValueError("Project ID must be provided when process_sync is True")
+
+        processing_service = pipeline.choose_processing_service_for_pipeline(job_id, pipeline.name, project_id)
+        if not processing_service.endpoint_url:
+            raise ValueError(
+                f"No endpoint URL configured for this pipeline's processing service ({processing_service})"
+            )
+        endpoint_url = urljoin(processing_service.endpoint_url, "/process")
+
+        request_data = PipelineRequest(
+            pipeline=pipeline.slug,
+            source_images=source_image_requests,
+            config=pipeline_config,
+            detections=detection_requests,
+        )
+        task_logger.debug(f"Pipeline request data: {request_data}")
+
+        session = create_session()
+        resp = session.post(endpoint_url, json=request_data.dict())
+        if not resp.ok:
+            try:
+                msg = resp.json()["detail"]
+            except (ValueError, KeyError):
+                msg = str(resp.content)
+            if job:
+                job.logger.error(msg)
+            else:
+                logger.error(msg)
+                raise requests.HTTPError(msg)
+
+            results = PipelineResultsResponse(
+                pipeline=pipeline.slug,
+                total_time=0,
+                source_images=[
+                    SourceImageResponse(id=source_image_request.id, url=source_image_request.url)
+                    for source_image_request in source_image_requests
+                ],
+                detections=[],
+                errors=msg,
+            )
+            return results
+
+        results = resp.json()
+        results = PipelineResultsResponse(**results)
+        if job:
+            job.logger.debug(f"Results: {results}")
+            detections = results.detections
+            classifications = [
+                classification for detection in detections for classification in detection.classifications
+            ]
+            job.logger.info(
+                f"Pipeline results returned {len(results.source_images)} images, {len(detections)} detections, "
+                f"{len(classifications)} classifications"
+            )
+
+        return results
 
 
 def collect_detections(
@@ -1120,12 +1191,67 @@ class Pipeline(BaseModel):
             skip_processed=skip_processed,
         )
 
-    def process_images(self, images: typing.Iterable[SourceImage], project_id: int, job_id: int | None = None):
+    def choose_processing_service_for_pipeline(
+        self, job_id: int | None, pipeline_name: str, project_id: int
+    ) -> ProcessingService:
+        # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
+
+        job = None
+        task_logger = logger
+        if job_id:
+            from ami.jobs.models import Job
+
+            job = Job.objects.get(pk=job_id)
+            task_logger = job.logger
+
+        # get all processing services that are associated with the provided pipeline project
+        processing_services = self.processing_services.filter(projects=project_id)
+        task_logger.info(
+            f"Searching processing services:"
+            f"{[processing_service.name for processing_service in processing_services]}"
+        )
+
+        # check the status of all processing services
+        timeout = 5 * 60.0  # 5 minutes
+        lowest_latency = timeout
+        processing_services_online = False
+
+        for processing_service in processing_services:
+            status_response = processing_service.get_status()  # @TODO pass timeout to get_status()
+            if status_response.server_live:
+                processing_services_online = True
+                if status_response.latency < lowest_latency:
+                    lowest_latency = status_response.latency
+                    # pick the processing service that has lowest latency
+                    processing_service_lowest_latency = processing_service
+
+        # if all offline then throw error
+        if not processing_services_online:
+            msg = f'No processing services are online for the pipeline "{pipeline_name}".'
+            task_logger.error(msg)
+
+            raise Exception(msg)
+        else:
+            task_logger.info(
+                f"Using processing service with latency {round(lowest_latency, 4)}: "
+                f"{processing_service_lowest_latency}"
+            )
+
+            return processing_service_lowest_latency
+
+    def process_images(
+        self,
+        images: typing.Iterable[SourceImage],
+        project_id: int,
+        job_id: int | None = None,
+        process_sync: bool = False,
+    ):
         return process_images(
             pipeline=self,
             images=images,
             job_id=job_id,
             project_id=project_id,
+            process_sync=process_sync,
         )
 
     def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):
