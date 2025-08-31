@@ -699,7 +699,14 @@ class MLJob(JobType):
                     status=JobState.SUCCESS,
                     progress=1,
                 )
-                job.update_status(JobState.SUCCESS)
+                job.progress.update_stage(
+                    "results",
+                    status=JobState.SUCCESS,
+                    progress=1,
+                )
+                job.update_status(JobState.SUCCESS, save=False)
+                job.finished_at = datetime.datetime.now()
+                job.save()
 
 
 class DataStorageSyncJob(JobType):
