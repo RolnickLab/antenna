@@ -1,2 +1,2 @@
 -r base.txt
-# debugpy # For remote debugging with debugpy
+debugpy # For remote debugging with debugpy
