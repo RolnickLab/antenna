@@ -351,6 +351,11 @@ class MLJob(JobType):
                 )
                 inprogress_subtask.raw_traceback = task.traceback
 
+                if task.traceback:
+                    # TODO: Error logs will have many tracebacks
+                    # could add some processing to provide a concise error summary
+                    job.logger.error(f"Subtask {task_name} ({task_id}) failed: {task.traceback}")
+
                 results_dict = task.result
                 if task_name == MLSubtaskNames.process_pipeline_request.name:
                     results = PipelineResultsResponse(**results_dict)

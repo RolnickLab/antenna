@@ -22,6 +22,7 @@ from ami.main.models import (
 )
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.processing_service import ProcessingService
+from ami.ml.signals import get_worker_name, subscribe_celeryworker_to_pipeline_queues
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
 from ami.users.models import User
@@ -128,6 +129,14 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
 
     deployment = Deployment.objects.filter(project=project).filter(name__contains=short_id).latest("created_at")
     assert deployment, f"No deployment found for project {project}. Recreate the project."
+
+    # Wait until the celery worker is up and all pipelines are created
+    # to ensure we properly subscribe the celeryworker to all pipeline queues
+    # NOTE: django must depend on celery_worker in docker-compose
+    logger.info("Subscribe to all pipeline queues now that the project and celery worker is set up.")
+    worker_name = get_worker_name()
+    subscribe_celeryworker_to_pipeline_queues(worker_name)
+
     return project, deployment
 
 

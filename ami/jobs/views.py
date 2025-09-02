@@ -158,5 +158,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
         # @TODO: add additional stats here? i.e. time fo each task, progress stats
         job: Job = self.get_object()
-        result = job.check_inprogress_subtasks()
-        return Response({"inprogress_subtasks": result})
+        has_inprogress_tasks = job.check_inprogress_subtasks()
+        if has_inprogress_tasks:
+            # Schedule task to update the job status
+            from ami.ml.tasks import check_ml_job_status
+
+            check_ml_job_status.apply_async((job.pk,))
+        return Response({"inprogress_subtasks": has_inprogress_tasks})

@@ -99,7 +99,7 @@ LOCAL_APPS = [
     "ami.users",
     "ami.main",
     "ami.jobs",
-    "ami.ml",
+    "ami.ml.apps.MLConfig",  # Use the custom config instead of "ami.ml",
     "ami.labelstudio",
     "ami.exports",
 ]
@@ -260,6 +260,7 @@ CACHES = {
         },
     }
 }
+REDIS_URL = env("REDIS_URL", default=None)
 
 # ADMIN
 # ------------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import datetime
 import logging
 import time
 
@@ -113,7 +114,7 @@ def check_ml_job_status(ml_job_id: int):
     """
     Check the status of a specific ML job's inprogress subtasks and update its status accordingly.
     """
-    from ami.jobs.models import Job, MLJob
+    from ami.jobs.models import Job, JobState, MLJob
 
     job = Job.objects.get(pk=ml_job_id)
     assert job.job_type_key == MLJob.key, f"{ml_job_id} is not an ML job."
@@ -124,7 +125,12 @@ def check_ml_job_status(ml_job_id: int):
     except Job.DoesNotExist:
         raise ValueError(f"Job with ID {ml_job_id} does not exist.")
     except Exception as e:
-        raise Exception(f"Error checking status for job with ID {ml_job_id}: {e}")
+        error_msg = f"Error checking status for job with ID {ml_job_id}: {e}"
+        job.logger.error(error_msg)
+        job.update_status(JobState.FAILURE)
+        job.finished_at = datetime.datetime.now()
+        job.save()
+        raise Exception(error_msg)
 
     if jobs_complete:
         logger.info(f"ML Job {ml_job_id} is complete.")

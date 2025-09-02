@@ -52,7 +52,6 @@ from ami.ml.schemas import (
 )
 from ami.ml.tasks import celery_app, create_detection_images
 from ami.utils.requests import create_session
-from config.celery_app import PIPELINE_EXCHANGE
 
 logger = logging.getLogger(__name__)
 
@@ -162,12 +161,25 @@ def collect_images(
 
 
 @celery_app.task(name="process_pipeline_request")
-def process_pipeline_request(pipeline_request: dict):
+def process_pipeline_request(pipeline_request: dict, project_id: int):
     # TODO: instead of dict can we use pipeline request object?
     """
     Placeholder for the processing service's request processing logic
     """
-    pass
+    request_data = PipelineRequest(**pipeline_request)
+    source_image_requests = request_data.source_images
+    source_images = []
+    for req in source_image_requests:
+        source_images.append(SourceImage.objects.get(pk=req.id))
+
+    results = process_images(
+        pipeline=Pipeline.objects.get(slug=request_data.pipeline),
+        images=source_images,
+        process_sync=True,
+        project_id=project_id,
+    )
+    assert results is not None, "process_sync=True should return a valid PipelineResultsResponse, not None."
+    return results.dict()
 
 
 def submit_pipeline_requests(
@@ -178,6 +190,7 @@ def submit_pipeline_requests(
     detection_requests: list[DetectionRequest],
     job_id: int | None = None,
     task_logger: logging.Logger = logger,
+    project_id: int | None = None,
 ) -> list[str]:
     """Submit prediction task to appropriate celery queue."""
     task_ids = []
@@ -220,9 +233,11 @@ def submit_pipeline_requests(
             config=pipeline_config,
         )
         task_result = process_pipeline_request.apply_async(
-            args=[prediction_request.dict()],
-            exchange=PIPELINE_EXCHANGE,
-            routing_key=pipeline,
+            args=[prediction_request.dict(), project_id],
+            # TODO: make ml-pipeline an environment variable (i.e. PIPELINE_QUEUE_PREFIX)?
+            queue=f"ml-pipeline-{pipeline}",
+            # all pipelines have their own queue beginning with "ml-pipeline-"
+            # the antenna celeryworker should subscribe to all pipeline queues
         )
         task_ids.append(task_result.id)
 
@@ -330,7 +345,14 @@ def process_images(
     if not process_sync:
         # Submit task to celery queue as an argument
         tasks_to_watch = submit_pipeline_requests(
-            pipeline.slug, source_image_requests, images, pipeline_config, detection_requests, job_id, task_logger
+            pipeline.slug,
+            source_image_requests,
+            images,
+            pipeline_config,
+            detection_requests,
+            job_id,
+            task_logger,
+            project_id,
         )
 
         task_logger.info(f"Submitted {len(tasks_to_watch)} batch image processing task(s).")

@@ -24,6 +24,7 @@ services:
       - redis
       - minio-init
       - rabbitmq
+      - celeryworker # required to subscribe the worker to the pipelines in the db
     volumes:
       - .:/app:z
     env_file:
@@ -98,6 +99,7 @@ services:
     command: /start-celeryworker
     environment:
       - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+      - CELERY_WORKER_NAME=antenna_celeryworker
     depends_on:
       - rabbitmq
 
