@@ -885,7 +885,10 @@ class EventQuerySet(models.QuerySet):
             if not image_qs.exists() and not occ_qs.exists():
                 logger.info("No objects to remove from events")
                 return events
-            logger.info(f"Removing {image_qs.count()} source images and {occ_qs.count()} occurrences from event.")
+            logger.info(
+                f"Dissociating {image_qs.count()} source images and {occ_qs.count()} occurrences "
+                f"from {events.count()} events."
+            )
             occ_updated_count = occ_qs.update(event=None)
             # Ensure the image_qs is updated last
             image_updated_count = image_qs.update(event=None)
@@ -1246,11 +1249,7 @@ def group_images_into_events(
         event.save()
         events.append(event)
 
-    # Final processing
-    if delete_empty:
-        logger.info("Deleting empty events for deployment")
-        delete_empty_events(deployment=deployment)
-
+    # Process each event: set dimensions and update occurrences
     for event in events:
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
@@ -1260,6 +1259,13 @@ def group_images_into_events(
         Occurrence.objects.filter(detections__source_image__event=event).update(
             event=event,
         )
+
+    # Delete empty events after occurrences have been updated
+    # This ensures that events with occurrences that pointed to old/incorrect events
+    # are properly cleaned up after the occurrences have been moved to correct events
+    if delete_empty:
+        logger.info("Deleting empty events for deployment (after occurrence updates)")
+        delete_empty_events(deployment=deployment)
 
     logger.info("Updating relevant cached fields on deployment")
     deployment.events_count = Event.objects.filter(deployment=deployment).count()
