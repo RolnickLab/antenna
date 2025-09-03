@@ -404,6 +404,7 @@ class MLJob(JobType):
         chunk_size = config.get("request_source_image_batch_size", 1)
         chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
         request_failed_images = []
+        job.logger.info(f"Processing {image_count} images in {len(chunks)} batches of up to {chunk_size}")
 
         for i, chunk in enumerate(chunks):
             request_sent = time.time()
@@ -946,11 +947,15 @@ class Job(BaseModel):
 
     @property
     def logger(self) -> logging.Logger:
-        logger = logging.getLogger(f"ami.jobs.{self.pk}")
-        # Also log output to a field on thie model instance
-        logger.addHandler(JobLogHandler(self))
-        logger.propagate = False
-        return logger
+        _logger = logging.getLogger(f"ami.jobs.{self.pk}")
+
+        # Only add JobLogHandler if not already present
+        if not any(isinstance(h, JobLogHandler) for h in _logger.handlers):
+            # Also log output to a field on thie model instance
+            logger.info("Adding JobLogHandler to logger for job %s", self.pk)
+            _logger.addHandler(JobLogHandler(self))
+        _logger.propagate = False
+        return _logger
 
     class Meta:
         ordering = ["-created_at"]
