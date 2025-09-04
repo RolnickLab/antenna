@@ -131,8 +131,6 @@ class JobProgress(pydantic.BaseModel):
     def get_stage(self, stage_key: str) -> JobProgressStageDetail:
         for stage in self.stages:
             if stage.key == stage_key:
-                if stage.name == stage.key:
-                    raise ValueError(f"Job stage with key '{stage_key}' has no name")
                 return stage
         raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
 
