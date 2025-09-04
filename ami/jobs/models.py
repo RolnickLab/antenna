@@ -211,6 +211,12 @@ def default_job_progress() -> JobProgress:
 
 
 def default_ml_job_progress() -> JobProgress:
+    """
+    Default stages for an ML Job.
+
+    @TODO add this to the get_default_progress() method of the
+    MLJob class, or delete it. Currently unused.
+    """
     return JobProgress(
         summary=JobProgressSummary(status=JobState.CREATED, progress=0),
         stages=[
@@ -689,8 +695,8 @@ class Job(BaseModel):
     finished_at = models.DateTimeField(null=True, blank=True)
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
-    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
-    logs: JobLogs = SchemaField(JobLogs, default=JobLogs())
+    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
+    logs: JobLogs = SchemaField(JobLogs, default=lambda: JobLogs())
     params = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
@@ -781,7 +787,7 @@ class Job(BaseModel):
         """
         Setup the job by creating the job stages.
         """
-        self.progress = self.progress or default_job_progress
+        self.progress = self.progress or self.get_default_progress()
 
         if self.delay:
             delay_stage = self.progress.add_stage("Delay")
@@ -941,7 +947,7 @@ class Job(BaseModel):
         return list(custom_perms)
 
     @classmethod
-    def default_progress(cls) -> JobProgress:
+    def get_default_progress(cls) -> JobProgress:
         """Return the progress of each stage of this job as a dictionary"""
         return default_job_progress()
 
