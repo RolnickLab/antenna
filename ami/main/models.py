@@ -223,6 +223,7 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     tags: bool = False  # Whether the project supports tagging taxa
     auto_process_manual_uploads: bool = False  # Whether to automatically process uploaded images
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
+    default_filters: bool = False  # Whether to show default filters form in UI
 
 
 default_feature_flags = ProjectFeatureFlags()
@@ -333,6 +334,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         CREATE_DEPLOYMENT = "create_deployment"
         DELETE_DEPLOYMENT = "delete_deployment"
         UPDATE_DEPLOYMENT = "update_deployment"
+        SYNC_DEPLOYMENT = "sync_deployment"
 
         # Collection permissions
         CREATE_COLLECTION = "create_sourceimagecollection"
@@ -354,6 +356,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         CREATE_STORAGE = "create_s3storagesource"
         DELETE_STORAGE = "delete_s3storagesource"
         UPDATE_STORAGE = "update_s3storagesource"
+        TEST_STORAGE = "test_s3storagesource"
 
         # Site permissions
         CREATE_SITE = "create_site"
@@ -392,6 +395,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_deployment", "Can create a deployment"),
             ("delete_deployment", "Can delete a deployment"),
             ("update_deployment", "Can update a deployment"),
+            ("sync_deployment", "Can sync images to a deployment"),
             # Collection permissions
             ("create_sourceimagecollection", "Can create a collection"),
             ("update_sourceimagecollection", "Can update a collection"),
@@ -410,6 +414,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_s3storagesource", "Can create storage"),
             ("delete_s3storagesource", "Can delete storage"),
             ("update_s3storagesource", "Can update storage"),
+            ("test_s3storagesource", "Can test storage connection"),
             # Site permissions
             ("create_site", "Can create a site"),
             ("delete_site", "Can delete a site"),

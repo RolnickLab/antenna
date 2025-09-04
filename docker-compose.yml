@@ -89,8 +89,11 @@ services:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
-    ports: []
-    command: /start-celeryworker
+    # For remote debugging with debugpy, should get overridden for production
+    # Also make sure to install debugpy in your requirements/local.txt
+    ports:
+      - "5678:5678"
+    command: python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker -l INFO
 
   celerybeat:
     <<: *django

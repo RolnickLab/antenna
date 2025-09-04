@@ -1,5 +1,5 @@
 import { ErrorState } from 'components/error-state/error-state'
-import { Project as ProjectDetails } from 'data-services/models/project'
+import { ProjectDetails } from 'data-services/models/project-details'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { Helmet } from 'react-helmet-async'
 import { Outlet, useOutletContext } from 'react-router-dom'
