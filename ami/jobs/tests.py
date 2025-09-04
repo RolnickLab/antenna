@@ -165,7 +165,7 @@ class TestJobView(APITestCase):
         self.client.force_authenticate(user=self.user)
         # give user run permission
 
-        assign_perm(Project.Permissions.RUN_JOB, self.user, self.project)
+        assign_perm(Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB, self.user, self.project)
 
         resp = self.client.post(jobs_run_url)
         self.assertEqual(resp.status_code, 200)

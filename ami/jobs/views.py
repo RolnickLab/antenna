@@ -5,9 +5,10 @@ from django.forms import IntegerField
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from ami.base.permissions import CanCancelJob, CanRetryJob, CanRunJob, JobCRUDPermission
+from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
@@ -66,7 +67,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "source_image_collection",
         "pipeline",
     ]
-    permission_classes = [CanRunJob, CanRetryJob, CanCancelJob, JobCRUDPermission]
+
+    permission_classes = [ObjectPermission]
 
     def get_serializer_class(self):
         """
@@ -129,8 +131,12 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):
-            # job.run()
-            job.enqueue()
+            if job.check_custom_permission(self.request.user, "run"):
+                # If the user has permission, enqueue the job
+                job.enqueue()
+            else:
+                # If the user does not have permission, raise an error
+                raise PermissionDenied("You do not have permission to run this job.")
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()

@@ -3,21 +3,9 @@ import { Deployment, ServerDeployment } from './deployment'
 
 export type ServerProject = any // TODO: Update this type
 
-interface SummaryData {
-  title: string
-  data: {
-    x: (string | number)[]
-    y: number[]
-    tickvals?: (string | number)[]
-    ticktext?: string[]
-  }
-  type: any
-  orientation: 'h' | 'v'
-}
-
 export class Project {
-  private readonly _project: ServerProject
-  private readonly _deployments: Deployment[] = []
+  protected readonly _project: ServerProject
+  protected readonly _deployments: Deployment[] = []
 
   public constructor(project: ServerProject) {
     this._project = project
@@ -56,9 +44,5 @@ export class Project {
 
   get deployments(): Deployment[] {
     return this._deployments
-  }
-
-  get summaryData(): SummaryData[] {
-    return this._project.summary_data
   }
 }

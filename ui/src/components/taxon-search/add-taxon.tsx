@@ -1,39 +1,24 @@
 import { Taxon } from 'data-services/models/taxa'
-import { ChevronDownIcon, Loader2Icon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { TaxonSearch } from './taxon-search'
 
-export const TaxonSelect = ({
-  isLoading,
-  onTaxonChange,
-  taxon,
-  triggerLabel,
-}: {
-  isLoading?: boolean
-  onTaxonChange: (taxon?: Taxon) => void
-  taxon?: Taxon
-  triggerLabel: string
-}) => {
+export const AddTaxon = ({ onAdd }: { onAdd: (taxon?: Taxon) => void }) => {
   const [open, setOpen] = useState(false)
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <Button
+          variant="outline"
+          role="combobox"
           aria-expanded={open}
           className="w-full justify-between px-4 text-muted-foreground font-normal"
-          role="combobox"
-          type="button"
-          variant="outline"
         >
           <>
-            <span>{triggerLabel}</span>
-            {isLoading ? (
-              <Loader2Icon className="h-4 w-4 ml-2 animate-spin" />
-            ) : (
-              <ChevronDownIcon className="h-4 w-4 ml-2" />
-            )}
+            <span>Add taxon</span>
+            <PlusIcon className="h-4 w-4 ml-2" />
           </>
         </Button>
       </Popover.Trigger>
@@ -43,9 +28,8 @@ export const TaxonSelect = ({
         style={{ maxHeight: 'var(--radix-popover-content-available-height)' }}
       >
         <TaxonSearch
-          taxon={taxon}
           onTaxonChange={(taxon) => {
-            onTaxonChange(taxon)
+            onAdd(taxon)
             setOpen(false)
           }}
         />
