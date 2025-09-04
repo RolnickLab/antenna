@@ -113,17 +113,13 @@ class TestPipelineWithProcessingService(TestCase):
     def test_run_pipeline(self):
         # Send images to Processing Service to process and return detections
         assert self.pipeline
-        pipeline_response = self.pipeline.process_images(
-            self.test_images, job_id=None, project_id=self.project.pk, process_sync=True
-        )
+        pipeline_response = self.pipeline.process_images(self.test_images, job_id=None, project_id=self.project.pk)
         assert pipeline_response.detections
 
     def test_created_category_maps(self):
         # Send images to ML backend to process and return detections
         assert self.pipeline
-        pipeline_response = self.pipeline.process_images(
-            self.test_images, project_id=self.project.pk, process_sync=True
-        )
+        pipeline_response = self.pipeline.process_images(self.test_images, project_id=self.project.pk)
         save_results(pipeline_response, return_created=True)
 
         source_images = SourceImage.objects.filter(pk__in=[image.id for image in pipeline_response.source_images])
@@ -163,7 +159,7 @@ class TestPipelineWithProcessingService(TestCase):
     def test_alignment_of_predictions_and_category_map(self):
         # Ensure that the scores and labels are aligned
         pipeline = self.processing_service_instance.pipelines.all().get(slug="random-detection-random-species")
-        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk, process_sync=True)
+        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk)
         results = save_results(pipeline_response, return_created=True)
         assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
@@ -177,7 +173,7 @@ class TestPipelineWithProcessingService(TestCase):
     def test_top_n_alignment(self):
         # Ensure that the top_n parameter works
         pipeline = self.processing_service_instance.pipelines.all().get(slug="random-detection-random-species")
-        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk, process_sync=True)
+        pipeline_response = pipeline.process_images(self.test_images, project_id=self.project.pk)
         results = save_results(pipeline_response, return_created=True)
         assert results is not None, "Expecected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
@@ -199,9 +195,7 @@ class TestPipelineWithProcessingService(TestCase):
         # Process the images once
         pipeline_one = self.processing_service_instance.pipelines.all().get(slug="random-detection-random-species")
         num_classifiers_pipeline_one = pipeline_one.algorithms.filter(task_type="classification").count()
-        pipeline_response = pipeline_one.process_images(
-            self.test_images, project_id=self.project.pk, process_sync=True
-        )
+        pipeline_response = pipeline_one.process_images(self.test_images, project_id=self.project.pk)
         results = save_results(pipeline_response, return_created=True)
         assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.detections, "Expected detections to be returned in the results"
@@ -228,9 +222,7 @@ class TestPipelineWithProcessingService(TestCase):
         # Reprocess the same images using a different pipeline
         pipeline_two = self.processing_service_instance.pipelines.all().get(slug="constant")
         num_classifiers_pipeline_two = pipeline_two.algorithms.filter(task_type="classification").count()
-        pipeline_response = pipeline_two.process_images(
-            self.test_images, project_id=self.project.pk, process_sync=True
-        )
+        pipeline_response = pipeline_two.process_images(self.test_images, project_id=self.project.pk)
         reprocessed_results = save_results(pipeline_response, return_created=True)
         assert reprocessed_results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert reprocessed_results.detections, "Expected detections to be returned in the results"

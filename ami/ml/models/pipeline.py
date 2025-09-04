@@ -187,7 +187,7 @@ def process_images(
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
     project_id: int | None = None,
-    process_sync: bool = False,  # return a PipelineResultsResponse
+    process_sync: bool = False,
 ) -> PipelineResultsResponse | None:
     """
     Process images.
@@ -378,7 +378,7 @@ def handle_sync_process_images(
 ) -> PipelineResultsResponse:
     """Handle synchronous processing by sending HTTP requests to the processing service."""
     if project_id is None:
-        raise ValueError("Project ID must be provided when process_sync is True")
+        raise ValueError("Project ID must be provided when syncronously processing images.")
 
     processing_service = pipeline.choose_processing_service_for_pipeline(job_id, pipeline.name, project_id)
     if not processing_service.endpoint_url:

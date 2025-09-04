@@ -21,6 +21,7 @@ from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineRequest, PipelineResultsResponse
+from ami.ml.signals import get_worker_name, subscribe_celeryworker_to_pipeline_queues
 from ami.ml.tasks import check_ml_job_status
 from ami.utils.schemas import OrderedEnum
 
@@ -689,6 +690,11 @@ class MLJob(JobType):
         job.logger.info(f"Processing {image_count} images with pipeline {job.pipeline.slug}")
         request_sent = time.time()
         try:
+            # Ensures queues we subscribe to are always up to date
+            logger.info("Subscribe to all pipeline queues prior to processing...")
+            worker_name = get_worker_name()
+            subscribe_celeryworker_to_pipeline_queues(worker_name)
+
             job.pipeline.schedule_process_images(
                 images=images,
                 job_id=job.pk,
