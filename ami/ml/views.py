@@ -129,7 +129,7 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
         project = pipeline.projects.first()
         if not project:
             raise api_exceptions.ValidationError("Pipeline has no project associated with it.")
-        results = pipeline.process_images(images=[random_image], project_id=project.pk, job_id=None, process_sync=True)
+        results = pipeline.process_images(images=[random_image], project_id=project.pk, job_id=None)
         return Response(results.dict())
 
 

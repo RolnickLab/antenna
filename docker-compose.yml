@@ -99,7 +99,6 @@ services:
     command: /start-celeryworker
     environment:
       - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
-      - CELERY_WORKER_NAME=antenna_celeryworker
     depends_on:
       - rabbitmq
 

@@ -9,6 +9,8 @@ from config.celery_app import app as celery_app
 
 logger = logging.getLogger(__name__)
 
+ANTENNA_CELERY_WORKER_NAME = "antenna_celeryworker"
+
 
 def get_worker_name():
     """
@@ -19,9 +21,9 @@ def get_worker_name():
         inspector = celery_app.control.inspect()
         active_workers = inspector.active()
         if active_workers:  # TODO: currently only works if there is one worker
-            # NOTE: all antenna celery workers should have "antenna_celeryworker"
+            # NOTE: all antenna celery workers should have ANTENNA_CELERY_WORKER_NAME
             # in their name instead of the the default "celery"
-            return next((worker for worker in active_workers.keys() if "antenna_celeryworker" in worker), None)
+            return next((worker for worker in active_workers.keys() if ANTENNA_CELERY_WORKER_NAME in worker), None)
     except Exception as e:
         logger.warning(f"Could not find antenna celery worker name: {e}")
 
@@ -38,14 +40,14 @@ def subscribe_celeryworker_to_pipeline_queues(sender, **kwargs) -> bool:
     elif sender is None:
         worker_name = get_worker_name()
     else:
-        worker_name = sender.hostname  # e.g. "antenna_celeryworker@<hostname>"
+        worker_name = sender.hostname  # e.g. "ANTENNA_CELERY_WORKER_NAME@<hostname>"
     assert worker_name, "Could not determine worker name; cannot subscribe to pipeline queues."
     pipelines = Pipeline.objects.values_list("slug", flat=True)
 
-    if not worker_name.startswith("antenna_celeryworker@"):
+    if not worker_name.startswith(f"{ANTENNA_CELERY_WORKER_NAME}@"):
         logger.warning(
             f"Worker name '{worker_name}' does not match expected pattern "
-            "'antenna_celeryworker@<hostname>'. Cannot subscribe to pipeline queues.",
+            f"'{ANTENNA_CELERY_WORKER_NAME}@<hostname>'. Cannot subscribe to pipeline queues.",
         )
         return False
 

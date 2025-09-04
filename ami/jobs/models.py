@@ -331,7 +331,10 @@ class MLJob(JobType):
 
         Returns True if all subtasks are completed.
         """
-        inprogress_subtasks = job.ml_task_records.filter(status=MLSubtaskState.STARTED.name).all()
+        inprogress_subtasks = job.ml_task_records.filter(
+            status=MLSubtaskState.STARTED.name,
+            created_at__gte=job.started_at,
+        ).all()
         if len(inprogress_subtasks) == 0:
             # No tasks inprogress, update the job progress
             cls.update_job_progress(job)
@@ -441,7 +444,9 @@ class MLJob(JobType):
 
         cls.update_job_progress(job)
 
-        inprogress_subtasks = job.ml_task_records.filter(status=MLSubtaskState.STARTED.name)
+        inprogress_subtasks = job.ml_task_records.filter(
+            status=MLSubtaskState.STARTED.name, created_at__gte=job.started_at
+        )
         total_subtasks = job.ml_task_records.all().count()
         if inprogress_subtasks.count() > 0:
             job.logger.info(
@@ -464,11 +469,14 @@ class MLJob(JobType):
         # That is: len(inprogress_process_pipeline) + len(completed_process_pipeline)
         # = total process_pipeline_request tasks
         inprogress_process_pipeline = job.ml_task_records.filter(
-            status=MLSubtaskState.STARTED.name, task_name=MLSubtaskNames.process_pipeline_request.name
+            status=MLSubtaskState.STARTED.name,
+            task_name=MLSubtaskNames.process_pipeline_request.name,
+            created_at__gte=job.started_at,
         )
         completed_process_pipelines = job.ml_task_records.filter(
             status__in=[MLSubtaskState.FAIL.name, MLSubtaskState.SUCCESS.name],
             task_name=MLSubtaskNames.process_pipeline_request.name,
+            created_at__gte=job.started_at,
         )
 
         # Calculate process stage stats
@@ -506,11 +514,19 @@ class MLJob(JobType):
 
         # More save_results tasks will be queued as len(inprogress_process_pipeline) --> 0
         inprogress_save_results = job.ml_task_records.filter(
-            status=MLSubtaskState.STARTED.name, task_name=MLSubtaskNames.save_results.name
+            status=MLSubtaskState.STARTED.name,
+            task_name=MLSubtaskNames.save_results.name,
+            created_at__gte=job.started_at,
         )
         completed_save_results = job.ml_task_records.filter(
             status__in=[MLSubtaskState.FAIL.name, MLSubtaskState.SUCCESS.name],
             task_name=MLSubtaskNames.save_results.name,
+            created_at__gte=job.started_at,
+        )
+        succeeded_save_results = job.ml_task_records.filter(
+            status=MLSubtaskState.SUCCESS.name,
+            task_name=MLSubtaskNames.save_results.name,
+            created_at__gte=job.started_at,
         )
 
         # Calculate results stage stats
@@ -526,9 +542,10 @@ class MLJob(JobType):
         failed_save_tasks = num_failed_save_tasks > 0
         any_failed_tasks = failed_process_tasks or failed_save_tasks
 
-        total_results_captures = sum([ml_task.num_captures for ml_task in completed_save_results], 0)
-        total_results_detections = sum([ml_task.num_detections for ml_task in completed_save_results], 0)
-        total_results_classifications = sum([ml_task.num_classifications for ml_task in completed_save_results], 0)
+        # only include captures/detections/classifications which we successfully saved
+        total_results_captures = sum([ml_task.num_captures for ml_task in succeeded_save_results], 0)
+        total_results_detections = sum([ml_task.num_detections for ml_task in succeeded_save_results], 0)
+        total_results_classifications = sum([ml_task.num_classifications for ml_task in succeeded_save_results], 0)
 
         # Update the results stage
         if inprogress_save_results.count() > 0 or inprogress_process_pipeline.count() > 0:
@@ -667,7 +684,7 @@ class MLJob(JobType):
         job.logger.info(f"Processing {image_count} images with pipeline {job.pipeline.slug}")
         request_sent = time.time()
         try:
-            job.pipeline.process_images(
+            job.pipeline.schedule_process_images(
                 images=images,
                 job_id=job.pk,
                 project_id=job.project.pk,

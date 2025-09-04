@@ -210,7 +210,7 @@ class TestJobView(APITestCase):
         pass
 
 
-class TestBatchProcessing(TestCase):
+class TestMLJobBatchProcessing(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
@@ -273,7 +273,7 @@ class TestBatchProcessing(TestCase):
             # self.assertGreater(job.progress.stages[3].progress, 0) # the results stage could be at 0 progress
             self.assertLess(job.progress.stages[3].progress, 1)
 
-    def test_run_batch_processing_job(self):
+    def test_run_ml_job(self):
         """Test running a batch processing job end-to-end."""
         logger.info(
             f"Starting test_batch_processing_job using collection "

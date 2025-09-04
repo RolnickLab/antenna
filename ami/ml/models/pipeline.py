@@ -182,7 +182,108 @@ def process_pipeline_request(pipeline_request: dict, project_id: int):
     return results.dict()
 
 
-def submit_pipeline_requests(
+def process_images(
+    pipeline: Pipeline,
+    images: typing.Iterable[SourceImage],
+    job_id: int | None = None,
+    project_id: int | None = None,
+    process_sync: bool = False,  # return a PipelineResultsResponse
+) -> PipelineResultsResponse | None:
+    """
+    Process images.
+
+    If process_sync is True, immediately process the images via requests to the /process endpoint
+    and return a PipelineResultsResponse.
+
+    Otherwise, submit async processing tasks and return None.
+    This is only applicable to MLJobs which check the status of these tasks.
+    """
+    job = None
+    task_logger = logger
+
+    if job_id:
+        from ami.jobs.models import Job
+
+        job = Job.objects.get(pk=job_id)
+        task_logger = job.logger
+
+    if project_id:
+        project = Project.objects.get(pk=project_id)
+    else:
+        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
+        project = None
+
+    pipeline_config = pipeline.get_config(project_id=project_id)
+    task_logger.info(f"Using pipeline config: {pipeline_config}")
+
+    prefiltered_images = list(images)
+    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
+    if len(images) < len(prefiltered_images):
+        # Log how many images were filtered out because they have already been processed
+        task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
+
+    if not images:
+        task_logger.info("No images to process.")
+        if process_sync:
+            return PipelineResultsResponse(
+                pipeline=pipeline.slug,
+                source_images=[],
+                detections=[],
+                total_time=0,
+            )
+        else:
+            return None
+    task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
+    urls = [source_image.public_url() for source_image in images if source_image.public_url()]
+
+    source_image_requests: list[SourceImageRequest] = []
+    detection_requests: list[DetectionRequest] = []
+
+    reprocess_existing_detections = False
+    # Check if feature flag is enabled to reprocess existing detections
+    if project and project.feature_flags.reprocess_existing_detections:
+        # Check if the user wants to reprocess existing detections or ignore them
+        if pipeline_config.get("reprocess_existing_detections", True):
+            reprocess_existing_detections = True
+
+    for source_image, url in zip(images, urls):
+        if url:
+            source_image_request = SourceImageRequest(
+                id=str(source_image.pk),
+                url=url,
+            )
+            source_image_requests.append(source_image_request)
+
+            if reprocess_existing_detections:
+                detection_requests += collect_detections(source_image, source_image_request)
+
+    if reprocess_existing_detections:
+        task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
+    else:
+        task_logger.info("Reprocessing of existing detections is disabled, sending images without detections.")
+
+    task_logger.info(f"Found {len(detection_requests)} existing detections.")
+
+    if not process_sync:
+        handle_async_process_images(
+            pipeline.slug,
+            source_image_requests,
+            images,
+            pipeline_config,
+            detection_requests,
+            job_id,
+            task_logger,
+            project_id,
+        )
+        return
+    else:
+        results = handle_sync_process_images(
+            pipeline, source_image_requests, pipeline_config, detection_requests, job_id, task_logger, project_id, job
+        )
+        return results
+
+
+def handle_async_process_images(
     pipeline: str,
     source_image_requests: list[SourceImageRequest],
     source_images: list[SourceImage],
@@ -191,8 +292,8 @@ def submit_pipeline_requests(
     job_id: int | None = None,
     task_logger: logging.Logger = logger,
     project_id: int | None = None,
-) -> list[str]:
-    """Submit prediction task to appropriate celery queue."""
+):
+    """Handle asynchronous processing by submitting tasks to the appropriate pipeline queue."""
     task_ids = []
     batch_size = pipeline_config.get("batch_size", 1)
 
@@ -262,158 +363,73 @@ def submit_pipeline_requests(
         else:
             task_logger.warning("No job ID provided, MLTaskRecord will not be created.")
 
-    return task_ids
+    task_logger.info(f"Submitted {len(task_ids)} batch image processing task(s).")
 
 
-def process_images(
+def handle_sync_process_images(
     pipeline: Pipeline,
-    images: typing.Iterable[SourceImage],
-    job_id: int | None = None,
-    project_id: int | None = None,
-    process_sync: bool = False,  # return a PipelineResultsResponse
-) -> PipelineResultsResponse | None:
-    """
-    Process images using ML batch processing.
-    Returns a list of task IDs for the submitted tasks.
-    """
-    job = None
-    task_logger = logger
+    source_image_requests: list[SourceImageRequest],
+    pipeline_config: PipelineRequestConfigParameters,
+    detection_requests: list[DetectionRequest],
+    job_id: int | None,
+    task_logger: logging.Logger,
+    project_id: int,
+    job: Job | None,
+) -> PipelineResultsResponse:
+    """Handle synchronous processing by sending HTTP requests to the processing service."""
+    if project_id is None:
+        raise ValueError("Project ID must be provided when process_sync is True")
 
-    if job_id:
-        from ami.jobs.models import Job
+    processing_service = pipeline.choose_processing_service_for_pipeline(job_id, pipeline.name, project_id)
+    if not processing_service.endpoint_url:
+        raise ValueError(f"No endpoint URL configured for this pipeline's processing service ({processing_service})")
+    endpoint_url = urljoin(processing_service.endpoint_url, "/process")
 
-        job = Job.objects.get(pk=job_id)
-        task_logger = job.logger
+    request_data = PipelineRequest(
+        pipeline=pipeline.slug,
+        source_images=source_image_requests,
+        config=pipeline_config,
+        detections=detection_requests,
+    )
+    task_logger.debug(f"Pipeline request data: {request_data}")
 
-    if project_id:
-        project = Project.objects.get(pk=project_id)
-    else:
-        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
-        project = None
-
-    pipeline_config = pipeline.get_config(project_id=project_id)
-    task_logger.info(f"Using pipeline config: {pipeline_config}")
-
-    prefiltered_images = list(images)
-    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
-    if len(images) < len(prefiltered_images):
-        # Log how many images were filtered out because they have already been processed
-        task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
-
-    if not images:
-        task_logger.info("No images to process.")
-        if process_sync:
-            return PipelineResultsResponse(
-                pipeline=pipeline.slug,
-                source_images=[],
-                detections=[],
-                total_time=0,
-            )
-        else:
-            return None
-    task_logger.info(f"Sending {len(images)} images to Pipeline {pipeline}")
-    urls = [source_image.public_url() for source_image in images if source_image.public_url()]
-
-    source_image_requests: list[SourceImageRequest] = []
-    detection_requests: list[DetectionRequest] = []
-
-    reprocess_existing_detections = False
-    # Check if feature flag is enabled to reprocess existing detections
-    if project and project.feature_flags.reprocess_existing_detections:
-        # Check if the user wants to reprocess existing detections or ignore them
-        if pipeline_config.get("reprocess_existing_detections", True):
-            reprocess_existing_detections = True
-
-    for source_image, url in zip(images, urls):
-        if url:
-            source_image_request = SourceImageRequest(
-                id=str(source_image.pk),
-                url=url,
-            )
-            source_image_requests.append(source_image_request)
-
-            if reprocess_existing_detections:
-                detection_requests += collect_detections(source_image, source_image_request)
-
-    if reprocess_existing_detections:
-        task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
-    else:
-        task_logger.info("Reprocessing of existing detections is disabled, sending images without detections.")
-
-    task_logger.info(f"Found {len(detection_requests)} existing detections.")
-
-    if not process_sync:
-        # Submit task to celery queue as an argument
-        tasks_to_watch = submit_pipeline_requests(
-            pipeline.slug,
-            source_image_requests,
-            images,
-            pipeline_config,
-            detection_requests,
-            job_id,
-            task_logger,
-            project_id,
-        )
-
-        task_logger.info(f"Submitted {len(tasks_to_watch)} batch image processing task(s).")
-    else:
-        if project_id is None:
-            raise ValueError("Project ID must be provided when process_sync is True")
-
-        processing_service = pipeline.choose_processing_service_for_pipeline(job_id, pipeline.name, project_id)
-        if not processing_service.endpoint_url:
-            raise ValueError(
-                f"No endpoint URL configured for this pipeline's processing service ({processing_service})"
-            )
-        endpoint_url = urljoin(processing_service.endpoint_url, "/process")
-
-        request_data = PipelineRequest(
-            pipeline=pipeline.slug,
-            source_images=source_image_requests,
-            config=pipeline_config,
-            detections=detection_requests,
-        )
-        task_logger.debug(f"Pipeline request data: {request_data}")
-
-        session = create_session()
-        resp = session.post(endpoint_url, json=request_data.dict())
-        if not resp.ok:
-            try:
-                msg = resp.json()["detail"]
-            except (ValueError, KeyError):
-                msg = str(resp.content)
-            if job:
-                job.logger.error(msg)
-            else:
-                logger.error(msg)
-                raise requests.HTTPError(msg)
-
-            results = PipelineResultsResponse(
-                pipeline=pipeline.slug,
-                total_time=0,
-                source_images=[
-                    SourceImageResponse(id=source_image_request.id, url=source_image_request.url)
-                    for source_image_request in source_image_requests
-                ],
-                detections=[],
-                errors=msg,
-            )
-            return results
-
-        results = resp.json()
-        results = PipelineResultsResponse(**results)
+    session = create_session()
+    resp = session.post(endpoint_url, json=request_data.dict())
+    if not resp.ok:
+        try:
+            msg = resp.json()["detail"]
+        except (ValueError, KeyError):
+            msg = str(resp.content)
         if job:
-            job.logger.debug(f"Results: {results}")
-            detections = results.detections
-            classifications = [
-                classification for detection in detections for classification in detection.classifications
-            ]
-            job.logger.info(
-                f"Pipeline results returned {len(results.source_images)} images, {len(detections)} detections, "
-                f"{len(classifications)} classifications"
-            )
+            job.logger.error(msg)
+        else:
+            logger.error(msg)
+            raise requests.HTTPError(msg)
 
+        results = PipelineResultsResponse(
+            pipeline=pipeline.slug,
+            total_time=0,
+            source_images=[
+                SourceImageResponse(id=source_image_request.id, url=source_image_request.url)
+                for source_image_request in source_image_requests
+            ],
+            detections=[],
+            errors=msg,
+        )
         return results
+
+    results = resp.json()
+    results = PipelineResultsResponse(**results)
+    if job:
+        job.logger.debug(f"Results: {results}")
+        detections = results.detections
+        classifications = [classification for detection in detections for classification in detection.classifications]
+        job.logger.info(
+            f"Pipeline results returned {len(results.source_images)} images, {len(detections)} detections, "
+            f"{len(classifications)} classifications"
+        )
+
+    return results
 
 
 def collect_detections(
@@ -1266,14 +1282,27 @@ class Pipeline(BaseModel):
         images: typing.Iterable[SourceImage],
         project_id: int,
         job_id: int | None = None,
-        process_sync: bool = False,
     ):
         return process_images(
             pipeline=self,
             images=images,
             job_id=job_id,
             project_id=project_id,
-            process_sync=process_sync,
+            process_sync=True,
+        )
+
+    def schedule_process_images(
+        self,
+        images: typing.Iterable[SourceImage],
+        project_id: int,
+        job_id: int | None = None,
+    ):
+        return process_images(
+            pipeline=self,
+            images=images,
+            job_id=job_id,
+            project_id=project_id,
+            process_sync=False,
         )
 
     def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):
