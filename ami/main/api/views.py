@@ -1229,7 +1229,6 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "last_detected",
         "best_determination_score",
         "name",
-        "cover_image_url",
     ]
     search_fields = ["name", "parent__name"]
 
