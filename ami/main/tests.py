@@ -2,6 +2,7 @@ import datetime
 import logging
 from io import BytesIO
 
+from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase, override_settings
@@ -11,9 +12,12 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 from rich import print
 
+from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.models import (
+    Classification,
     Deployment,
+    Detection,
     Device,
     Event,
     Identification,
@@ -24,11 +28,14 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    Tag,
+    TaxaList,
     Taxon,
     TaxonRank,
     group_images_into_events,
 )
 from ami.ml.models.pipeline import Pipeline
+from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.storage import populate_bucket
@@ -1148,9 +1155,9 @@ class TestProjectPermissions(APITestCase):
 
     def test_owner_permissions(self):
         # Owner has view, change, and delete permissions
-        self.assertTrue(self.owner.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertTrue(self.owner.has_perm(Project.Permissions.CHANGE, self.project))
-        self.assertTrue(self.owner.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
+        self.assertTrue(self.owner.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
         # test permissions from the API
         self.client.force_authenticate(user=self.owner)
 
@@ -1166,8 +1173,8 @@ class TestProjectPermissions(APITestCase):
 
     def test_member_permissions(self):
         # Member has view and change permissions, but not delete
-        self.assertTrue(self.member.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertFalse(self.member.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.member.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertFalse(self.member.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
 
         # test permissions from the API
         # create the project
@@ -1188,9 +1195,9 @@ class TestProjectPermissions(APITestCase):
 
     def test_other_user_permissions(self):
         # Other users only have view permissions
-        self.assertTrue(self.other_user.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertFalse(self.other_user.has_perm(Project.Permissions.CHANGE, self.project))
-        self.assertFalse(self.other_user.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.other_user.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
+        self.assertFalse(self.other_user.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
 
         # test permissions from the API
         # Authenticate as other_user
@@ -1215,9 +1222,9 @@ class TestProjectPermissions(APITestCase):
         self.project.save()
 
         # Check the new owner has the owner permissions
-        self.assertTrue(self.new_owner.has_perm(Project.Permissions.VIEW, self.project))
-        self.assertTrue(self.new_owner.has_perm(Project.Permissions.CHANGE, self.project))
-        self.assertTrue(self.new_owner.has_perm(Project.Permissions.DELETE, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.VIEW_PROJECT, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
+        self.assertTrue(self.new_owner.has_perm(Project.Permissions.DELETE_PROJECT, self.project))
 
     def test_permissions_on_member_removal(self):
         """Test permissions are removed when a user is no longer a member of the project."""
@@ -1225,7 +1232,7 @@ class TestProjectPermissions(APITestCase):
         self.project.members.remove(self.member)
 
         # Check the removed member no longer has permissions
-        self.assertFalse(self.member.has_perm(Project.Permissions.CHANGE, self.project))
+        self.assertFalse(self.member.has_perm(Project.Permissions.UPDATE_PROJECT, self.project))
 
     def test_superuser_has_all_permissions(self):
         # Log in as the superuser
@@ -1236,9 +1243,9 @@ class TestProjectPermissions(APITestCase):
 
         # Assert that the superuser has all object-level permissions
         project_permissions = [
-            Project.Permissions.VIEW,
-            Project.Permissions.CHANGE,
-            Project.Permissions.DELETE,
+            Project.Permissions.VIEW_PROJECT,
+            Project.Permissions.UPDATE_PROJECT,
+            Project.Permissions.DELETE_PROJECT,
         ]
         for perm in project_permissions:
             self.assertIn(perm, superuser_permissions)
@@ -1958,3 +1965,213 @@ class TestRunSingleImageJobPermission(APITestCase):
             403,
             f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
         )
+
+
+class TestDraftProjectPermissions(APITestCase):
+    def setUp(self) -> None:
+        # Users
+        self.owner = User.objects.create_user(email="owner@insectai.org", is_staff=True)
+        self.member = User.objects.create_user(email="member@insectai.org", is_staff=False)
+        self.outsider = User.objects.create_user(email="outsider@insectai.org", is_staff=False)
+        self.superuser = User.objects.create_superuser(
+            email="superuser@insectai.org",
+            password="password123",
+            is_staff=True,
+        )
+        # Pre-create related test data
+        # Draft project with owner
+        self.project = Project.objects.create(
+            name="Draft Only Project",
+            description="Draft visibility test",
+            owner=self.owner,
+            draft=True,
+        )
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        Job.objects.create(name="Test Job", project=self.project, job_type_key="ml")
+        create_captures(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+        create_taxa(project=self.project)
+        create_occurrences(deployment=self.deployment, num=1)
+        self.project.members.add(self.member)
+        self.detail_url = f"/api/v2/projects/{self.project.pk}/"
+
+        Tag.objects.create(name="Test Tag", project=self.project)
+        DataExport.objects.create(
+            user=self.owner,
+            project=self.project,
+            format="json",
+            filters={},
+            filters_display={},
+            file_url="https://example.com/export.json",
+            record_count=123,
+            file_size=456789,
+        )
+        fake_image = SimpleUploadedFile("test.jpg", b"fake image content", content_type="image/jpeg")
+        SourceImageUpload.objects.create(image=fake_image, deployment=self.deployment)
+        occurrence = Occurrence.objects.filter(deployment=self.deployment).first()
+        Identification.objects.create(occurrence=occurrence)
+        S3StorageSource.objects.create(
+            name="Test S3 Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=self.project,
+        )
+        taxon = Taxon.objects.create(name="Draft Taxon")
+        taxon.projects.add(self.project)
+        self.non_draft_project = Project.objects.filter(draft=False).first()
+
+    def _auth_get(self, user, url):
+        self.client.force_authenticate(user)
+        return self.client.get(url)
+
+    # Project detail tests
+    def test_owner_can_view_draft_project(self):
+        resp = self._auth_get(self.owner, self.detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Owner should be able to view draft project")
+
+    def test_member_can_view_draft_project(self):
+        resp = self._auth_get(self.member, self.detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Member should be able to view draft project")
+
+    def test_member_removed_cannot_view_draft_project(self):
+        self.project.members.remove(self.member)
+        resp = self._auth_get(self.member, self.detail_url)
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+            " Member should not view draft project after removal",
+        )
+
+    def test_outsider_cannot_view_draft_project(self):
+        resp = self._auth_get(self.outsider, self.detail_url)
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+            " Non-member should not view draft project",
+        )
+
+    def test_superuser_can_view_draft_project(self):
+        resp = self._auth_get(self.superuser, self.detail_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, "Superuser should be able to view draft project")
+
+    def test_draft_project_detail_access(self):
+        url = f"/api/v2/projects/{self.project.pk}/"
+
+        assert self._auth_get(self.superuser, url).status_code == 200
+        assert self._auth_get(self.owner, url).status_code == 200
+        assert self._auth_get(self.member, url).status_code == 200
+
+        response = self._auth_get(self.outsider, url)
+        assert response.status_code in [403, 404]
+
+    def test_draft_project_list_visibility(self):
+        url = "/api/v2/projects/"
+
+        for user in [self.superuser, self.owner, self.member]:
+            self.client.force_authenticate(user)
+            response = self.client.get(url)
+            ids = [p["id"] for p in response.data["results"]]
+            assert self.project.pk in ids
+
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(url)
+        ids = [p["id"] for p in response.data["results"]]
+        assert self.project.pk not in ids
+
+    # Deployment detail & list tests
+    def test_deployment_detail_draft_project(self):
+        url = f"/api/v2/deployments/{self.deployment.pk}/"
+
+        assert self._auth_get(self.superuser, url).status_code == 200
+        assert self._auth_get(self.owner, url).status_code == 200
+        assert self._auth_get(self.member, url).status_code == 200
+
+        response = self._auth_get(self.outsider, url)
+        assert response.status_code in [403, 404]
+
+    def test_deployment_list_draft_project(self):
+        url = f"/api/v2/deployments/?project_id={self.project.pk}"
+
+        for user in [self.superuser, self.owner, self.member]:
+            self.client.force_authenticate(user)
+            response = self.client.get(url)
+            ids = [d["id"] for d in response.data["results"]]
+            assert self.deployment.pk in ids
+
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(url)
+        ids = [d["id"] for d in response.data["results"]]
+        assert self.deployment.pk not in ids
+
+    def test_visible_for_user_across_all_models(self):
+        all_users = {
+            "superuser": self.superuser,
+            "owner": self.owner,
+            "member": self.member,
+            "outsider": self.outsider,
+            "anonymous": AnonymousUser(),
+        }
+
+        project_related_models = [
+            Project,
+            Device,
+            Site,
+            Deployment,
+            Event,
+            S3StorageSource,
+            SourceImage,
+            Occurrence,
+            Tag,
+            SourceImageCollection,
+            Job,
+            DataExport,
+            Taxon,
+            TaxaList,
+            ProcessingService,
+            Pipeline,
+            SourceImageUpload,
+            Identification,
+            Classification,
+            Detection,
+            ProjectPipelineConfig,
+        ]
+
+        for model in project_related_models:
+            project_accessor = model.get_project_accessor()
+            if project_accessor is None:
+                continue  # skip models not related to a project
+
+            # Filter only objects from the test draft project
+            try:
+                if model == Project:
+                    draft_queryset = model.objects.filter(draft=True)
+                    non_draft_queryset = model.objects.filter(draft=False)
+                else:
+                    draft_queryset = model.objects.filter(**{f"{project_accessor}": self.project})
+                    non_draft_queryset = model.objects.filter(**{f"{project_accessor}": self.non_draft_project})
+            except Exception as e:
+                raise AssertionError(
+                    f"Failed to filter querysets for {model.__name__} using accessor '{project_accessor}': {e}"
+                )
+
+            self.assertTrue(
+                draft_queryset.exists(),
+                f"No instances found for model {model.__name__} tied to the draft project",
+            )
+
+            for role, user in all_users.items():
+                visible_ids = list(draft_queryset.visible_for_user(user).values_list("id", flat=True))
+                non_draft_ids = set(non_draft_queryset.values_list("id", flat=True))
+                is_draft_viewer = role in {"superuser", "owner", "member"}
+
+                for instance in draft_queryset:
+                    msg = f"{model.__name__} visible_for_user failed for role={role}"
+
+                    is_in_non_draft = instance.id in non_draft_ids
+                    should_be_visible = is_draft_viewer or is_in_non_draft
+
+                    if should_be_visible:
+                        self.assertIn(instance.id, visible_ids, msg)
+                    else:
+                        self.assertNotIn(instance.id, visible_ids, msg)
