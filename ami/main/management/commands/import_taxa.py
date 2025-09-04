@@ -397,6 +397,11 @@ class Command(BaseCommand):
                 existing_value = getattr(specific_taxon, column)
                 incoming_value = taxon_data[column]
                 if existing_value != incoming_value:
+                    if incoming_value is None:
+                        # Don't overwrite existing values with None.
+                        # This could potentially be a command line option to allow users to clear values.
+                        logger.debug(f"Not changing {column} of {specific_taxon} from {existing_value} to None")
+                        continue
                     if not is_new:
                         logger.info(
                             f"Changing {column} of {specific_taxon} to from {existing_value} to {incoming_value}"
@@ -407,7 +412,7 @@ class Command(BaseCommand):
             specific_taxon.save(update_calculated_fields=False)
             if not is_new:
                 # raise ValueError(f"TAXON DATA CHANGED for {specific_taxon}")
-                logger.warn(f"TAXON DATA CHANGED for existing {specific_taxon} ({specific_taxon.id})")
+                logger.warning(f"TAXON DATA CHANGED for existing {specific_taxon} ({specific_taxon.id})")
                 updated_taxa.add(specific_taxon)
 
         if accepted_name:
