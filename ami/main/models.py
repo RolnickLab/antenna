@@ -2738,20 +2738,30 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
         Create a genus if it doesn't exist based on the scientific name of the species.
         This will replace any parents of a species that are not of the GENUS rank.
         """
-        species = self.get_queryset().filter(rank="SPECIES")  # , parent=None)
+        Taxon: "Taxon" = self.model  # type: ignore
+        species = self.get_queryset().filter(rank=TaxonRank.SPECIES)  # , parent=None)
         updated = []
         for taxon in species:
-            if taxon.parent and taxon.parent.rank == "GENUS":
+            if taxon.parent and taxon.parent.rank == TaxonRank.GENUS:
                 continue
-            genus_name = taxon.name.split()[0]
-            genus = self.get_queryset().filter(name=genus_name, rank="GENUS").first()
-            if not genus:
-                Taxon = self.model
-                genus = Taxon.objects.create(name=genus_name, rank="GENUS")
-            taxon.parent = genus
-            logger.info(f"Added parent {genus} to {taxon}")
+
+            genus_name = taxon.name.split()[0].strip()
+
+            # There can be only one taxon with a given name.
+            genus_taxon, created = Taxon.objects.get_or_create(name=genus_name, defaults={"rank": TaxonRank.GENUS})
+            if created:
+                updated.append(genus_taxon)
+            elif genus_taxon.rank != TaxonRank.GENUS:
+                genus_taxon.rank = TaxonRank.GENUS
+                logger.info(f"Updating rank of existing {genus_taxon} from {genus_taxon.rank} to {TaxonRank.GENUS}")
+                genus_taxon.save()
+                updated.append(genus_taxon)
+
+            taxon.parent = genus_taxon
+            logger.info(f"Added parent {genus_taxon} to {taxon}")
             taxon.save()
             updated.append(taxon)
+
         return updated
 
     def update_display_names(self, queryset: models.QuerySet | None = None):
