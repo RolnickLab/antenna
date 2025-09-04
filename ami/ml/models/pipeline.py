@@ -940,7 +940,9 @@ def save_results(
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
         logger.warning(f"Pipeline choice returned by the Processing Service was not recognized! {pipeline}")
-    algorithms_used = set()
+
+    algorithms_used: dict[str, Algorithm] = {}
+    deployments_used: dict[str, Deployment] = {}
 
     job_logger = logger
     start_time = time.time()
@@ -965,7 +967,6 @@ def save_results(
 
         deployments_data = results.deployments
         source_images_data = results.source_images
-        deployments_used: dict[str, Deployment] = {}
 
         if not deployments_data:
             job_logger.warning(
