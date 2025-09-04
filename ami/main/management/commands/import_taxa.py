@@ -265,9 +265,10 @@ class Command(BaseCommand):
             taxon_data = fix_values(taxon_data)
             logger.debug(f"Parsed taxon data: {taxon_data}")
             if taxon_data:
-                created_taxa, updated_taxa = self.create_taxon(taxon_data, root_taxon_parent)
+                created_taxa, updated_taxa, specific_taxon = self.create_taxon(taxon_data, root_taxon_parent)
                 taxa_to_refresh.update(created_taxa)
                 taxa_to_refresh.update(updated_taxa)
+                taxalist.taxa.add(specific_taxon)
                 if created_taxa:
                     logger.debug(f"Created {len(created_taxa)} taxa from incoming row {i}")
                     taxalist.taxa.add(*created_taxa)
@@ -282,6 +283,7 @@ class Command(BaseCommand):
         logger.info("SUMMARY:")
         logger.info(f"Created {total_created_taxa} total taxa")
         logger.info(f"Updated {total_updated_taxa} total taxa")
+        logger.info(f"Total taxa in list {taxalist}: {taxalist.taxa.count()}")
 
         # Ensure the root taxon still exists and has no parent
         root = Taxon.objects.root()
@@ -293,7 +295,7 @@ class Command(BaseCommand):
         for taxon in tqdm(taxa_to_refresh):
             taxon.save(update_calculated_fields=True)
 
-    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon]]:
+    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon], Taxon]:
         taxa_in_row = []
         created_taxa = set()
         updated_taxa = set()
@@ -433,4 +435,4 @@ class Command(BaseCommand):
 
         #
 
-        return created_taxa, updated_taxa
+        return created_taxa, updated_taxa, specific_taxon
