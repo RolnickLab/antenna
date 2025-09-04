@@ -694,7 +694,7 @@ class Job(BaseModel):
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
-    logs: JobLogs = SchemaField(JobLogs, default=lambda: JobLogs())
+    logs: JobLogs = SchemaField(JobLogs, default=JobLogs)
     params = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
