@@ -69,7 +69,6 @@ def get_default_classification_threshold(project, request: Request | None = None
         The classification threshold value from project settings by default,
         or from request if `apply_defaults=false` is provided.
     """
-    print("get_default_classification_threshold called")
     # If request exists and apply_defaults is explicitly false, get from request
     if request is not None:
         apply_defaults = request.query_params.get("apply_defaults", "true").lower()
