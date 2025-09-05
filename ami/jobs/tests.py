@@ -18,7 +18,7 @@ from ami.jobs.models import (
 )
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
+from ami.tests.fixtures.main import create_captures_from_files, setup_test_project
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -213,15 +213,16 @@ class TestJobView(APITestCase):
 class TestMLJobBatchProcessing(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()
-        self.captures = create_captures_from_files(self.deployment, skip_existing=False)
+
+        self.captures = create_captures_from_files(
+            self.deployment, skip_existing=False
+        )  # creates the SourceImageCollection
         self.source_image_collection = SourceImageCollection.objects.get(
             name="Test Source Image Collection",
             project=self.project,
         )
-        self.processing_service_instance = create_processing_service(self.project)
-        self.processing_service = self.processing_service_instance
-        assert self.processing_service_instance.pipelines.exists()
-        self.pipeline = self.processing_service_instance.pipelines.all().get(slug="constant")
+
+        self.pipeline = Pipeline.objects.get(slug="constant")
 
     def _check_correct_job_progress(
         self, job: Job, expected_num_process_subtasks: int, expected_num_results_subtasks: int
@@ -278,7 +279,8 @@ class TestMLJobBatchProcessing(TestCase):
         logger.info(
             f"Starting test_batch_processing_job using collection "
             f"{self.source_image_collection} which contains "
-            f"{self.source_image_collection.images.count()} images"
+            f"{self.source_image_collection.images.count()} images "
+            f"and project {self.project}"
         )
         job = Job.objects.create(
             job_type_key=MLJob.key,
