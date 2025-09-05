@@ -99,7 +99,7 @@ LOCAL_APPS = [
     "ami.users",
     "ami.main",
     "ami.jobs",
-    "ami.ml",
+    "ami.ml.apps.MLConfig",  # Use the custom config instead of "ami.ml",
     "ami.labelstudio",
     "ami.exports",
 ]
@@ -260,6 +260,7 @@ CACHES = {
         },
     }
 }
+REDIS_URL = env("REDIS_URL", default=None)
 
 # ADMIN
 # ------------------------------------------------------------------------------
@@ -330,6 +331,7 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
+CELERY_TASK_DEFAULT_QUEUE = "antenna"
 
 # Health checking and retries, specific to Redis
 CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend

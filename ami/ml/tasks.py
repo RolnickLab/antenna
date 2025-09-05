@@ -1,3 +1,4 @@
+import datetime
 import logging
 import time
 
@@ -8,8 +9,9 @@ from config import celery_app
 logger = logging.getLogger(__name__)
 
 
+# @TODO: Deprecate this? is this still needed?
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
-def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_ids: list[int], job_id: int | None):
+def process_source_images_async(pipeline_choice: str, image_ids: list[int], job_id: int | None):
     from ami.jobs.models import Job
     from ami.main.models import SourceImage
     from ami.ml.models.pipeline import Pipeline, process_images, save_results
@@ -24,13 +26,10 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
 
     images = SourceImage.objects.filter(pk__in=image_ids)
     pipeline = Pipeline.objects.get(slug=pipeline_choice)
+    project = pipeline.projects.first()
+    assert project, f"Pipeline {pipeline} must be associated with a project."
 
-    results = process_images(
-        pipeline=pipeline,
-        endpoint_url=endpoint_url,
-        images=images,
-        job_id=job_id,
-    )
+    results = process_images(pipeline=pipeline, images=images, job_id=job_id, project_id=project.pk)
 
     try:
         save_results(results=results, job_id=job_id)
@@ -106,3 +105,38 @@ def check_processing_services_online():
         except Exception as e:
             logger.error(f"Error checking service {service}: {e}")
             continue
+
+
+@celery_app.task()  # TODO: add a time limit? stay active for as long as the ML job will take
+def check_ml_job_status(ml_job_id: int):
+    """
+    Check the status of a specific ML job's inprogress subtasks and update its status accordingly.
+    """
+    from ami.jobs.models import Job, JobState, MLJob
+
+    job = Job.objects.get(pk=ml_job_id)
+    assert job.job_type_key == MLJob.key, f"{ml_job_id} is not an ML job."
+
+    try:
+        jobs_complete = job.check_inprogress_subtasks()
+        logger.info(f"Successfully checked status for job {job}. .")
+    except Job.DoesNotExist:
+        raise ValueError(f"Job with ID {ml_job_id} does not exist.")
+    except Exception as e:
+        error_msg = f"Error checking status for job with ID {ml_job_id}: {e}"
+        job.logger.error(error_msg)
+        job.update_status(JobState.FAILURE)
+        job.finished_at = datetime.datetime.now()
+        job.save()
+        raise Exception(error_msg)
+
+    if jobs_complete:
+        logger.info(f"ML Job {ml_job_id} is complete.")
+        job.logger.info(f"ML Job {ml_job_id} is complete.")
+    else:
+        from django.db import transaction
+
+        logger.info(f"ML Job {ml_job_id} still in progress. Checking again for completed tasks.")
+        transaction.on_commit(
+            lambda: check_ml_job_status.apply_async([ml_job_id], countdown=10)
+        )  # check again in 10 seconds
