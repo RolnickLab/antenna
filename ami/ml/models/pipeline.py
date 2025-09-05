@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 
 import requests
 from celery.result import AsyncResult
-from django.db import models
+from django.db import models, transaction
 from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
@@ -185,8 +185,8 @@ def process_pipeline_request(pipeline_request: dict, project_id: int):
 def process_images(
     pipeline: Pipeline,
     images: typing.Iterable[SourceImage],
+    project_id: int,
     job_id: int | None = None,
-    project_id: int | None = None,
     process_sync: bool = False,
 ) -> PipelineResultsResponse | None:
     """
@@ -207,13 +207,12 @@ def process_images(
         job = Job.objects.get(pk=job_id)
         task_logger = job.logger
 
-    if project_id:
-        project = Project.objects.get(pk=project_id)
-    else:
-        task_logger.warning(f"Pipeline {pipeline} is not associated with a project")
-        project = None
+    # Pipelines must be associated with a project in order to select a processing service
+    # A processing service is required to send requests to the /process endpoint
+    project = Project.objects.get(pk=project_id)
+    task_logger.info(f"Using project: {project}")
 
-    pipeline_config = pipeline.get_config(project_id=project_id)
+    pipeline_config = pipeline.get_config(project_id=project.pk)
     task_logger.info(f"Using pipeline config: {pipeline_config}")
 
     prefiltered_images = list(images)
@@ -265,15 +264,16 @@ def process_images(
     task_logger.info(f"Found {len(detection_requests)} existing detections.")
 
     if not process_sync:
+        assert job_id is not None, "job_id is required to process images using async tasks."
         handle_async_process_images(
             pipeline.slug,
             source_image_requests,
             images,
             pipeline_config,
             detection_requests,
+            project_id,
             job_id,
             task_logger,
-            project_id,
         )
         return
     else:
@@ -289,12 +289,11 @@ def handle_async_process_images(
     source_images: list[SourceImage],
     pipeline_config: PipelineRequestConfigParameters,
     detection_requests: list[DetectionRequest],
-    job_id: int | None = None,
+    project_id: int,
+    job_id: int,
     task_logger: logging.Logger = logger,
-    project_id: int | None = None,
 ):
     """Handle asynchronous processing by submitting tasks to the appropriate pipeline queue."""
-    task_ids = []
     batch_size = pipeline_config.get("batch_size", 1)
 
     # Group source images into batches
@@ -333,14 +332,18 @@ def handle_async_process_images(
             detections=detections_batch,
             config=pipeline_config,
         )
-        task_result = process_pipeline_request.apply_async(
-            args=[prediction_request.dict(), project_id],
-            # TODO: make ml-pipeline an environment variable (i.e. PIPELINE_QUEUE_PREFIX)?
-            queue=f"ml-pipeline-{pipeline}",
-            # all pipelines have their own queue beginning with "ml-pipeline-"
-            # the antenna celeryworker should subscribe to all pipeline queues
+
+        task_id = str(uuid.uuid4())
+        transaction.on_commit(
+            lambda: process_pipeline_request.apply_async(
+                args=[prediction_request.dict(), project_id],
+                task_id=task_id,
+                # TODO: make ml-pipeline an environment variable (i.e. PIPELINE_QUEUE_PREFIX)?
+                queue=f"ml-pipeline-{pipeline}",
+                # all pipelines have their own queue beginning with "ml-pipeline-"
+                # the antenna celeryworker should subscribe to all pipeline queues
+            )
         )
-        task_ids.append(task_result.id)
 
         if job_id:
             from ami.jobs.models import Job, MLTaskRecord
@@ -349,21 +352,17 @@ def handle_async_process_images(
             # Create a new MLTaskRecord for this task
             ml_task_record = MLTaskRecord.objects.create(
                 job=job,
-                task_id=task_result.id,
+                task_id=task_id,
                 task_name="process_pipeline_request",
                 pipeline_request=prediction_request,
-                num_captures=len(source_image_batches[idx]),
+                num_captures=len(source_image_batches[i]),
             )
-            ml_task_record.source_images.set(source_image_batches[idx])
+            ml_task_record.source_images.set(source_image_batches[i])
             ml_task_record.save()
-            # job.logger.info(
-            #     f"Created MLTaskRecord for job {job_id} with task ID {task_result.id}"
-            #     " and task name process_pipeline_request"
-            # )
         else:
             task_logger.warning("No job ID provided, MLTaskRecord will not be created.")
 
-    task_logger.info(f"Submitted {len(task_ids)} batch image processing task(s).")
+    task_logger.info(f"Submitted {len(source_image_request_batches)} batch image processing task(s).")
 
 
 def handle_sync_process_images(
@@ -377,9 +376,6 @@ def handle_sync_process_images(
     job: Job | None,
 ) -> PipelineResultsResponse:
     """Handle synchronous processing by sending HTTP requests to the processing service."""
-    if project_id is None:
-        raise ValueError("Project ID must be provided when syncronously processing images.")
-
     processing_service = pipeline.choose_processing_service_for_pipeline(job_id, pipeline.name, project_id)
     if not processing_service.endpoint_url:
         raise ValueError(f"No endpoint URL configured for this pipeline's processing service ({processing_service})")
@@ -1207,8 +1203,8 @@ class Pipeline(BaseModel):
                 )
             except self.project_pipeline_configs.model.DoesNotExist as e:
                 logger.warning(f"No project-pipeline config for Pipeline {self} " f"and Project #{project_id}: {e}")
-
-        logger.warning("No project_id, no pipeline config is used.")
+        else:
+            logger.warning("No project_id. No pipeline config is used. Using default empty config instead.")
 
         return config
 

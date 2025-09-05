@@ -168,7 +168,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         has_inprogress_tasks = job.check_inprogress_subtasks()
         if has_inprogress_tasks:
             # Schedule task to update the job status
+            from django.db import transaction
+
             from ami.ml.tasks import check_ml_job_status
 
-            check_ml_job_status.apply_async((job.pk,))
+            transaction.on_commit(lambda: check_ml_job_status.apply_async((job.pk,)))
         return Response({"inprogress_subtasks": has_inprogress_tasks})

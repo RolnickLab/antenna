@@ -579,10 +579,8 @@ class MLJob(JobType):
                 failed=num_failed_save_tasks,
             )
 
-            # The ML job is completed, log general job stags
-            if job.status != JobState.FAILURE:
-                # the job might've already been marked as failed because of unsent process pipeline request tasks
-                job.update_status(JobState.FAILURE if any_failed_tasks else JobState.SUCCESS, save=False)
+            # The ML job is completed, log general job stats
+            job.update_status(JobState.FAILURE if any_failed_tasks else JobState.SUCCESS, save=False)
 
             if any_failed_tasks:
                 failed_save_task_ids = [
@@ -708,23 +706,11 @@ class MLJob(JobType):
 
         except Exception as e:
             job.logger.error(f"Failed to submit all images: {e}")
-            # mark the job as failed
-            job.progress.update_stage(
-                "process",
-                status=JobState.FAILURE,
-                progress=1,
-                failed=image_count,
-                processed=0,
-                remaining=image_count,
-            )
             job.update_status(JobState.FAILURE)
             job.save()
-        finally:
-            # Handle the successfully submitted tasks
-            subtasks = job.ml_task_records.all()
-            if subtasks:
-                check_ml_job_status.apply_async([job.pk])
-            else:
+        else:
+            subtasks = job.ml_task_records.filter(created_at__gte=job.started_at)
+            if not subtasks:
                 # No tasks were scheduled, mark the job as done
                 job.logger.info("No subtasks were scheduled, ending the job.")
                 job.progress.update_stage(
@@ -740,6 +726,16 @@ class MLJob(JobType):
                 job.update_status(JobState.SUCCESS, save=False)
                 job.finished_at = datetime.datetime.now()
                 job.save()
+            else:
+                job.logger.info(
+                    f"Continue processing the remaining {subtasks.count()} process image request subtasks."
+                )
+                from django.db import transaction
+
+                transaction.on_commit(lambda: check_ml_job_status.apply_async([job.pk]))
+        finally:
+            # TODO: clean up?
+            pass
 
 
 class DataStorageSyncJob(JobType):

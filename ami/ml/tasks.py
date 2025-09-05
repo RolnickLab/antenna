@@ -26,12 +26,10 @@ def process_source_images_async(pipeline_choice: str, image_ids: list[int], job_
 
     images = SourceImage.objects.filter(pk__in=image_ids)
     pipeline = Pipeline.objects.get(slug=pipeline_choice)
+    project = pipeline.projects.first()
+    assert project, f"Pipeline {pipeline} must be associated with a project."
 
-    results = process_images(
-        pipeline=pipeline,
-        images=images,
-        job_id=job_id,
-    )
+    results = process_images(pipeline=pipeline, images=images, job_id=job_id, project_id=project.pk)
 
     try:
         save_results(results=results, job_id=job_id)
@@ -136,5 +134,9 @@ def check_ml_job_status(ml_job_id: int):
         logger.info(f"ML Job {ml_job_id} is complete.")
         job.logger.info(f"ML Job {ml_job_id} is complete.")
     else:
+        from django.db import transaction
+
         logger.info(f"ML Job {ml_job_id} still in progress. Checking again for completed tasks.")
-        check_ml_job_status.apply_async([ml_job_id], countdown=10)  # check again in 10 seconds
+        transaction.on_commit(
+            lambda: check_ml_job_status.apply_async([ml_job_id], countdown=10)
+        )  # check again in 10 seconds
