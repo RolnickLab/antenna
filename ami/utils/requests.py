@@ -56,6 +56,33 @@ def get_active_classification_threshold(request: Request) -> float:
     return classification_threshold
 
 
+def get_default_classification_threshold(project, request: Request | None = None) -> float:
+    """
+    Get the classification threshold from project settings by default,
+    or from request query parameters if `apply_defaults=false` is set in the request.
+
+    Args:
+        project: A Project instance.
+        request: The incoming request object (optional).
+
+    Returns:
+        The classification threshold value from project settings by default,
+        or from request if `apply_defaults=false` is provided.
+    """
+    print("get_default_classification_threshold called")
+    # If request exists and apply_defaults is explicitly false, get from request
+    if request is not None:
+        apply_defaults = request.query_params.get("apply_defaults", "true").lower()
+        if apply_defaults == "false":
+            return get_active_classification_threshold(request)
+
+    # Otherwise, get from project
+    if project is None:
+        return 0.0
+
+    return getattr(project, "default_filters_score_threshold", 0.0) or 0.0
+
+
 project_id_doc_param = OpenApiParameter(
     name="project_id",
     description="Filter by project ID",
