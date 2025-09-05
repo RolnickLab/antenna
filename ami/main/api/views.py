@@ -1383,6 +1383,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 occurrence_filters,
                 determination_id=models.OuterRef("id"),
             )
+            .filter_by_score_threshold(project, self.request)  # type: ignore
             .values("determination_id")
             .annotate(count=models.Count("id"))
             .values("count"),
