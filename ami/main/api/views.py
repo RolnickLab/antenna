@@ -1049,11 +1049,6 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
-OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
-    query_param="classification_threshold", filter_param="determination_score"
-)
-
-
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1071,7 +1066,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
-        OccurrenceDeterminationScoreFilter,
     ]
     filterset_fields = [
         "event",
