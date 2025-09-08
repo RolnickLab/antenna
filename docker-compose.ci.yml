@@ -10,7 +10,8 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    image: ami_ci_django
+    volumes:
+      - .:/app:z
     depends_on:
       - postgres
       - redis
@@ -36,7 +37,6 @@ services:
 
   celeryworker:
     <<: *django
-    image: ami_ci_celeryworker
     depends_on:
       - postgres
       - rabbitmq
