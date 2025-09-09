@@ -29,7 +29,11 @@ from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.serializers import TagSerializer
-from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
+from ami.utils.requests import (
+    get_active_classification_threshold,
+    get_default_classification_threshold,
+    project_id_doc_param,
+)
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -326,7 +330,9 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                     "occurrences__determination",
                     distinct=True,
                     filter=models.Q(
-                        occurrences__determination_score__gte=get_active_classification_threshold(self.request),
+                        occurrences__determination_score__gte=get_default_classification_threshold(
+                            project, self.request
+                        ),
                     ),
                 ),
             )
@@ -483,9 +489,10 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
+        project = self.get_active_project()
         with_detections_default = False
 
-        classification_threshold = get_active_classification_threshold(self.request)
+        classification_threshold = get_default_classification_threshold(project, self.request)
         queryset = queryset.with_occurrences_count(  # type: ignore
             classification_threshold=classification_threshold
         ).with_taxa_count(  # type: ignore
@@ -1042,11 +1049,6 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
-OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
-    query_param="classification_threshold", filter_param="determination_score"
-)
-
-
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1064,7 +1066,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
-        OccurrenceDeterminationScoreFilter,
     ]
     filterset_fields = [
         "event",
@@ -1107,7 +1108,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-
+        qs = qs.filter_by_score_threshold(project, self.request)  # type: ignore
         if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
@@ -1348,10 +1349,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.filter(self.get_occurrence_filters(project))[:1],
+                        queryset=Occurrence.objects.filter_by_score_threshold(project, self.request).filter(
+                            self.get_occurrence_filters(project)
+                        )[:1],
                         to_attr="example_occurrences",
                     )
-                )
+                )  # type: ignore
         else:
             # Add empty occurrences list to make the response consistent
             qs = qs.annotate(example_occurrences=models.Value([], output_field=models.JSONField()))
@@ -1373,6 +1376,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 occurrence_filters,
                 determination_id=models.OuterRef("id"),
             )
+            .filter_by_score_threshold(project, self.request)  # type: ignore
             .values("determination_id")
             .annotate(count=models.Count("id"))
             .values("count"),
@@ -1546,8 +1550,13 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.valid().filter(project=project).count(),  # type: ignore
-                "taxa_count": Occurrence.objects.all().unique_taxa(project=project).count(),  # type: ignore
+                "occurrences_count": Occurrence.objects.filter_by_score_threshold(project, self.request)
+                .valid()
+                .filter(project=project)
+                .count(),  # type: ignore
+                "taxa_count": Occurrence.objects.filter_by_score_threshold(project, self.request)
+                .unique_taxa(project=project)
+                .count(),  # type: ignore
             }
         else:
             data = {
