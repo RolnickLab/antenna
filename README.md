@@ -17,7 +17,7 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
     127.0.0.1 django
 ```
 3) The following commands will build all services, run them in the background, and then stream the logs.
-   1) Standard development: will use a pre-built version of the frontend that will not have hot-reloading enabled, but will make startup time faster when restarting the stack.
+   1) Standard development: will use a pre-built version of the frontend that will not have hot-reloading enabled. However, it will make startup time faster when restarting the stack.
       ```sh
       # Start the whole compose stack
       docker compose up -d
