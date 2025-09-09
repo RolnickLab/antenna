@@ -2461,6 +2461,8 @@ class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
         return qs
 
     def filter_by_score_threshold(self, project: Project | None = None, request: Request | None = None):
+        if project is None:
+            return self
         score_threshold = get_default_classification_threshold(project, request)
         return self.filter(determination_score__gte=score_threshold)
 

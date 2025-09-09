@@ -1109,7 +1109,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
         qs = qs.filter_by_score_threshold(project, self.request)  # type: ignore
-
         if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
