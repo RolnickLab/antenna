@@ -14,6 +14,7 @@
   position: relative;
   background-color: $color-generic-white;
   border-bottom: 1px solid $color-neutral-100;
+  overflow: hidden;
 }
 
 .square::after {
@@ -29,14 +30,13 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 16px;
   box-sizing: border-box;
 }
 
 .content {
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   flex-direction: column;
   flex: 1;
   padding: 16px;
@@ -54,7 +54,10 @@
 
   &.large {
     @include paragraph-medium();
-    margin-bottom: 2px;
+
+    &:not(:last-child) {
+      margin-bottom: 2px;
+    }
   }
 }
 

@@ -22,7 +22,7 @@ export const useUpdateProject = (id: string) => {
         }
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries([API_ROUTES.PROJECTS])
+      queryClient.invalidateQueries([API_ROUTES.PROJECTS, id])
       setTimeout(reset, SUCCESS_TIMEOUT)
     },
   })

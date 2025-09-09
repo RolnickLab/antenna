@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
+import { BooleanFilter } from './filters/boolean-filter'
 import { CollectionFilter } from './filters/collection-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
@@ -10,6 +11,7 @@ import { ScoreFilter } from './filters/score-filter'
 import { SessionFilter } from './filters/session-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
+import { TagFilter } from './filters/tag-filter'
 import { TaxaListFilter } from './filters/taxa-list-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
@@ -21,6 +23,7 @@ const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
   algorithm: AlgorithmFilter,
+  best_determination_score: ScoreFilter,
   classification_threshold: ScoreFilter,
   collection: CollectionFilter,
   date_end: DateFilter,
@@ -28,14 +31,17 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
+  include_unobserved: BooleanFilter,
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,
+  not_tag_id: TagFilter,
   pipeline: PipelineFilter,
   source_image_collection: CollectionFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,
-  taxon: TaxonFilter,
+  tag_id: TagFilter,
   taxa_list_id: TaxaListFilter,
+  taxon: TaxonFilter,
   verified_by_me: VerifiedByFilter,
   verified: VerificationStatusFilter,
 }

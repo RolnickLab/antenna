@@ -14,12 +14,9 @@ export const General = () => {
   const { project } = useOutletContext<{
     project: Project
   }>()
-  const {
-    updateProject,
-    isLoading: isUpdateLoading,
-    isSuccess,
-    error,
-  } = useUpdateProject(project.id)
+  const { updateProject, isLoading, isSuccess, error } = useUpdateProject(
+    project.id
+  )
 
   useEffect(() => {
     if (!project.canUpdate) {
@@ -42,11 +39,11 @@ export const General = () => {
         </div>
         <div>
           <ProjectDetailsForm
-            project={project}
             error={error}
-            isLoading={isUpdateLoading}
+            isLoading={isLoading}
             isSuccess={isSuccess}
             onSubmit={(data) => updateProject(data)}
+            project={project}
           />
         </div>
       </div>

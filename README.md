@@ -8,7 +8,7 @@ Platform for processing and reviewing images from automated insect monitoring st
 
 Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/install/) to run all services locally for development.
 
-1) Install Docker for your host operating (Linux, macOS, Windows)
+1) Install Docker for your host operating (Linux, macOS, Windows). Docker Compose `v2.38.2` or later recommended.
 
 2) Add the following to your `/etc/hosts` file in order to see and process the demo source images. This makes the hostname `minio` and `django` alias for `localhost` so the same image URLs can be viewed in the host machine's web browser and be processed by the ML services. This can be skipped if you are using an external image storage service.
 
@@ -25,6 +25,9 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
       # To stream the logs
       docker compose logs -f django celeryworker ui
       # Ctrl+c to close the logs
+
+      NOTE: If you see docker build errors such as `At least one invalid signature was encountered`, these could happen if docker runs out of space. Commands like `docker image prune -f` and `docker system prune` can be helpful to clean up space.
+
       ```
       To update the UI Docker container, use the following command to rebuild the frontend and load the new changes
       (and remember to refresh your browser after!).
@@ -49,12 +52,15 @@ docker compose -f processing_services/example/docker-compose.yml up -d
 # Once running, in Antenna register a new processing service called: http://ml_backend_example:2000
 ```
 
-5) Access the platform the following URLs:
+5) Access the platform with the following URLs:
 
 - Primary web interface: http://localhost:4000
 - API browser: http://localhost:8000/api/v2/
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger documentation: http://localhost:8000/api/v2/docs/
+- Minio UI: http://minio:9001, Minio service: http://minio:9000
+
+NOTE: If one of these services is not working properly, it could be due another process is using the port. You can check for this with `lsof -i :<PORT_NUMBER>`.
 
 A default user will be created with the following credentials. Use these to log into the web UI or the Django admin.
 

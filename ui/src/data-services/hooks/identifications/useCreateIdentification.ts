@@ -15,7 +15,10 @@ const convertToServerFieldValues = (
   comment: fieldValues.comment,
 })
 
-export const useCreateIdentification = (onSuccess?: () => void) => {
+export const useCreateIdentification = (
+  onSuccess?: () => void,
+  invalidate: boolean = true
+) => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
@@ -29,8 +32,10 @@ export const useCreateIdentification = (onSuccess?: () => void) => {
         }
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries([API_ROUTES.IDENTIFICATIONS])
-      queryClient.invalidateQueries([API_ROUTES.OCCURRENCES])
+      if (invalidate) {
+        queryClient.invalidateQueries([API_ROUTES.IDENTIFICATIONS])
+        queryClient.invalidateQueries([API_ROUTES.OCCURRENCES])
+      }
       onSuccess?.()
     },
   })

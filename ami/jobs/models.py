@@ -11,6 +11,7 @@ from celery.result import AsyncResult
 from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
+from guardian.shortcuts import get_perms
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
@@ -130,8 +131,6 @@ class JobProgress(pydantic.BaseModel):
     def get_stage(self, stage_key: str) -> JobProgressStageDetail:
         for stage in self.stages:
             if stage.key == stage_key:
-                if stage.name == stage.key:
-                    raise ValueError(f"Job stage with key '{stage_key}' has no name")
                 return stage
         raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
 
@@ -210,6 +209,12 @@ def default_job_progress() -> JobProgress:
 
 
 def default_ml_job_progress() -> JobProgress:
+    """
+    Default stages for an ML Job.
+
+    @TODO add this to the get_default_progress() method of the
+    MLJob class, or delete it. Currently unused.
+    """
     return JobProgress(
         summary=JobProgressSummary(status=JobState.CREATED, progress=0),
         stages=[
@@ -403,6 +408,7 @@ class MLJob(JobType):
         chunk_size = config.get("request_source_image_batch_size", 1)
         chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
         request_failed_images = []
+        job.logger.info(f"Processing {image_count} images in {len(chunks)} batches of up to {chunk_size}")
 
         for i, chunk in enumerate(chunks):
             request_sent = time.time()
@@ -687,8 +693,8 @@ class Job(BaseModel):
     finished_at = models.DateTimeField(null=True, blank=True)
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
-    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress())
-    logs: JobLogs = SchemaField(JobLogs, default=JobLogs())
+    progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
+    logs: JobLogs = SchemaField(JobLogs, default=JobLogs)
     params = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
@@ -779,7 +785,7 @@ class Job(BaseModel):
         """
         Setup the job by creating the job stages.
         """
-        self.progress = self.progress or default_job_progress
+        self.progress = self.progress or self.get_default_progress()
 
         if self.delay:
             delay_stage = self.progress.add_stage("Delay")
@@ -907,18 +913,53 @@ class Job(BaseModel):
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        job_type = self.job_type_key.lower()
+        if self.source_image_single:
+            action = "run_single_image"
+        if action in ["run", "cancel", "retry"]:
+            permission_codename = f"run_{job_type}_job"
+        else:
+            permission_codename = f"{action}_{job_type}_job"
+
+        project = self.get_project() if hasattr(self, "get_project") else None
+        return user.has_perm(permission_codename, project)
+
+    def get_custom_user_permissions(self, user) -> list[str]:
+        project = self.get_project()
+        if not project:
+            return []
+
+        custom_perms = set()
+        model_name = "job"
+        perms = get_perms(user, project)
+        job_type = self.job_type_key.lower()
+        for perm in perms:
+            # permissions are in the format "action_modelname"
+            if perm.endswith(f"{job_type}_{model_name}"):
+                action = perm[: -len(f"_{job_type}_{model_name}")]
+                # make sure to exclude standard CRUD actions
+                if action not in ["view", "create", "update", "delete"]:
+                    custom_perms.add(action)
+        logger.debug(f"Custom permissions for user {user} on project {self}, with jobtype {job_type}: {custom_perms}")
+        return list(custom_perms)
+
     @classmethod
-    def default_progress(cls) -> JobProgress:
+    def get_default_progress(cls) -> JobProgress:
         """Return the progress of each stage of this job as a dictionary"""
         return default_job_progress()
 
     @property
     def logger(self) -> logging.Logger:
-        logger = logging.getLogger(f"ami.jobs.{self.pk}")
-        # Also log output to a field on thie model instance
-        logger.addHandler(JobLogHandler(self))
-        logger.propagate = False
-        return logger
+        _logger = logging.getLogger(f"ami.jobs.{self.pk}")
+
+        # Only add JobLogHandler if not already present
+        if not any(isinstance(h, JobLogHandler) for h in _logger.handlers):
+            # Also log output to a field on thie model instance
+            logger.info("Adding JobLogHandler to logger for job %s", self.pk)
+            _logger.addHandler(JobLogHandler(self))
+        _logger.propagate = False
+        return _logger
 
     class Meta:
         ordering = ["-created_at"]
