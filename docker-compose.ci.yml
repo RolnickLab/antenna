@@ -40,6 +40,8 @@ services:
     depends_on:
       - postgres
       - rabbitmq
+    volumes:
+      - ./compose/local/django/celery/worker/start:/start-celeryworker
     command: /start-celeryworker
 
   rabbitmq:

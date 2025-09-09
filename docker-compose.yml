@@ -100,8 +100,8 @@ services:
     ports:
       - "5678:5678"
     command: python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h  -l INFO
-    environment:
-      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+    volumes:
+      - ./compose/local/django/celery/worker/start:/start-celeryworker
     depends_on:
       - rabbitmq
 

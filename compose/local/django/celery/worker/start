@@ -5,4 +5,5 @@ set -o nounset
 
 
 # start the worker with antenna_celeryworker to ensure it's discoverable by ami.ml.signals.get_worker_name
+python manage.py migrate
 exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h -l INFO'
