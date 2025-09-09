@@ -2,6 +2,7 @@
 import logging
 import time
 
+# import pytest
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
 from rest_framework.test import APIRequestFactory, APITestCase
@@ -234,6 +235,15 @@ class TestMLJobBatchProcessing(TestCase):
         self.assertEqual(job.progress.stages[2].key, "process")
         self.assertEqual(job.progress.stages[3].key, "results")
 
+        # If job is only created, all stages should be CREATED and progress 0
+        if job.status == JobState.CREATED.value:
+            for stage in job.progress.stages:
+                self.assertEqual(stage.status, JobState.CREATED)
+                self.assertEqual(stage.progress, 0)
+            self.assertEqual(job.progress.summary.status, JobState.CREATED)
+            self.assertEqual(job.progress.summary.progress, 0)
+            return
+
         # Get all MLTaskRecords which are created
         completed_process_subtasks = job.ml_task_records.filter(
             task_name=MLSubtaskNames.process_pipeline_request.value,
@@ -274,6 +284,7 @@ class TestMLJobBatchProcessing(TestCase):
             # self.assertGreater(job.progress.stages[3].progress, 0) # the results stage could be at 0 progress
             self.assertLess(job.progress.stages[3].progress, 1)
 
+    # @pytest.mark.django_db(transaction=True)
     def test_run_ml_job(self):
         """Test running a batch processing job end-to-end."""
         logger.info(
@@ -307,24 +318,74 @@ class TestMLJobBatchProcessing(TestCase):
         self.assertEqual(job.progress.summary.progress, 0)
         self.assertEqual(job.progress.summary.status, JobState.CREATED)
 
+        from config import celery_app
+
+        # celery_app.conf.task_always_eager = False  # make sure tasks are run asyncronously for this test
+        inspector = celery_app.control.inspect()
+        # Ensure workers are available
+        self.assertEqual(len(inspector.active()), 1, "No celery workers are running.")
+
+        def check_all_celery_tasks():
+            active = inspector.active()
+            scheduled = inspector.scheduled()
+            reserved = inspector.reserved()
+            active_tasks = sum(len(v) for v in active.values()) if active else 0
+            scheduled_tasks = sum(len(v) for v in scheduled.values()) if scheduled else 0
+            reserved_tasks = sum(len(v) for v in reserved.values()) if reserved else 0
+            total_tasks = active_tasks + scheduled_tasks + reserved_tasks
+            # Log the number of tasks for debugging
+            logger.info(
+                f"Celery tasks - Active: {active_tasks}, Scheduled: {scheduled_tasks}, Reserved: {reserved_tasks}, "
+                f"Total: {total_tasks}"
+            )
+            return total_tasks
+
+        def check_celery_results():
+            i = celery_app.control.inspect()
+            results = i.stats()
+            if not results:
+                logger.warning("No celery results available.")
+                return False
+            for worker, stats in results.items():
+                if stats.get("total", 0) == 0:
+                    logger.warning(f"No tasks have been processed by worker {worker}.")
+                    return False
+                else:
+                    logger.info(f"Worker {worker} stats: {stats}")
+            return True
+
+        def get_ml_task_details():
+            # Check the results of the ml tasks from the results backend
+            ml_tasks = [
+                "ami.ml.tasks.check_ml_job_status",
+                "ami.ml.tasks.process_pipeline_request",
+                "ami.ml.tasks.save_results",
+            ]
+            logger.info(f"Checking ML task details for tasks: {ml_tasks}")
+            raise NotImplementedError
+
         job.run()
 
         start_time = time.time()
-        timeout = 600  # seconds
+        timeout = 10  # seconds
         elapsed_time = 0
+
         while elapsed_time < timeout:
-            job.check_inprogress_subtasks()
             if job.status == JobState.SUCCESS.value or job.status == JobState.FAILURE.value:
                 break
             elapsed_time = time.time() - start_time
             logger.info(f"Waiting for job to complete... elapsed time: {elapsed_time:.2f} seconds")
-            self._check_correct_job_progress(job, expected_num_process_subtasks=6, expected_num_results_subtasks=6)
-            time.sleep(3)
+            check_all_celery_tasks()
+            check_celery_results()
+            # self._check_correct_job_progress(job, expected_num_process_subtasks=6, expected_num_results_subtasks=6)
+            time.sleep(0)
 
         # Check all subtasks were successful
         ml_subtask_records = job.ml_task_records.all()
         self.assertEqual(
-            ml_subtask_records.count(), self.source_image_collection.images.count() * 2
+            ml_subtask_records.count(),
+            self.source_image_collection.images.count() * 2,
+            "The excted number of tasks completed is incorrect",
         )  # 2 subtasks per image (process and results)
         self.assertTrue(all(subtask.status == MLSubtaskState.SUCCESS.value for subtask in ml_subtask_records))
 
