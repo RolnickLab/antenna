@@ -227,3 +227,10 @@ class Algorithm(BaseModel):
         but is defined here for the serializer to work.
         """
         return None
+
+    def has_valid_category_map(self):
+        return (
+            (self.category_map is not None)
+            and (self.category_map.data is not None)
+            and (len(self.category_map.data) > 0)
+        )

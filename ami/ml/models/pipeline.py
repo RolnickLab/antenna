@@ -36,6 +36,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
+from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -333,36 +334,37 @@ def get_or_create_algorithm_and_category_map(
     if _created:
         logger.info(f"Registered new algorithm {algo}")
     else:
-        logger.info(f"Using algorithm {algo}")
+        logger.info(f"Using existing algorithm {algo}")
 
     algo_fields_updated = []
     new_category_map = None
     category_map_data = algorithm_config.category_map
 
-    if (algo.category_map is None or len(algo.category_map.data) == 0) and category_map_data:
-        # New algorithms will not have a category map yet, and older ones may not either
-        # The category map data should be in the algorithm config from the /info endpoint
-        new_category_map = AlgorithmCategoryMap.objects.create(
-            version=category_map_data.version,
-            data=category_map_data.data,
-            labels=category_map_data.labels,
-            description=category_map_data.description,
-            uri=category_map_data.uri,
-        )
-        algo.category_map = new_category_map
-        algo_fields_updated.append("category_map")
-        logger.info(f"Registered new category map {new_category_map} for algorithm {algo}")
-    else:
-        if algorithm_config.task_type in Algorithm.classification_task_types:
-            msg = (
-                f"No valid category map found for algorithm {algorithm_config.key} with "
-                f"task type {algorithm_config.task_type} or in the pipeline /info response. "
-                "Update the processing service to include a category map for all classification algorithms "
-                "then re-register the pipelines."
+    if not algo.has_valid_category_map():
+        if category_map_data:
+            # New algorithms will not have a category map yet, and older ones may not either
+            # The category map data should be in the algorithm config from the /info endpoint
+            new_category_map = AlgorithmCategoryMap.objects.create(
+                version=category_map_data.version,
+                data=category_map_data.data,
+                labels=category_map_data.labels,
+                description=category_map_data.description,
+                uri=category_map_data.uri,
             )
-            raise ValueError(msg)
+            algo.category_map = new_category_map
+            algo_fields_updated.append("category_map")
+            logger.info(f"Registered new category map {new_category_map} for algorithm {algo}")
         else:
-            logger.debug(f"No category map found, but not required for task type {algorithm_config.task_type}")
+            if algorithm_config.task_type in Algorithm.classification_task_types:
+                msg = (
+                    f"No valid category map found for algorithm '{algorithm_config.key}' with "
+                    f"task type '{algorithm_config.task_type}' or in the pipeline /info response. "
+                    "Update the processing service to include a category map for all classification algorithms "
+                    "then re-register the pipelines."
+                )
+                raise PipelineNotConfigured(msg)
+            else:
+                logger.debug(f"No category map found, but not required for task type {algorithm_config.task_type}")
 
     # Update fields that may have changed in the processing service, with a warning
     # These are fields that we have added to the API since the algorithm was first created
@@ -431,7 +433,7 @@ def get_or_create_detection(
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
         except KeyError:
-            raise ValueError(
+            raise PipelineNotConfigured(
                 f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
                 "The processing service must declare it in the /info endpoint. "
                 f"Known algorithms: {list(algorithms_known.keys())}"
@@ -601,7 +603,7 @@ def create_classification(
     try:
         classification_algo = algorithms_known[classification_resp.algorithm.key]
     except KeyError:
-        raise ValueError(
+        raise PipelineNotConfigured(
             f"Classification algorithm {classification_resp.algorithm.key} is not a known algorithm. "
             "The processing service must declare it in the /info endpoint. "
             f"Known algorithms: {list(algorithms_known.keys())}"
@@ -1083,7 +1085,7 @@ class Pipeline(BaseModel):
         processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
 
         if not processing_service.endpoint_url:
-            raise ValueError(
+            raise PipelineNotConfigured(
                 f"No endpoint URL configured for this pipeline's processing service ({processing_service})"
             )
 
