@@ -133,7 +133,7 @@ class Pipeline:
 
         return PipelineResultsResponse(
             pipeline=self.config.slug,  # type: ignore
-            algorithms={algorithm.key: algorithm for algorithm in self.config.algorithms},
+            # algorithms={algorithm.key: algorithm for algorithm in self.config.algorithms},
             total_time=elapsed_time,
             source_images=source_image_responses,
             detections=detection_responses,

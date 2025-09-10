@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,6 +14,18 @@ from django.db import models
 from django.utils.text import slugify
 
 from ami.base.models import BaseModel
+
+
+@typing.final
+class AlgorithmCategoryMapManager(models.Manager["AlgorithmCategoryMap"]):
+    def create(self, *args, **kwargs):
+        """
+        Create a new AlgorithmCategoryMap instance and generate its labels_hash.
+        """
+        instance = super().create(*args, **kwargs)
+        instance.labels_hash = instance.make_labels_hash(instance.labels)
+        instance.save()
+        return instance
 
 
 @typing.final
@@ -43,6 +56,8 @@ class AlgorithmCategoryMap(BaseModel):
     )
 
     algorithms: models.QuerySet[Algorithm]
+
+    objects = AlgorithmCategoryMapManager()
 
     def __str__(self):
         return f"#{self.pk} with {len(self.labels)} classes ({self.version or 'unknown version'})"
@@ -110,6 +125,31 @@ class AlgorithmQuerySet(models.QuerySet["Algorithm"]):
         return self.annotate(category_count=ArrayLength("category_map__labels"))
 
 
+# Task types enum for better type checking
+class AlgorithmTaskType(str, enum.Enum):
+    DETECTION = "detection"
+    LOCALIZATION = "localization"
+    SEGMENTATION = "segmentation"
+    CLASSIFICATION = "classification"
+    EMBEDDING = "embedding"
+    TRACKING = "tracking"
+    TAGGING = "tagging"
+    REGRESSION = "regression"
+    CAPTIONING = "captioning"
+    GENERATION = "generation"
+    TRANSLATION = "translation"
+    SUMMARIZATION = "summarization"
+    QUESTION_ANSWERING = "question_answering"
+    DEPTH_ESTIMATION = "depth_estimation"
+    POSE_ESTIMATION = "pose_estimation"
+    SIZE_ESTIMATION = "size_estimation"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+    def as_choice(self):
+        return (self.value, self.name.replace("_", " ").title())
+
+
 @typing.final
 class Algorithm(BaseModel):
     """A machine learning algorithm"""
@@ -120,28 +160,8 @@ class Algorithm(BaseModel):
         max_length=255,
         default="unknown",
         null=True,
-        choices=[
-            ("detection", "Detection"),
-            ("localization", "Localization"),
-            ("segmentation", "Segmentation"),
-            ("classification", "Classification"),
-            ("embedding", "Embedding"),
-            ("tracking", "Tracking"),
-            ("tagging", "Tagging"),
-            ("regression", "Regression"),
-            ("captioning", "Captioning"),
-            ("generation", "Generation"),
-            ("translation", "Translation"),
-            ("summarization", "Summarization"),
-            ("question_answering", "Question Answering"),
-            ("depth_estimation", "Depth Estimation"),
-            ("pose_estimation", "Pose Estimation"),
-            ("size_estimation", "Size Estimation"),
-            ("other", "Other"),
-            ("unknown", "Unknown"),
-        ],
+        choices=[task_type.as_choice() for task_type in AlgorithmTaskType],
     )
-    detection_algorithm_task_types = ["detection", "localization", "segmentation"]
     description = models.TextField(blank=True)
     version = models.IntegerField(
         default=1,
@@ -172,6 +192,16 @@ class Algorithm(BaseModel):
 
     objects = AlgorithmQuerySet.as_manager()
 
+    detection_task_types = [
+        AlgorithmTaskType.DETECTION,
+        AlgorithmTaskType.LOCALIZATION,
+        AlgorithmTaskType.SEGMENTATION,
+    ]
+    classification_task_types = [
+        AlgorithmTaskType.CLASSIFICATION,
+        AlgorithmTaskType.TAGGING,
+    ]
+
     def __str__(self):
         return f'#{self.pk} "{self.name}" ({self.key}) v{self.version}'
 
@@ -197,3 +227,10 @@ class Algorithm(BaseModel):
         but is defined here for the serializer to work.
         """
         return None
+
+    def has_valid_category_map(self):
+        return (
+            (self.category_map is not None)
+            and (self.category_map.data is not None)
+            and (len(self.category_map.data) > 0)
+        )

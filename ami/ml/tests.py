@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
+from ami.main.models import Detection, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.schemas import (
@@ -155,6 +155,39 @@ class TestPipelineWithProcessingService(TestCase):
             # Check the occurrence determination taxon
             assert detection.occurrence
             assert detection.occurrence.determination in classification_taxa
+
+    def test_missing_category_map(self):
+        # Test that an exception is raised if a classification algorithm is missing a category map
+        from ami.ml.exceptions import PipelineNotConfigured
+
+        # Get the response from the /info endpoint
+        pipeline_configs = self.processing_service.get_pipeline_configs()
+
+        # Assert that there is a least one classification algorithm with a category map
+        self.assertTrue(
+            any(
+                algo.task_type in Algorithm.classification_task_types and algo.category_map is not None
+                for pipeline in pipeline_configs
+                for algo in pipeline.algorithms
+            ),
+            "Expected pipeline to have at least one classification algorithm with a category map",
+        )
+
+        # Remove the category map from one of the classification algorithms
+        for pipeline_config in pipeline_configs:
+            for algorithm in pipeline_config.algorithms:
+                if algorithm.task_type in Algorithm.classification_task_types and algorithm.category_map is not None:
+                    algorithm.category_map = None
+                    # Change the key to ensure it's treated as a new algorithm
+                    algorithm.key = "missing-category-map-classifier"
+                    algorithm.name = "Classifier with Missing Category Map"
+                    break
+
+        with self.assertRaises(
+            PipelineNotConfigured,
+            msg="Expected an exception to be raised if a classification algorithm is missing a category map",
+        ):
+            self.processing_service.create_pipelines(pipeline_configs=pipeline_configs)
 
     def test_alignment_of_predictions_and_category_map(self):
         # Ensure that the scores and labels are aligned
@@ -481,6 +514,13 @@ class TestPipeline(TestCase):
         pass
 
     def test_unknown_algorithm_returned_by_processing_service(self):
+        """
+        Test that unknown algorithms returned by the processing service are handled correctly.
+
+        Previously we allowed unknown algorithms to be returned by the pipeline,
+        now all algorithms must be registered first from the processing service's /info
+        endpoint.
+        """
         fake_results = self.fake_pipeline_results(self.test_images, self.pipeline)
 
         new_detector = AlgorithmConfigResponse(
@@ -501,92 +541,20 @@ class TestPipeline(TestCase):
 
         current_total_algorithm_count = Algorithm.objects.count()
 
-        # @TODO assert a warning was logged
-        save_results(fake_results)
+        # Ensure an exception is raised that a new algorithm was not
+        # pre-registered from the /info endpoint
+        from ami.ml.exceptions import PipelineNotConfigured
 
-        # Ensure new algorithms were added to the database
+        with self.assertRaises(PipelineNotConfigured):
+            save_results(fake_results)
+
+        # Ensure no new algorithms were added to the database
         new_algorithm_count = Algorithm.objects.count()
-        self.assertEqual(new_algorithm_count, current_total_algorithm_count + 2)
+        self.assertEqual(new_algorithm_count, current_total_algorithm_count)
 
         # Ensure new algorithms were also added to the pipeline
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name, key=new_detector.key).exists())
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name, key=new_classifier.key).exists())
-
-    @unittest.skip("Not implemented yet")
-    def test_reprocessing_after_unknown_algorithm_added(self):
-        # @TODO fix issue with "None" algorithm on some detections
-
-        images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
-
-        save_results(self.fake_pipeline_results(images, self.pipeline))
-
-        new_detector = AlgorithmConfigResponse(
-            name="Unknown Detector 5.1b-mobile", key="unknown-detector", task_type="detection"
-        )
-        new_classifier = AlgorithmConfigResponse(
-            name="Unknown Classifier 3.0b-mega", key="unknown-classifier", task_type="classification"
-        )
-
-        fake_results = self.fake_pipeline_results(images, self.pipeline)
-
-        # Change the algorithm names to unknown ones
-        for detection in fake_results.detections:
-            detection.algorithm = AlgorithmReference(name=new_detector.name, key=new_detector.key)
-
-            for classification in detection.classifications:
-                classification.algorithm = AlgorithmReference(name=new_classifier.name, key=new_classifier.key)
-
-        fake_results.algorithms[new_detector.key] = new_detector
-        fake_results.algorithms[new_classifier.key] = new_classifier
-
-        # print("FAKE RESULTS")
-        # print(fake_results)
-        # print("END FAKE RESULTS")
-
-        saved_objects = save_results(fake_results, return_created=True)
-        assert saved_objects is not None
-        saved_detections = saved_objects.detections
-        saved_classifications = saved_objects.classifications
-
-        for obj in saved_detections:
-            assert obj.detection_algorithm  # For type checker, not the test
-
-            # Ensure the new detector was used for the detection
-            self.assertEqual(obj.detection_algorithm.name, new_detector.name)
-
-            # Ensure each detection has classification objects
-            self.assertTrue(obj.classifications.exists())
-
-            # Ensure detection has a correct classification object
-            for classification in obj.classifications.all():
-                self.assertIn(classification, saved_classifications)
-
-        for obj in saved_classifications:
-            assert obj.algorithm  # For type checker, not the test
-
-            # Ensure the new classifier was used for the classification
-            self.assertEqual(obj.algorithm.name, new_classifier.name)
-
-            # Ensure each classification has the correct detection object
-            self.assertIn(obj.detection, saved_detections, "Wrong detection object for classification object.")
-
-        # Ensure new algorithms were added to the pipeline
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name).exists())
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name).exists())
-
-        detection_algos_used = Detection.objects.all().values_list("detection_algorithm__name", flat=True).distinct()
-        self.assertTrue(new_detector.name in detection_algos_used)
-        # Ensure None is not in the list
-        self.assertFalse(None in detection_algos_used)
-        classification_algos_used = Classification.objects.all().values_list("algorithm__name", flat=True)
-        self.assertTrue(new_classifier.name in classification_algos_used)
-        # Ensure None is not in the list
-        self.assertFalse(None in classification_algos_used)
-
-        # The algorithms are new, but they were registered to the pipeline, so the images should be skipped.
-        images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
-        remaining_images_to_process = len(images_again)
-        self.assertEqual(remaining_images_to_process, 0)
+        # self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name, key=new_detector.key).exists())
+        # self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name, key=new_classifier.key).exists())
 
     def test_yes_reprocess_if_new_terminal_algorithm_same_intermediate(self):
         """
