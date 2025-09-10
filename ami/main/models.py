@@ -119,6 +119,8 @@ def get_or_create_default_deployment(
         project=project,
         research_site=site,
         device=device,
+        latitude=0,
+        longitude=0,
     )
     logger.info(f"Created default deployment for project {project}")
     return deployment
