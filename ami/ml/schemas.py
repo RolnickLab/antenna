@@ -182,8 +182,12 @@ class PipelineResultsResponse(pydantic.BaseModel):
     pipeline: str
     algorithms: dict[str, AlgorithmConfigResponse] = pydantic.Field(
         default_factory=dict,
-        description="A dictionary of all algorithms used in the pipeline, including their class list and other "
-        "metadata, keyed by the algorithm key.",
+        description=(
+            "A dictionary of all algorithms used in the pipeline, including their class list and other "
+            "metadata, keyed by the algorithm key. "
+            "DEPRECATED: Algorithms should only be provided in the ProcessingServiceInfoResponse."
+        ),
+        depreciated=True,
     )
     total_time: float
     source_images: list[SourceImageResponse]

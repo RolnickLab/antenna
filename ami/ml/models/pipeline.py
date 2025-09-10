@@ -854,6 +854,13 @@ def save_results(
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
     job_logger.info(f"Algorithms registered for pipeline: \n{''.join(algorithms_known.keys())}")
 
+    if results.algorithms:
+        logger.warning(
+            "Algorithms were returned by the processing service in the results, these will be ignored and "
+            "they should be removed to increase performance. "
+            "Algorithms and category maps must be registered before processing, using /info endpoint."
+        )
+
     detections = create_detections(
         detections=results.detections,
         algorithms_known=algorithms_known,
