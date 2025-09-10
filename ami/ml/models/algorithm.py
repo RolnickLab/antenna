@@ -17,6 +17,18 @@ from ami.base.models import BaseModel
 
 
 @typing.final
+class AlgorithmCategoryMapManager(models.Manager["AlgorithmCategoryMap"]):
+    def create(self, *args, **kwargs):
+        """
+        Create a new AlgorithmCategoryMap instance and generate its labels_hash.
+        """
+        instance = super().create(*args, **kwargs)
+        instance.labels_hash = instance.make_labels_hash(instance.labels)
+        instance.save()
+        return instance
+
+
+@typing.final
 class AlgorithmCategoryMap(BaseModel):
     """
     A list of classification labels for a given algorithm version
@@ -44,6 +56,8 @@ class AlgorithmCategoryMap(BaseModel):
     )
 
     algorithms: models.QuerySet[Algorithm]
+
+    objects = AlgorithmCategoryMapManager()
 
     def __str__(self):
         return f"#{self.pk} with {len(self.labels)} classes ({self.version or 'unknown version'})"
