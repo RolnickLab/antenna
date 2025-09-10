@@ -4,6 +4,9 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { ProjectDetailsForm } from './project-details-form'
 import styles from './styles.module.scss'
@@ -21,12 +24,9 @@ export const NewProjectDialog = ({
   buttonSize?: string
   buttonVariant?: string
 }) => {
+  const navigate = useNavigate()
+  const { createProject, isLoading, isSuccess, error } = useCreateProject()
   const [isOpen, setIsOpen] = useState(false)
-  const { createProject, isLoading, isSuccess, error } = useCreateProject(() =>
-    setTimeout(() => {
-      setIsOpen(false)
-    }, CLOSE_TIMEOUT)
-  )
 
   const label = translate(STRING.ENTITY_CREATE, {
     type: translate(STRING.ENTITY_TYPE_PROJECT),
@@ -48,7 +48,23 @@ export const NewProjectDialog = ({
             error={error}
             isLoading={isLoading}
             isSuccess={isSuccess}
-            onSubmit={(data) => createProject(data)}
+            onSubmit={async (data) => {
+              const response = await createProject(data)
+
+              setTimeout(() => {
+                setIsOpen(false)
+              }, CLOSE_TIMEOUT)
+
+              if (response.data.id) {
+                navigate(
+                  getAppRoute({
+                    to: APP_ROUTES.PROJECT_DETAILS({
+                      projectId: `${response.data.id}`,
+                    }),
+                  })
+                )
+              }
+            }}
           />
         </div>
       </Dialog.Content>
