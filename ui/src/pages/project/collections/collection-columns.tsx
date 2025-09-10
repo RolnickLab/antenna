@@ -87,7 +87,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.CAPTURES({ projectId }),
-          filters: { collection: item.id },
+          filters: { collections: item.id },
         })}
       >
         <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
