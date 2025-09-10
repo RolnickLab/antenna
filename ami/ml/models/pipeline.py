@@ -69,7 +69,7 @@ def filter_processed_images(
     """
     pipeline_algorithms = pipeline.algorithms.all()
 
-    detection_type_keys = Algorithm.detection_algorithm_task_types
+    detection_type_keys = Algorithm.detection_task_types
     detection_algorithms = pipeline_algorithms.filter(task_type__in=detection_type_keys)
     if not detection_algorithms.exists():
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
