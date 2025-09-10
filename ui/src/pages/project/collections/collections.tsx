@@ -26,6 +26,7 @@ export const Collections = () => {
       id: true,
       name: true,
       settings: true,
+      captures: true,
       'captures-with-detections': true,
       status: true,
     }
