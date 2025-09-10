@@ -25,10 +25,6 @@ const getSidebarSections = (
         id: 'collections',
         title: translate(STRING.NAV_ITEM_COLLECTIONS),
         path: APP_ROUTES.COLLECTIONS({ projectId: project.id }),
-        matchPath: APP_ROUTES.COLLECTION_DETAILS({
-          projectId: ':projectId',
-          collectionId: '*',
-        }),
       },
       {
         id: 'exports',
@@ -40,6 +36,15 @@ const getSidebarSections = (
   {
     title: 'Processing',
     items: [
+      {
+        id: 'jobs',
+        title: translate(STRING.NAV_ITEM_JOBS),
+        path: APP_ROUTES.JOBS({ projectId: project.id }),
+        matchPath: APP_ROUTES.JOB_DETAILS({
+          projectId: ':projectId',
+          jobId: '*',
+        }),
+      },
       {
         id: 'processing-services',
         title: translate(STRING.NAV_ITEM_PROCESSING_SERVICES),

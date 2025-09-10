@@ -1,5 +1,6 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { FilterSection } from 'components/filtering/filter-section'
 import { useCaptures } from 'data-services/hooks/captures/useCaptures'
-import { useCollectionDetails } from 'data-services/hooks/collections/useCollectionDetails'
 import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
@@ -10,40 +11,38 @@ import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { columns } from './capture-columns'
 import { CaptureGallery } from './capture-gallery'
 
-export const CollectionDetails = () => {
-  const { projectId, id } = useParams()
+export const Captures = () => {
+  const { projectId } = useParams()
   const { selectedView, setSelectedView } = useSelectedView('table')
-
-  // Collection details
-  const { collection } = useCollectionDetails(id as string)
-
-  // Collection captures
+  const { filters } = useFilters()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()
   const { captures, total, isLoading, isFetching, error } = useCaptures({
     projectId,
-    pagination,
     sort,
-    filters: [
-      {
-        field: 'collections',
-        value: id as string,
-      },
-    ],
+    pagination,
+    filters,
   })
 
   return (
-    <>
-      {collection && (
+    <div className="flex flex-col gap-6 md:flex-row">
+      <div className="space-y-6">
+        <FilterSection defaultOpen>
+          <FilterControl field="deployment" />
+          <FilterControl field="collections" />
+        </FilterSection>
+      </div>
+      <div className="w-full overflow-hidden">
         <PageHeader
-          title={collection.name}
+          title={translate(STRING.NAV_ITEM_CAPTURES)}
           subTitle={translate(STRING.RESULTS, {
-            total,
+            total: captures?.length ?? 0,
           })}
           isLoading={isLoading}
           isFetching={isFetching}
@@ -65,25 +64,25 @@ export const CollectionDetails = () => {
             onValueChange={setSelectedView}
           />
         </PageHeader>
-      )}
-      {selectedView === 'table' && (
-        <Table
-          columns={columns(projectId as string)}
-          error={error}
-          isLoading={isLoading}
-          items={captures}
-          onSortSettingsChange={setSort}
-          sortable
-          sortSettings={sort}
-        />
-      )}
-      {selectedView === 'gallery' && (
-        <CaptureGallery
-          captures={captures}
-          error={error}
-          isLoading={isLoading}
-        />
-      )}
+        {selectedView === 'table' && (
+          <Table
+            columns={columns(projectId as string)}
+            error={error}
+            isLoading={isLoading}
+            items={captures}
+            onSortSettingsChange={setSort}
+            sortable
+            sortSettings={sort}
+          />
+        )}
+        {selectedView === 'gallery' && (
+          <CaptureGallery
+            captures={captures}
+            error={error}
+            isLoading={isLoading}
+          />
+        )}
+      </div>
       <PageFooter>
         {captures?.length ? (
           <PaginationBar
@@ -93,6 +92,6 @@ export const CollectionDetails = () => {
           />
         ) : null}
       </PageFooter>
-    </>
+    </div>
   )
 }

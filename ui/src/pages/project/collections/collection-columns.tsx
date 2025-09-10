@@ -30,13 +30,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
-    renderCell: (item: Collection) => (
-      <Link
-        to={APP_ROUTES.COLLECTION_DETAILS({ projectId, collectionId: item.id })}
-      >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
-      </Link>
-    ),
+    renderCell: (item: Collection) => <BasicTableCell value={item.name} />,
   },
   {
     id: 'settings',
@@ -46,17 +40,6 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
         value={item.settingsDisplay}
         details={item.settingsDetailsDisplay}
       />
-    ),
-  },
-  {
-    id: 'captures-with-detections',
-    name: translate(STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS),
-    sortField: 'source_images_count',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Collection) => (
-      <BasicTableCell value={item.numImagesWithDetectionsLabel} />
     ),
   },
   {
@@ -91,6 +74,34 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       >
         <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
       </Link>
+    ),
+  },
+  {
+    id: 'captures',
+    name: 'Captures',
+    sortField: 'source_images_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.CAPTURES({ projectId }),
+          filters: { collection: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
+    id: 'captures-with-detections',
+    name: translate(STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => (
+      <BasicTableCell value={item.numImagesWithDetectionsLabel} />
     ),
   },
   {
