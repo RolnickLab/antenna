@@ -12,7 +12,12 @@ from ami.base.models import BaseModel
 from ami.main.models import Project
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
+from ami.ml.schemas import (
+    PipelineConfigResponse,
+    PipelineRegistrationResponse,
+    ProcessingServiceInfoResponse,
+    ProcessingServiceStatusResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +57,12 @@ class ProcessingService(BaseModel):
         self,
         enable_only: list[str] | None = None,
         projects: models.QuerySet[Project] | None = None,
+        pipeline_configs: list[PipelineConfigResponse] | None = None,
     ) -> PipelineRegistrationResponse:
         """
         Register pipeline choices in Antenna using the pipeline configurations from the processing service API.
         """
-        pipeline_configs = self.get_pipeline_configs()
+        pipeline_configs = pipeline_configs or self.get_pipeline_configs()
 
         pipelines_to_add = pipeline_configs  # all of them
         pipelines = []
