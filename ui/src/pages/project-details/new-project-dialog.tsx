@@ -14,7 +14,13 @@ const newProject = new Project({
   id: 'new-project',
 })
 
-export const NewProjectDialog = () => {
+export const NewProjectDialog = ({
+  buttonSize = 'small',
+  buttonVariant = 'outline',
+}: {
+  buttonSize?: string
+  buttonVariant?: string
+}) => {
   const [isOpen, setIsOpen] = useState(false)
   const { createProject, isLoading, isSuccess, error } = useCreateProject(() =>
     setTimeout(() => {
@@ -29,7 +35,7 @@ export const NewProjectDialog = () => {
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <Button size="small" variant="outline">
+        <Button size={buttonSize} variant={buttonVariant}>
           <PlusIcon className="w-4 h-4" />
           <span>{label}</span>
         </Button>
