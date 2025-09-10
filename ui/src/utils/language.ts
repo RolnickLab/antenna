@@ -429,7 +429,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp with year, month, day, hours, minutes and seconds (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} images can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} images for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
     'Station must be created before syncing images.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:

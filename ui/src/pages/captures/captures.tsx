@@ -13,9 +13,11 @@ import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { useSelectedView } from 'utils/useSelectedView'
 import { columns } from './capture-columns'
 import { CaptureGallery } from './capture-gallery'
+import { UploadImagesDialog } from './upload-images-dialog/upload-images-dialog'
 
 export const Captures = () => {
   const { projectId } = useParams()
@@ -23,12 +25,14 @@ export const Captures = () => {
   const { filters } = useFilters()
   const [sort, setSort] = useState<TableSortSettings>()
   const { pagination, setPage } = usePagination()
-  const { captures, total, isLoading, isFetching, error } = useCaptures({
-    projectId,
-    sort,
-    pagination,
-    filters,
-  })
+  const { captures, userPermissions, total, isLoading, isFetching, error } =
+    useCaptures({
+      projectId,
+      sort,
+      pagination,
+      filters,
+    })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
@@ -63,6 +67,7 @@ export const Captures = () => {
             value={selectedView}
             onValueChange={setSelectedView}
           />
+          {canCreate ? <UploadImagesDialog /> : null}
         </PageHeader>
         {selectedView === 'table' && (
           <Table
