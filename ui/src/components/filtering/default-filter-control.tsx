@@ -49,7 +49,13 @@ const InfoPopover = ({ project }: { project: ProjectDetails }) => (
             value={project.settings.scoreThreshold}
           />
         </FormRow>
-        <FormRow>
+        <FormRow
+          style={
+            project.featureFlags.default_filters
+              ? undefined
+              : { display: 'none' }
+          }
+        >
           <InputValue
             label="Include taxa"
             value={project.settings.includeTaxa
