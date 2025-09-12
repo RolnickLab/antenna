@@ -70,7 +70,7 @@ export const Projects = () => {
         <div className="flex flex-col items-center pt-32">
           <h1 className="mb-8 heading-large">Get started</h1>
           <p className="text-center body-large mb-16">
-            To start use Antenna, register your first project or view public
+            To start use Antenna, create your first project or view the public
             ones.
           </p>
           <div className="flex flex-col items-center gap-8">

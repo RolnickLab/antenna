@@ -409,7 +409,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version Name',
 
   /* ENTITY */
-  [STRING.ENTITY_CREATE]: 'Register new {{type}}',
+  [STRING.ENTITY_CREATE]: 'Create new {{type}}',
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
