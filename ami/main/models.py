@@ -216,7 +216,6 @@ default_feature_flags = ProjectFeatureFlags()
 class Project(ProjectSettingsMixin, BaseModel):
     """ """
 
-    project_accessor = ""
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to="projects", blank=True, null=True)

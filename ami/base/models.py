@@ -46,25 +46,46 @@ class BaseQuerySet(QuerySet):
         are visible to the given user. Only superusers, project owners,
         or members are allowed to view draft projects and their related objects.
         """
+        from ami.main.models import Project
+
+        # Superusers can see everything
         if user.is_superuser:
             return self
 
+        # Anonymous users can only see non-draft projects/objects
+        is_anonymous = isinstance(user, AnonymousUser)
+
         model = self.model
+
+        # Handle Project model directly
+        if model == Project:
+            # Create a base filter condition for non-draft projects
+            filter_condition = Q(draft=False)
+
+            # If user is logged in, also include projects they own or are members of
+            if not is_anonymous:
+                filter_condition |= Q(owner=user) | Q(members=user)
+
+            return self.filter(filter_condition).distinct()
+
+        # For models related to Project
         project_accessor = model.get_project_accessor()
 
         # No project relationship: return unfiltered
         if project_accessor is None:
             return self
-        # Get project field path or empty string if model is Project itself
-        project_field = f"{project_accessor}__" if project_accessor else ""
-        non_draft = Q(**{f"{project_field}draft": False})
 
-        if isinstance(user, AnonymousUser):
-            return self.filter(non_draft).distinct()
+        # Get project field path with trailing double underscore
+        project_field = f"{project_accessor}__"
 
-        owner = Q(**{f"{project_field}owner": user})
-        member = Q(**{f"{project_field}members": user})
-        return self.filter(non_draft | owner | member).distinct()
+        # Create a base filter condition for objects related to non-draft projects
+        filter_condition = Q(**{f"{project_field}draft": False})
+
+        # If user is logged in, also include objects related to projects they own or are members of
+        if not is_anonymous:
+            filter_condition |= Q(**{f"{project_field}owner": user}) | Q(**{f"{project_field}members": user})
+
+        return self.filter(filter_condition).distinct()
 
 
 class BaseModel(models.Model):
@@ -76,10 +97,32 @@ class BaseModel(models.Model):
 
     @classmethod
     def get_project_accessor(cls) -> str | None:
-        from ami.main.models import Project
+        """
+        Determines the path to access the related Project from this model.
 
-        if cls == Project:
-            return ""  # The model is Project itself
+        This method returns the appropriate accessor path based on the model's relationship to Project:
+
+        1. For direct ForeignKey or OneToOneField relationships to Project (occurrence.project)
+            - Returns "project" automatically (no need to define project_accessor)
+
+        2. For ManyToMany relationships to Project (pipeline.projects)
+            - Returns "projects" automatically (no need to define project_accessor)
+            - Note: Draft filtering will return objects with at least one non-draft project
+            - This is appropriate for global objects (pipelines, taxa, etc.) that can belong to multiple projects
+            - Such objects are never private data, unlike project-specific objects (occurrences, source_images)
+
+        3. For indirect relationships (accessed through other models) (detection.occurrence.project):
+            - Requires explicitly defining a 'project_accessor' class attribute
+            - Uses the Django double underscore convention ("__") to navigate through relationships
+            - Example: "deployment__project" (not "deployment.project")
+                where "deployment" is a field on this model and "project" is a field on Deployment
+
+        4. For the Project model itself:
+            - No project_accessor needed; will be handled by the isinstance check in get_project()
+
+        Returns:
+            str|None: The path to the related project, or None for no relationship or the Project model itself.
+        """
 
         if has_one_to_many_project_relation(cls):
             return "project"  # One-to-many or one-to-one relation
@@ -91,11 +134,15 @@ class BaseModel(models.Model):
 
     def get_project(self):
         """Dynamically get the related project using the project_accessor."""
+        from ami.main.models import Project
+
+        if isinstance(self, Project):
+            return self
+
         accessor = self.get_project_accessor()
         if accessor == "projects" or accessor is None:
             return None
-        if accessor == "":
-            return self
+
         project = self
         for part in accessor.split("__"):
             project = getattr(project, part, None)
