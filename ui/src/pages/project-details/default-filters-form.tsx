@@ -111,7 +111,12 @@ export const DefaultFiltersForm = ({
           />
         </FormRow>
       </FormSection>
-      <FormSection title="Taxa">
+      <FormSection
+        title="Taxa"
+        style={
+          project.featureFlags.default_filters ? undefined : { display: 'none' }
+        }
+      >
         <FormRow>
           <FormController
             name="includeTaxa"

@@ -96,7 +96,7 @@ const getSidebarSections = (
             },
           ]
         : []),
-      ...(project.canUpdate && project.featureFlags.default_filters
+      ...(project.canUpdate
         ? [
             {
               id: 'default-filters',
