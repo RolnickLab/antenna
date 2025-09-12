@@ -2175,3 +2175,50 @@ class TestDraftProjectPermissions(APITestCase):
                         self.assertIn(instance.id, visible_ids, msg)
                     else:
                         self.assertNotIn(instance.id, visible_ids, msg)
+
+    def test_summary_statistics(self):
+        """
+        Test the values returned in the /status/summary/ endpoint
+        when a project is in draft mode vs. non-draft mode.
+        and that only authorized users can access it.
+        """
+        url = f"/api/v2/status/summary/?project_id={self.project.pk}"
+
+        assert self._auth_get(self.member, url).status_code == 200
+        assert self._auth_get(self.outsider, url).status_code == 200
+
+        # All counts should be zero for outsider except for projects_count
+        public_response = self._auth_get(self.outsider, url)
+        self.assertEqual(public_response.status_code, 200)
+        data = public_response.json()
+        for key in data:
+            if key in ("projects_count", "num_projects"):  # one of these is a deprecated alias
+                self.assertGreaterEqual(data[key], 1, "Outsider should see at least one project")
+            else:
+                self.assertEqual(data[key], 0, f"Outsider should see 0 for {key}")
+
+        # Member should see actual counts
+        member_response = self._auth_get(self.member, url)
+        self.assertEqual(member_response.status_code, 200)
+        data = member_response.json()
+        for key in data:
+            self.assertGreaterEqual(data[key], 1, f"Member should see at least one for {key}")
+
+        # Set the project to non-draft and verify outsider can see counts
+        self.project.draft = False
+        self.project.save()
+        public_response = self._auth_get(self.outsider, url)
+        self.assertEqual(public_response.status_code, 200)
+        data = public_response.json()
+        for key in data:
+            self.assertGreaterEqual(data[key], 1, f"Outsider should see at least one for {key} in non-draft project")
+
+        # Test summary endpoint without project_id param
+        # This returns global counts
+        # The totals should be the non-draft project counts for outsider
+        # The the member should see the non-draft project counts + any other projects they belong to
+        # url = f"/api/v2/status/summary/"
+        # response = self._auth_get(self.outsider, url)
+        # self.assertEqual(response.status_code, 200)
+        # data = response.json()
+        # self.assertGreaterEqual(data["projects_count"], 1, "Outsider should see at least one project in summary")
