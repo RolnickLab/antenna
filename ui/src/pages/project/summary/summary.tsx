@@ -1,4 +1,4 @@
-import { Project } from 'data-services/models/project'
+import { ProjectDetails } from 'data-services/models/project-details'
 import { Box } from 'design-system/components/box/box'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
@@ -7,7 +7,7 @@ import { DeploymentsMap } from './deployments-map'
 
 export const Summary = () => {
   const { project } = useOutletContext<{
-    project: Project
+    project: ProjectDetails
   }>()
 
   return (

@@ -1291,7 +1291,7 @@ class TestRolePermissions(APITestCase):
             "project_manager": {
                 "project": {"create": False, "update": True, "delete": True},
                 "collection": {"create": True, "update": True, "delete": True, "populate": True},
-                "storage": {"create": True, "update": True, "delete": True},
+                "storage": {"create": True, "update": True, "delete": True, "test": True},
                 "sourceimage": {"create": True, "update": True, "delete": True},
                 "sourceimageupload": {"create": True, "update": True, "delete": True},
                 "site": {"create": True, "update": True, "delete": True},
