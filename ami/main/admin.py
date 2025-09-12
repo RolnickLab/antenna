@@ -87,6 +87,7 @@ class ProjectAdmin(GuardedModelAdmin):
                     "description",
                     "priority",
                     "active",
+                    "draft",
                     "feature_flags",
                 )
             },
