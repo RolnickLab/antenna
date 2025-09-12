@@ -89,6 +89,24 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
+    id: 'captures',
+    name: translate(STRING.FIELD_LABEL_CAPTURES),
+    sortField: 'numImages',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.CAPTURES({ projectId }),
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
     id: 'sessions',
     name: translate(STRING.FIELD_LABEL_SESSIONS),
     sortField: 'numEvents',
@@ -106,15 +124,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
       </Link>
     ),
   },
-  {
-    id: 'captures',
-    name: translate(STRING.FIELD_LABEL_CAPTURES),
-    sortField: 'numImages',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
-  },
+
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),

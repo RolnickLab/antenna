@@ -80,7 +80,8 @@ export class Collection extends Entity {
       this.numImagesWithDetections && this.numImages
         ? (this.numImagesWithDetections / this.numImages) * 100
         : 0
-    return `${this.numImagesWithDetections?.toLocaleString()} / ${this.numImages?.toLocaleString()} (${pct.toFixed(
+
+    return `${this.numImagesWithDetections?.toLocaleString()} (${pct.toFixed(
       0
     )}%)`
   }

@@ -103,22 +103,9 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'source-image-collection',
     sortField: 'source_image_collection',
     name: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
-    renderCell: (item: Job) =>
-      item.sourceImages ? (
-        <Link
-          to={APP_ROUTES.COLLECTION_DETAILS({
-            projectId,
-            collectionId: item.sourceImages?.id,
-          })}
-        >
-          <BasicTableCell
-            value={item.sourceImages?.name}
-            theme={CellTheme.Primary}
-          />
-        </Link>
-      ) : (
-        <></>
-      ),
+    renderCell: (item: Job) => (
+      <BasicTableCell value={item.sourceImages?.name} />
+    ),
   },
   {
     id: 'created-at',

@@ -26,6 +26,7 @@ const ComponentMap: {
   best_determination_score: ScoreFilter,
   classification_threshold: ScoreFilter,
   collection: CollectionFilter,
+  collections: CollectionFilter,
   date_end: DateFilter,
   date_start: DateFilter,
   deployment: StationFilter,

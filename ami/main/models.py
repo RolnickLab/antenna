@@ -98,14 +98,14 @@ as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 def get_or_create_default_device(project: "Project") -> "Device":
     """Create a default device for a project."""
-    device, _created = Device.objects.get_or_create(name="Default device", project=project)
+    device, _created = Device.objects.get_or_create(name="Default Device", project=project)
     logger.info(f"Created default device for project {project}")
     return device
 
 
 def get_or_create_default_research_site(project: "Project") -> "Site":
     """Create a default research site for a project."""
-    site, _created = Site.objects.get_or_create(name="Default site", project=project)
+    site, _created = Site.objects.get_or_create(name="Default Site", project=project)
     logger.info(f"Created default research site for project {project}")
     return site
 
@@ -119,6 +119,8 @@ def get_or_create_default_deployment(
         project=project,
         research_site=site,
         device=device,
+        latitude=0,
+        longitude=0,
     )
     logger.info(f"Created default deployment for project {project}")
     return deployment

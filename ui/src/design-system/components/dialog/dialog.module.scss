@@ -76,8 +76,7 @@ $dialog-padding-medium: 32px;
 .dialogTitle {
   all: unset;
   display: block;
-  @include paragraph-large();
-  font-weight: 600;
+  @include heading-6();
   color: $color-neutral-700;
   padding-top: 2px;
 }
