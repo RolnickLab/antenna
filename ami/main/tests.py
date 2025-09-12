@@ -1,5 +1,6 @@
 import datetime
 import logging
+import typing
 from io import BytesIO
 
 from django.contrib.auth.models import AnonymousUser
@@ -2176,49 +2177,106 @@ class TestDraftProjectPermissions(APITestCase):
                     else:
                         self.assertNotIn(instance.id, visible_ids, msg)
 
-    def test_summary_statistics(self):
+    def test_summary_counts(self):
         """
-        Test the values returned in the /status/summary/ endpoint
-        when a project is in draft mode vs. non-draft mode.
-        and that only authorized users can access it.
+        Test the expected counts returned by the /status/summary/ endpoint.
+
+        - Compare when a project is in draft mode vs non-draft mode.
+        - Verify counts from the perspective of a project member vs an outsider.
+        - Confirm that when the project is made non-draft, outsiders see the same counts as members.
         """
-        url = f"/api/v2/status/summary/?project_id={self.project.pk}"
+        project_url: str = f"/api/v2/status/summary/?project_id={self.project.pk}"
+        global_url: str = "/api/v2/status/summary/"
 
-        assert self._auth_get(self.member, url).status_code == 200
-        assert self._auth_get(self.outsider, url).status_code == 200
+        logger.info(f"Testing exact summary statistics for project {self.project.pk}")
 
-        # All counts should be zero for outsider except for projects_count
-        public_response = self._auth_get(self.outsider, url)
-        self.assertEqual(public_response.status_code, 200)
-        data = public_response.json()
-        for key in data:
-            if key in ("projects_count", "num_projects"):  # one of these is a deprecated alias
-                self.assertGreaterEqual(data[key], 1, "Outsider should see at least one project")
+        # Ensure project is in draft mode
+        self.project.draft = True
+        self.project.save()
+
+        # Test 1: Get the exact counts for the draft project from member perspective
+        member_project_response = self._auth_get(self.member, project_url)
+        self.assertEqual(member_project_response.status_code, 200)
+        draft_project_counts: dict[str, typing.Any] = member_project_response.json()
+
+        # Test 2: Verify outsider sees zeros for draft project (except projects_count)
+        outsider_project_response = self._auth_get(self.outsider, project_url)
+        self.assertEqual(outsider_project_response.status_code, 200)
+        outsider_project_data: dict[str, typing.Any] = outsider_project_response.json()
+
+        non_draft_project_count: int = Project.objects.filter(draft=False).count()
+
+        project_count_keys = ("projects_count", "num_projects")  # One of these is a deprecated alias
+
+        for key, value in outsider_project_data.items():
+            if key in project_count_keys:
+                self.assertEqual(
+                    value,
+                    non_draft_project_count,
+                    f"Outsider should see exactly {non_draft_project_count} non-draft projects for {key}, got {value}",
+                )
             else:
-                self.assertEqual(data[key], 0, f"Outsider should see 0 for {key}")
+                self.assertEqual(value, 0, f"Outsider should see exactly 0 for {key} in draft project, got {value}")
 
-        # Member should see actual counts
-        member_response = self._auth_get(self.member, url)
-        self.assertEqual(member_response.status_code, 200)
-        data = member_response.json()
-        for key in data:
-            self.assertGreaterEqual(data[key], 1, f"Member should see at least one for {key}")
+        # Test 3: Get global counts for both users
+        outsider_global_response = self._auth_get(self.outsider, global_url)
+        member_global_response = self._auth_get(self.member, global_url)
 
-        # Set the project to non-draft and verify outsider can see counts
+        self.assertEqual(outsider_global_response.status_code, 200)
+        self.assertEqual(member_global_response.status_code, 200)
+
+        outsider_global_data: dict[str, typing.Any] = outsider_global_response.json()
+        member_global_data: dict[str, typing.Any] = member_global_response.json()
+
+        # Test 4: Verify exact differences in global counts
+        for key in draft_project_counts.keys():
+            if key in project_count_keys:
+                # Skip project counts as they are not affected by draft status
+                continue
+
+            if key in ("num_taxa", "num_species", "taxa_count"):  # Two are deprecated aliases! @TOOD
+                # Taxa can be in multiple projects, so skip exact count check
+                logger.debug(f"Skipping exact count check for {key} due to potential multi-project association")
+                continue
+
+            outsider_global_count: int = outsider_global_data.get(key, 0)
+            member_global_count: int = member_global_data.get(key, 0)
+            draft_project_count: int = draft_project_counts[key]
+
+            # The difference should be exactly the draft project counts
+            # (assuming member has no other draft project access)
+            expected_member_count: int = outsider_global_count + draft_project_count
+
+            self.assertEqual(
+                member_global_count,
+                expected_member_count,
+                f"Member global count for {key} should be exactly {expected_member_count} "
+                f"(outsider: {outsider_global_count} + draft project: {draft_project_count}), "
+                f"got {member_global_count}",
+            )
+
+            logger.info(
+                f"{key} exact counts - Draft project: {draft_project_count}, "
+                f"Outsider global: {outsider_global_count}, "
+                f"Member global: {member_global_count}, "
+                f"Difference: {member_global_count - outsider_global_count}"
+            )
+
+        # Test 5: Verify behavior when project becomes non-draft
         self.project.draft = False
         self.project.save()
-        public_response = self._auth_get(self.outsider, url)
-        self.assertEqual(public_response.status_code, 200)
-        data = public_response.json()
-        for key in data:
-            self.assertGreaterEqual(data[key], 1, f"Outsider should see at least one for {key} in non-draft project")
 
-        # Test summary endpoint without project_id param
-        # This returns global counts
-        # The totals should be the non-draft project counts for outsider
-        # The the member should see the non-draft project counts + any other projects they belong to
-        # url = f"/api/v2/status/summary/"
-        # response = self._auth_get(self.outsider, url)
-        # self.assertEqual(response.status_code, 200)
-        # data = response.json()
-        # self.assertGreaterEqual(data["projects_count"], 1, "Outsider should see at least one project in summary")
+        # Now outsider should see the same counts as member saw before
+        non_draft_outsider_response = self._auth_get(self.outsider, project_url)
+        self.assertEqual(non_draft_outsider_response.status_code, 200)
+        non_draft_outsider_data: dict[str, typing.Any] = non_draft_outsider_response.json()
+
+        for key, expected_value in draft_project_counts.items():
+            actual_value: int = non_draft_outsider_data.get(key, 0)
+            self.assertEqual(
+                actual_value,
+                expected_value,
+                f"Outsider should see exactly {expected_value} for {key} in non-draft project, got {actual_value}",
+            )
+
+        logger.info("All exact count validations passed")
