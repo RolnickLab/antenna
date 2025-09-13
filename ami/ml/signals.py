@@ -54,12 +54,7 @@ def subscribe_celeryworker_to_pipeline_queues(sender, **kwargs) -> bool:
     if not pipelines:
         # TODO: kinda hacky. is there a way to unify the django and celery logs
         # to more easily see which queues the worker is subscribed to?
-        raise ValueError(
-            "No pipelines found; cannot subscribe to any queues. "
-            "If the database was just reset and migrated, this error might be expected. "
-            "Check both django and celery logs to ensure worker is subscribed to the project queues. "
-            "Alternatively, restart the celery worker again."
-        )
+        raise ValueError("No pipelines found; cannot subscribe to any queues.")
 
     for slug in pipelines:
         queue_name = f"ml-pipeline-{slug}"
@@ -81,13 +76,11 @@ def pipeline_created(sender, instance, created, **kwargs):
         queue_name = f"ml-pipeline-{instance.slug}"
         worker_name = get_worker_name()
 
-        if not worker_name:
-            logger.warning(
-                "Could not determine worker name; cannot subscribe to new queue "
-                f"{queue_name}. This might be an expected error if the worker hasn't "
-                "started or is ready to accept connections."
-            )
-            return
+        assert worker_name, (
+            "Could not determine worker name; cannot subscribe to new queue "
+            f"{queue_name}. This might be an expected error if the worker hasn't "
+            "started or is ready to accept connections."
+        )
 
         celery_app.control.add_consumer(queue_name, destination=[worker_name])
         logger.info(f"Queue '{queue_name}' successfully added to worker '{worker_name}'")

@@ -12,9 +12,6 @@ DJANGO_SUPERUSER_PASSWORD=localadmin
 # Redis
 REDIS_URL=redis://redis:6379/0
 
-# RabbitMQ
-CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
-
 # Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf

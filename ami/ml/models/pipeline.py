@@ -334,6 +334,7 @@ def handle_async_process_images(
         )
 
         task_id = str(uuid.uuid4())
+        # use transaction on commit to ensure source images and other project details are finished saving
         transaction.on_commit(
             lambda: process_pipeline_request.apply_async(
                 args=[prediction_request.dict(), project_id],

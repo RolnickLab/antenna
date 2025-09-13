@@ -20,11 +20,16 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
-      - redis
-      - minio-init
-      - rabbitmq
-      - celeryworker # required to subscribe the worker to the pipelines in the db
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio-init:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      celeryworker:  # required to subscribe the worker to the pipelines in the db
+        condition: service_healthy
     volumes:
       - .:/app:z
     env_file:
@@ -99,11 +104,22 @@ services:
     # Also make sure to install debugpy in your requirements/local.txt
     ports:
       - "5678:5678"
-    command: python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h  -l INFO
-    volumes:
-      - ./compose/local/django/celery/worker/start:/start-celeryworker
+    # start the worker with antenna_celeryworker to ensure it's discoverable by ami.ml.signals.get_worker_name
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate &&
+        python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h -l INFO
     depends_on:
       - rabbitmq
+    healthcheck:
+      # make sure DATABASE_URL is inside the ./.envs/.local/.postgres
+      test: ["CMD-SHELL", "celery -A config.celery_app inspect ping -d antenna_celeryworker@$(hostname) | grep -q pong"]
+      interval: 10s
+      timeout: 50s
+      retries: 5
+      start_period: 10s
 
   celerybeat:
     <<: *django
@@ -126,8 +142,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: user
-      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_USER: rabbituser
+      RABBITMQ_DEFAULT_PASS: rabbitpass
     networks:
       - antenna_network
 
@@ -162,8 +178,10 @@ services:
     env_file:
       - ./.envs/.local/.django
     depends_on:
-      - minio
-      - minio-proxy
+      minio:
+        condition: service_healthy
+      minio-proxy:
+        condition: service_started
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
@@ -187,7 +205,7 @@ services:
       context: ./processing_services/minimal
     command: ./celery_worker/start_celery.sh
     environment:
-      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+      - CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672//
     extra_hosts:
       - minio:host-gateway
     networks:

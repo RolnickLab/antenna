@@ -4,6 +4,8 @@ name: antenna-ci
 volumes:
   ami_ci_postgres_data:
     driver: local
+  minio_ci_data:
+    driver: local
 
 services:
   django: &django
@@ -12,12 +14,19 @@ services:
       dockerfile: ./compose/local/django/Dockerfile
     volumes:
       - .:/app:z
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
-      - redis
-      - minio-init
-      - ml_backend
-      - celeryworker
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio-init:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      celeryworker:  # required to subscribe the worker to the pipelines in the db
+        condition: service_healthy
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -38,11 +47,21 @@ services:
   celeryworker:
     <<: *django
     depends_on:
-      - postgres
       - rabbitmq
-    volumes:
-      - ./compose/local/django/celery/worker/start:/start-celeryworker
-    command: /start-celeryworker
+    # start the worker with antenna_celeryworker to ensure it's discoverable by ami.ml.signals.get_worker_name
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate &&
+        python -m celery -A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h -l INFO
+    healthcheck:
+      # make sure DATABASE_URL is inside the ./.envs/.ci/.postgres
+      test: ["CMD-SHELL", "celery -A config.celery_app inspect ping -d antenna_celeryworker@$(hostname) | grep -q pong"]
+      interval: 10s
+      timeout: 50s
+      retries: 5
+      start_period: 10s
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -52,6 +71,8 @@ services:
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     command: minio server --console-address ":9001" /data
+    volumes:
+      - "minio_ci_data:/data"
     env_file:
       - ./.envs/.ci/.django
     healthcheck:
@@ -65,7 +86,8 @@ services:
     env_file:
       - ./.envs/.ci/.django
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh

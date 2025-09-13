@@ -16,7 +16,7 @@ services:
       context: ./minimal
     command: ./celery_worker/start_celery.sh
     environment:
-      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+      - CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672//
     extra_hosts:
       - minio:host-gateway
     networks:
@@ -42,7 +42,7 @@ services:
       context: ./example
     command: ./celery_worker/start_celery.sh
     environment:
-      - CELERY_BROKER_URL=amqp://user:password@rabbitmq:5672//
+      - CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672//
     extra_hosts:
       - minio:host-gateway
     networks:
