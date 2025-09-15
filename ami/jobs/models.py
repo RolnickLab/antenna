@@ -730,10 +730,9 @@ class MLJob(JobType):
                 job.logger.info(
                     f"Continue processing the remaining {subtasks.count()} process image request subtasks."
                 )
-                # from django.db import transaction
-                # transaction.on_commit(lambda: check_ml_job_status.apply_async([job.pk]))
+                from django.db import transaction
 
-                check_ml_job_status.apply_async([job.pk])
+                transaction.on_commit(lambda: check_ml_job_status.apply_async([job.pk]))
         finally:
             # TODO: clean up?
             pass

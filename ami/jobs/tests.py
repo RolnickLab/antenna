@@ -19,7 +19,6 @@ from ami.jobs.models import (
 )
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.tests.fixtures.main import create_captures_from_files, setup_test_project
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -213,16 +212,9 @@ class TestJobView(APITestCase):
 
 class TestMLJobBatchProcessing(TestCase):
     def setUp(self):
-        self.project, self.deployment = setup_test_project()
-
-        self.captures = create_captures_from_files(
-            self.deployment, skip_existing=False
-        )  # creates the SourceImageCollection
-        self.source_image_collection = SourceImageCollection.objects.get(
-            name="Test Source Image Collection",
-            project=self.project,
-        )
-
+        self.project = Project.objects.first()  # get the original test project
+        assert self.project
+        self.source_image_collection = self.project.sourceimage_collections.get(name="Test Source Image Collection")
         self.pipeline = Pipeline.objects.get(slug="constant")
 
     def _check_correct_job_progress(
@@ -284,15 +276,20 @@ class TestMLJobBatchProcessing(TestCase):
             # self.assertGreater(job.progress.stages[3].progress, 0) # the results stage could be at 0 progress
             self.assertLess(job.progress.stages[3].progress, 1)
 
-    # @pytest.mark.django_db(transaction=True)
     def test_run_ml_job(self):
         """Test running a batch processing job end-to-end."""
+        from celery.result import AsyncResult
+
+        from config import celery_app
+
         logger.info(
             f"Starting test_batch_processing_job using collection "
             f"{self.source_image_collection} which contains "
             f"{self.source_image_collection.images.count()} images "
             f"and project {self.project}"
         )
+
+        # Create job
         job = Job.objects.create(
             job_type_key=MLJob.key,
             project=self.project,
@@ -301,6 +298,7 @@ class TestMLJobBatchProcessing(TestCase):
             pipeline=self.pipeline,
             source_image_collection=self.source_image_collection,
         )
+
         self.assertEqual(job.progress.stages[0].key, "delay")
         self.assertEqual(job.progress.stages[0].progress, 0)
         self.assertEqual(job.progress.stages[0].status, JobState.CREATED)
@@ -317,8 +315,6 @@ class TestMLJobBatchProcessing(TestCase):
         self.assertEqual(job.status, JobState.CREATED.value)
         self.assertEqual(job.progress.summary.progress, 0)
         self.assertEqual(job.progress.summary.status, JobState.CREATED)
-
-        from config import celery_app
 
         # celery_app.conf.task_always_eager = False  # make sure tasks are run asyncronously for this test
         inspector = celery_app.control.inspect()
@@ -354,15 +350,36 @@ class TestMLJobBatchProcessing(TestCase):
                     logger.info(f"Worker {worker} stats: {stats}")
             return True
 
-        def get_ml_task_details():
+        def get_ml_subtask_details(task_name, job):
+            """Get details for the ML job's subtasks."""
             # Check the results of the ml tasks from the results backend
-            ml_tasks = [
-                "ami.ml.tasks.check_ml_job_status",
-                "ami.ml.tasks.process_pipeline_request",
-                "ami.ml.tasks.save_results",
-            ]
-            logger.info(f"Checking ML task details for tasks: {ml_tasks}")
-            raise NotImplementedError
+            from ami.jobs.models import MLSubtaskNames
+
+            assert task_name in [name.value for name in MLSubtaskNames]
+            logger.info(f"Checking ML task details for task: {task_name}")
+
+            task_ids = job.ml_task_records.filter(task_name=task_name).values_list("task_id", flat=True)
+
+            details = {}
+            for task_id in task_ids:
+                try:
+                    async_result = AsyncResult(task_id, app=celery_app)
+                    task_info = {
+                        "id": async_result.id,
+                        "status": async_result.status,
+                        "successful": async_result.successful() if async_result.ready() else None,
+                        "result": async_result.result if async_result.ready() else None,
+                        "traceback": async_result.traceback if async_result.failed() else None,
+                        "date_done": str(getattr(async_result, "date_done", None)),
+                        "name": async_result.name,
+                    }
+                    details[task_id] = task_info
+                    logger.info(f"Task {task_id} details: {task_info}")
+                except Exception as e:
+                    logger.error(f"Error fetching details for task {task_id}: {e}")
+                    details[task_id] = {"error": str(e)}
+
+            return details
 
         job.run()
 
@@ -377,8 +394,16 @@ class TestMLJobBatchProcessing(TestCase):
             logger.info(f"Waiting for job to complete... elapsed time: {elapsed_time:.2f} seconds")
             check_all_celery_tasks()
             check_celery_results()
+            details = get_ml_subtask_details("process_pipeline_request", job)
+            logger.info(f"process_pipeline_request subtask details: {details}")
             # self._check_correct_job_progress(job, expected_num_process_subtasks=6, expected_num_results_subtasks=6)
-            time.sleep(0)
+
+            # # Run the task directly (bypassing job.run())
+            # from ami.ml.tasks import check_ml_job_status
+
+            # with transaction.atomic():
+            #     logger.info("Synchronously check the ml job status...")
+            #     check_ml_job_status(job.pk)  # must run inside same connection/transaction
 
         # Check all subtasks were successful
         ml_subtask_records = job.ml_task_records.all()
