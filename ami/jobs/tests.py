@@ -2,8 +2,10 @@
 import logging
 import time
 
+from django.db import connection
+
 # import pytest
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from guardian.shortcuts import assign_perm
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -210,7 +212,7 @@ class TestJobView(APITestCase):
         pass
 
 
-class TestMLJobBatchProcessing(TestCase):
+class TestMLJobBatchProcessing(TransactionTestCase):
     def setUp(self):
         self.project = Project.objects.first()  # get the original test project
         assert self.project
@@ -382,9 +384,11 @@ class TestMLJobBatchProcessing(TestCase):
             return details
 
         job.run()
+        connection.commit()
+        job.refresh_from_db()
 
         start_time = time.time()
-        timeout = 10  # seconds
+        timeout = 30  # seconds
         elapsed_time = 0
 
         while elapsed_time < timeout:

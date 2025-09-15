@@ -164,7 +164,9 @@ def collect_images(
 def process_pipeline_request(pipeline_request: dict, project_id: int):
     # TODO: instead of dict can we use pipeline request object?
     """
-    Placeholder for the processing service's request processing logic
+    This is the primary function for processing images on the antenna side.
+    Workers have a function of the same name which will run their own inference/processing logic.
+    On the antenna side, we use external servers via an API to process images.
     """
     request_data = PipelineRequest(**pipeline_request)
     source_image_requests = request_data.source_images

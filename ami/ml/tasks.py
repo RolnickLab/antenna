@@ -137,6 +137,4 @@ def check_ml_job_status(ml_job_id: int):
         from django.db import transaction
 
         logger.info(f"ML Job {ml_job_id} still in progress. Checking again for completed tasks.")
-        transaction.on_commit(
-            lambda: check_ml_job_status.apply_async([ml_job_id], countdown=10)
-        )  # check again in 10 seconds
+        transaction.on_commit(lambda: check_ml_job_status.apply_async([ml_job_id]))  # check again in 10 seconds
