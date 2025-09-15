@@ -37,15 +37,6 @@ const getSidebarSections = (
     title: 'Processing',
     items: [
       {
-        id: 'jobs',
-        title: translate(STRING.NAV_ITEM_JOBS),
-        path: APP_ROUTES.JOBS({ projectId: project.id }),
-        matchPath: APP_ROUTES.JOB_DETAILS({
-          projectId: ':projectId',
-          jobId: '*',
-        }),
-      },
-      {
         id: 'processing-services',
         title: translate(STRING.NAV_ITEM_PROCESSING_SERVICES),
         path: APP_ROUTES.PROCESSING_SERVICES({ projectId: project.id }),

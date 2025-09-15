@@ -32,7 +32,20 @@ export const useNavItems = () => {
         path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
         matchPath: APP_ROUTES.PROJECT_DETAILS({ projectId: ':projectId' }),
       },
-
+      ...(loggedIn
+        ? [
+            {
+              id: 'jobs',
+              title: translate(STRING.NAV_ITEM_JOBS),
+              icon: IconType.BatchId,
+              path: APP_ROUTES.JOBS({ projectId: projectId as string }),
+              matchPath: APP_ROUTES.JOB_DETAILS({
+                projectId: ':projectId',
+                jobId: '*',
+              }),
+            },
+          ]
+        : []),
       {
         id: 'captures',
         title: translate(STRING.NAV_ITEM_CAPTURES),
