@@ -321,17 +321,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
-            qs = qs.annotate(
-                taxa_count=models.Count(
-                    "occurrences__determination",
-                    distinct=True,
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_default_classification_threshold(
-                            project, self.request
-                        ),
-                    ),
-                ),
-            )
+            qs = qs.with_taxa_count(project, self.request)  # type: ignore
 
         return qs
 
