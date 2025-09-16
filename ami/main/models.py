@@ -211,7 +211,8 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     default_filters: bool = False  # Whether to show default filters form in UI
 
 
-default_feature_flags = ProjectFeatureFlags()
+def get_default_feature_flags() -> ProjectFeatureFlags:
+    return ProjectFeatureFlags()
 
 
 @final
@@ -229,7 +230,7 @@ class Project(ProjectSettingsMixin, BaseModel):
     )
     feature_flags = SchemaField(
         ProjectFeatureFlags,
-        default=default_feature_flags,
+        default=get_default_feature_flags,
         null=False,
         blank=True,
     )
