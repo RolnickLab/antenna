@@ -61,6 +61,9 @@ export const APP_ROUTES = {
   PIPELINES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/pipelines`,
 
+  PROCESSING: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/processing`,
+
   PROCESSING_SERVICE_DETAILS: (params: {
     projectId: string
     processingServiceId: string
