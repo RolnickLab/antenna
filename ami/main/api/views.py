@@ -29,11 +29,7 @@ from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.serializers import TagSerializer
-from ami.utils.requests import (
-    get_active_classification_threshold,
-    get_default_classification_threshold,
-    project_id_doc_param,
-)
+from ami.utils.requests import get_default_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -649,15 +645,15 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     ]
 
     def get_queryset(self) -> QuerySet:
-        classification_threshold = get_active_classification_threshold(self.request)
         query_set: QuerySet = super().get_queryset()
         project = self.get_active_project()
+        classification_threshold = get_default_classification_threshold(project, self.request)
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         )
         return queryset
 
