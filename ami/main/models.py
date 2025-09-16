@@ -30,7 +30,7 @@ from guardian.shortcuts import get_perms
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
@@ -155,7 +155,7 @@ def get_or_create_default_project(user: User) -> "Project":
     return project
 
 
-class ProjectQuerySet(models.QuerySet):
+class ProjectQuerySet(BaseQuerySet):
     def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
@@ -163,9 +163,8 @@ class ProjectQuerySet(models.QuerySet):
         return self.filter(members=user)
 
 
-class ProjectManager(models.Manager):
-    def get_queryset(self) -> ProjectQuerySet:
-        return ProjectQuerySet(self.model, using=self._db)
+class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
+    pass
 
     def create(self, create_defaults: bool = True, **kwargs) -> "Project":
         """
@@ -224,7 +223,10 @@ class Project(ProjectSettingsMixin, BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
-
+    draft = models.BooleanField(
+        default=False,
+        help_text="Indicates whether this project is in draft mode",
+    )
     feature_flags = SchemaField(
         ProjectFeatureFlags,
         default=default_feature_flags,
@@ -251,9 +253,6 @@ class Project(ProjectSettingsMixin, BaseModel):
     tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
-
-    def get_project(self):
-        return self
 
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
@@ -296,10 +295,10 @@ class Project(ProjectSettingsMixin, BaseModel):
         `delete_<model>`, `view_<model>`"""
 
         # Project permissions
-        VIEW = "view_project"
-        CHANGE = "update_project"
-        DELETE = "delete_project"
-        ADD = "create_project"
+        VIEW_PROJECT = "view_project"
+        UPDATE_PROJECT = "update_project"
+        DELETE_PROJECT = "delete_project"
+        CREATE_PROJECT = "create_project"
 
         # Identification permissions
         CREATE_IDENTIFICATION = "create_identification"
@@ -471,16 +470,12 @@ class Site(BaseModel):
 
 
 @final
-class DeploymentManager(models.Manager):
+class DeploymentManager(models.Manager.from_queryset(ProjectQuerySet)):
     """
     Custom manager that adds counts of related objects to the default queryset.
     """
 
-    def get_queryset(self):
-        return (
-            super().get_queryset()
-            # Add any common annotations or optimizations here
-        )
+    pass
 
 
 def _create_source_image_for_sync(
@@ -1470,6 +1465,7 @@ class SourceImageUpload(BaseModel):
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
 
+    project_accessor = "deployment__project"
     image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
@@ -1477,9 +1473,10 @@ class SourceImageUpload(BaseModel):
         "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
     )
 
-    def get_project(self):
-        """Get the project associated with the model instance."""
-        return self.deployment.get_project()
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+        self.deployment.save()
 
 
 @receiver(pre_delete, sender=SourceImageUpload)
@@ -1498,7 +1495,7 @@ def delete_source_image(sender, instance, **kwargs):
     instance.deployment.save()
 
 
-class SourceImageQuerySet(models.QuerySet):
+class SourceImageQuerySet(BaseQuerySet):
     def with_occurrences_count(self, classification_threshold: float = 0):
         return self.annotate(
             occurrences_count=models.Count(
@@ -1522,9 +1519,8 @@ class SourceImageQuerySet(models.QuerySet):
         )
 
 
-class SourceImageManager(models.Manager):
-    def get_queryset(self) -> SourceImageQuerySet:
-        return SourceImageQuerySet(self.model, using=self._db)
+class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
+    pass
 
 
 @final
@@ -1973,6 +1969,8 @@ def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxo
 class Identification(BaseModel):
     """A classification of an occurrence by a human."""
 
+    project_accessor = "occurrence__project"
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -2012,9 +2010,6 @@ class Identification(BaseModel):
         ordering = [
             "-created_at",
         ]
-
-    def get_project(self):
-        return self.occurrence.get_project()
 
     def save(self, *args, **kwargs):
         """
@@ -2095,7 +2090,7 @@ class ClassificationResult(BaseModel):
     pass
 
 
-class ClassificationQuerySet(models.QuerySet):
+class ClassificationQuerySet(BaseQuerySet):
     def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
         # Find the oldest classification for each unique combination
         if project_id:
@@ -2118,6 +2113,7 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 class Classification(BaseModel):
     """The output of a classifier"""
 
+    project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
         "Detection",
         on_delete=models.SET_NULL,
@@ -2254,6 +2250,7 @@ class Classification(BaseModel):
 class Detection(BaseModel):
     """An object detected in an image"""
 
+    project_accessor = "source_image__project"
     source_image = models.ForeignKey(
         SourceImage,
         on_delete=models.CASCADE,
@@ -2421,7 +2418,7 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
-class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
+class OccurrenceQuerySet(BaseQuerySet):
     def valid(self):
         return self.exclude(detections__isnull=True)
 
@@ -2716,7 +2713,7 @@ def update_occurrence_determination(
     return needs_update
 
 
-class TaxonQuerySet(models.QuerySet):
+class TaxonQuerySet(BaseQuerySet):
     def with_occurrence_counts(self, project: Project):
         """
         Annotate each taxon with the count of its occurrences for a given project.
@@ -3260,7 +3257,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 ]
 
 
-class SourceImageCollectionQuerySet(models.QuerySet):
+class SourceImageCollectionQuerySet(BaseQuerySet):
     def with_source_images_count(self):
         return self.annotate(
             source_images_count=models.Count(
