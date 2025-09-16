@@ -22,6 +22,7 @@ import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Algorithms } from 'pages/project/algorithms/algorithms'
+import { CollectionDetails } from 'pages/project/collections/collection-details'
 import { Collections } from 'pages/project/collections/collections'
 import { DefaultFilters } from 'pages/project/default-filters/default-filters'
 import { Devices } from 'pages/project/entities/devices'
@@ -108,6 +109,7 @@ export const App = () => (
             />
             <Route path="summary" element={<Summary />} />
             <Route path="collections" element={<Collections />} />
+            <Route path="collections/:id" element={<CollectionDetails />} />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
