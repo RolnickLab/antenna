@@ -41,6 +41,7 @@ from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
     ClassificationResponse,
+    DeploymentResponse,
     DetectionRequest,
     DetectionResponse,
     PipelineRequest,
@@ -345,11 +346,12 @@ def get_or_create_algorithm_and_category_map(
             " Will attempt to create one from the classification results."
         )
 
+    # @TODO update the unique constraint to use key & version instead of name & version
     algo, _created = Algorithm.objects.get_or_create(
-        key=algorithm_config.key,
+        name=algorithm_config.name,
         version=algorithm_config.version,
         defaults={
-            "name": algorithm_config.name,
+            "key": algorithm_config.key,
             "task_type": algorithm_config.task_type,
             "version_name": algorithm_config.version_name,
             "uri": algorithm_config.uri,
@@ -415,7 +417,7 @@ def get_or_create_detection(
 
     # A detection may have a pre-existing crop image URL or not.
     # If not, a new one will be created in a periodic background task.
-    if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
+    if detection_resp.crop_image_url and detection_resp.crop_image_url.startswith(("http://", "https://")):
         # Ensure that the crop image URL is not empty or only a slash. None is fine.
         crop_url = detection_resp.crop_image_url
     else:
@@ -729,6 +731,113 @@ def create_classifications(
     return existing_classifications + new_classifications
 
 
+def get_or_create_deployments(
+    deployments_data: list[DeploymentResponse],
+    project_id: int,
+    logger: logging.Logger = logger,
+) -> dict[str, Deployment]:
+    """
+    Create or get deployments from source images data.
+
+    :param source_images_data: List of source image dictionaries from raw JSON
+    :param project_id: Project ID to create deployments for
+    :param logger: Logger instance
+
+    :return: Dictionary mapping deployment keys to Deployment objects
+    """
+    from ami.main.models import Project, get_or_create_default_deployment
+
+    project = Project.objects.get(pk=project_id)
+    deployments = {}
+
+    for deployment_data in deployments_data:
+        deployment_name = deployment_data.name
+
+        if deployment_name not in deployments:
+            deployment = get_or_create_default_deployment(
+                project=project,
+                name=deployment_name,
+            )
+            deployments[deployment_name] = deployment
+
+    return deployments
+
+
+def create_source_images(
+    source_images_data: list[SourceImageResponse],
+    deployments: dict[str, Deployment],
+    project_id: int,
+    public_base_url: str | None = None,
+    logger: logging.Logger = logger,
+) -> dict[str, int]:
+    """
+    Create source images from pipeline results data.
+
+    This assumes the IDs are external IDs from the pipeline results creator
+    and maps them to internal IDs in the database.
+
+    This was created for an initial use case, needs to be tested for broader use cases.
+
+    :param source_images_data: List of source image dictionaries from raw JSON
+    :param deployments: Dictionary mapping deployment keys to Deployment objects
+    :param project_id: Project ID
+    :param public_base_url: Base URL for images if paths are relative
+    :param logger: Logger instance
+
+    :return: Dictionary mapping external IDs to internal source image IDs
+    """
+    import ami.utils.dates
+    from ami.main.models import Project
+
+    project = Project.objects.get(pk=project_id)
+    id_mapping = {}
+
+    for source_image_data in source_images_data:
+        external_id = source_image_data.id
+        url = source_image_data.url
+        deployment_info = source_image_data.deployment
+
+        if not deployment_info:
+            logger.warning(
+                f"The incoming source image {external_id} does not have a deployment specified. "
+                "This is required to create a SourceImage."
+            )
+            continue
+        else:
+            deployment_name = deployment_info.name
+            deployment = deployments[deployment_name]
+
+        # Check if source image already exists by URL and deployment
+        existing_image = SourceImage.objects.filter(deployment=deployment, path=url).first()
+
+        if existing_image:
+            source_image = existing_image
+            logger.debug(f"Using existing source image {source_image.pk} for path: {url}")
+        else:
+            # Extract timestamp from filename
+            timestamp = ami.utils.dates.get_image_timestamp_from_filename(url)
+
+            # Set public_base_url if provided and path is relative
+            final_public_base_url = None
+            if public_base_url and not url.startswith(("http://", "https://")):
+                final_public_base_url = public_base_url.rstrip("/")
+
+            source_image = SourceImage.objects.create(
+                path=url,
+                deployment=deployment,
+                project=project,
+                timestamp=timestamp,
+                public_base_url=final_public_base_url,
+            )
+            logger.info(f"Created source image {source_image.pk} for path: {url}")
+
+        # Map external ID to internal ID
+        id_mapping[external_id] = str(source_image.pk)
+        logger.debug(f"Mapped external ID {external_id} to internal ID {source_image.pk}")
+
+    return id_mapping
+
+
 def create_and_update_occurrences_for_detections(
     detections: list[Detection],
     logger: logging.Logger = logger,
@@ -802,6 +911,7 @@ class PipelineSaveResults:
     detections: list[Detection]
     classifications: list[Classification]
     algorithms: dict[str, Algorithm]
+    deployments: dict[str, Deployment]
     total_time: float
 
 
@@ -811,6 +921,10 @@ def save_results(
     results_json: str | None = None,
     job_id: int | None = None,
     return_created=False,
+    create_missing_source_images: bool = False,
+    project_id: int | None = None,
+    public_base_url: str | None = None,
+    create_new_algorithms: bool = False,
 ) -> PipelineSaveResults | None:
     """
     Save results from ML pipeline API.
@@ -826,7 +940,9 @@ def save_results(
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
         logger.warning(f"Pipeline choice returned by the Processing Service was not recognized! {pipeline}")
-    algorithms_used = set()
+
+    algorithms_used: dict[str, Algorithm] = {}
+    deployments_used: dict[str, Deployment] = {}
 
     job_logger = logger
     start_time = time.time()
@@ -844,6 +960,57 @@ def save_results(
 
     results = PipelineResultsResponse.parse_obj(results.dict())
     assert results, "No results from pipeline to save"
+
+    # Create missing source images and deployments if requested
+    if create_missing_source_images and project_id:
+        job_logger.info(f"Creating missing source images and deployments for project {project_id}")
+
+        deployments_data = results.deployments
+        source_images_data = results.source_images
+
+        if not deployments_data:
+            job_logger.warning(
+                "No deployments data found in results. "
+                "New source images will not be created without deployments data."
+            )
+        else:
+            deployments_used = get_or_create_deployments(
+                deployments_data=deployments_data,
+                project_id=project_id,
+                logger=job_logger,
+            )
+        deployments_map = {dep.name: dep for dep in Deployment.objects.filter(project_id=project_id)}
+        job_logger.info(f"Found {len(deployments_map)} existing deployments for project {project_id}")
+
+        if not source_images_data:
+            raise ValueError(
+                "No source images data found in results. "
+                "New detections cannot be created without source images data."
+            )
+
+        # Create source images from the external results data
+        # where the IDs do not match the internal IDs.
+        id_mapping = create_source_images(
+            source_images_data=source_images_data,
+            deployments=deployments_map,
+            project_id=project_id,
+            public_base_url=public_base_url,
+            logger=job_logger,
+        )
+
+        # Update the results to use internal IDs
+        for i, source_image_data in enumerate(source_images_data):
+            external_id = source_image_data.id
+            if external_id in id_mapping:
+                results.source_images[i].id = str(id_mapping[external_id])
+
+        # Update detection source_image_ids to use internal IDs
+        for detection in results.detections:
+            if detection.source_image_id in id_mapping:
+                detection.source_image_id = str(id_mapping[detection.source_image_id])
+
+        job_logger.debug(f"Created/found {len(id_mapping)} source images with ID mapping: {id_mapping}")
+
     source_images = SourceImage.objects.filter(pk__in=[int(img.id) for img in results.source_images]).distinct()
 
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
@@ -852,19 +1019,23 @@ def save_results(
             f"The pipeline returned by the ML backend was not recognized, created a placeholder: {pipeline}"
         )
 
-    # Algorithms and category maps should be created in advance when registering the pipeline & processing service
-    # however they are also currently available in each pipeline results response as well.
-    # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of the results
-    algorithms_used = {
-        algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
-        for algo_key, algo_config in results.algorithms.items()
-    }
-    # Add all algorithms initially reported in the pipeline response to the pipeline
-    for algo in algorithms_used.values():
-        pipeline.algorithms.add(algo)
+    if create_new_algorithms:
+        # Algorithms and category maps should be created in advance when registering the pipeline & processing service
+        # however they are also currently available in each pipeline results response as well.
+        # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of
+        # the results
+        algorithms_used = {
+            algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
+            for algo_key, algo_config in results.algorithms.items()
+        }
+        # Add all algorithms initially reported in the pipeline response to the pipeline
+        for algo in algorithms_used.values():
+            pipeline.algorithms.add(algo)
 
-    algos_reported = [f"    {algo.task_type}: {algo_key} ({algo})\n" for algo_key, algo in algorithms_used.items()]
-    job_logger.info(f"Algorithms reported in pipeline response: \n{''.join(algos_reported)}")
+        algos_reported = [f"    {algo.task_type}: {algo_key} ({algo})\n" for algo_key, algo in algorithms_used.items()]
+        job_logger.info(f"Algorithms reported in pipeline response: \n{''.join(algos_reported)}")
+    else:
+        algorithms_used = {algo.key: algo for algo in pipeline.algorithms.all()}
 
     detections = create_detections(
         detections=results.detections,
@@ -931,6 +1102,7 @@ def save_results(
             detections=detections,
             classifications=classifications,
             algorithms=algorithms_used,
+            deployments=deployments_used,
             total_time=total_time,
         )
 
@@ -1107,7 +1279,7 @@ class Pipeline(BaseModel):
             return processing_service_lowest_latency
 
     def process_images(self, images: typing.Iterable[SourceImage], project_id: int, job_id: int | None = None):
-        processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
+        processing_service = self.choose_processing_service_for_pipeline(job_id or 0, self.name, project_id)
 
         if not processing_service.endpoint_url:
             raise ValueError(
