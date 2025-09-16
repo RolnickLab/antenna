@@ -1,0 +1,16 @@
+@import 'src/design-system/variables/colors.scss';
+@import 'src/design-system/variables/typography.scss';
+
+.badge {
+  padding: 6px 16px 4px;
+  border-radius: 4px;
+  background-color: $color-success-100;
+  color: $color-success-700;
+  text-align: center;
+  @include label();
+
+  &.deprecated {
+    background-color: $color-destructive-100;
+    color: $color-destructive-600;
+  }
+}
