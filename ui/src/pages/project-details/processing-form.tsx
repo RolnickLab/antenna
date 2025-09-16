@@ -104,7 +104,7 @@ export const ProcessingForm = ({
   )
 }
 
-export const PipelinesSelect = ({
+const PipelinesSelect = ({
   onPipelineChange,
   pipeline,
 }: {
@@ -119,11 +119,11 @@ export const PipelinesSelect = ({
   return (
     <Select.Root
       disabled={pipelines.length === 0}
-      value={pipeline?.id ?? ''}
       onValueChange={(value) => {
         const pipeline = pipelines.find((p) => p.id === value)
         onPipelineChange(pipeline)
       }}
+      value={pipeline?.id ?? ''}
     >
       <Select.Trigger loading={isLoading}>
         <Select.Value placeholder="Select a pipeline" />

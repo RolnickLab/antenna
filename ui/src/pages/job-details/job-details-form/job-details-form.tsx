@@ -7,11 +7,13 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SaveButton } from 'design-system/components/button/save-button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { CollectionsPicker } from 'design-system/components/collections-picker'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { PipelinesPicker } from './pipelines-picker'
@@ -61,6 +63,9 @@ export const JobDetailsForm = ({
   isSuccess?: boolean
   onSubmit: (data: JobFormValues) => void
 }) => {
+  const { projectId } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
+
   const {
     control,
     handleSubmit,
@@ -69,6 +74,7 @@ export const JobDetailsForm = ({
     defaultValues: {
       name: '',
       delay: 0,
+      pipeline: project?.settings.defaultProcessingPipeline?.id,
     },
     mode: 'onChange',
   })
