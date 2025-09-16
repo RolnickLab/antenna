@@ -73,7 +73,10 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     renderCell: (item: Capture) =>
       item.sessionId ? (
         <Link
-          to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}
+          to={APP_ROUTES.SESSION_DETAILS({
+            projectId,
+            sessionId: item.sessionId,
+          })}
         >
           <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
         </Link>
