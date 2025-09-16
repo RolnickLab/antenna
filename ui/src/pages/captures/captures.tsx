@@ -48,7 +48,7 @@ export const Captures = () => {
         <PageHeader
           title={translate(STRING.NAV_ITEM_CAPTURES)}
           subTitle={translate(STRING.RESULTS, {
-            total: captures?.length ?? 0,
+            total,
           })}
           isLoading={isLoading}
           isFetching={isFetching}
