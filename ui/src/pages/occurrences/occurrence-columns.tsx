@@ -91,19 +91,25 @@ export const columns: (
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     sortField: 'deployment',
-    renderCell: (item: Occurrence) => (
-      <Link
-        to={APP_ROUTES.DEPLOYMENT_DETAILS({
-          projectId,
-          deploymentId: item.deploymentId,
-        })}
-      >
-        <BasicTableCell
-          value={item.deploymentLabel}
-          theme={CellTheme.Primary}
-        />
-      </Link>
-    ),
+    renderCell: (item: Occurrence) => {
+      if (!item.deploymentId) {
+        return <></>
+      }
+
+      return (
+        <Link
+          to={APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId,
+            deploymentId: item.deploymentId,
+          })}
+        >
+          <BasicTableCell
+            value={item.deploymentLabel}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      )
+    },
   },
   {
     id: 'session',

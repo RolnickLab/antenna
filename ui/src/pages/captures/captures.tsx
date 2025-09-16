@@ -6,15 +6,14 @@ import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { useSelectedView } from 'utils/useSelectedView'
+import { useSort } from 'utils/useSort'
 import { columns } from './capture-columns'
 import { CaptureGallery } from './capture-gallery'
 import { UploadImagesDialog } from './upload-images-dialog/upload-images-dialog'
@@ -23,7 +22,10 @@ export const Captures = () => {
   const { projectId } = useParams()
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { filters } = useFilters()
-  const [sort, setSort] = useState<TableSortSettings>()
+  const { sort, setSort } = useSort({
+    field: 'timestamp',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
   const { captures, userPermissions, total, isLoading, isFetching, error } =
     useCaptures({
@@ -46,7 +48,7 @@ export const Captures = () => {
         <PageHeader
           title={translate(STRING.NAV_ITEM_CAPTURES)}
           subTitle={translate(STRING.RESULTS, {
-            total: captures?.length ?? 0,
+            total,
           })}
           isLoading={isLoading}
           isFetching={isFetching}

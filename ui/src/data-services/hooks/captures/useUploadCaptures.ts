@@ -19,7 +19,7 @@ export const useUploadCaptures = (onSuccess?: () => void) => {
   )
 
   const error = results?.some(isRejected)
-    ? 'Not all images could not be uploaded, please retry.'
+    ? 'Not all images could be uploaded, please retry.'
     : undefined
 
   return {

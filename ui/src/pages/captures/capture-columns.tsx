@@ -52,26 +52,36 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     sortField: 'deployment__name',
-    renderCell: (item: Capture) => (
-      <Link
-        to={APP_ROUTES.DEPLOYMENT_DETAILS({
-          projectId,
-          deploymentId: item.deploymentId,
-        })}
-      >
-        <BasicTableCell
-          value={item.deploymentLabel}
-          theme={CellTheme.Primary}
-        />
-      </Link>
-    ),
+    renderCell: (item: Capture) => {
+      if (!item.deploymentId) {
+        return <></>
+      }
+
+      return (
+        <Link
+          to={APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId,
+            deploymentId: item.deploymentId,
+          })}
+        >
+          <BasicTableCell
+            value={item.deploymentLabel}
+            theme={CellTheme.Primary}
+          />
+        </Link>
+      )
+    },
   },
   {
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     sortField: 'event__start',
-    renderCell: (item: Capture) =>
-      item.sessionId ? (
+    renderCell: (item: Capture) => {
+      if (!item.sessionId) {
+        return <></>
+      }
+
+      return (
         <Link
           to={APP_ROUTES.SESSION_DETAILS({
             projectId,
@@ -80,9 +90,8 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
         >
           <BasicTableCell value={item.sessionLabel} theme={CellTheme.Primary} />
         </Link>
-      ) : (
-        <BasicTableCell />
-      ),
+      )
+    },
   },
   {
     id: 'occurrences',
