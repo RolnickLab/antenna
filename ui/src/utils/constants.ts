@@ -17,8 +17,8 @@ export const APP_ROUTES = {
   ALGORITHMS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/algorithms`,
 
-  COLLECTION_DETAILS: (params: { projectId: string; collectionId: string }) =>
-    `/projects/${params.projectId}/collections/${params.collectionId}`,
+  CAPTURES: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/captures`,
 
   COLLECTIONS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/collections`,

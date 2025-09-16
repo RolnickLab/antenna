@@ -17,7 +17,7 @@ import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
 import { ResetPassword } from 'pages/auth/reset-password'
 import { ResetPasswordConfirm } from 'pages/auth/reset-password-confirm'
-import { CollectionDetails } from 'pages/collection-details/collection-details'
+import { Captures } from 'pages/captures/captures'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
@@ -108,7 +108,6 @@ export const App = () => (
             />
             <Route path="summary" element={<Summary />} />
             <Route path="collections" element={<Collections />} />
-            <Route path="collections/:id" element={<CollectionDetails />} />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
@@ -124,6 +123,7 @@ export const App = () => (
           </Route>
           <Route path="jobs/:id?" element={<Jobs />} />
           <Route path="deployments/:id?" element={<Deployments />} />
+          <Route path="captures" element={<Captures />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="sessions/:id" element={<SessionDetails />} />
           <Route path="occurrences/:id?" element={<Occurrences />} />

@@ -25,10 +25,6 @@ const getSidebarSections = (
         id: 'collections',
         title: translate(STRING.NAV_ITEM_COLLECTIONS),
         path: APP_ROUTES.COLLECTIONS({ projectId: project.id }),
-        matchPath: APP_ROUTES.COLLECTION_DETAILS({
-          projectId: ':projectId',
-          collectionId: '*',
-        }),
       },
       {
         id: 'exports',

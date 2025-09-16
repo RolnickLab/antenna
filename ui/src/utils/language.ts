@@ -181,6 +181,7 @@ export enum STRING {
 
   /* NAV_ITEM */
   NAV_ITEM_ALGORITHMS,
+  NAV_ITEM_CAPTURES,
   NAV_ITEM_COLLECTIONS,
   NAV_ITEM_DEFAULT_FILTERS,
   NAV_ITEM_DEPLOYMENTS,
@@ -324,7 +325,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_CATEGORY_MAP_ID]: 'Category map ID',
   [STRING.FIELD_LABEL_CATEGORY_COUNT]: 'Taxa',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
-  [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures w/detections',
+  [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures with detections',
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
@@ -408,7 +409,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version Name',
 
   /* ENTITY */
-  [STRING.ENTITY_CREATE]: 'Register new {{type}}',
+  [STRING.ENTITY_CREATE]: 'Create new {{type}}',
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
@@ -428,7 +429,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp with year, month, day, hours, minutes and seconds (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} images can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} images for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
     'Station must be created before syncing images.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
@@ -471,6 +472,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_ALGORITHMS]: 'Algorithms',
+  [STRING.NAV_ITEM_CAPTURES]: 'Captures',
   [STRING.NAV_ITEM_COLLECTIONS]: 'Collections',
   [STRING.NAV_ITEM_DEFAULT_FILTERS]: 'Default filters',
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',

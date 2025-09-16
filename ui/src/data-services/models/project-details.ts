@@ -1,3 +1,4 @@
+import { UserPermission } from 'utils/user/types'
 import { Project } from './project'
 
 export type ServerProject = any // TODO: Update this type
@@ -50,5 +51,9 @@ export class ProjectDetails extends Project {
 
   get summaryData(): SummaryData[] {
     return this._project.summary_data
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._project.user_permissions
   }
 }
