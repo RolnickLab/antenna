@@ -228,7 +228,7 @@ class Project(ProjectSettingsMixin, BaseModel):
     )
     feature_flags = SchemaField(
         ProjectFeatureFlags,
-        default=ProjectFeatureFlags,
+        default=get_default_feature_flags,
         null=False,
         blank=True,
     )
