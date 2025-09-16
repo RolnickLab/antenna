@@ -1080,6 +1080,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "event",
         "deployment",
         "determination__rank",
+        "detections__source_image",
     ]
     ordering_fields = [
         "created_at",
