@@ -3267,6 +3267,42 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 
 
 class SourceImageCollectionQuerySet(models.QuerySet):
+    def _build_default_taxa_filter(
+        self,
+        classification_threshold: float = 0,
+        project: Project | None = None,
+    ) -> Q:
+        """
+        Build a reusable Q filter for occurrences and taxa, applying:
+        - classification score threshold
+        - project-level include/exclude taxa defaults
+        """
+        filter_q = Q(images__detections__occurrence__determination_score__gte=classification_threshold)
+
+        if not project:
+            return filter_q
+
+        include_taxa = project.default_filters_include_taxa.all()
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+
+        if include_taxa.exists():
+            include_q = Q(images__detections__occurrence__determination__in=include_taxa)
+            for taxon in include_taxa:
+                include_q |= Q(
+                    images__detections__occurrence__determination__parents_json__contains=[{"id": taxon.pk}]
+                )
+            filter_q &= include_q
+
+        if exclude_taxa.exists():
+            exclude_q = Q(images__detections__occurrence__determination__in=exclude_taxa)
+            for taxon in exclude_taxa:
+                exclude_q |= Q(
+                    images__detections__occurrence__determination__parents_json__contains=[{"id": taxon.pk}]
+                )
+            filter_q &= ~exclude_q
+
+        return filter_q
+
     def with_source_images_count(self):
         return self.annotate(
             source_images_count=models.Count(

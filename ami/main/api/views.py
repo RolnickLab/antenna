@@ -651,9 +651,9 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         )
         return queryset
 
