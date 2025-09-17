@@ -336,7 +336,7 @@ class Command(BaseCommand):
                 # Add or update the rank of the taxon based on incoming data
                 if not taxon.rank or taxon.rank != rank:
                     if not created:
-                        logger.warning(f"Rank of existing {taxon} is {taxon.rank}, changing to {rank}")
+                        logger.warning(f"Rank of existing {taxon} is changing from {taxon.rank} to {rank}")
                     taxon.rank = rank
                     taxon.save(update_calculated_fields=False)
                     if not created:

@@ -11,7 +11,7 @@ export const useCreateProject = (onSuccess?: () => void) => {
 
   const { mutateAsync, isLoading, isSuccess, reset, error } = useMutation({
     mutationFn: (fieldValues: any) =>
-      axios.post(
+      axios.post<{ id: number }>(
         `${API_URL}/${API_ROUTES.PROJECTS}/`,
         convertToServerFormData(fieldValues),
         {

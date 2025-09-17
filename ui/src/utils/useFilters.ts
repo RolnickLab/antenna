@@ -28,6 +28,10 @@ export const AVAILABLE_FILTERS: {
     field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
   },
   {
+    label: 'Collection',
+    field: 'collections', // This is for viewing Captures by collection @TODO: Can we update this key to "collection" to streamline?
+  },
+  {
     label: 'Station',
     field: 'deployment',
   },

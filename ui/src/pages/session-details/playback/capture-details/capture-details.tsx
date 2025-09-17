@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
 import { Job } from 'data-services/models/job'
 import { ProcessingService } from 'data-services/models/processing-service'
@@ -179,7 +180,11 @@ const StarButton = ({
 }
 
 const JobControls = ({ capture }: { capture?: Capture }) => {
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>()
+  const { projectId } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
+  const [selectedPipelineId, setSelectedPipelineId] = useState(
+    project?.settings.defaultProcessingPipeline?.id
+  )
 
   return (
     <div className={styles.jobControls}>
@@ -215,13 +220,20 @@ const PipelinesPicker = ({
   onValueChange: (value?: string) => void
 }) => {
   const { projectId } = useParams()
-  const { pipelines = [] } = usePipelines({
+  const { pipelines = [], isLoading } = usePipelines({
     projectId: projectId as string,
   })
 
   return (
-    <Select.Root value={value ?? ''} onValueChange={onValueChange}>
-      <Select.Trigger className="h-8 !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0">
+    <Select.Root
+      disabled={pipelines.length === 0}
+      onValueChange={onValueChange}
+      value={value ?? ''}
+    >
+      <Select.Trigger
+        className="h-8 !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0"
+        loading={isLoading}
+      >
         <Select.Value placeholder="Select a pipeline" />
       </Select.Trigger>
       <Select.Content>

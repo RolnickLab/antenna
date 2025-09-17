@@ -17,11 +17,12 @@ import { Auth } from 'pages/auth/auth'
 import { Login } from 'pages/auth/login'
 import { ResetPassword } from 'pages/auth/reset-password'
 import { ResetPasswordConfirm } from 'pages/auth/reset-password-confirm'
-import { CollectionDetails } from 'pages/collection-details/collection-details'
+import { Captures } from 'pages/captures/captures'
 import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Algorithms } from 'pages/project/algorithms/algorithms'
+import { CollectionDetails } from 'pages/project/collections/collection-details'
 import { Collections } from 'pages/project/collections/collections'
 import { DefaultFilters } from 'pages/project/default-filters/default-filters'
 import { Devices } from 'pages/project/entities/devices'
@@ -30,6 +31,7 @@ import { Exports } from 'pages/project/exports/exports'
 import { General } from 'pages/project/general/general'
 import { Pipelines } from 'pages/project/pipelines/pipelines'
 import { ProcessingServices } from 'pages/project/processing-services/processing-services'
+import { Processing } from 'pages/project/processing/processing'
 import Project from 'pages/project/project'
 import { Storage } from 'pages/project/storage/storage'
 import { Summary } from 'pages/project/summary/summary'
@@ -121,9 +123,11 @@ export const App = () => (
             <Route path="general" element={<General />} />
             <Route path="default-filters" element={<DefaultFilters />} />
             <Route path="storage" element={<Storage />} />
+            <Route path="processing" element={<Processing />} />
           </Route>
           <Route path="jobs/:id?" element={<Jobs />} />
           <Route path="deployments/:id?" element={<Deployments />} />
+          <Route path="captures" element={<Captures />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="sessions/:id" element={<SessionDetails />} />
           <Route path="occurrences/:id?" element={<Occurrences />} />
