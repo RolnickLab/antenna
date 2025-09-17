@@ -669,3 +669,30 @@ class TestAlgorithmCategoryMaps(TestCase):
             # Ensure the full labels in the data match the simple, ordered list of labels
             sorted_data = sorted(algorithm.category_map.data, key=lambda x: x["index"])
             assert [category["label"] for category in sorted_data] == algorithm.category_map.labels
+
+    def test_labels_hash_auto_generation(self):
+        """Test that labels_hash is automatically generated when creating AlgorithmCategoryMap instances."""
+        from ami.ml.models import AlgorithmCategoryMap
+
+        # Test data
+        test_labels = ["coleoptera", "diptera", "lepidoptera"]
+        test_data = [
+            {"index": 0, "label": "coleoptera"},
+            {"index": 1, "label": "diptera"},
+            {"index": 2, "label": "lepidoptera"},
+        ]
+
+        # Create instance using objects.create()
+        category_map = AlgorithmCategoryMap.objects.create(labels=test_labels, data=test_data, version="test-v1")
+
+        # Verify labels_hash was automatically generated
+        self.assertIsNotNone(category_map.labels_hash)
+
+        # Verify the hash matches what make_labels_hash would produce
+        expected_hash = AlgorithmCategoryMap.make_labels_hash(test_labels)
+        self.assertEqual(category_map.labels_hash, expected_hash)
+
+        # Test that creating another instance with same labels produces same hash
+        category_map2 = AlgorithmCategoryMap.objects.create(labels=test_labels, data=test_data, version="test-v2")
+
+        self.assertEqual(category_map.labels_hash, category_map2.labels_hash)
