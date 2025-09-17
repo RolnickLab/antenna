@@ -20,6 +20,41 @@ from ami.base.models import BaseModel
 class AlgorithmCategoryMap(BaseModel):
     """
     A list of classification labels for a given algorithm version
+
+    Expected schema for `data` field. This is the primary "category map" used by the model
+    to map from the category index in the model output to a human-readable label and other metadata.
+
+    IMPORTANT: Currently only `label` & `taxon_rank` are imported to the Taxon model if the taxon does
+    not already exist in the Antenna database. But the Taxon model can store any metadata, so this is
+    extensible in the future.
+    [
+        {
+            "index": 0,
+            "gbif_key": 123456,
+            "label": "Vanessa atalanta",
+            "taxon_rank": "SPECIES",
+        },
+        {
+            "index": 1,
+            "gbif_key": 789012,
+            "label": "Limenitis",
+            "taxon_rank": "GENUS",
+        },
+        {
+            "id": 3,
+            "gbif_key": 345678,
+            "label": "Nymphalis californica",
+            "taxon_rank": "SPECIES",
+        }
+    ]
+
+    The labels field is a simple list of string labels the correct index order used by the model.
+    [
+        "Vanessa atalanta",
+        "Limenitis",
+        "Nymphalis californica",
+    ]
+
     """
 
     data = models.JSONField(
@@ -54,6 +89,14 @@ class AlgorithmCategoryMap(BaseModel):
         Create a hash from the labels for faster comparison of unique label sets
         """
         return hash("".join(labels))
+
+    @classmethod
+    def labels_from_data(cls, data, label_field="label"):
+        return [category[label_field] for category in data]
+
+    @classmethod
+    def data_from_labels(cls, labels, label_field="label"):
+        return [{"index": i, label_field: label} for i, label in enumerate(labels)]
 
     def get_category(self, label, label_field="label"):
         # Can use JSON containment operators

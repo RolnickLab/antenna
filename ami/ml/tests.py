@@ -675,12 +675,12 @@ class TestAlgorithmCategoryMaps(TestCase):
         from ami.ml.models import AlgorithmCategoryMap
 
         # Test data
-        test_labels = ["coleoptera", "diptera", "lepidoptera"]
         test_data = [
             {"index": 0, "label": "coleoptera"},
             {"index": 1, "label": "diptera"},
             {"index": 2, "label": "lepidoptera"},
         ]
+        test_labels = AlgorithmCategoryMap.labels_from_data(test_data)
 
         # Create instance using objects.create()
         category_map = AlgorithmCategoryMap.objects.create(labels=test_labels, data=test_data, version="test-v1")
@@ -696,3 +696,22 @@ class TestAlgorithmCategoryMaps(TestCase):
         category_map2 = AlgorithmCategoryMap.objects.create(labels=test_labels, data=test_data, version="test-v2")
 
         self.assertEqual(category_map.labels_hash, category_map2.labels_hash)
+
+    def test_labels_data_conversion_methods(self):
+        from ami.ml.models import AlgorithmCategoryMap
+
+        # Test data
+        test_data = [
+            {"index": 0, "label": "coleoptera"},
+            {"index": 1, "label": "diptera"},
+            {"index": 2, "label": "lepidoptera"},
+        ]
+        test_labels = AlgorithmCategoryMap.labels_from_data(test_data)
+
+        # Convert labels to data and back
+        converted_data = AlgorithmCategoryMap.data_from_labels(test_labels)
+        converted_labels = AlgorithmCategoryMap.labels_from_data(converted_data)
+
+        # Verify conversions are correct
+        self.assertEqual(test_data, converted_data)
+        self.assertEqual(test_labels, converted_labels)
