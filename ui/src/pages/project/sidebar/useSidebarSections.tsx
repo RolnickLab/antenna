@@ -106,6 +106,15 @@ const getSidebarSections = (
         title: translate(STRING.NAV_ITEM_STORAGE),
         path: APP_ROUTES.STORAGE({ projectId: project.id }),
       },
+      ...(project.canUpdate
+        ? [
+            {
+              id: 'processing',
+              title: translate(STRING.NAV_ITEM_PROCESSING),
+              path: APP_ROUTES.PROCESSING({ projectId: project.id }),
+            },
+          ]
+        : []),
     ],
   },
 ]
