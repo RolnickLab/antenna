@@ -153,8 +153,8 @@ class ZeroShotHFClassifierPipeline(Pipeline):
         description=("Zero Shot Object Detector with HF image classifier."),
         version=1,
         algorithms=[
-            ZeroShotObjectDetector.algorithm_config_response,
-            HFImageClassifier.algorithm_config_response,
+            ZeroShotObjectDetector().algorithm_config_response,
+            HFImageClassifier().algorithm_config_response,
         ],
     )
 
@@ -167,7 +167,7 @@ class ZeroShotHFClassifierPipeline(Pipeline):
             zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
         self.config.algorithms = [
             zero_shot_object_detector.algorithm_config_response,
-            HFImageClassifier.algorithm_config_response,
+            HFImageClassifier().algorithm_config_response,
         ]
 
         return [zero_shot_object_detector, HFImageClassifier()]
@@ -212,7 +212,7 @@ class ZeroShotObjectDetectorPipeline(Pipeline):
         slug="zero-shot-object-detector-pipeline",
         description=("Zero shot object detector (bbox and classification)."),
         version=1,
-        algorithms=[ZeroShotObjectDetector.algorithm_config_response],
+        algorithms=[ZeroShotObjectDetector().algorithm_config_response],
     )
 
     def get_stages(self) -> list[Algorithm]:
@@ -254,8 +254,8 @@ class ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline(Pipeline):
         description=("HF zero shot object detector with random species classifier."),
         version=1,
         algorithms=[
-            ZeroShotObjectDetector.algorithm_config_response,
-            RandomSpeciesClassifier.algorithm_config_response,
+            ZeroShotObjectDetector().algorithm_config_response,
+            RandomSpeciesClassifier().algorithm_config_response,
         ],
     )
 
@@ -266,7 +266,7 @@ class ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline(Pipeline):
 
         self.config.algorithms = [
             zero_shot_object_detector.algorithm_config_response,
-            RandomSpeciesClassifier.algorithm_config_response,
+            RandomSpeciesClassifier().algorithm_config_response,
         ]
 
         return [zero_shot_object_detector, RandomSpeciesClassifier()]
@@ -307,8 +307,8 @@ class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
         description=("HF zero shot object detector with constant classifier."),
         version=1,
         algorithms=[
-            ZeroShotObjectDetector.algorithm_config_response,
-            ConstantClassifier.algorithm_config_response,
+            ZeroShotObjectDetector().algorithm_config_response,
+            ConstantClassifier().algorithm_config_response,
         ],
     )
 
@@ -319,7 +319,7 @@ class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
 
         self.config.algorithms = [
             zero_shot_object_detector.algorithm_config_response,
-            ConstantClassifier.algorithm_config_response,
+            ConstantClassifier().algorithm_config_response,
         ]
 
         return [zero_shot_object_detector, ConstantClassifier()]
