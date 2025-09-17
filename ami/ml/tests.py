@@ -553,8 +553,6 @@ class TestPipeline(TestCase):
         self.assertEqual(new_algorithm_count, current_total_algorithm_count)
 
         # Ensure new algorithms were also added to the pipeline
-        # self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name, key=new_detector.key).exists())
-        # self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name, key=new_classifier.key).exists())
 
     def test_yes_reprocess_if_new_terminal_algorithm_same_intermediate(self):
         """
