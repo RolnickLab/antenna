@@ -102,25 +102,29 @@ class AlgorithmCategoryMap(BaseModel):
         # Can use JSON containment operators
         return self.data.index(next(category for category in self.data if category[label_field] == label))
 
-    def with_taxa(self, category_field="label", only_indexes: list[int] | None = None):
+    def with_taxa(self, category_field="label", only_indexes: list[int] | None = None) -> list[dict]:
         """
         Add Taxon objects to the category map, or None if no match
 
         :param category_field: The field in the category data to match against the Taxon name
         :return: The category map with the taxon objects added
 
-        @TODO need a top_n parameter to limit the number of taxa to fetch
-        @TODO consider creating missing taxa?
+        @TODO consider creating missing taxa in batch? the top 1 taxon is saved when a classification is created, but
+        not the rest of the taxa in the category map, so the top_n response will often have missing taxa.
+        @TODO this needs refactoring and optimization
         """
 
         from ami.main.models import Taxon
 
         if only_indexes:
-            labels_data = [self.data[i] for i in only_indexes]
+            labels_data: list[dict] = [category for category in self.data if category["index"] in only_indexes]
             labels_label = [self.labels[i] for i in only_indexes]
         else:
-            labels_data = self.data
+            labels_data: list[dict] = self.data
             labels_label = self.labels
+
+        if not labels_label or not labels_data:
+            raise ValueError("No label data found in category map data")
 
         # @TODO standardize species search / lookup.
         # See similar query in ml.models.pipeline.get_or_create_taxon_for_classification()
