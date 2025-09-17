@@ -16,8 +16,9 @@ logger.setLevel(logging.INFO)
 
 
 def read_csv(fname: str) -> list[dict[str, Any]]:
-    reader = csv.DictReader(open(fname))
-    taxa = [row for row in reader]
+    with open(fname) as f:
+        reader = csv.DictReader(f)
+        taxa = [row for row in reader]
     return taxa
 
 
