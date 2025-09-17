@@ -852,7 +852,7 @@ def save_results(
         )
 
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
-    job_logger.info(f"Algorithms registered for pipeline: \n{''.join(algorithms_known.keys())}")
+    job_logger.info(f"Algorithms registered for pipeline: \n{', '.join(algorithms_known.keys())}")
 
     if results.algorithms:
         logger.warning(
