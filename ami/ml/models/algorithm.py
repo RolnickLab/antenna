@@ -13,7 +13,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils.text import slugify
 
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, BaseQuerySet
 
 
 @typing.final
@@ -150,7 +150,7 @@ class ArrayLength(models.Func):
     function = "CARDINALITY"
 
 
-class AlgorithmQuerySet(models.QuerySet["Algorithm"]):
+class AlgorithmQuerySet(BaseQuerySet):
     def with_category_count(self):
         """
         Annotate the queryset with the number of categories in the category map

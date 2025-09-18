@@ -8,8 +8,8 @@ import requests
 from django.conf import settings
 from django.db import models
 
-from ami.base.models import BaseModel
-from ami.main.models import Project
+from ami.base.models import BaseQuerySet
+from ami.main.models import BaseModel, Project
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import (
@@ -22,7 +22,7 @@ from ami.ml.schemas import (
 logger = logging.getLogger(__name__)
 
 
-class ProcessingServiceManager(models.Manager):
+class ProcessingServiceManager(models.Manager.from_queryset(BaseQuerySet)):
     """Custom manager for ProcessingService to handle specific queries."""
 
     def create(self, **kwargs) -> "ProcessingService":

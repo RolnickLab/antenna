@@ -20,7 +20,7 @@ from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
 
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
     Classification,
@@ -921,7 +921,7 @@ class PipelineStage(ConfigurableStage):
     """A configurable stage of a pipeline."""
 
 
-class PipelineQuerySet(models.QuerySet):
+class PipelineQuerySet(BaseQuerySet):
     """Custom QuerySet for Pipeline model."""
 
     def enabled(self, project: Project) -> PipelineQuerySet:

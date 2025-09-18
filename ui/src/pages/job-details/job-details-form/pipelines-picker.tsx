@@ -17,12 +17,13 @@ export const PipelinesPicker = ({
   return (
     <Select
       loading={isLoading}
+      onValueChange={onValueChange}
       options={pipelines.map((p) => ({
         value: p.id,
         label: p.name,
       }))}
+      showClear={false}
       value={value}
-      onValueChange={onValueChange}
     />
   )
 }
