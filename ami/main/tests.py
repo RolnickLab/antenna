@@ -38,7 +38,15 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_captures_in_range,
+    create_deployment,
+    create_occurrences,
+    create_storage_source,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, ProjectManager
@@ -227,14 +235,17 @@ class TestImageGrouping(TestCase):
             interval_minutes=10,
         )
 
+        self.assertEqual(self.deployment.captures.count(), num_nights * images_per_night)
+
         events = group_images_into_events(
             deployment=self.deployment,
             max_time_gap=datetime.timedelta(hours=2),
+            use_existing=False,
         )
 
-        assert len(events) == num_nights
+        self.assertEqual(len(events), num_nights)
         for event in events:
-            assert event.captures.count() == images_per_night
+            self.assertEqual(event.captures.count(), images_per_night)
 
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
@@ -269,6 +280,404 @@ class TestImageGrouping(TestCase):
             for capture in event.captures.all():
                 # print(capture.path, capture.width, capture.height)
                 assert (capture.width == image_width) and (capture.height == image_height)
+
+    def test_grouping_merges_overlapping_groups(self):
+        now = datetime.datetime.now()
+
+        # Create initial captures (4 captures  0 to 30 mins from now)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(minutes=30),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Initial grouping with default max_time_gap (2 hours)
+        initial_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,  # force full grouping
+        )
+
+        assert len(initial_events) == 1
+        initial_event = initial_events[0]
+        initial_capture_count = initial_event.captures.count()
+
+        # Create overlapping captures (4 captures 25 to 55 mins from now )
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(minutes=25),
+            end_time=now + datetime.timedelta(minutes=55),
+            interval_minutes=10,
+        )
+
+        # Group again using use_existing=True (only new captures will be merged)
+        merged_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=True,  # merge behavior
+        )
+
+        # Assert that the same event was merged into
+        assert len(merged_events) == 1  # only one updated event
+        assert merged_events[0] == initial_event, "Expected the same event to be updated with new captures"
+        initial_event.refresh_from_db(fields=["start", "end"])
+        updated_capture_count = initial_event.captures.count()
+
+        assert updated_capture_count == initial_capture_count + 4  # 4 new overlapping captures
+        # Assert that the start and end times are updated correctly
+        assert initial_event.start == now
+        assert initial_event.end >= now + datetime.timedelta(minutes=55)
+
+    def test_grouping_merges_on_proximity(self):
+        now = datetime.datetime.now()
+
+        # Create first group: 0 to 30 minutes (4 captures)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(minutes=30),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Group first batch (force new event)
+        initial_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        assert len(initial_events) == 1
+        initial_event = initial_events[0]
+        initial_capture_count = initial_event.captures.count()
+        # Assert that the first group has 4 captures
+        assert initial_capture_count == 4
+
+        # Create second group: starts just under 2 hours after first group ends
+        # First group ends at now + 30 min => second group starts at now + 1 hr 50 min
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=1, minutes=50),
+            end_time=now + datetime.timedelta(hours=2, minutes=20),
+            interval_minutes=10,
+        )
+
+        # Group new captures
+        merged_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=True,
+        )
+
+        # The proximity between first group's end and second group's start
+        # is 1h 20min, which is within the default 2h . We should merge
+        assert len(merged_events) == 1  # one event was updated
+
+        initial_event.refresh_from_db(fields=["start", "end"])
+        updated_capture_count = initial_event.captures.count()
+
+        assert updated_capture_count == initial_capture_count + 4  # 4 new images
+        assert initial_event.end >= now + datetime.timedelta(hours=2, minutes=20)
+
+    def test_grouping_does_not_merge_when_proximity_exceeds_default_gap(self):
+        now = datetime.datetime.now()
+
+        # Create first group: 0 to 30 minutes
+        initial_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(minutes=30),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Group first batch (fresh start)
+        initial_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        assert len(initial_events) == 1
+
+        # Create second group: starts just after 2 hours from first group's end
+        # First group ends at now + 30 min. Second group starts at now + 2 hr 31 min
+        second_event_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=2, minutes=31),
+            end_time=now + datetime.timedelta(hours=3),
+            interval_minutes=10,
+        )
+
+        # Group new captures (should not merge due to exceeding time gap)
+        group_images_into_events(
+            deployment=self.deployment,
+            use_existing=True,
+        )
+
+        # Check that a new event was created instead of merging
+        all_events = Event.objects.filter(deployment=self.deployment).order_by("start")
+        assert all_events.count() == 2
+
+        first_event, second_event = all_events
+        assert first_event.captures.count() == len(initial_captures)
+        assert second_event.captures.count() == len(second_event_captures)
+        assert second_event.start == now + datetime.timedelta(hours=2, minutes=31)
+        assert second_event.end == now + datetime.timedelta(hours=2, minutes=51)
+
+    def test_grouping_exact_overlap(self):
+        now = datetime.datetime.now()
+
+        # Create initial captures (0 to 30 min)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(minutes=30),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Group initial captures
+        initial_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        assert len(initial_events) == 1
+        initial_event = initial_events[0]
+        initial_capture_count = initial_event.captures.count()
+
+        # Create new captures with exact same timestamps (overlap)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(minutes=30),
+            interval_minutes=5,
+        )
+
+        # Group again with use_existing=False
+        group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+
+        # Assertions
+        all_events = Event.objects.filter(deployment=self.deployment)
+        assert all_events.count() == 1  # no new event created
+        updated_event = all_events.first()
+        assert updated_event is not None
+        # assert that updated_event is the same as initial_event
+        assert updated_event == initial_event
+        assert updated_event.pk == initial_event.pk
+        assert (
+            updated_event.captures.count() == initial_capture_count + 3
+        )  # 3 new images are added (not considered duplicates)
+
+    def test_regroup_with_different_time_gap(self):
+        """
+        Scenario: There are already grouped events using a certain time gap.
+        Then we re-group with a different (smaller) time gap using use_existing=False.
+        Expectation:
+        - All previous groupings are overridden.
+        - Events match new grouping.
+        - No empty events are left.
+        """
+        now = datetime.datetime.now()
+
+        # Initial setup: create 6 images, 15 mins apart => total 75 mins
+        first_batch_start = now
+        first_batch_end = now + datetime.timedelta(minutes=75)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=first_batch_start,
+            end_time=first_batch_end,
+            interval_minutes=15,
+            keep_existing=False,
+        )
+        gap_between_batches = datetime.timedelta(minutes=45)
+        second_batch_start = first_batch_end + gap_between_batches
+        second_batch_end = second_batch_start + datetime.timedelta(minutes=75)
+
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=second_batch_start,
+            end_time=second_batch_end,
+            interval_minutes=15,
+            keep_existing=True,
+        )
+
+        # Group with large time gap (2 hours)
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            use_existing=False,
+        )
+        assert Event.objects.filter(deployment=self.deployment).count() == 1
+
+        # Re-group with smaller time gap (30 mins)
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(minutes=30),
+            use_existing=False,
+        )
+
+        events = Event.objects.filter(deployment=self.deployment)
+        images = SourceImage.objects.filter(deployment=self.deployment)
+
+        # Should split into two events
+        assert events.count() == 2, "Expected two events after regrouping with smaller time gap"
+        # No empty events left
+        for event in events:
+            assert event.captures.exists(), f"Event {event.pk} should not be empty after regrouping"
+        # All images reassigned
+        assert (
+            images.exclude(event__isnull=True).count() == images.count()
+        ), "All images should be assigned to an event after regrouping"
+
+    def test_full_regroup_after_adding_new_overlapping_images(self):
+        now = datetime.datetime.now()
+
+        # Create first batch: 4 images (10 min apart)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=1),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+        logger.info("First batch of images created.")
+        group_images_into_events(deployment=self.deployment, use_existing=False)
+        old_events = Event.objects.filter(deployment=self.deployment)
+        assert old_events.exists()
+        assert old_events.count() == 1, "Expected one event after first grouping"
+
+        # Add second batch of images (new captures) that overlaps with existing events
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(minutes=40),
+            end_time=now + datetime.timedelta(hours=2),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Full regroup
+        group_images_into_events(deployment=self.deployment, use_existing=False)
+
+        events = Event.objects.filter(deployment=self.deployment)
+        # expected one event, since the new captures overlap with the existing ones
+        assert events.count() == 1, "Expected one event after regrouping with new overlapping images"
+        images = SourceImage.objects.filter(deployment=self.deployment)
+
+        # Every image belongs to a valid event
+        assert images.exclude(event__isnull=True).count() == images.count()
+        # No empty events
+        for event in events:
+            assert event.captures.exists()
+
+    def test_merge_with_multiple_existing_overlapping_events(self):
+        now = datetime.datetime.now()
+
+        # Create first batch: 0 to 2 hour
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=2),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Create second batch: 3 to 5 hours
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=4),
+            end_time=now + datetime.timedelta(hours=7),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Group all images initially (use_existing=False)
+        initial_events = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        assert len(initial_events) == 2
+
+        # Create third batch: overlaps both (1 to 5 hours)
+        create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=1),
+            end_time=now + datetime.timedelta(hours=5),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Regroup all (use_existing=False) — should create one merged event
+        full_regrouped = group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        assert len(full_regrouped) == 1
+
+    def test_merge_with_multiple_existing_overlapping_events_use_existing_true(self):
+        now = datetime.datetime.now()
+
+        # Create first batch: 0 to 2 hour
+        first_batch_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=2),
+            interval_minutes=10,
+            keep_existing=False,
+        )
+
+        # Create second batch: 4 to 7 hours
+        second_batch_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=4),
+            end_time=now + datetime.timedelta(hours=7),
+            interval_minutes=10,
+            keep_existing=True,
+        )
+
+        # Group all images initially (use_existing=False)
+        group_images_into_events(
+            deployment=self.deployment,
+            use_existing=False,
+        )
+        # Assert that there are two events
+        # Get events sorted by start time
+        initial_events = Event.objects.filter(deployment=self.deployment).order_by("start")
+
+        assert len(initial_events) == 2
+        # assert that the first event has 13 captures and start time is now, end time is now + 2 hours
+        first_event = initial_events[0]
+        assert first_event.start == now
+        assert first_event.end == now + datetime.timedelta(hours=2)
+        assert first_event.captures.count() == 13
+        # assert that the second event has 19 captures and start time is now + 4 hours, end time is now + 7 hours
+        second_event = initial_events[1]
+        assert second_event.start == now + datetime.timedelta(hours=4)
+        assert second_event.end == now + datetime.timedelta(hours=7)
+        assert second_event.captures.count() == 19
+
+        # Create third batch: overlaps both (1 to 5 hours)
+        third_batch_captures = create_captures_in_range(
+            deployment=self.deployment,
+            start_time=now + datetime.timedelta(hours=1, minutes=1),
+            end_time=now + datetime.timedelta(hours=5, minutes=1),
+            interval_minutes=2 * 60,  # 2 hours
+            keep_existing=True,
+        )
+
+        # Group only new images (use_existing=True) — should merge into one event
+        group_images_into_events(
+            deployment=self.deployment,
+            use_existing=True,
+        )
+        # Assert that there is one event and it should start at now and end at now + 7 hours
+        merged_events = Event.objects.filter(deployment=self.deployment).order_by("start")
+        assert len(merged_events) == 1
+        merged_event = merged_events[0]
+        assert merged_event.start == now
+        assert merged_event.end == now + datetime.timedelta(hours=7)
+
+        assert merged_event.captures.count() == len(first_batch_captures) + len(second_batch_captures) + len(
+            third_batch_captures
+        )
 
 
 # This test is disabled because it requires certain data to be present in the database
@@ -365,12 +774,14 @@ class TestEvents(TestCase):
 
 class TestDuplicateFieldsOnChildren(TestCase):
     def setUp(self) -> None:
-        from ami.main.models import Deployment, Project
+        from ami.main.models import Project
 
         self.project_one = Project.objects.create(name="Test Project One")
         self.project_two = Project.objects.create(name="Test Project Two")
-        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project_one)
 
+        data_source = create_storage_source(self.project_one, "Test Data Source")
+        self.deployment = create_deployment(self.project_one, data_source, "Test Deployment")
+        assert self.deployment.data_source is not None
         create_captures(deployment=self.deployment)
         self.deployment.save(regroup_async=False)  # Ensure events are grouped immediately
         create_taxa(project=self.project_one)
@@ -1765,17 +2176,18 @@ class TestDeploymentSyncCreatesEvents(TestCase):
     def test_sync_creates_events_and_updates_counts(self):
         # Set up a new project and deployment with test data
         project, deployment = setup_test_project(reuse=False)
-
+        now = datetime.datetime.now()
         # Populate the object store with image data
         assert deployment.data_source is not None
         populate_bucket(
             config=deployment.data_source.config,
             subdir=f"deployment_{deployment.pk}",
             skip_existing=False,
+            beginning_timestamp=now,
         )
 
         # Sync captures
-        deployment.sync_captures()
+        deployment.sync_captures(regroup_events_per_batch=True)
 
         # Refresh and check results
         deployment.refresh_from_db()
@@ -1795,10 +2207,11 @@ class TestDeploymentSyncCreatesEvents(TestCase):
             num_nights=2,
             images_per_day=5,
             minutes_interval=120,
+            beginning_timestamp=now + datetime.timedelta(days=10),
         )
 
         # Sync again
-        deployment.sync_captures()
+        deployment.sync_captures(regroup_events_per_batch=True)
         deployment.refresh_from_db()
         updated_events = Event.objects.filter(deployment=deployment)
 
