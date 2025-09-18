@@ -2219,14 +2219,15 @@ class Classification(BaseModel):
         """Return top N taxa and scores for this classification."""
         if not self.category_map:
             logger.warning(
-                f"Classification {self.pk}'s algrorithm ({self.algorithm_id} has no catgory map, "
+                f"Classification {self.pk}'s algorithm ({self.algorithm_id}) has no category map, "
                 "can't get top N predictions."
             )
             return []
 
         top_scored = self.top_scores_with_index(n)  # (index, score) pairs
         indexes = [idx for idx, _ in top_scored]
-        category_data = self.category_map.with_taxa(only_indexes=indexes)
+        category_data: list[dict] = self.category_map.with_taxa(only_indexes=indexes)
+        assert category_data is not None
         index_to_taxon = {cat["index"]: cat["taxon"] for cat in category_data}
 
         return [

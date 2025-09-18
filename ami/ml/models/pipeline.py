@@ -36,6 +36,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
+from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -69,7 +70,7 @@ def filter_processed_images(
     """
     pipeline_algorithms = pipeline.algorithms.all()
 
-    detection_type_keys = Algorithm.detection_algorithm_task_types
+    detection_type_keys = Algorithm.detection_task_types
     detection_algorithms = pipeline_algorithms.filter(task_type__in=detection_type_keys)
     if not detection_algorithms.exists():
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
@@ -314,37 +315,11 @@ def get_or_create_algorithm_and_category_map(
     :param algorithm_configs: A dictionary of algorithms from the processing services' "/info" endpoint
     :param logger: A logger instance from the parent function
 
-    :return: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :return: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
 
     @TODO this should be called when registering a pipeline, not when saving results.
     But currently we don't have a way to register pipelines.
     """
-    category_map = None
-    category_map_data = algorithm_config.category_map
-    if category_map_data:
-        labels_hash = AlgorithmCategoryMap.make_labels_hash(category_map_data.labels)
-        category_map, _created = AlgorithmCategoryMap.objects.get_or_create(
-            # @TODO this is creating a new category map every time
-            # Will create a new category map if the labels are different
-            labels_hash=labels_hash,
-            version=category_map_data.version,
-            defaults={
-                "data": category_map_data.data,
-                "labels": category_map_data.labels,
-                "description": category_map_data.description,
-                "uri": category_map_data.uri,
-            },
-        )
-        if _created:
-            logger.info(f"Registered new category map {category_map}")
-        else:
-            logger.info(f"Assigned existing category map {category_map}")
-    else:
-        logger.warning(
-            f"No category map found for algorithm {algorithm_config.key} in response."
-            " Will attempt to create one from the classification results."
-        )
-
     algo, _created = Algorithm.objects.get_or_create(
         key=algorithm_config.key,
         version=algorithm_config.version,
@@ -353,34 +328,59 @@ def get_or_create_algorithm_and_category_map(
             "task_type": algorithm_config.task_type,
             "version_name": algorithm_config.version_name,
             "uri": algorithm_config.uri,
-            "category_map": category_map or None,
+            "category_map": None,
         },
     )
+    if _created:
+        logger.info(f"Registered new algorithm {algo}")
+    else:
+        logger.info(f"Using existing algorithm {algo}")
+
+    algo_fields_updated = []
+    new_category_map = None
+    category_map_data = algorithm_config.category_map
+
+    if not algo.has_valid_category_map():
+        if category_map_data:
+            # New algorithms will not have a category map yet, and older ones may not either
+            # The category map data should be in the algorithm config from the /info endpoint
+            new_category_map = AlgorithmCategoryMap.objects.create(
+                version=category_map_data.version,
+                data=category_map_data.data,
+                labels=category_map_data.labels,
+                description=category_map_data.description,
+                uri=category_map_data.uri,
+            )
+            algo.category_map = new_category_map
+            algo_fields_updated.append("category_map")
+            logger.info(f"Registered new category map {new_category_map} for algorithm {algo}")
+        else:
+            if algorithm_config.task_type in Algorithm.classification_task_types:
+                msg = (
+                    f"No valid category map found for algorithm '{algorithm_config.key}' with "
+                    f"task type '{algorithm_config.task_type}' or in the pipeline /info response. "
+                    "Update the processing service to include a category map for all classification algorithms "
+                    "then re-register the pipelines."
+                )
+                raise PipelineNotConfigured(msg)
+            else:
+                logger.debug(f"No category map found, but not required for task type {algorithm_config.task_type}")
 
     # Update fields that may have changed in the processing service, with a warning
+    # These are fields that we have added to the API since the algorithm was first created
     fields_to_update = {
         "task_type": algorithm_config.task_type,
         "uri": algorithm_config.uri,
-        "category_map": category_map,
     }
-    fields_updated = []
     for field in fields_to_update:
         new_value = fields_to_update[field]
         if getattr(algo, field) != new_value:
             logger.warning(f"Field '{field}' changed for algorithm {algo} from {getattr(algo, field)} to {new_value}")
             setattr(algo, field, new_value)
-            fields_updated.append(field)
-    algo.save(update_fields=fields_updated)
+            algo_fields_updated.append(field)
 
-    if not algo.category_map or len(algo.category_map.data) == 0:
-        # Update existing algorithm that is missing a category map
-        algo.category_map = category_map
-        algo.save()
-
-    if _created:
-        logger.info(f"Registered new algorithm {algo}")
-    else:
-        logger.info(f"Assigned algorithm {algo}")
+    if algo_fields_updated:
+        algo.save(update_fields=algo_fields_updated)
 
     return algo
 
@@ -388,7 +388,7 @@ def get_or_create_algorithm_and_category_map(
 def get_or_create_detection(
     source_image: SourceImage,
     detection_resp: DetectionResponse,
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
 ) -> tuple[Detection, bool]:
@@ -396,7 +396,7 @@ def get_or_create_detection(
     Create a Detection object from a DetectionResponse, or update an existing one.
 
     :param detection_resp: A DetectionResponse object
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
     :param created_objects: A list to store created objects
 
     :return: A tuple of the Detection object and a boolean indicating whether it was created
@@ -431,12 +431,12 @@ def get_or_create_detection(
     else:
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
-            detection_algo = algorithms_used[detection_resp.algorithm.key]
+            detection_algo = algorithms_known[detection_resp.algorithm.key]
         except KeyError:
-            raise ValueError(
+            raise PipelineNotConfigured(
                 f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
                 "The processing service must declare it in the /info endpoint. "
-                f"Known algorithms: {list(algorithms_used.keys())}"
+                f"Known algorithms: {list(algorithms_known.keys())}"
             )
 
         new_detection = Detection(
@@ -461,7 +461,7 @@ def get_or_create_detection(
 
 def create_detections(
     detections: list[DetectionResponse],
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
 ) -> list[Detection]:
     """
@@ -469,7 +469,7 @@ def create_detections(
     Using bulk create.
 
     :param detections: A list of DetectionResponse objects
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
     :param created_objects: A list to store created objects
 
     :return: A list of Detection objects
@@ -489,7 +489,7 @@ def create_detections(
         detection, created = get_or_create_detection(
             source_image=source_image,
             detection_resp=detection_resp,
-            algorithms_used=algorithms_used,
+            algorithms_known=algorithms_known,
             save=False,
             logger=logger,
         )
@@ -581,7 +581,7 @@ def get_or_create_taxon_for_classification(
 def create_classification(
     detection: Detection,
     classification_resp: ClassificationResponse,
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
 ) -> tuple[Classification, bool]:
@@ -590,7 +590,7 @@ def create_classification(
 
     :param detection: A Detection object
     :param classification: A ClassificationResponse object
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
     :param created_objects: A list to store created objects
 
     :return: A tuple of the Classification object and a boolean indicating whether it was created
@@ -601,12 +601,12 @@ def create_classification(
     logger.debug(f"Processing classification {classification_resp}")
 
     try:
-        classification_algo = algorithms_used[classification_resp.algorithm.key]
+        classification_algo = algorithms_known[classification_resp.algorithm.key]
     except KeyError:
-        raise ValueError(
+        raise PipelineNotConfigured(
             f"Classification algorithm {classification_resp.algorithm.key} is not a known algorithm. "
             "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_used.keys())}"
+            f"Known algorithms: {list(algorithms_known.keys())}"
         )
 
     if not classification_algo.category_map:
@@ -686,7 +686,7 @@ def create_classification(
 def create_classifications(
     detections: list[Detection],
     detection_responses: list[DetectionResponse],
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     save: bool = True,
 ) -> list[Classification]:
@@ -696,7 +696,7 @@ def create_classifications(
 
     :param detection: A Detection object
     :param classifications: A list of ClassificationResponse objects
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
 
     :return: A list of Classification objects
 
@@ -710,7 +710,7 @@ def create_classifications(
             classification, created = create_classification(
                 detection=detection,
                 classification_resp=classification_resp,
-                algorithms_used=algorithms_used,
+                algorithms_known=algorithms_known,
                 save=False,
                 logger=logger,
             )
@@ -826,7 +826,6 @@ def save_results(
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
         logger.warning(f"Pipeline choice returned by the Processing Service was not recognized! {pipeline}")
-    algorithms_used = set()
 
     job_logger = logger
     start_time = time.time()
@@ -852,30 +851,26 @@ def save_results(
             f"The pipeline returned by the ML backend was not recognized, created a placeholder: {pipeline}"
         )
 
-    # Algorithms and category maps should be created in advance when registering the pipeline & processing service
-    # however they are also currently available in each pipeline results response as well.
-    # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of the results
-    algorithms_used = {
-        algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
-        for algo_key, algo_config in results.algorithms.items()
-    }
-    # Add all algorithms initially reported in the pipeline response to the pipeline
-    for algo in algorithms_used.values():
-        pipeline.algorithms.add(algo)
+    algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
+    job_logger.info(f"Algorithms registered for pipeline: \n{', '.join(algorithms_known.keys())}")
 
-    algos_reported = [f"    {algo.task_type}: {algo_key} ({algo})\n" for algo_key, algo in algorithms_used.items()]
-    job_logger.info(f"Algorithms reported in pipeline response: \n{''.join(algos_reported)}")
+    if results.algorithms:
+        logger.warning(
+            "Algorithms were returned by the processing service in the results, these will be ignored and "
+            "they should be removed to increase performance. "
+            "Algorithms and category maps must be registered before processing, using /info endpoint."
+        )
 
     detections = create_detections(
         detections=results.detections,
-        algorithms_used=algorithms_used,
+        algorithms_known=algorithms_known,
         logger=job_logger,
     )
 
     classifications = create_classifications(
         detections=detections,
         detection_responses=results.detections,
-        algorithms_used=algorithms_used,
+        algorithms_known=algorithms_known,
         logger=job_logger,
     )
 
@@ -900,24 +895,6 @@ def save_results(
     event_ids = [img.event_id for img in source_images]  # type: ignore
     update_calculated_fields_for_events(pks=event_ids)
 
-    registered_algos = pipeline.algorithms.all()
-    # Add any algorithms that were reported in a detection response that were not reported in the pipeline response
-    # This is important for tracking what objects were processed by which algorithms
-    # to avoid reprocessing, and for tracking provenance.
-    for algo in algorithms_used.values():
-        if algo not in registered_algos:
-            pipeline.algorithms.add(algo)
-            job_logger.debug(f"Added algorithm {algo} to pipeline {pipeline}")
-
-    # Warn if the algorithms used in the pipeline response are not the same as the ones registered in the pipeline
-    if len(algorithms_used) != len(registered_algos):
-        job_logger.warning(
-            f"Pipeline {pipeline} has {len(registered_algos)} algorithms registered, but {len(algorithms_used)} "
-            "algorithms were used in the results response. "
-            "\n*** Update the registered pipeline to match the algorithms used in the results *** \n"
-            "otherwise images will always be reprocessed in future runs."
-        )
-
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
 
@@ -925,6 +902,11 @@ def save_results(
         """
         By default, return None because celery tasks need special handling to return objects.
         """
+        # Collect only algorithms that were actually used in detections or classifications
+        detection_algos = {det.detection_algorithm for det in detections if det.detection_algorithm}
+        classification_algos = {clss.algorithm for clss in classifications if clss.algorithm}
+        algorithms_used: dict[str, Algorithm] = {algo.key: algo for algo in detection_algos | classification_algos}
+
         return PipelineSaveResults(
             pipeline=pipeline,
             source_images=source_images,
@@ -982,7 +964,7 @@ class Pipeline(BaseModel):
     description = models.TextField(blank=True)
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
-    # @TODO the algorithms attribute is not currently used. Review for removal.
+    # @TODO add support for ordered algorithms in the pipeline, for know the order is only in the stages config
     algorithms = models.ManyToManyField("ml.Algorithm", related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(
         default=default_stages,
@@ -1110,7 +1092,7 @@ class Pipeline(BaseModel):
         processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
 
         if not processing_service.endpoint_url:
-            raise ValueError(
+            raise PipelineNotConfigured(
                 f"No endpoint URL configured for this pipeline's processing service ({processing_service})"
             )
 
