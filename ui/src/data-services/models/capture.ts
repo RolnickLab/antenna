@@ -82,12 +82,14 @@ export class Capture {
     })
   }
 
-  get deploymentId(): string {
-    return this._capture.deployment.id
+  get deploymentId(): string | undefined {
+    return this._capture.deployment
+      ? `${this._capture.deployment.id}`
+      : undefined
   }
 
-  get deploymentLabel(): string {
-    return this._capture.deployment.name
+  get deploymentLabel(): string | undefined {
+    return this._capture.deployment?.name
   }
 
   get detections(): CaptureDetection[] {

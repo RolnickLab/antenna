@@ -116,7 +116,7 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
 
     response = PipelineResultsResponse(
         pipeline=pipeline_slug,
-        algorithms={algorithm.key: algorithm for algorithm in pipeline.config.algorithms},
+        # algorithms={algorithm.key: algorithm for algorithm in pipeline.config.algorithms},
         source_images=source_image_results,
         detections=results,
         total_time=seconds_elapsed,

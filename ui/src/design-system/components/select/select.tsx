@@ -30,7 +30,7 @@ export const Select = ({
   label,
   loading,
   options = [],
-  placeholder = 'Pick a value',
+  placeholder = 'Select a value',
   showClear = true,
   theme = SelectTheme.Default,
   value,

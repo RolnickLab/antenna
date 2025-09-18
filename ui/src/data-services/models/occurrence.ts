@@ -39,12 +39,14 @@ export class Occurrence {
     })
   }
 
-  get deploymentId(): string {
-    return `${this._occurrence.deployment.id}`
+  get deploymentId(): string | undefined {
+    return this._occurrence.deployment
+      ? `${this._occurrence.deployment.id}`
+      : undefined
   }
 
-  get deploymentLabel(): string {
-    return this._occurrence.deployment.name
+  get deploymentLabel(): string | undefined {
+    return this._occurrence.deployment?.name
   }
 
   get determinationId(): string {
