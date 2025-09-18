@@ -1345,12 +1345,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.filter_by_score_threshold(project, self.request).filter(
-                            self.get_occurrence_filters(project)
-                        )[:1],
+                        queryset=Occurrence.objects.filter_by_score_threshold(  # type: ignore
+                            project, self.request
+                        ).filter(self.get_occurrence_filters(project))[:1],
                         to_attr="example_occurrences",
                     )
-                )  # type: ignore
+                )
         else:
             # Add empty occurrences list to make the response consistent
             qs = qs.annotate(example_occurrences=models.Value([], output_field=models.JSONField()))
@@ -1415,6 +1415,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                     Occurrence.objects.filter(
                         occurrence_filters,
                         determination_id=models.OuterRef("id"),
+                    ).filter_by_score_threshold(  # type: ignore
+                        project, self.request
                     ),
                 )
             )
