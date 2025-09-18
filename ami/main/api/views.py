@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
+from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
@@ -119,6 +120,15 @@ class DefaultViewSet(DefaultViewSetMixin, viewsets.ModelViewSet):
         self.check_object_permissions(request, instance)
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def get_queryset(self):
+        qs: QuerySet = super().get_queryset()
+        assert self.queryset is not None
+
+        if isinstance(qs, BaseQuerySet):
+            return qs.visible_for_user(self.request.user)  # type: ignore
+
+        return qs
 
 
 class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet):
@@ -1067,6 +1077,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "event",
         "deployment",
         "determination__rank",
+        "detections__source_image",
     ]
     ordering_fields = [
         "created_at",
@@ -1226,6 +1237,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "last_detected",
         "best_determination_score",
         "name",
+        "cover_image_url",
     ]
     search_fields = ["name", "parent__name"]
 
@@ -1536,35 +1548,42 @@ class SummaryView(GenericAPIView, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def get(self, request):
         """
-        Return counts of all models.
+        Return counts of all models, applying visibility filters for draft projects.
         """
+        user = request.user
         project = self.get_active_project()
         if project:
             data = {
-                "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
-                "deployments_count": Deployment.objects.filter(project=project).count(),
-                "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
-                "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
-                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter_by_score_threshold(  # type: ignore
-                    project, self.request
-                )
-                .valid()
+                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
+                "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
                 .filter(project=project)
-                .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.filter_by_score_threshold(project, self.request)  # type: ignore
+                .count(),
+                "events_count": Event.objects.visible_for_user(user)  # type: ignore
+                .filter(deployment__project=project, deployment__isnull=False)
+                .count(),
+                "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
+                .filter(deployment__project=project)
+                .count(),
+                "occurrences_count": Occurrence.objects.valid()  # type: ignore
+                .visible_for_user(user)
+                .filter(project=project)
+                .filter_by_score_threshold(project, self.request)  # type: ignore
+                .count(),
+                "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+                .filter_by_score_threshold(project, self.request)
                 .unique_taxa(project=project)
-                .count(),  # type: ignore
+                .count(),
             }
         else:
             data = {
-                "projects_count": Project.objects.count(),
-                "deployments_count": Deployment.objects.count(),
-                "events_count": Event.objects.filter(deployment__isnull=False).count(),
-                "captures_count": SourceImage.objects.count(),
-                # "detections_count": Detection.objects.count(),
-                "occurrences_count": Occurrence.objects.valid().count(),  # type: ignore
-                "taxa_count": Occurrence.objects.all().unique_taxa().count(),  # type: ignore
+                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
+                "deployments_count": Deployment.objects.visible_for_user(user).count(),  # type: ignore
+                "events_count": Event.objects.visible_for_user(user)  # type: ignore
+                .filter(deployment__isnull=False)
+                .count(),
+                "captures_count": SourceImage.objects.visible_for_user(user).count(),  # type: ignore
+                "occurrences_count": Occurrence.objects.valid().visible_for_user(user).count(),  # type: ignore
+                "taxa_count": Occurrence.objects.visible_for_user(user).unique_taxa().count(),  # type: ignore
                 "last_updated": timezone.now(),
             }
 
