@@ -2280,3 +2280,286 @@ class TestDraftProjectPermissions(APITestCase):
             )
 
         logger.info("All exact count validations passed")
+
+
+class TestProjectDefaultThresholdFilter(APITestCase):
+    """API tests for default score threshold filtering"""
+
+    def setUp(self):
+        # Create project, deployment, and test data
+        self.project, self.deployment = setup_test_project(reuse=False)
+        taxa_list = create_taxa(self.project)
+        taxa = list(taxa_list.taxa.all())
+        low_taxon = taxa[0]
+        high_taxon = taxa[1]
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+
+        # Create multiple low and high determination score occurrences
+        create_occurrences(deployment=self.deployment, num=3, determination_score=0.3, taxon=low_taxon)
+        create_occurrences(deployment=self.deployment, num=3, determination_score=0.9, taxon=high_taxon)
+
+        self.low_occurrences = Occurrence.objects.filter(deployment=self.deployment, determination_score=0.3)
+        self.high_occurrences = Occurrence.objects.filter(deployment=self.deployment, determination_score=0.9)
+
+        # Project default threshold
+        self.default_threshold = 0.6
+        self.project.default_filters_score_threshold = self.default_threshold
+        self.project.save()
+
+        # Auth user
+        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=True, is_superuser=True)
+        self.client.force_authenticate(user=self.user)
+
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}"
+
+    # OccurrenceViewSet tests
+    def test_occurrences_respect_project_threshold(self):
+        """Occurrences below project threshold should be filtered out"""
+        res = self.client.get(self.url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ids = {o["id"] for o in res.data["results"]}
+
+        # High-scoring occurrences should remain
+        for occ in self.high_occurrences:
+            self.assertIn(occ.id, ids)
+        # Low-scoring occurrences should be excluded
+        for occ in self.low_occurrences:
+            self.assertNotIn(occ.id, ids)
+
+    def test_apply_defaults_false_bypasses_threshold(self):
+        """apply_defaults=false should allow explicit classification_threshold to override project default"""
+        res = self.client.get(self.url + "&apply_defaults=false&classification_threshold=0.2")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ids = {o["id"] for o in res.data["results"]}
+        # Both sets should be included with threshold=0.2
+        for occ in list(self.high_occurrences) + list(self.low_occurrences):
+            self.assertIn(occ.id, ids)
+
+    def test_query_threshold_ignored_when_defaults_applied(self):
+        """classification_threshold param is ignored if apply_defaults is not false"""
+        res = self.client.get(self.url + "&classification_threshold=0.1")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ids = {o["id"] for o in res.data["results"]}
+        # Still should apply project default (0.5)
+        for occ in self.high_occurrences:
+            self.assertIn(occ.id, ids)
+        for occ in self.low_occurrences:
+            self.assertNotIn(occ.id, ids)
+
+    def test_no_project_id_returns_all(self):
+        """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
+        url = "/api/v2/occurrences/"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ids = {o["id"] for o in res.data["results"]}
+        # All occurrences should appear
+        for occ in list(self.high_occurrences) + list(self.low_occurrences):
+            self.assertIn(occ.id, ids)
+
+    def test_retrieve_occurrence_respects_threshold(self):
+        """Detail retrieval should 404 if occurrence is filtered out by threshold"""
+        low_occ = self.low_occurrences[0]
+        detail_url = f"/api/v2/occurrences/{low_occ.id}/?project_id={self.project.pk}"
+        res = self.client.get(detail_url)
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+        high_occ = self.high_occurrences[0]
+        detail_url = f"/api/v2/occurrences/{high_occ.id}/?project_id={self.project.pk}"
+        res = self.client.get(detail_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    # TaxonViewSet tests
+    def test_taxa_respect_project_threshold(self):
+        """Taxa with only low-score occurrences should be excluded"""
+        res = self.client.get(self.url_taxa)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        names = {t["name"] for t in res.data["results"]}
+
+        for occ in self.high_occurrences:
+            self.assertIn(occ.determination.name, names)
+        for occ in self.low_occurrences:
+            self.assertNotIn(occ.determination.name, names)
+
+    def test_apply_defaults_false_bypasses_threshold_taxa(self):
+        """apply_defaults=false should allow low-score taxa to appear"""
+        res = self.client.get(self.url_taxa + "&apply_defaults=false&classification_threshold=0.2")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        names = {t["name"] for t in res.data["results"]}
+
+        for occ in list(self.high_occurrences) + list(self.low_occurrences):
+            self.assertIn(occ.determination.name, names)
+
+    def test_query_threshold_ignored_when_defaults_applied_taxa(self):
+        """classification_threshold is ignored when defaults apply"""
+        res = self.client.get(self.url_taxa + "&classification_threshold=0.1")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        names = {t["name"] for t in res.data["results"]}
+
+        for occ in self.high_occurrences:
+            self.assertIn(occ.determination.name, names)
+        for occ in self.low_occurrences:
+            self.assertNotIn(occ.determination.name, names)
+
+    def test_include_unobserved_true_returns_unobserved_taxa(self):
+        """include_unobserved=true should return taxa even without valid occurrences"""
+        res = self.client.get(self.url_taxa + "&include_unobserved=true")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # There should be more taxa than just the ones tied to high occurrences
+        self.assertGreater(len(res.data["results"]), self.high_occurrences.count())
+
+    def test_taxon_detail_example_occurrences_respects_threshold(self):
+        """Detail view should prefetch only above-threshold occurrences"""
+        taxon = self.high_occurrences.first().determination
+        detail_url = f"/api/v2/taxa/{taxon.id}/?project_id={self.project.pk}"
+        res = self.client.get(detail_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        example_occ = res.data.get("example_occurrences", [])
+        self.assertTrue(all(o["determination_score"] >= 0.6 for o in example_occ))
+
+    def test_taxa_count_matches_summary_with_threshold(self):
+        """Taxa count from taxa endpoint should match taxa_count in summary when defaults applied"""
+        # Get taxa list
+        res_taxa = self.client.get(self.url_taxa)
+        self.assertEqual(res_taxa.status_code, status.HTTP_200_OK)
+        taxa_count = len(res_taxa.data["results"])
+
+        # Get summary (global status summary, filtered by project_id)
+        url_summary = f"/api/v2/status/summary/?project_id={self.project.pk}"
+        res_summary = self.client.get(url_summary)
+        self.assertEqual(res_summary.status_code, status.HTTP_200_OK)
+
+        summary_taxa_count = res_summary.data["taxa_count"]
+
+        self.assertEqual(
+            taxa_count,
+            summary_taxa_count,
+            f"Mismatch: taxa endpoint returned {taxa_count}, summary returned {summary_taxa_count}",
+        )
+
+    # SourceImageViewSet tests
+    def test_source_image_counts_respect_threshold(self):
+        """occurrences_count and taxa_count should exclude low-score occurrences (per-capture assertions)."""
+        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        for capture in res.data["results"]:
+            cap_id = capture["id"]
+
+            # All occurrences linked to this capture via detections
+            cap_occs = Occurrence.objects.filter(
+                detections__source_image_id=cap_id,
+                deployment=self.deployment,
+            ).distinct()
+
+            cap_high_occs = cap_occs.filter(determination_score__gte=self.default_threshold)
+
+            # Expected counts for this capture under default threshold
+            expected_occurrences_count = cap_high_occs.count()
+            expected_taxa_count = cap_high_occs.values("determination_id").distinct().count()
+
+            # Exact assertions against the API’s annotated fields
+            self.assertEqual(capture["occurrences_count"], expected_occurrences_count)
+            self.assertEqual(capture["taxa_count"], expected_taxa_count)
+
+            # If capture only has low-score occurrences, both counts must be zero
+            if cap_occs.exists() and not cap_high_occs.exists():
+                self.assertEqual(capture["occurrences_count"], 0)
+                self.assertEqual(capture["taxa_count"], 0)
+
+    def _make_collection_with_some_images(self, name="Test Manual Source Image Collection"):
+        """Create a manual collection including a few of this deployment's captures using populate_sample()."""
+        images = list(SourceImage.objects.filter(deployment=self.deployment).order_by("id"))
+        self.assertGreaterEqual(len(images), 3, "Need at least 3 source images from setup")
+
+        collection = SourceImageCollection.objects.create(
+            name=name,
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": [img.pk for img in images[:3]]},  # deterministic subset
+        )
+        collection.save()
+        collection.populate_sample()
+        return collection
+
+    def _expected_counts_for_collection(self, collection, threshold: float) -> tuple[int, int]:
+        """Return (occurrences_count, taxa_count) for a collection under a given threshold."""
+        coll_occs = Occurrence.objects.filter(
+            detections__source_image__collections=collection,
+            deployment=self.deployment,
+        ).distinct()
+        coll_high = coll_occs.filter(determination_score__gte=threshold)
+        occ_count = coll_high.count()
+        taxa_count = coll_high.values("determination_id").distinct().count()
+        return occ_count, taxa_count
+
+    # SourceImageCollectionViewSet tests
+    def test_collections_counts_respect_threshold(self):
+        """occurrences_count and taxa_count on collections should exclude low-score occurrences."""
+        collection = self._make_collection_with_some_images()
+
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        row = next((r for r in res.data["results"] if r["id"] == collection.id), None)
+        self.assertIsNotNone(row, "Expected the created collection in list response")
+
+        expected_occ, expected_taxa = self._expected_counts_for_collection(collection, self.default_threshold)
+        self.assertEqual(row["occurrences_count"], expected_occ)
+        self.assertEqual(row["taxa_count"], expected_taxa)
+
+    def _expected_event_taxa_count(self, event, threshold: float) -> int:
+        """Distinct determinations among this event's occurrences at/above threshold."""
+        return (
+            Occurrence.objects.filter(
+                event=event,
+                determination_score__gte=threshold,
+            )
+            .values("determination_id")
+            .distinct()
+            .count()
+        )
+
+    # EventViewSet tests
+    def test_event_taxa_count_respects_threshold(self):
+        create_captures(deployment=self.deployment, num_nights=3, images_per_night=3)
+        group_images_into_events(deployment=self.deployment)
+
+        url = f"/api/v2/events/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        expected = {
+            e.pk: self._expected_event_taxa_count(e, self.default_threshold)
+            for e in Event.objects.filter(deployment__project=self.project)
+        }
+
+        for row in res.data["results"]:
+            self.assertEqual(row["taxa_count"], expected[row["id"]])
+
+    # SummaryView tests
+    def test_summary_counts_respect_project_threshold(self):
+        """Summary should apply project default threshold to occurrences_count and taxa_count."""
+        url = f"/api/v2/status/summary/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        expected_occurrences = (
+            Occurrence.objects.valid()
+            .filter(project=self.project, determination_score__gte=self.default_threshold)
+            .count()
+        )
+        expected_taxa = (
+            Occurrence.objects.filter(
+                project=self.project,
+                determination_score__gte=self.default_threshold,
+            )
+            .values("determination_id")
+            .distinct()
+            .count()
+        )
+
+        self.assertEqual(res.data["occurrences_count"], expected_occurrences)
+        self.assertEqual(res.data["taxa_count"], expected_taxa)
