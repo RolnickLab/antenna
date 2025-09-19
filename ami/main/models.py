@@ -31,7 +31,7 @@ from rest_framework.request import Request
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
@@ -100,14 +100,14 @@ as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 def get_or_create_default_device(project: "Project") -> "Device":
     """Create a default device for a project."""
-    device, _created = Device.objects.get_or_create(name="Default device", project=project)
+    device, _created = Device.objects.get_or_create(name="Default Device", project=project)
     logger.info(f"Created default device for project {project}")
     return device
 
 
 def get_or_create_default_research_site(project: "Project") -> "Site":
     """Create a default research site for a project."""
-    site, _created = Site.objects.get_or_create(name="Default site", project=project)
+    site, _created = Site.objects.get_or_create(name="Default Site", project=project)
     logger.info(f"Created default research site for project {project}")
     return site
 
@@ -121,6 +121,8 @@ def get_or_create_default_deployment(
         project=project,
         research_site=site,
         device=device,
+        latitude=0,
+        longitude=0,
     )
     logger.info(f"Created default deployment for project {project}")
     return deployment
@@ -155,7 +157,7 @@ def get_or_create_default_project(user: User) -> "Project":
     return project
 
 
-class ProjectQuerySet(models.QuerySet):
+class ProjectQuerySet(BaseQuerySet):
     def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
@@ -163,9 +165,8 @@ class ProjectQuerySet(models.QuerySet):
         return self.filter(members=user)
 
 
-class ProjectManager(models.Manager):
-    def get_queryset(self) -> ProjectQuerySet:
-        return ProjectQuerySet(self.model, using=self._db)
+class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
+    pass
 
     def create(self, create_defaults: bool = True, **kwargs) -> "Project":
         """
@@ -212,7 +213,8 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     default_filters: bool = False  # Whether to show default filters form in UI
 
 
-default_feature_flags = ProjectFeatureFlags()
+def get_default_feature_flags() -> ProjectFeatureFlags:
+    return ProjectFeatureFlags()
 
 
 @final
@@ -224,10 +226,13 @@ class Project(ProjectSettingsMixin, BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
-
+    draft = models.BooleanField(
+        default=False,
+        help_text="Indicates whether this project is in draft mode",
+    )
     feature_flags = SchemaField(
         ProjectFeatureFlags,
-        default=default_feature_flags,
+        default=get_default_feature_flags,
         null=False,
         blank=True,
     )
@@ -251,9 +256,6 @@ class Project(ProjectSettingsMixin, BaseModel):
     tags: models.QuerySet["Tag"]
 
     objects = ProjectManager()
-
-    def get_project(self):
-        return self
 
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
@@ -296,10 +298,10 @@ class Project(ProjectSettingsMixin, BaseModel):
         `delete_<model>`, `view_<model>`"""
 
         # Project permissions
-        VIEW = "view_project"
-        CHANGE = "update_project"
-        DELETE = "delete_project"
-        ADD = "create_project"
+        VIEW_PROJECT = "view_project"
+        UPDATE_PROJECT = "update_project"
+        DELETE_PROJECT = "delete_project"
+        CREATE_PROJECT = "create_project"
 
         # Identification permissions
         CREATE_IDENTIFICATION = "create_identification"
@@ -471,16 +473,12 @@ class Site(BaseModel):
 
 
 @final
-class DeploymentManager(models.Manager):
+class DeploymentManager(models.Manager.from_queryset(ProjectQuerySet)):
     """
     Custom manager that adds counts of related objects to the default queryset.
     """
 
-    def get_queryset(self):
-        return (
-            super().get_queryset()
-            # Add any common annotations or optimizations here
-        )
+    pass
 
 
 def _create_source_image_for_sync(
@@ -1517,6 +1515,7 @@ class SourceImageUpload(BaseModel):
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
 
+    project_accessor = "deployment__project"
     image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
@@ -1524,9 +1523,10 @@ class SourceImageUpload(BaseModel):
         "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
     )
 
-    def get_project(self):
-        """Get the project associated with the model instance."""
-        return self.deployment.get_project()
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+        self.deployment.save()
 
 
 @receiver(pre_delete, sender=SourceImageUpload)
@@ -1543,7 +1543,6 @@ def delete_source_image(sender, instance, **kwargs):
         source_image.delete()
     # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
     instance.deployment.save()
-
 
 class SourceImageQuerySet(models.QuerySet):
     def _build_default_taxa_filter(
@@ -1599,9 +1598,8 @@ class SourceImageQuerySet(models.QuerySet):
         )
 
 
-class SourceImageManager(models.Manager):
-    def get_queryset(self) -> SourceImageQuerySet:
-        return SourceImageQuerySet(self.model, using=self._db)
+class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
+    pass
 
 
 @final
@@ -2050,6 +2048,8 @@ def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxo
 class Identification(BaseModel):
     """A classification of an occurrence by a human."""
 
+    project_accessor = "occurrence__project"
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -2089,9 +2089,6 @@ class Identification(BaseModel):
         ordering = [
             "-created_at",
         ]
-
-    def get_project(self):
-        return self.occurrence.get_project()
 
     def save(self, *args, **kwargs):
         """
@@ -2172,7 +2169,7 @@ class ClassificationResult(BaseModel):
     pass
 
 
-class ClassificationQuerySet(models.QuerySet):
+class ClassificationQuerySet(BaseQuerySet):
     def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
         # Find the oldest classification for each unique combination
         if project_id:
@@ -2195,6 +2192,7 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 class Classification(BaseModel):
     """The output of a classifier"""
 
+    project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
         "Detection",
         on_delete=models.SET_NULL,
@@ -2299,14 +2297,15 @@ class Classification(BaseModel):
         """Return top N taxa and scores for this classification."""
         if not self.category_map:
             logger.warning(
-                f"Classification {self.pk}'s algrorithm ({self.algorithm_id} has no catgory map, "
+                f"Classification {self.pk}'s algorithm ({self.algorithm_id}) has no category map, "
                 "can't get top N predictions."
             )
             return []
 
         top_scored = self.top_scores_with_index(n)  # (index, score) pairs
         indexes = [idx for idx, _ in top_scored]
-        category_data = self.category_map.with_taxa(only_indexes=indexes)
+        category_data: list[dict] = self.category_map.with_taxa(only_indexes=indexes)
+        assert category_data is not None
         index_to_taxon = {cat["index"]: cat["taxon"] for cat in category_data}
 
         return [
@@ -2331,6 +2330,7 @@ class Classification(BaseModel):
 class Detection(BaseModel):
     """An object detected in an image"""
 
+    project_accessor = "source_image__project"
     source_image = models.ForeignKey(
         SourceImage,
         on_delete=models.CASCADE,
@@ -2498,7 +2498,7 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
-class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
+class OccurrenceQuerySet(BaseQuerySet):
     def valid(self):
         return self.exclude(detections__isnull=True)
 
@@ -2826,7 +2826,7 @@ def update_occurrence_determination(
     return needs_update
 
 
-class TaxonQuerySet(models.QuerySet):
+class TaxonQuerySet(BaseQuerySet):
     def with_occurrence_counts(self, project: Project):
         """
         Annotate each taxon with the count of its occurrences for a given project.
@@ -2877,20 +2877,30 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
         Create a genus if it doesn't exist based on the scientific name of the species.
         This will replace any parents of a species that are not of the GENUS rank.
         """
-        species = self.get_queryset().filter(rank="SPECIES")  # , parent=None)
+        Taxon: "Taxon" = self.model  # type: ignore
+        species = self.get_queryset().filter(rank=TaxonRank.SPECIES)  # , parent=None)
         updated = []
         for taxon in species:
-            if taxon.parent and taxon.parent.rank == "GENUS":
+            if taxon.parent and taxon.parent.rank == TaxonRank.GENUS:
                 continue
-            genus_name = taxon.name.split()[0]
-            genus = self.get_queryset().filter(name=genus_name, rank="GENUS").first()
-            if not genus:
-                Taxon = self.model
-                genus = Taxon.objects.create(name=genus_name, rank="GENUS")
-            taxon.parent = genus
-            logger.info(f"Added parent {genus} to {taxon}")
+
+            genus_name = taxon.name.split()[0].strip()
+
+            # There can be only one taxon with a given name.
+            genus_taxon, created = Taxon.objects.get_or_create(name=genus_name, defaults={"rank": TaxonRank.GENUS})
+            if created:
+                updated.append(genus_taxon)
+            elif genus_taxon.rank != TaxonRank.GENUS:
+                genus_taxon.rank = TaxonRank.GENUS
+                logger.info(f"Updating rank of existing {genus_taxon} from {genus_taxon.rank} to {TaxonRank.GENUS}")
+                genus_taxon.save()
+                updated.append(genus_taxon)
+
+            taxon.parent = genus_taxon
+            logger.info(f"Added parent {genus_taxon} to {taxon}")
             taxon.save()
             updated.append(taxon)
+
         return updated
 
     def update_display_names(self, queryset: models.QuerySet | None = None):
@@ -3097,7 +3107,11 @@ class Taxon(BaseModel):
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
     inat_taxon_id = models.BigIntegerField("iNaturalist taxon ID", blank=True, null=True)
+    fieldguide_id = models.CharField(max_length=255, blank=True, null=True)
     # lepsai_id = models.BigIntegerField("LepsAI / Fieldguide ID", blank=True, null=True)
+
+    cover_image_url = models.URLField(max_length=255, blank=True, null=True)
+    cover_image_credit = models.CharField(max_length=255, blank=True, null=True)
 
     notes = models.TextField(blank=True)
 

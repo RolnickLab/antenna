@@ -96,7 +96,12 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: occurrence.deploymentLabel,
-      to: APP_ROUTES.DEPLOYMENTS({ projectId: projectId as string }),
+      to: occurrence.deploymentId
+        ? APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId: projectId as string,
+            deploymentId: occurrence.deploymentId,
+          })
+        : undefined,
     },
     {
       label: translate(STRING.FIELD_LABEL_SESSION),

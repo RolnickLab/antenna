@@ -34,7 +34,7 @@ def set_project_owner_permissions(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Project)
 def set_others_permissions(sender, instance, created, **kwargs):
     if created and instance.owner:
-        others_perms = [Project.Permissions.VIEW]
+        others_perms = [Project.Permissions.VIEW_PROJECT]
         # assign permissions for other users
         all_other_users = User.objects.exclude(id=instance.owner.id)
         for user in all_other_users:

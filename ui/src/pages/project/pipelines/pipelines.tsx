@@ -1,4 +1,5 @@
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
@@ -17,6 +18,7 @@ export const Pipelines = () => {
     order: 'asc',
   })
   const { pagination, setPage } = usePagination()
+  const { project } = useProjectDetails(projectId as string, true)
   const { pipelines, total, isLoading, isFetching, error } = usePipelines({
     projectId,
     pagination,
@@ -35,7 +37,10 @@ export const Pipelines = () => {
         tooltip={translate(STRING.TOOLTIP_PIPELINE)}
       />
       <Table
-        columns={columns(projectId as string)}
+        columns={columns(
+          projectId as string,
+          project?.settings.defaultProcessingPipeline?.id
+        )}
         error={error}
         isLoading={isLoading}
         items={pipelines}
