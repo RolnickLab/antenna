@@ -2563,3 +2563,77 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
         self.assertEqual(res.data["occurrences_count"], expected_occurrences)
         self.assertEqual(res.data["taxa_count"], expected_taxa)
+
+
+class TestProjectDefaultTaxaFilter(APITestCase):
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+
+        # Multiple taxa for include/exclude testing
+        self.include_taxa = [
+            Taxon.objects.create(name="IncludeTaxonA"),
+            Taxon.objects.create(name="IncludeTaxonB"),
+        ]
+        self.exclude_taxa = [
+            Taxon.objects.create(name="ExcludeTaxonA"),
+            Taxon.objects.create(name="ExcludeTaxonB"),
+        ]
+
+        for t in self.include_taxa + self.exclude_taxa:
+            t.projects.add(self.project)
+
+        # Create occurrences for each taxon
+        for taxon in self.include_taxa:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon)
+        for taxon in self.exclude_taxa:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon)
+
+        self.client.force_authenticate(user=self.project.owner)
+
+    # OccurrenceViewSet tests
+    def _get_occurrence_ids(self):
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {r.get("determination", {}).get("id") for r in res.json()["results"] if r.get("determination")}
+
+    def test_occurrence_viewset_include_taxa_filter(self):
+        self.project.default_filters_include_taxa.set(self.include_taxa)
+        ids = self._get_occurrence_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
+
+    def test_occurrence_viewset_exclude_taxa_filter(self):
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa)
+        ids = self._get_occurrence_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
+
+    # TaxonViewSet tests
+    def _get_taxon_ids(self):
+        url = f"/api/v2/taxa/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {r["id"] for r in res.json()["results"]}
+
+    def test_taxon_viewset_include_taxa_filter(self):
+        self.project.default_filters_include_taxa.set(self.include_taxa)
+        ids = self._get_taxon_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
+
+    def test_taxon_viewset_exclude_taxa_filter(self):
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa)
+        ids = self._get_taxon_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
