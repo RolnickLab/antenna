@@ -79,7 +79,7 @@ def get_default_classification_threshold(project, request: Request | None = None
     if project is None:
         return 0.0
 
-    return getattr(project, "default_filters_score_threshold", 0.0) or 0.0
+    return project.default_filters_score_threshold
 
 
 project_id_doc_param = OpenApiParameter(
