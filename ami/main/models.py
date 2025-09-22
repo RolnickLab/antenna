@@ -18,7 +18,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -2725,6 +2725,34 @@ class TaxonQuerySet(BaseQuerySet):
         qs = qs.filter(occurrences__project=project)
 
         return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+
+    def visible_for_user(self, user: User | AnonymousUser):
+        if user.is_superuser:
+            return self
+
+        is_anonymous = isinstance(user, AnonymousUser)
+
+        # Visible projects
+        project_qs = Project.objects.all()
+        if is_anonymous:
+            project_qs = project_qs.filter(draft=False)
+        else:
+            project_qs = project_qs.filter(Q(draft=False) | Q(owner=user) | Q(members=user))
+
+        # Taxa explicitly linked to visible projects
+        direct_taxa = self.filter(projects__in=project_qs)
+
+        # Taxa with at least one occurrence in visible projects
+        occurrence_taxa = self.filter(
+            Exists(
+                Occurrence.objects.filter(
+                    project__in=project_qs,
+                    determination_id=OuterRef("id"),
+                )
+            )
+        )
+
+        return (direct_taxa | occurrence_taxa).distinct()
 
 
 @final
