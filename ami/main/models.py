@@ -288,10 +288,26 @@ class Project(ProjectSettingsMixin, BaseModel):
 
         return plots
 
-    def save(self, *args, **kwargs):
+    def update_related_calculated_fields(self):
+        """
+        Update calculated fields for all related events and deployments.
+        """
+        # Update events
+        for event in self.events.all():
+            event.update_calculated_fields(save=True)
+
+        # Update deployments
+        for deployment in self.deployments.all():
+            deployment.update_calculated_fields(save=True)
+
+    def save(self, *args, update_related_calculated_fields: bool = True, **kwargs):
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
+        # Update calculated fields including filtered occurrence counts
+        # and taxa counts for related deployments and events
+        if update_related_calculated_fields:
+            self.update_related_calculated_fields()
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
