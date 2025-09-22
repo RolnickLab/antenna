@@ -835,21 +835,14 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        self.occurrences_count = (
-            self.occurrences.filter(
-                event__isnull=False,
-            )
-            .distinct()
-            .count()
+        occ_qs = self.occurrences.filter(event__isnull=False).filter_by_score_threshold(  # type: ignore
+            project=self.project,
+            request=None,
         )
-        self.taxa_count = (
-            Taxon.objects.filter(
-                occurrences__deployment=self,
-                occurrences__event__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
+
+        self.occurrences_count = occ_qs.distinct().count()
+
+        self.taxa_count = Taxon.objects.filter(id__in=occ_qs.values("determination_id")).distinct().count()
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
