@@ -331,7 +331,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
-            qs = qs.with_taxa_count(project, self.request)  # type: ignore
+            qs = qs.with_taxa_count(project=project, request=self.request)  # type: ignore
 
         return qs
 
@@ -1554,15 +1554,19 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
                 "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter_by_score_threshold(project, self.request)
-                .filter_by_project_default_taxa(project, self.request)
+                "occurrences_count": Occurrence.objects.filter_by_score_threshold(  # type: ignore
+                    project=project, request=self.request
+                )
+                .filter_by_project_default_taxa(project=project, request=self.request)
                 .valid()
                 .filter(project=project)
                 .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.filter_by_score_threshold(project, self.request)
-                .filter_by_project_default_taxa(project, self.request)
+                "taxa_count": Occurrence.objects.filter_by_score_threshold(  # type: ignore
+                    project=project, request=self.request
+                )
+                .filter_by_project_default_taxa(project=project, request=self.request)
                 .unique_taxa(project=project)
-                .count()
+                .count(),
             }
         else:
             data = {
