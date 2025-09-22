@@ -1544,6 +1544,7 @@ def delete_source_image(sender, instance, **kwargs):
     # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
     instance.deployment.save()
 
+
 class SourceImageQuerySet(models.QuerySet):
     def _build_default_taxa_filter(
         self,
@@ -2546,10 +2547,6 @@ class OccurrenceQuerySet(BaseQuerySet):
     def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
         if project is None:
             return self
-        if request is not None:
-            apply_defaults = request.query_params.get("apply_defaults", "true").lower()
-            if apply_defaults == "false":
-                return self
         qs = self
         include_taxa = project.default_filters_include_taxa.all()
         exclude_taxa = project.default_filters_exclude_taxa.all()
