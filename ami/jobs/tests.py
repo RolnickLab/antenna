@@ -400,14 +400,14 @@ class TestMLJobBatchProcessing(TransactionTestCase):
             check_celery_results()
             details = get_ml_subtask_details("process_pipeline_request", job)
             logger.info(f"process_pipeline_request subtask details: {details}")
+            # @TODO: likely need a separate test to check this functionality
+            # i.e. use mock MLTaskRecords and make sure the progress is correctly updated
             # self._check_correct_job_progress(job, expected_num_process_subtasks=6, expected_num_results_subtasks=6)
 
             # # Run the task directly (bypassing job.run())
-            # from ami.ml.tasks import check_ml_job_status
+            from ami.ml.tasks import check_ml_job_status
 
-            # with transaction.atomic():
-            #     logger.info("Synchronously check the ml job status...")
-            #     check_ml_job_status(job.pk)  # must run inside same connection/transaction
+            check_ml_job_status(job.pk)
 
         # Check all subtasks were successful
         ml_subtask_records = job.ml_task_records.all()

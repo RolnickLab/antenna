@@ -362,6 +362,7 @@ def handle_async_process_images(
             )
             ml_task_record.source_images.set(source_image_batches[i])
             ml_task_record.save()
+            task_logger.info(f"Created MLTaskRecord {ml_task_record} for task {task_id}")
         else:
             task_logger.warning("No job ID provided, MLTaskRecord will not be created.")
 
@@ -1310,6 +1311,7 @@ class Pipeline(BaseModel):
     def save_results_async(self, results: PipelineResultsResponse, job_id: int | None = None):
         # Returns an AsyncResult
         results_json = results.json()
+        logger.info("Submitting save results task...")
         return save_results.delay(results_json=results_json, job_id=job_id)
 
     def save(self, *args, **kwargs):

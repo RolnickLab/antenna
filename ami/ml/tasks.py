@@ -118,6 +118,8 @@ def check_ml_job_status(ml_job_id: int):
     assert job.job_type_key == MLJob.key, f"{ml_job_id} is not an ML job."
 
     try:
+        logger.info(f"Checking status for job {job}.")
+        logger.info(f"Job subtasks are: {job.ml_task_records.all()}.")
         jobs_complete = job.check_inprogress_subtasks()
         logger.info(f"Successfully checked status for job {job}. .")
     except Job.DoesNotExist:

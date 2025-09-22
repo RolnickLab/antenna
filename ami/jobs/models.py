@@ -710,7 +710,7 @@ class MLJob(JobType):
             job.save()
         else:
             subtasks = job.ml_task_records.filter(created_at__gte=job.started_at)
-            if not subtasks:
+            if subtasks.count() == 0:
                 # No tasks were scheduled, mark the job as done
                 job.logger.info("No subtasks were scheduled, ending the job.")
                 job.progress.update_stage(
