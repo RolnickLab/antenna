@@ -2564,6 +2564,36 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.assertEqual(res.data["occurrences_count"], expected_occurrences)
         self.assertEqual(res.data["taxa_count"], expected_taxa)
 
+    # DeploymentViewSet tests
+    def test_deployment_counts_respect_threshold(self):
+        """occurrences_count and taxa_count on deployments should exclude low-score occurrences."""
+        # Call the save() method to refresh counts
+        for dep in Deployment.objects.all():
+            dep.save()
+        url = f"/api/v2/deployments/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        for row in res.data["results"]:
+            dep_id = row["id"]
+            dep = Deployment.objects.get(pk=dep_id)
+
+            # All occurrences for this deployment
+            dep_occs = Occurrence.objects.filter(deployment=dep).distinct()
+            dep_high_occs = dep_occs.filter(determination_score__gte=self.default_threshold)
+
+            expected_occurrences_count = dep_high_occs.count()
+            expected_taxa_count = dep_high_occs.values("determination_id").distinct().count()
+
+            # Assert the API matches expected counts
+            self.assertEqual(row["occurrences_count"], expected_occurrences_count)
+            self.assertEqual(row["taxa_count"], expected_taxa_count)
+
+            # If deployment only has low-score occurrences, both counts must be zero
+            if dep_occs.exists() and not dep_high_occs.exists():
+                self.assertEqual(row["occurrences_count"], 0)
+                self.assertEqual(row["taxa_count"], 0)
+
     def test_taxa_include_occurrence_determinations_not_directly_linked(self):
         """
         Taxa should still appear in taxa list and summary if they come from
