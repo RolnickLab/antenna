@@ -7,7 +7,7 @@ import { Button, Input } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
-import { useRecentIdentifications } from '../reject-id/useRecentOptions'
+import { useRecentIdentifications } from '../id-quick-actions/useRecentOptions'
 
 interface SuggestIdProps {
   occurrenceIds: string[]
