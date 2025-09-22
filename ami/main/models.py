@@ -1049,7 +1049,12 @@ class Event(BaseModel):
         return Detection.objects.filter(Q(source_image__event=self)).count()
 
     def get_occurrences_count(self, classification_threshold: float = 0) -> int:
-        return self.occurrences.distinct().filter(determination_score__gte=classification_threshold).count()
+        return (
+            self.occurrences.distinct()
+            .filter(determination_score__gte=classification_threshold)
+            .filter_by_project_default_taxa(project=self.project, request=None)  # type: ignore
+            .count()
+        )
 
     def stats(self) -> dict[str, int | None]:
         return (
@@ -1110,7 +1115,9 @@ class Event(BaseModel):
 
             event.captures_count = event.get_captures_count()
             event.detections_count = event.get_detections_count()
-            event.occurrences_count = event.get_occurrences_count()
+            event.occurrences_count = event.get_occurrences_count(
+                classification_threshold=get_default_classification_threshold(event.project)
+            )
 
             event.calculated_fields_updated_at = updated_timestamp or timezone.now()
 
@@ -1581,7 +1588,7 @@ def delete_source_image(sender, instance, **kwargs):
     instance.deployment.save()
 
 
-class SourceImageQuerySet(models.QuerySet):
+class SourceImageQuerySet(BaseQuerySet):
     def _build_default_taxa_filter(
         self,
         classification_threshold: float = 0,
@@ -3472,7 +3479,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 ]
 
 
-class SourceImageCollectionQuerySet(models.QuerySet):
+class SourceImageCollectionQuerySet(BaseQuerySet):
     def _build_default_taxa_filter(
         self,
         classification_threshold: float = 0,
