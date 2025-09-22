@@ -1549,21 +1549,27 @@ class SummaryView(GenericAPIView, ProjectMixin):
         project = self.get_active_project()
         if project:
             data = {
-                "projects_count": Project.objects.count(),  # @TODO filter by current user, here and everywhere!
-                "deployments_count": Deployment.objects.filter(project=project).count(),
-                "events_count": Event.objects.filter(deployment__project=project, deployment__isnull=False).count(),
-                "captures_count": SourceImage.objects.filter(deployment__project=project).count(),
+                "projects_count": Project.objects.visible_for_user(  # type: ignore
+                    user
+                ).count(),  # @TODO filter by current user, here and everywhere!
+                "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
+                .filter(project=project)
+                .count(),
+                "events_count": Event.objects.visible_for_user(user)  # type: ignore
+                .filter(deployment__project=project, deployment__isnull=False)
+                .count(),
+                "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
+                .filter(deployment__project=project)
+                .count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.filter_by_score_threshold(  # type: ignore
-                    project=project, request=self.request
-                )
+                "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+                .filter_by_score_threshold(project=project, request=self.request)  # type: ignore
                 .filter_by_project_default_taxa(project=project, request=self.request)
                 .valid()
                 .filter(project=project)
                 .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.filter_by_score_threshold(  # type: ignore
-                    project=project, request=self.request
-                )
+                "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+                .filter_by_score_threshold(project=project, request=self.request)  # type: ignore
                 .filter_by_project_default_taxa(project=project, request=self.request)
                 .unique_taxa(project=project)
                 .count(),
