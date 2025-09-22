@@ -835,14 +835,26 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        occ_qs = self.occurrences.filter(event__isnull=False).filter_by_score_threshold(  # type: ignore
-            project=self.project,
-            request=None,
-        )
+        occ_qs = (
+            self.occurrences.filter(event__isnull=False)
+            .filter_by_score_threshold(  # type: ignore
+                project=self.project,
+                request=None,
+            )
+            .filter_by_project_default_taxa(project=self.project, request=None)
+        )  # type: ignore
 
         self.occurrences_count = occ_qs.distinct().count()
 
-        self.taxa_count = Taxon.objects.filter(id__in=occ_qs.values("determination_id")).distinct().count()
+        self.taxa_count = (
+            Taxon.objects.filter(id__in=occ_qs.values("determination_id"))
+            .distinct()
+            .filter_by_project_default_taxa(  # type: ignore
+                project=self.project,
+                request=None,
+            )
+            .count()
+        )  # type: ignore
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
@@ -2880,7 +2892,6 @@ class TaxonQuerySet(BaseQuerySet):
         )
 
         return (direct_taxa | occurrence_taxa).distinct()
-
 
 
 @final
