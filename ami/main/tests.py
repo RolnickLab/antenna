@@ -2307,7 +2307,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.project.save()
 
         # Auth user
-        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=True, is_superuser=True)
+        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
         self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
@@ -2563,3 +2563,45 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
         self.assertEqual(res.data["occurrences_count"], expected_occurrences)
         self.assertEqual(res.data["taxa_count"], expected_taxa)
+
+    def test_taxa_include_occurrence_determinations_not_directly_linked(self):
+        """
+        Taxa should still appear in taxa list and summary if they come from
+        determinations of occurrences in the project, even when those taxa are
+        not directly linked to the project via the M2M field.
+        """
+        # Clear existing taxa and occurrences for a clean slate
+        self.project.taxa.clear()
+        Occurrence.objects.filter(project=self.project).delete()
+        # Create a new taxon not linked to the project
+        outside_taxon = Taxon.objects.create(name="OutsideTaxon")
+
+        # Create occurrences in this project with that taxon as determination
+        create_occurrences(
+            deployment=self.deployment,
+            num=2,
+            determination_score=0.9,
+            taxon=outside_taxon,
+        )
+
+        # Confirm taxon is not directly associated with the project
+        self.assertFalse(self.project in outside_taxon.projects.all())
+
+        # Taxa endpoint should include the taxon (because of occurrences)
+        res_taxa = self.client.get(self.url_taxa)
+        self.assertEqual(res_taxa.status_code, status.HTTP_200_OK)
+        taxa_names = {t["name"] for t in res_taxa.data["results"]}
+        self.assertIn(outside_taxon.name, taxa_names)
+
+        # Summary should also count it
+        url_summary = f"/api/v2/status/summary/?project_id={self.project.pk}"
+        res_summary = self.client.get(url_summary)
+        self.assertEqual(res_summary.status_code, status.HTTP_200_OK)
+        summary_taxa_count = res_summary.data["taxa_count"]
+
+        taxa_count = len(res_taxa.data["results"])
+        self.assertEqual(
+            taxa_count,
+            summary_taxa_count,
+            f"Mismatch with outside taxon: taxa endpoint returned {taxa_count}, summary {summary_taxa_count}",
+        )
