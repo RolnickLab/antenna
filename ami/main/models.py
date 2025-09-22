@@ -877,42 +877,73 @@ class Deployment(BaseModel):
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
 
 
-class EventQuerySet(models.QuerySet):
+class EventQuerySet(BaseQuerySet):
+    def _build_default_taxa_filter(
+        self,
+        classification_threshold: float = 0,
+        project: Project | None = None,
+    ) -> models.Q:
+        """
+        Build a reusable Q filter for occurrences on events,
+        applying classification threshold and project default taxa.
+        """
+        filter_q = models.Q(
+            occurrences__determination_score__gte=classification_threshold,
+        )
+
+        if not project:
+            return filter_q
+
+        include_taxa = project.default_filters_include_taxa.all()
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+
+        if include_taxa.exists():
+            include_q = models.Q(occurrences__determination__in=include_taxa)
+            for taxon in include_taxa:
+                include_q |= models.Q(occurrences__determination__parents_json__contains=[{"id": taxon.pk}])
+            filter_q &= include_q
+
+        if exclude_taxa.exists():
+            exclude_q = models.Q(occurrences__determination__in=exclude_taxa)
+            for taxon in exclude_taxa:
+                exclude_q |= models.Q(occurrences__determination__parents_json__contains=[{"id": taxon.pk}])
+            filter_q &= ~exclude_q
+
+        return filter_q
+
     def with_taxa_count(self, project: Project | None = None, request: Request | None = None):
         """
         Annotate each event with the number of distinct taxa observed,
-        filtered by classification threshold and the project's default
-        include/exclude taxa settings.
+        filtered by classification threshold
         """
         if project is None:
             return self
 
         classification_threshold = get_default_classification_threshold(project, request)
-
-        # Start with a base filter for classification score
-        filter_q = models.Q(
-            occurrences__determination_score__gte=classification_threshold,
-        )
-
-        # Apply include/exclude taxa from project defaults
-        include_taxa = project.default_filters_include_taxa.all()
-        exclude_taxa = project.default_filters_exclude_taxa.all()
-
-        if include_taxa.exists():
-            include_filter = models.Q(occurrences__determination__in=include_taxa)
-            for taxon in include_taxa:
-                include_filter |= models.Q(occurrences__determination__parents_json__contains=[{"id": taxon.pk}])
-            filter_q &= include_filter
-
-        if exclude_taxa.exists():
-            exclude_filter = models.Q(occurrences__determination__in=exclude_taxa)
-            for taxon in exclude_taxa:
-                exclude_filter |= models.Q(occurrences__determination__parents_json__contains=[{"id": taxon.pk}])
-            filter_q &= ~exclude_filter
+        filter_q = self._build_default_taxa_filter(classification_threshold, project)
 
         return self.annotate(
             taxa_count=models.Count(
                 "occurrences__determination",
+                distinct=True,
+                filter=filter_q,
+            )
+        )
+
+    def with_occurrences_count(self, project: Project | None = None, request: Request | None = None):
+        """
+        Annotate each event with the number of occurrences,
+        filtered by classification threshold
+        """
+        if project is None:
+            return self
+
+        classification_threshold = get_default_classification_threshold(project, request)
+        filter_q = self._build_default_taxa_filter(classification_threshold, project)
+
+        return self.annotate(
+            occurrences_count=models.Count(
+                "occurrences",
                 distinct=True,
                 filter=filter_q,
             )
