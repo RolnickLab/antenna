@@ -2307,7 +2307,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.project.save()
 
         # Auth user
-        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=True, is_superuser=True)
+        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
         self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
@@ -2564,6 +2564,77 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.assertEqual(res.data["occurrences_count"], expected_occurrences)
         self.assertEqual(res.data["taxa_count"], expected_taxa)
 
+  # DeploymentViewSet tests
+    def test_deployment_counts_respect_threshold(self):
+        """occurrences_count and taxa_count on deployments should exclude low-score occurrences."""
+        # Call the save() method to refresh counts
+        for dep in Deployment.objects.all():
+            dep.save()
+        url = f"/api/v2/deployments/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        for row in res.data["results"]:
+            dep_id = row["id"]
+            dep = Deployment.objects.get(pk=dep_id)
+
+            # All occurrences for this deployment
+            dep_occs = Occurrence.objects.filter(deployment=dep).distinct()
+            dep_high_occs = dep_occs.filter(determination_score__gte=self.default_threshold)
+
+            expected_occurrences_count = dep_high_occs.count()
+            expected_taxa_count = dep_high_occs.values("determination_id").distinct().count()
+
+            # Assert the API matches expected counts
+            self.assertEqual(row["occurrences_count"], expected_occurrences_count)
+            self.assertEqual(row["taxa_count"], expected_taxa_count)
+
+            # If deployment only has low-score occurrences, both counts must be zero
+            if dep_occs.exists() and not dep_high_occs.exists():
+                self.assertEqual(row["occurrences_count"], 0)
+                self.assertEqual(row["taxa_count"], 0)
+
+    def test_taxa_include_occurrence_determinations_not_directly_linked(self):
+        """
+        Taxa should still appear in taxa list and summary if they come from
+        determinations of occurrences in the project, even when those taxa are
+        not directly linked to the project via the M2M field.
+        """
+        # Clear existing taxa and occurrences for a clean slate
+        self.project.taxa.clear()
+        Occurrence.objects.filter(project=self.project).delete()
+        # Create a new taxon not linked to the project
+        outside_taxon = Taxon.objects.create(name="OutsideTaxon")
+
+        # Create occurrences in this project with that taxon as determination
+        create_occurrences(
+            deployment=self.deployment,
+            num=2,
+            determination_score=0.9,
+            taxon=outside_taxon,
+        )
+
+        # Confirm taxon is not directly associated with the project
+        self.assertFalse(self.project in outside_taxon.projects.all())
+
+        # Taxa endpoint should include the taxon (because of occurrences)
+        res_taxa = self.client.get(self.url_taxa)
+        self.assertEqual(res_taxa.status_code, status.HTTP_200_OK)
+        taxa_names = {t["name"] for t in res_taxa.data["results"]}
+        self.assertIn(outside_taxon.name, taxa_names)
+
+        # Summary should also count it
+        url_summary = f"/api/v2/status/summary/?project_id={self.project.pk}"
+        res_summary = self.client.get(url_summary)
+        self.assertEqual(res_summary.status_code, status.HTTP_200_OK)
+        summary_taxa_count = res_summary.data["taxa_count"]
+
+        taxa_count = len(res_taxa.data["results"])
+        self.assertEqual(
+            taxa_count,
+            summary_taxa_count,
+            f"Mismatch with outside taxon: taxa endpoint returned {taxa_count}, summary {summary_taxa_count}",
+        )
 
 class TestProjectDefaultTaxaFilter(APITestCase):
     def setUp(self):
@@ -2637,3 +2708,4 @@ class TestProjectDefaultTaxaFilter(APITestCase):
             self.assertIn(taxon.id, ids)
         for taxon in self.exclude_taxa:
             self.assertNotIn(taxon.id, ids)
+            

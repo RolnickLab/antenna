@@ -18,7 +18,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -835,21 +835,14 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        self.occurrences_count = (
-            self.occurrences.filter(
-                event__isnull=False,
-            )
-            .distinct()
-            .count()
+        occ_qs = self.occurrences.filter(event__isnull=False).filter_by_score_threshold(  # type: ignore
+            project=self.project,
+            request=None,
         )
-        self.taxa_count = (
-            Taxon.objects.filter(
-                occurrences__deployment=self,
-                occurrences__event__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
+
+        self.occurrences_count = occ_qs.distinct().count()
+
+        self.taxa_count = Taxon.objects.filter(id__in=occ_qs.values("determination_id")).distinct().count()
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
@@ -2862,6 +2855,35 @@ class TaxonQuerySet(BaseQuerySet):
             qs = qs.exclude(exclude_filter)
 
         return qs
+
+    def visible_for_user(self, user: User | AnonymousUser):
+        if user.is_superuser:
+            return self
+
+        is_anonymous = isinstance(user, AnonymousUser)
+
+        # Visible projects
+        project_qs = Project.objects.all()
+        if is_anonymous:
+            project_qs = project_qs.filter(draft=False)
+        else:
+            project_qs = project_qs.filter(Q(draft=False) | Q(owner=user) | Q(members=user))
+
+        # Taxa explicitly linked to visible projects
+        direct_taxa = self.filter(projects__in=project_qs)
+
+        # Taxa with at least one occurrence in visible projects
+        occurrence_taxa = self.filter(
+            Exists(
+                Occurrence.objects.filter(
+                    project__in=project_qs,
+                    determination_id=OuterRef("id"),
+                )
+            )
+        )
+
+        return (direct_taxa | occurrence_taxa).distinct()
+
 
 
 @final
