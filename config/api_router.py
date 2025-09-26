@@ -10,10 +10,7 @@ from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
 from ami.ml import views as ml_views
 
-if settings.DEBUG:
-    router = DefaultRouter()
-else:
-    router = SimpleRouter()
+router = DefaultRouter()
 
 router.register(r"users", UserViewSet)
 router.register(r"storage", views.StorageSourceViewSet)
