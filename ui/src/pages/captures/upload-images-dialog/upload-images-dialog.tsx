@@ -48,7 +48,9 @@ export const UploadImagesDialog = ({
   const [currentSection, setCurrentSection] = useState<string>(Section.Station)
   const [deployment, setDeployment] = useState<Deployment>()
   const [images, setImages] = useState<{ file: File }[]>([])
-  const [processNow, setProcessNow] = useState(true)
+  const [processNow, setProcessNow] = useState(
+    !!project?.settings.defaultProcessingPipeline
+  )
 
   const { uploadCaptures, isLoading, isSuccess, error } = useUploadCaptures(
     () =>
@@ -253,8 +255,12 @@ const SectionUpload = ({
         <InputValue label="Images" value={images.length} />
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Switch checked={processNow} onCheckedChange={setProcessNow} />
-            <label className="pt-0.5 body-small text-muted-foreground">
+            <Switch
+              checked={processNow}
+              disabled={!project.settings.defaultProcessingPipeline}
+              onCheckedChange={setProcessNow}
+            />
+            <label className="pt-0.5 body-small text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50">
               Process images
             </label>
             <DefaultPipelineInfo project={project} />
@@ -296,10 +302,16 @@ const DefaultPipelineInfo = ({ project }: { project: ProjectDetails }) => (
         </Button>
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
-        <InputValue
-          label="Default processing pipeline"
-          value={project.settings.defaultProcessingPipeline?.name}
-        />
+        {project.settings.defaultProcessingPipeline ? (
+          <InputValue
+            label="Default processing pipeline"
+            value={project.settings.defaultProcessingPipeline?.name}
+          />
+        ) : (
+          <p className="whitespace-normal">
+            The project has no default processing pipeline configured.
+          </p>
+        )}
         <Link
           className={classNames(
             buttonVariants({ size: 'small', variant: 'outline' }),
