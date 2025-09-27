@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import {
   FormActions,
   FormError,
@@ -5,14 +6,23 @@ import {
 } from 'components/form/layout/layout'
 import { useUploadCaptures } from 'data-services/hooks/captures/useUploadCaptures'
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Deployment } from 'data-services/models/deployment'
+import { ProjectDetails } from 'data-services/models/project-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper } from 'design-system/components/form-stepper/form-stepper'
 import { InputValue } from 'design-system/components/input/input'
-import { CheckIcon, Loader2Icon, UploadIcon } from 'lucide-react'
-import { Button, Select } from 'nova-ui-kit'
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  InfoIcon,
+  Loader2Icon,
+  UploadIcon,
+} from 'lucide-react'
+import { Button, buttonVariants, Select, Switch, Tooltip } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { SelectImagesSection } from './select-images-section/select-images-section'
 import styles from './styles.module.scss'
@@ -33,10 +43,13 @@ export const UploadImagesDialog = ({
   buttonVariant?: string
 }) => {
   const { projectId } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
   const [isOpen, setIsOpen] = useState(false)
   const [currentSection, setCurrentSection] = useState<string>(Section.Station)
-  const [images, setImages] = useState<{ file: File }[]>([])
   const [deployment, setDeployment] = useState<Deployment>()
+  const [images, setImages] = useState<{ file: File }[]>([])
+  const [processNow, setProcessNow] = useState(true)
+
   const { uploadCaptures, isLoading, isSuccess, error } = useUploadCaptures(
     () =>
       setTimeout(() => {
@@ -108,10 +121,14 @@ export const UploadImagesDialog = ({
                     projectId: projectId as string,
                     deploymentId: deployment?.id,
                     files: images.map(({ file }) => file),
+                    processNow,
                   })
                 }
               }}
+              processNow={processNow}
+              project={project as ProjectDetails}
               setCurrentSection={setCurrentSection}
+              setProcessNow={setProcessNow}
             />
           ) : null}
         </div>
@@ -211,23 +228,38 @@ const SectionUpload = ({
   isLoading,
   isSuccess,
   onSubmit,
+  processNow,
+  project,
   setCurrentSection,
+  setProcessNow,
 }: {
   deployment?: Deployment
   images: { file: File }[]
   isLoading: boolean
   isSuccess: boolean
   onSubmit: () => void
+  processNow: boolean
+  project: ProjectDetails
   setCurrentSection: (section: Section) => void
+  setProcessNow: (processingEnabled: boolean) => void
 }) => (
   <div>
     <FormSection
       title="Summary"
-      description="Your images will be uploaded and added to the selected monitoring station."
+      description="Your images will be uploaded and added to the selected monitoring station. If processing is enabled, a job will start in the background."
     >
       <div className="grid grid-cols-2 gap-8">
         <InputValue label="Station" value={deployment?.name} />
         <InputValue label="Images" value={images.length} />
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Switch checked={processNow} onCheckedChange={setProcessNow} />
+            <label className="pt-0.5 body-small text-muted-foreground">
+              Process images
+            </label>
+            <DefaultPipelineInfo project={project} />
+          </div>
+        </div>
       </div>
     </FormSection>
     <FormActions>
@@ -253,4 +285,32 @@ const SectionUpload = ({
       </Button>
     </FormActions>
   </div>
+)
+
+const DefaultPipelineInfo = ({ project }: { project: ProjectDetails }) => (
+  <Tooltip.Provider delayDuration={0}>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        <Button size="icon" variant="ghost">
+          <InfoIcon className="w-4 h-4" />
+        </Button>
+      </Tooltip.Trigger>
+      <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
+        <InputValue
+          label="Default processing pipeline"
+          value={project.settings.defaultProcessingPipeline?.name}
+        />
+        <Link
+          className={classNames(
+            buttonVariants({ size: 'small', variant: 'outline' }),
+            '!w-auto'
+          )}
+          to={APP_ROUTES.PROCESSING({ projectId: project.id })}
+        >
+          <span>Configure</span>
+          <ChevronRightIcon className="w-4 h-4" />
+        </Link>
+      </Tooltip.Content>
+    </Tooltip.Root>
+  </Tooltip.Provider>
 )
