@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { ProjectDetailsForm } from './project-details-form'
+import { NewProjectForm } from './new-project-form'
 import styles from './styles.module.scss'
 
 const CLOSE_TIMEOUT = 1000
@@ -43,7 +43,7 @@ export const NewProjectDialog = ({
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         <Dialog.Header title={label} />
         <div className={styles.content}>
-          <ProjectDetailsForm
+          <NewProjectForm
             project={newProject}
             error={error}
             isLoading={isLoading}

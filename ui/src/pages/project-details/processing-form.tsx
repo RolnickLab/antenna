@@ -6,15 +6,14 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { ProjectDetails } from 'data-services/models/project-details'
 import { InputContent } from 'design-system/components/input/input'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
-import { Button, Select } from 'nova-ui-kit'
+import { Button } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
-import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
+import { PipelinesSelect } from './pipelines-select'
 
 interface ProcessingFormValues {
   defaultProcessingPipeline: { id: string; name: string }
@@ -101,40 +100,5 @@ export const ProcessingForm = ({
         </Button>
       </FormActions>
     </form>
-  )
-}
-
-const PipelinesSelect = ({
-  onPipelineChange,
-  pipeline,
-}: {
-  onPipelineChange: (pipeline?: { id: string; name: string }) => void
-  pipeline?: { id: string; name: string }
-}) => {
-  const { projectId } = useParams()
-  const { pipelines = [], isLoading } = usePipelines({
-    projectId: projectId as string,
-  })
-
-  return (
-    <Select.Root
-      disabled={pipelines.length === 0}
-      onValueChange={(value) => {
-        const pipeline = pipelines.find((p) => p.id === value)
-        onPipelineChange(pipeline)
-      }}
-      value={pipeline?.id ?? ''}
-    >
-      <Select.Trigger loading={isLoading}>
-        <Select.Value placeholder="Select a pipeline" />
-      </Select.Trigger>
-      <Select.Content className="max-h-72">
-        {pipelines.map((p) => (
-          <Select.Item key={p.id} value={p.id}>
-            {p.name}
-          </Select.Item>
-        ))}
-      </Select.Content>
-    </Select.Root>
   )
 }
