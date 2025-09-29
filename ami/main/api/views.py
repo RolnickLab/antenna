@@ -777,7 +777,6 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
 
         # Get current user from request
         user = get_current_user(self.request)
-        project = self.get_active_project()
 
         # Create the SourceImageUpload object with the user
         obj = serializer.save(user=user)
