@@ -296,7 +296,7 @@ const SectionUpload = ({
 const DefaultPipelineInfo = ({ project }: { project: ProjectDetails }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
-      <Tooltip.Trigger>
+      <Tooltip.Trigger asChild>
         <Button size="icon" variant="ghost">
           <InfoIcon className="w-4 h-4" />
         </Button>
