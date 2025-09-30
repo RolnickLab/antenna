@@ -1,0 +1,238 @@
+# Object Model Diagram: ML Pipeline System
+
+```mermaid
+classDiagram
+    %% Core ML Pipeline Classes
+    class Pipeline {
+        +string slug (unique)
+        +string name
+        +string description
+        +int version
+        +string version_name
+        +stages[] PipelineStage
+        +default_config PipelineRequestConfigParameters
+        --
+        +get_config(project_id) PipelineRequestConfigParameters
+        +collect_images() Iterable~SourceImage~
+        +process_images() PipelineResultsResponse
+        +choose_processing_service_for_pipeline() ProcessingService
+    }
+
+    class Algorithm {
+        +string key (unique)
+        +string name
+        +AlgorithmTaskType task_type
+        +string description
+        +int version
+        +string version_name
+        +string uri
+        --
+        +detection_task_types[] AlgorithmTaskType
+        +classification_task_types[] AlgorithmTaskType
+        +has_valid_category_map() boolean
+    }
+
+    class AlgorithmCategoryMap {
+        +data JSONField
+        +labels[] string
+        +int labels_hash
+        +string version
+        +string description
+        +string uri
+        --
+        +make_labels_hash() int
+        +get_category() int
+        +with_taxa() dict[]
+    }
+
+    class PipelineStage {
+        +string key
+        +string name
+        +string description
+        +boolean enabled
+        +params[] ConfigurableStageParam
+    }
+
+    class ProcessingService {
+        +string name
+        +string description
+        +string endpoint_url
+        +datetime last_checked
+        +boolean last_checked_live
+        +float last_checked_latency
+        --
+        +create_pipelines() PipelineRegistrationResponse
+        +get_status() ProcessingServiceStatusResponse
+        +get_pipeline_configs() PipelineConfigResponse[]
+    }
+
+    %% Job System Classes
+    class Job {
+        +string name
+        +string queue
+        +datetime scheduled_at
+        +datetime started_at
+        +datetime finished_at
+        +JobState status
+        +JobProgress progress
+        +JobLogs logs
+        +params JSONField
+        +result JSONField
+        +string task_id
+        +int delay
+        +int limit
+        +boolean shuffle
+        +string job_type_key
+        --
+        +job_type() JobType
+        +update_status() void
+        +logger JobLogger
+    }
+
+    class JobProgress {
+        +JobProgressSummary summary
+        +stages[] JobProgressStageDetail
+        +errors[] string
+        --
+        +add_stage() JobProgressStageDetail
+        +update_stage() void
+        +add_stage_param() void
+    }
+
+    class JobProgressSummary {
+        +JobState status
+        +float progress
+        --
+        +status_label string
+    }
+
+    class JobProgressStageDetail {
+        +string key
+        +string name
+        +string description
+        +boolean enabled
+        +params[] ConfigurableStageParam
+        +JobState status
+        +float progress
+    }
+
+    %% Configuration Classes
+    class ProjectPipelineConfig {
+        +boolean enabled
+        +config JSONField
+        --
+        +get_config() dict
+    }
+
+    class Project {
+        +string name
+        +string slug
+        +feature_flags JSONField
+        --
+        +default_processing_pipeline Pipeline
+    }
+
+    %% Enums
+    class AlgorithmTaskType {
+        <<enumeration>>
+        DETECTION
+        LOCALIZATION
+        SEGMENTATION
+        CLASSIFICATION
+        EMBEDDING
+        TRACKING
+        TAGGING
+        REGRESSION
+        CAPTIONING
+        GENERATION
+        TRANSLATION
+        SUMMARIZATION
+        QUESTION_ANSWERING
+        DEPTH_ESTIMATION
+        POSE_ESTIMATION
+        SIZE_ESTIMATION
+        OTHER
+        UNKNOWN
+    }
+
+    class JobState {
+        <<enumeration>>
+        CREATED
+        PENDING
+        STARTED
+        SUCCESS
+        FAILURE
+        RETRY
+        CANCELING
+        REVOKED
+        RECEIVED
+        UNKNOWN
+    }
+
+    %% Relationships
+
+    %% Pipeline Relationships
+    Pipeline }|--|| Algorithm : "algorithms (M2M)"
+    Pipeline ||--o{ PipelineStage : "stages (SchemaField)"
+    Pipeline }|--|| ProcessingService : "processing_services (M2M)"
+    Pipeline ||--o{ Job : "jobs (FK)"
+    Pipeline ||--o{ ProjectPipelineConfig : "project_pipeline_configs (FK)"
+
+    %% Algorithm Relationships
+    Algorithm ||--o| AlgorithmCategoryMap : "category_map (FK)"
+    Algorithm ||--|| AlgorithmTaskType : "task_type"
+
+    %% Job Relationships
+    Job ||--o| Pipeline : "pipeline (FK, nullable)"
+    Job ||--|| Project : "project (FK)"
+    Job ||--|| JobProgress : "progress (SchemaField)"
+    Job ||--|| JobState : "status"
+
+    %% Job Progress Relationships
+    JobProgress ||--|| JobProgressSummary : "summary"
+    JobProgress ||--o{ JobProgressStageDetail : "stages"
+    JobProgressSummary ||--|| JobState : "status"
+    JobProgressStageDetail ||--|| JobState : "status"
+
+    %% Processing Service Relationships
+    ProcessingService }|--|| Project : "projects (M2M)"
+
+    %% Project Configuration Relationships
+    Project ||--o{ ProjectPipelineConfig : "project_pipeline_configs (FK)"
+    ProjectPipelineConfig ||--|| Pipeline : "pipeline (FK)"
+    ProjectPipelineConfig ||--|| Project : "project (FK)"
+
+    %% Notes
+    note for Pipeline "Identified by unique slug\nAuto-generated from name + version + UUID"
+    note for Algorithm "Identified by unique key\nAuto-generated from name + version"
+    note for Job "MLJob is the primary job type\nfor running ML pipelines"
+    note for ProcessingService "External ML services that\nexecute pipeline algorithms"
+```
+
+## Key Relationships Summary
+
+### Core ML Pipeline Flow:
+1. **ProcessingService** → registers → **Pipeline** → contains → **Algorithm**
+2. **Project** → configures → **Pipeline** through **ProjectPipelineConfig**
+3. **Job** → executes → **Pipeline** → uses → **ProcessingService**
+
+### Model Identification:
+- **Pipeline**: Identified by unique `slug` (string) - auto-generated from `name + version + UUID`
+- **Algorithm**: Identified by unique `key` (string) - auto-generated from `name + version`
+- **Job**: Uses standard Django `id` but also has `task_id` for Celery integration
+
+### Stage Management:
+- **Pipeline** contains **PipelineStage** objects (for configuration display)
+- **Job** tracks execution through **JobProgressStageDetail** objects (for runtime progress)
+- Both share the same base **ConfigurableStage** schema
+
+### Algorithm Classification:
+- **Algorithm** has task types (detection, classification, etc.)
+- Classification algorithms require **AlgorithmCategoryMap** for label mapping
+- Detection algorithms don't require category maps
+
+### Job Execution Flow:
+1. **Job** is created with a **Pipeline** reference
+2. **Pipeline** selects appropriate **ProcessingService**
+3. **ProcessingService** executes algorithms and returns results
+4. **Job** tracks progress through **JobProgress** and **JobProgressStageDetail**
