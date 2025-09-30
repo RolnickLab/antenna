@@ -4,7 +4,7 @@
 classDiagram
     %% Core ML Pipeline Classes
     class Pipeline {
-        +string slug (unique)
+        +string slug
         +string name
         +string description
         +int version
@@ -19,7 +19,7 @@ classDiagram
     }
 
     class Algorithm {
-        +string key (unique)
+        +string key
         +string name
         +AlgorithmTaskType task_type
         +string description
@@ -170,37 +170,30 @@ classDiagram
     }
 
     %% Relationships
+    Pipeline "M" -- "M" Algorithm : algorithms
+    Pipeline "1" -- "many" PipelineStage : stages
+    Pipeline "M" -- "M" ProcessingService : processing_services
+    Pipeline "1" -- "many" Job : jobs
+    Pipeline "1" -- "many" ProjectPipelineConfig : project_pipeline_configs
 
-    %% Pipeline Relationships
-    Pipeline }|--|{ Algorithm : "algorithms (M2M)"
-    Pipeline ||--o{ PipelineStage : "stages (SchemaField)"
-    Pipeline }|--|{ ProcessingService : "processing_services (M2M)"
-    Pipeline ||--o{ Job : "jobs (FK)"
-    Pipeline ||--o{ ProjectPipelineConfig : "project_pipeline_configs (FK)"
+    Algorithm "1" -- "0..1" AlgorithmCategoryMap : category_map
+    Algorithm "1" -- "1" AlgorithmTaskType : task_type
 
-    %% Algorithm Relationships
-    Algorithm ||--o| AlgorithmCategoryMap : "category_map (FK)"
-    Algorithm ||--|| AlgorithmTaskType : "task_type"
+    Job "0..1" -- "1" Pipeline : pipeline
+    Job "1" -- "1" Project : project
+    Job "1" -- "1" JobProgress : progress
+    Job "1" -- "1" JobState : status
 
-    %% Job Relationships
-    Job ||--o| Pipeline : "pipeline (FK, nullable)"
-    Job ||--|| Project : "project (FK)"
-    Job ||--|| JobProgress : "progress (SchemaField)"
-    Job ||--|| JobState : "status"
+    JobProgress "1" -- "1" JobProgressSummary : summary
+    JobProgress "1" -- "many" JobProgressStageDetail : stages
+    JobProgressSummary "1" -- "1" JobState : status
+    JobProgressStageDetail "1" -- "1" JobState : status
 
-    %% Job Progress Relationships
-    JobProgress ||--|| JobProgressSummary : "summary"
-    JobProgress ||--o{ JobProgressStageDetail : "stages"
-    JobProgressSummary ||--|| JobState : "status"
-    JobProgressStageDetail ||--|| JobState : "status"
+    ProcessingService "M" -- "M" Project : projects
 
-    %% Processing Service Relationships
-    ProcessingService }|--|{ Project : "projects (M2M)"
-
-    %% Project Configuration Relationships
-    Project ||--o{ ProjectPipelineConfig : "project_pipeline_configs (FK)"
-    ProjectPipelineConfig ||--|| Pipeline : "pipeline (FK)"
-    ProjectPipelineConfig ||--|| Project : "project (FK)"
+    Project "1" -- "many" ProjectPipelineConfig : project_pipeline_configs
+    ProjectPipelineConfig "1" -- "1" Pipeline : pipeline
+    ProjectPipelineConfig "1" -- "1" Project : project
 
     %% Notes
     note for Pipeline "Identified by unique slug\nAuto-generated from name + version + UUID"
