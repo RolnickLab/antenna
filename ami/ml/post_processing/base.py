@@ -5,7 +5,8 @@ import logging
 from typing import Any
 
 from ami.jobs.models import Job
-from ami.ml.models import Algorithm, AlgorithmTaskType
+from ami.ml.models import Algorithm
+from ami.ml.models.algorithm import AlgorithmTaskType
 
 # Registry of available post-processing tasks
 POSTPROCESSING_TASKS: dict[str, type["BasePostProcessingTask"]] = {}
