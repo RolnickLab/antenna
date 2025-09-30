@@ -172,9 +172,9 @@ classDiagram
     %% Relationships
 
     %% Pipeline Relationships
-    Pipeline }|--|| Algorithm : "algorithms (M2M)"
+    Pipeline }|--|{ Algorithm : "algorithms (M2M)"
     Pipeline ||--o{ PipelineStage : "stages (SchemaField)"
-    Pipeline }|--|| ProcessingService : "processing_services (M2M)"
+    Pipeline }|--|{ ProcessingService : "processing_services (M2M)"
     Pipeline ||--o{ Job : "jobs (FK)"
     Pipeline ||--o{ ProjectPipelineConfig : "project_pipeline_configs (FK)"
 
@@ -195,7 +195,7 @@ classDiagram
     JobProgressStageDetail ||--|| JobState : "status"
 
     %% Processing Service Relationships
-    ProcessingService }|--|| Project : "projects (M2M)"
+    ProcessingService }|--|{ Project : "projects (M2M)"
 
     %% Project Configuration Relationships
     Project ||--o{ ProjectPipelineConfig : "project_pipeline_configs (FK)"
