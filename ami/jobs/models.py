@@ -645,6 +645,37 @@ class DataExportJob(JobType):
         job.update_status(JobState.SUCCESS, save=True)
 
 
+class PostProcessingJob(JobType):
+    name = "Post Processing"
+    key = "post_processing"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        import ami.ml.post_processing  # noqa F401
+        from ami.ml.post_processing.base import get_postprocessing_task
+
+        job.progress.add_stage(cls.name, key=cls.key)
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.save()
+
+        params = job.params or {}
+        task_key: str = params.get("task", "")
+        config = params.get("config", {})
+        job.logger.info(f"Post-processing task: {task_key} with params: {job.params}")
+
+        task_cls = get_postprocessing_task(task_key)
+        if not task_cls:
+            raise ValueError(f"Unknown post-processing task '{task_key}'")
+
+        task = task_cls(**config)
+        task.run(job)
+        job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS)
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -654,7 +685,14 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
-VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType, DataExportJob]
+VALID_JOB_TYPES = [
+    MLJob,
+    SourceImageCollectionPopulateJob,
+    DataStorageSyncJob,
+    UnknownJobType,
+    DataExportJob,
+    PostProcessingJob,
+]
 
 
 def get_job_type_by_key(key: str) -> type[JobType] | None:
