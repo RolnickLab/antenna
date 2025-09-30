@@ -10,6 +10,7 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
+from ami.jobs.models import Job
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
 
@@ -619,7 +620,28 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
         )
 
-    actions = [populate_collection, populate_collection_async]
+    @admin.action(description="Run Small Size Filter post-processing task (async)")
+    def run_small_size_filter(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        jobs = []
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: SmallSizeFilter on Collection {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "small_size_filter",
+                    "config": {
+                        "size_threshold": 0.01,  # default threshold
+                        "source_image_collection_id": collection.pk,
+                    },
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} collection(s). Jobs: {jobs}")
+
+    actions = [populate_collection, populate_collection_async, run_small_size_filter]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
