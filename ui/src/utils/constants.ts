@@ -107,3 +107,59 @@ export const SCORE_THRESHOLDS = {
   WARNING: 0.8,
   ALERT: 0.6,
 }
+
+/**
+ * Calculate dynamic score thresholds based on a project's score threshold.
+ * 
+ * This creates relative ranges that provide meaningful visual feedback:
+ * - Red: Any score below the project threshold OR in the lower 10% above it
+ * - Orange: Middle range (10% to 60% of the range above project threshold)  
+ * - Green: Upper range (above 60% of the range above project threshold)
+ * 
+ * @param projectScoreThreshold - The project's configured score threshold (e.g., 0.6)
+ * @returns Object with ALERT and WARNING thresholds for use in styling logic
+ * 
+ * @example
+ * // With project threshold of 0.6:
+ * const thresholds = calculateDynamicScoreThresholds(0.6)
+ * // Returns: { ALERT: 0.64, WARNING: 0.84 }
+ * // Red: < 0.64, Orange: 0.64-0.84, Green: >= 0.84
+ */
+export const calculateDynamicScoreThresholds = (
+  projectScoreThreshold?: number
+): { ALERT: number; WARNING: number } => {
+  const baseThreshold = projectScoreThreshold ?? SCORE_THRESHOLDS.WARNING // Default to 0.8 if no project threshold
+
+  // Create relative thresholds within the range above the project threshold
+  const visibleRangeAboveThreshold = 1.0 - baseThreshold
+
+  // Red: anything below baseThreshold OR in the lower 10% above baseThreshold
+  const alertThreshold = baseThreshold + (visibleRangeAboveThreshold * 0.1)
+
+  // Orange: middle range (10% to 60% of range above baseThreshold)  
+  const warningThreshold = baseThreshold + (visibleRangeAboveThreshold * 0.6)
+
+  return {
+    ALERT: alertThreshold,    // Red: < baseThreshold OR < alertThreshold
+    WARNING: warningThreshold, // Orange: alertThreshold to warningThreshold
+    // Green: above warningThreshold
+  }
+}
+
+/**
+ * Get the appropriate color class for a score based on dynamic thresholds.
+ * 
+ * @param score - The score to evaluate (0-1)
+ * @param projectScoreThreshold - The project's configured score threshold
+ * @returns 'alert' (red), 'warning' (orange), or 'success' (green)
+ */
+export const getScoreColorClass = (
+  score: number, 
+  projectScoreThreshold?: number
+): 'alert' | 'warning' | 'success' => {
+  const thresholds = calculateDynamicScoreThresholds(projectScoreThreshold)
+  
+  if (score < thresholds.ALERT) return 'alert'
+  if (score < thresholds.WARNING) return 'warning'
+  return 'success'
+}

@@ -15,7 +15,13 @@ import styles from './playback.module.scss'
 import { SessionCapturesSlider } from './session-captures-slider/session-captures-slider'
 import { useActiveCaptureId } from './useActiveCapture'
 
-export const Playback = ({ session }: { session: SessionDetails }) => {
+export const Playback = ({
+  session,
+  projectScoreThreshold
+}: {
+  session: SessionDetails
+  projectScoreThreshold?: number
+}) => {
   const { timeline = [] } = useSessionTimeline(session.id)
   const [poll, setPoll] = useState(false)
   const [showDetections, setShowDetections] = useState(true)
@@ -85,6 +91,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         height={activeCapture?.height ?? session.firstCapture.height}
         detections={detections}
         showDetections={showDetections}
+        projectScoreThreshold={projectScoreThreshold}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>
