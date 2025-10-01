@@ -53,19 +53,6 @@ classDiagram
         +params[] ConfigurableStageParam
     }
 
-    class ProcessingService {
-        +string name
-        +string description
-        +string endpoint_url
-        +datetime last_checked
-        +boolean last_checked_live
-        +float last_checked_latency
-        --
-        +create_pipelines() PipelineRegistrationResponse
-        +get_status() ProcessingServiceStatusResponse
-        +get_pipeline_configs() PipelineConfigResponse[]
-    }
-
     %% Job System Classes
     class Job {
         +string name
@@ -87,33 +74,6 @@ classDiagram
         +job_type() JobType
         +update_status() void
         +logger JobLogger
-    }
-
-    class JobProgress {
-        +JobProgressSummary summary
-        +stages[] JobProgressStageDetail
-        +errors[] string
-        --
-        +add_stage() JobProgressStageDetail
-        +update_stage() void
-        +add_stage_param() void
-    }
-
-    class JobProgressSummary {
-        +JobState status
-        +float progress
-        --
-        +status_label string
-    }
-
-    class JobProgressStageDetail {
-        +string key
-        +string name
-        +string description
-        +boolean enabled
-        +params[] ConfigurableStageParam
-        +JobState status
-        +float progress
     }
 
     %% Configuration Classes
@@ -155,24 +115,10 @@ classDiagram
         UNKNOWN
     }
 
-    class JobState {
-        <<enumeration>>
-        CREATED
-        PENDING
-        STARTED
-        SUCCESS
-        FAILURE
-        RETRY
-        CANCELING
-        REVOKED
-        RECEIVED
-        UNKNOWN
-    }
 
     %% Relationships
     Pipeline "M" -- "M" Algorithm : algorithms
     Pipeline "1" -- "many" PipelineStage : stages
-    Pipeline "M" -- "M" ProcessingService : processing_services
     Pipeline "1" -- "many" Job : jobs
     Pipeline "1" -- "many" ProjectPipelineConfig : project_pipeline_configs
 
@@ -181,15 +127,6 @@ classDiagram
 
     Job "0..1" -- "1" Pipeline : pipeline
     Job "1" -- "1" Project : project
-    Job "1" -- "1" JobProgress : progress
-    Job "1" -- "1" JobState : status
-
-    JobProgress "1" -- "1" JobProgressSummary : summary
-    JobProgress "1" -- "many" JobProgressStageDetail : stages
-    JobProgressSummary "1" -- "1" JobState : status
-    JobProgressStageDetail "1" -- "1" JobState : status
-
-    ProcessingService "M" -- "M" Project : projects
 
     Project "1" -- "many" ProjectPipelineConfig : project_pipeline_configs
     ProjectPipelineConfig "1" -- "1" Pipeline : pipeline
@@ -199,7 +136,6 @@ classDiagram
     note for Pipeline "Identified by unique slug\nAuto-generated from name + version + UUID"
     note for Algorithm "Identified by unique key\nAuto-generated from name + version"
     note for Job "MLJob is the primary job type\nfor running ML pipelines"
-    note for ProcessingService "External ML services that\nexecute pipeline algorithms"
 ```
 
 ## Key Relationships Summary
