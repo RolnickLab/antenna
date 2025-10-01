@@ -58,7 +58,10 @@ export const SessionDetails = () => {
         </div>
       )}
       <div className={styles.playbackWrapper}>
-        <Playback session={session} projectScoreThreshold={project?.settings.scoreThreshold} />
+        <Playback
+          session={session}
+          projectScoreThreshold={project?.settings.scoreThreshold}
+        />
       </div>
       <PlotGrid>
         <Box>

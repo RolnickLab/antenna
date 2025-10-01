@@ -6,11 +6,11 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { InfoIcon } from 'lucide-react'
 import { Button, Tooltip } from 'nova-ui-kit'
 import {
-    OccurrenceDetails,
-    TABS,
+  OccurrenceDetails,
+  TABS,
 } from 'pages/occurrence-details/occurrence-details'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { SCORE_THRESHOLDS, getScoreColorClass } from 'utils/constants'
+import { getScoreColorClass } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
@@ -223,7 +223,12 @@ const FrameDetections = ({
                     style={style}
                     className={classNames(styles.detection, {
                       [styles.active]: isActive,
-                      [styles[getScoreColorClass(detection.score, projectScoreThreshold)]]: true,
+                      [styles[
+                        getScoreColorClass(
+                          detection.score,
+                          projectScoreThreshold
+                        )
+                      ]]: true,
                       [styles.clickable]: !!detection.occurrenceId,
                     })}
                     onClick={() => {

@@ -17,7 +17,7 @@ import { useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({
   session,
-  projectScoreThreshold
+  projectScoreThreshold,
 }: {
   session: SessionDetails
   projectScoreThreshold?: number
