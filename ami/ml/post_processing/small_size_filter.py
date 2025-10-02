@@ -2,7 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from ami.jobs.models import Job
-from ami.main.models import Detection, SourceImageCollection, Taxon, TaxonRank
+from ami.main.models import Detection, Identification, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask, register_postprocessing_task
 
 
@@ -77,7 +77,14 @@ class SmallSizeFilter(BasePostProcessingTask):
                         timestamp=timezone.now(),
                         algorithm=self.algorithm,
                     )
-
+                    # Also create/update Identification for the linked occurrence
+                    if det.occurrence:
+                        Identification.objects.create(
+                            occurrence=det.occurrence,
+                            taxon=not_identifiable_taxon,
+                            user=None,  # since this comes from a post-processing algorithm  not a human
+                            comment=f"Auto-set by {self.name} Filter post-processing task",
+                        )
                 modified += 1
                 job.logger.debug(f"Detection {det.pk}: marked as 'Not identifiable'")
 
