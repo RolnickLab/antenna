@@ -8,8 +8,9 @@ volumes:
       o: bind
   minio_data:
     driver: local
+  rabbitmq_data:
+    driver: local
   node_modules:
-
 
 services:
   django: &django
@@ -22,6 +23,7 @@ services:
     depends_on:
       - postgres
       - redis
+      - rabbitmq
       - minio-init
       - ml_backend
     volumes:
@@ -86,6 +88,27 @@ services:
     image: redis:6
     container_name: ami_local_redis
 
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: ami_local_rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672" # AMQP port
+      - "15672:15672" # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_ADMIN_PASS:-admin123}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-/}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./compose/local/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./compose/local/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
   celeryworker:
     <<: *django
     image: ami_local_celeryworker
@@ -123,7 +146,7 @@ services:
     ports:
       - "9001:9001"
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -24,7 +24,9 @@ if READ_DOT_ENV_FILE:
 # GENERAL
 # ------------------------------------------------------------------------------
 EXTERNAL_HOSTNAME = env("EXTERNAL_HOSTNAME", default="localhost:8000")  # type: ignore[no-untyped-call]
-EXTERNAL_BASE_URL = env("EXTERNAL_BASE_URL", default=f"http://{EXTERNAL_HOSTNAME}")  # type: ignore[no-untyped-call]
+EXTERNAL_BASE_URL = env(
+    "EXTERNAL_BASE_URL", default=f"http://{EXTERNAL_HOSTNAME}"  # noqa: E231, E501 # type: ignore[no-untyped-call]
+)
 
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)  # type: ignore[no-untyped-call]
@@ -260,6 +262,15 @@ CACHES = {
         },
     }
 }
+
+# RABBITMQ
+# ------------------------------------------------------------------------------
+RABBITMQ_URL = env("RABBITMQ_URL", default="amqp://guest:guest@localhost:5672/")  # type: ignore[no-untyped-call]
+RABBITMQ_HOST = env("RABBITMQ_HOST", default="localhost")  # type: ignore[no-untyped-call]
+RABBITMQ_PORT = env.int("RABBITMQ_PORT", default=5672)  # type: ignore[no-untyped-call]
+RABBITMQ_DJANGO_USER = env("RABBITMQ_DJANGO_USER", default="guest")  # type: ignore[no-untyped-call]
+RABBITMQ_DJANGO_PASS = env("RABBITMQ_DJANGO_PASS", default="guest")  # type: ignore[no-untyped-call]
+RABBITMQ_DEFAULT_VHOST = env("RABBITMQ_DEFAULT_VHOST", default="/")  # type: ignore[no-untyped-call]
 
 # ADMIN
 # ------------------------------------------------------------------------------

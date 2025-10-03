@@ -12,6 +12,18 @@ DJANGO_SUPERUSER_PASSWORD=localadmin
 # Redis
 REDIS_URL=redis://redis:6379/0
 
+# RabbitMQ Admin (for management only)
+RABBITMQ_ADMIN_USER=admin
+RABBITMQ_ADMIN_PASS=admin123
+
+# RabbitMQ Django App User (for application use)
+RABBITMQ_DJANGO_USER=django_app
+RABBITMQ_DJANGO_PASS=django_secure_pass
+RABBITMQ_DEFAULT_VHOST=/
+RABBITMQ_HOST=rabbitmq
+RABBITMQ_PORT=5672
+RABBITMQ_URL=amqp://django_app:django_secure_pass@rabbitmq:5672/
+
 # Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
