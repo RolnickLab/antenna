@@ -18,7 +18,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -26,6 +26,7 @@ from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
 from guardian.shortcuts import get_perms
+from rest_framework.request import Request
 
 import ami.tasks
 import ami.utils
@@ -36,6 +37,7 @@ from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp
+from ami.utils.requests import get_default_classification_threshold
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
@@ -285,10 +287,26 @@ class Project(ProjectSettingsMixin, BaseModel):
 
         return plots
 
-    def save(self, *args, **kwargs):
+    def update_related_calculated_fields(self):
+        """
+        Update calculated fields for all related events and deployments.
+        """
+        # Update events
+        for event in self.events.all():
+            event.update_calculated_fields(save=True)
+
+        # Update deployments
+        for deployment in self.deployments.all():
+            deployment.update_calculated_fields(save=True)
+
+    def save(self, *args, update_related_calculated_fields: bool = True, **kwargs):
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
+        # Update calculated fields including filtered occurrence counts
+        # and taxa counts for related deployments and events
+        if update_related_calculated_fields:
+            self.update_related_calculated_fields()
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
@@ -832,21 +850,14 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        self.occurrences_count = (
-            self.occurrences.filter(
-                event__isnull=False,
-            )
-            .distinct()
-            .count()
+        occ_qs = self.occurrences.filter(event__isnull=False).filter_by_score_threshold(  # type: ignore
+            project=self.project,
+            request=None,
         )
-        self.taxa_count = (
-            Taxon.objects.filter(
-                occurrences__deployment=self,
-                occurrences__event__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
+
+        self.occurrences_count = occ_qs.distinct().count()
+
+        self.taxa_count = Taxon.objects.filter(id__in=occ_qs.values("determination_id")).distinct().count()
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
@@ -2458,6 +2469,12 @@ class OccurrenceQuerySet(BaseQuerySet):
         )
         return qs
 
+    def filter_by_score_threshold(self, project: Project | None = None, request: Request | None = None):
+        if project is None:
+            return self
+        score_threshold = get_default_classification_threshold(project, request)
+        return self.filter(determination_score__gte=score_threshold)
+
 
 class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
     def get_queryset(self):
@@ -2723,6 +2740,34 @@ class TaxonQuerySet(BaseQuerySet):
         qs = qs.filter(occurrences__project=project)
 
         return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+
+    def visible_for_user(self, user: User | AnonymousUser):
+        if user.is_superuser:
+            return self
+
+        is_anonymous = isinstance(user, AnonymousUser)
+
+        # Visible projects
+        project_qs = Project.objects.all()
+        if is_anonymous:
+            project_qs = project_qs.filter(draft=False)
+        else:
+            project_qs = project_qs.filter(Q(draft=False) | Q(owner=user) | Q(members=user))
+
+        # Taxa explicitly linked to visible projects
+        direct_taxa = self.filter(projects__in=project_qs)
+
+        # Taxa with at least one occurrence in visible projects
+        occurrence_taxa = self.filter(
+            Exists(
+                Occurrence.objects.filter(
+                    project__in=project_qs,
+                    determination_id=OuterRef("id"),
+                )
+            )
+        )
+
+        return (direct_taxa | occurrence_taxa).distinct()
 
 
 @final
