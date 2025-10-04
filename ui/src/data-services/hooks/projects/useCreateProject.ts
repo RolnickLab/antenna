@@ -3,7 +3,16 @@ import axios from 'axios'
 import { API_ROUTES, API_URL, SUCCESS_TIMEOUT } from 'data-services/constants'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
-import { convertToServerFormData } from './utils'
+
+const convertToServerFieldValues = (fieldValues: any) => ({
+  name: fieldValues.name,
+  description: fieldValues.description,
+  settings: {
+    default_processing_pipeline_id: fieldValues.defaultProcessingPipeline
+      ? fieldValues.defaultProcessingPipeline.id
+      : undefined,
+  },
+})
 
 export const useCreateProject = (onSuccess?: () => void) => {
   const { user } = useUser()
@@ -13,11 +22,10 @@ export const useCreateProject = (onSuccess?: () => void) => {
     mutationFn: (fieldValues: any) =>
       axios.post<{ id: number }>(
         `${API_URL}/${API_ROUTES.PROJECTS}/`,
-        convertToServerFormData(fieldValues),
+        convertToServerFieldValues(fieldValues),
         {
           headers: {
             ...getAuthHeader(user),
-            'Content-Type': 'multipart/form-data',
           },
         }
       ),
