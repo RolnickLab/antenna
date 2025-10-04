@@ -5,9 +5,10 @@ import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 interface UploadCaptureFieldValues {
-  projectId: string
   deploymentId: string
   file: File
+  processNow?: boolean
+  projectId: string
 }
 
 export const useUploadCapture = (onSuccess?: (id: string) => void) => {
@@ -30,7 +31,9 @@ export const useUploadCapture = (onSuccess?: (id: string) => void) => {
       }
 
       return axios.post<{ source_image: { id: number } }>(
-        `${API_URL}/${API_ROUTES.CAPTURES}/upload/`,
+        `${API_URL}/${API_ROUTES.CAPTURES}/upload/?process_now=${
+          fieldValues.processNow ? 'True' : 'False'
+        }`,
         data,
         {
           headers: {

@@ -27,9 +27,10 @@ export const useUploadCaptures = (onSuccess?: () => void) => {
     isSuccess,
     error,
     uploadCaptures: async (params: {
-      projectId: string
       deploymentId: string
       files: File[]
+      processNow?: boolean
+      projectId: string
     }) => {
       const promises = params.files
         .filter((_, index) => {
@@ -42,9 +43,10 @@ export const useUploadCaptures = (onSuccess?: () => void) => {
         })
         .map((file) =>
           uploadCapture({
-            projectId: params.projectId,
             deploymentId: params.deploymentId,
             file,
+            processNow: params.processNow,
+            projectId: params.projectId,
           })
         )
 
