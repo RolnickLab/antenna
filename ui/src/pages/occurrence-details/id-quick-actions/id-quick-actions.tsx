@@ -4,27 +4,28 @@ import { EllipsisVerticalIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { RefObject, useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { REJECT_OPTIONS } from './constants'
 import { IdButton } from './id-button'
 import styles from './id-quick-actions.module.scss'
 import { useRecentIdentifications } from './useRecentOptions'
+import { useRejectOptions } from './useRejectOptions'
 import { getCommonRanks } from './utils'
 
-interface RejectIdProps {
+interface IdQuickActionsProps {
   containerRef?: RefObject<HTMLDivElement>
   occurrenceIds: string[]
-  occurrenceTaxons: Taxon[]
+  occurrenceTaxa: Taxon[]
   zIndex?: number
 }
 
 export const IdQuickActions = ({
   containerRef,
   occurrenceIds = [],
-  occurrenceTaxons = [],
+  occurrenceTaxa = [],
   zIndex,
-}: RejectIdProps) => {
+}: IdQuickActionsProps) => {
   const [open, setIsOpen] = useState(false)
   const { recentIdentifications } = useRecentIdentifications()
+  const { rejectOptions } = useRejectOptions()
 
   const sections: {
     title: string
@@ -36,7 +37,10 @@ export const IdQuickActions = ({
   }[] = [
     {
       title: translate(STRING.APPLY_ID),
-      options: getCommonRanks(occurrenceTaxons).map(({ id, name, rank }) => ({
+      options: getCommonRanks({
+        occurrenceTaxa,
+        rejectOptions,
+      }).map(({ id, name, rank }) => ({
         label: name,
         details: rank,
         value: id,
@@ -52,7 +56,7 @@ export const IdQuickActions = ({
     },
     {
       title: translate(STRING.REJECT_ID),
-      options: REJECT_OPTIONS,
+      options: rejectOptions,
     },
   ]
 

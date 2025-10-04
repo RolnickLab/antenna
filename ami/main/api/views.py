@@ -331,17 +331,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
-            qs = qs.annotate(
-                taxa_count=models.Count(
-                    "occurrences__determination",
-                    distinct=True,
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_default_classification_threshold(
-                            project, self.request
-                        ),
-                    ),
-                ),
-            )
+            qs = qs.with_taxa_count(project=project, request=self.request)  # type: ignore
 
         return qs
 
@@ -500,9 +490,9 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         classification_threshold = get_default_classification_threshold(project, self.request)
         queryset = queryset.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         )
 
         queryset.select_related(
@@ -661,9 +651,9 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         )
         return queryset
 
@@ -1119,6 +1109,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
         qs = qs.filter_by_score_threshold(project, self.request)  # type: ignore
+        qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
         if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
@@ -1351,6 +1342,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         qs = self.attach_tags_by_project(qs, project)
 
         if project:
+            # Filter by project default taxa
+            qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             if self.action == "list":
@@ -1559,7 +1552,9 @@ class SummaryView(GenericAPIView, ProjectMixin):
         project = self.get_active_project()
         if project:
             data = {
-                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
+                "projects_count": Project.objects.visible_for_user(  # type: ignore
+                    user
+                ).count(),  # @TODO filter by current user, here and everywhere!
                 "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
                 .filter(project=project)
                 .count(),
@@ -1569,13 +1564,16 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
                 .filter(deployment__project=project)
                 .count(),
-                "occurrences_count": Occurrence.objects.valid()  # type: ignore
-                .visible_for_user(user)
+                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
+                "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+                .filter_by_score_threshold(project=project, request=self.request)  # type: ignore
+                .filter_by_project_default_taxa(project=project, request=self.request)
+                .valid()
                 .filter(project=project)
-                .filter_by_score_threshold(project, self.request)  # type: ignore
-                .count(),
+                .count(),  # type: ignore
                 "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .filter_by_score_threshold(project, self.request)
+                .filter_by_score_threshold(project=project, request=self.request)  # type: ignore
+                .filter_by_project_default_taxa(project=project, request=self.request)
                 .unique_taxa(project=project)
                 .count(),
             }
