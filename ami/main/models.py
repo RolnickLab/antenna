@@ -999,6 +999,9 @@ class Event(BaseModel):
         ).distinct()
 
     def first_capture(self):
+        # @TODO these needs to return a source image with detections prefetched and filtered
+        # based on the project settings.
+        # Ideally this would be an annotated field, rather than an additional query.
         # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
         # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
@@ -2414,7 +2417,13 @@ class Detection(BaseModel):
         return occurrence
 
     def occurrence_meets_criteria(self) -> bool | None:
-        raise NotImplementedError("This is added an annotated field, it should not be called directly.")
+        """
+        This is added an annotated field, it should not be called directly.
+
+        If the value is None, it means it has not been annotated and not calculated.
+        In that case, no detections should be returned in the API.
+        """
+        return None
 
     def update_calculated_fields(self, save=True):
         needs_update = False
