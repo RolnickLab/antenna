@@ -495,8 +495,11 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
-        project = self.get_active_project()
         with_detections_default = False
+        # If this is a retrieve request or with detections is explicitly requested, require project
+        if self.action == "retrieve" or "with_detections" in self.request.query_params:
+            self.require_project = True
+        project = self.get_active_project()
 
         classification_threshold = get_default_classification_threshold(project, self.request)
         queryset = queryset.with_occurrences_count(  # type: ignore
@@ -519,10 +522,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
             with_detections_default = True
-            # Get retrieved instance
-            if not project:
-                obj: SourceImage = self.get_object()
-                project = obj.project
 
         with_detections = self.request.query_params.get("with_detections", with_detections_default)
         if with_detections is not None:
@@ -530,8 +529,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             with_detections = BooleanField(required=False).clean(with_detections)
 
         if with_detections:
-            if not project:
-                raise exceptions.ValidationError("Project must be specified to include detections")
             queryset = self.prefetch_detections(queryset, project)
 
         return queryset
@@ -546,11 +543,25 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         return queryset
 
     def prefetch_detections(self, queryset: QuerySet, project: Project | None = None) -> QuerySet:
-        # Return all detections for source images, but only include occurrence data
-        # for occurrences that pass the default filters
+        """
+        Return all detections for source images, but only include occurrence data
+        for occurrences that pass the default filters
 
-        # Create a custom queryset that includes all detections but conditionally loads occurrence data
-        # We include all detections and add a flag indicating if the occurrence meets the default filters
+        Create a custom queryset that includes all detections but conditionally loads occurrence data
+        We include all detections and add a flag indicating if the occurrence meets the default filters
+        """
+
+        if project is None:
+            # Return a prefetch with zero detections
+            logger.warning("Returning zero detections with source image because no project was specified")
+            return queryset.prefetch_related(
+                Prefetch(
+                    "detections",
+                    queryset=Detection.objects.none(),
+                    to_attr="filtered_detections",
+                )
+            )
+
         qualifying_occurrence_ids = Occurrence.objects.filter_by_score_threshold(  # type: ignore
             project, self.request
         ).values_list("id", flat=True)
