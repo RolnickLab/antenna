@@ -925,7 +925,6 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "occurrence",
             "classifications",
             "occurrence_meets_criteria",
-            "score_threshold",
         ]
 
     def get_occurrence(self, obj):
