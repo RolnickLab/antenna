@@ -1,8 +1,12 @@
 import classNames from 'classnames'
 import { ProjectDetails } from 'data-services/models/project-details'
+import { PenIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { useSidebarSections } from './useSidebarSections'
 
 export const Sidebar = ({ project }: { project: ProjectDetails }) => {
@@ -20,7 +24,23 @@ export const Sidebar = ({ project }: { project: ProjectDetails }) => {
 
   return (
     <div className="w-full h-min shrink-0 p-0 rounded-md border border-border overflow-hidden bg-background md:w-72">
-      {project.image ? <img src={project.image} alt="" /> : null}
+      {project.image ? (
+        <img src={project.image} alt="" />
+      ) : (
+        <div className="aspect-video flex items-center justify-center">
+          <Link
+            to={getAppRoute({
+              to: APP_ROUTES.GENERAL({ projectId: project.id }),
+            })}
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'ghost' })
+            )}
+          >
+            <PenIcon className="w-4 h-4" />
+            <span>Set cover image</span>
+          </Link>
+        </div>
+      )}
       <div className="grid gap-1 py-3">
         <div className="grid px-4 py-1 gap-2">
           <span className="body-large">{project.name}</span>
