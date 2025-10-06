@@ -185,6 +185,13 @@ const SectionStation = ({
     projectId: projectId as string,
   })
 
+  useEffect(() => {
+    // Pre select first deployment
+    if (deployments.length) {
+      setDeployment(deployments[0])
+    }
+  }, [deployments])
+
   return (
     <div>
       <FormSection
