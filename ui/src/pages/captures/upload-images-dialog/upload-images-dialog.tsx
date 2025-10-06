@@ -28,8 +28,8 @@ import { SelectImagesSection } from './select-images-section/select-images-secti
 import styles from './styles.module.scss'
 
 enum Section {
-  Station = 'station',
   Images = 'images',
+  Station = 'station',
   Upload = 'upload',
 }
 
@@ -46,7 +46,7 @@ export const UploadImagesDialog = ({
 }) => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
-  const [currentSection, setCurrentSection] = useState<string>(Section.Station)
+  const [currentSection, setCurrentSection] = useState<string>(Section.Images)
   const [deployment, setDeployment] = useState<Deployment>()
   const [images, setImages] = useState<{ file: File }[]>([])
   const [processNow, setProcessNow] = useState(
@@ -56,7 +56,7 @@ export const UploadImagesDialog = ({
   const { uploadCaptures, isLoading, isSuccess, error } = useUploadCaptures()
 
   useEffect(() => {
-    setCurrentSection(Section.Station)
+    setCurrentSection(Section.Images)
     setImages([])
     setDeployment(undefined)
   }, [isOpen])
@@ -112,12 +112,12 @@ export const UploadImagesDialog = ({
                 <FormStepper
                   items={[
                     {
-                      id: Section.Station,
-                      label: 'Select station',
-                    },
-                    {
                       id: Section.Images,
                       label: 'Select images',
+                    },
+                    {
+                      id: Section.Station,
+                      label: 'Select station',
                     },
                     {
                       id: Section.Upload,
@@ -128,18 +128,18 @@ export const UploadImagesDialog = ({
                   setCurrentItemId={setCurrentSection}
                 />
               </div>
-              {currentSection === Section.Station ? (
-                <SectionStation
-                  deployment={deployment}
-                  setDeployment={setDeployment}
-                  setCurrentSection={setCurrentSection}
-                />
-              ) : null}
               {currentSection === Section.Images ? (
                 <SectionImages
                   images={images}
                   setCurrentSection={setCurrentSection}
                   setImages={setImages}
+                />
+              ) : null}
+              {currentSection === Section.Station ? (
+                <SectionStation
+                  deployment={deployment}
+                  setDeployment={setDeployment}
+                  setCurrentSection={setCurrentSection}
                 />
               ) : null}
               {currentSection === Section.Upload ? (
@@ -288,8 +288,8 @@ const SectionUpload = ({
       description="Your images will be uploaded and added to the selected monitoring station. If processing is enabled, a job will start in the background."
     >
       <div className="grid grid-cols-2 gap-8">
-        <InputValue label="Station" value={deployment?.name} />
         <InputValue label="Images" value={images.length} />
+        <InputValue label="Station" value={deployment?.name} />
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Switch
