@@ -38,6 +38,10 @@
   outline: 2px solid $color-success-500;
   border-radius: 2px;
 
+  &.neutral {
+    outline-color: $color-neutral-400;
+  }
+
   &.warning {
     outline-color: $color-warning-500;
   }
