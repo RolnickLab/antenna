@@ -61,6 +61,7 @@ export const SessionDetails = () => {
         <Playback
           session={session}
           projectScoreThreshold={project?.settings.scoreThreshold}
+          projectId={projectId}
         />
       </div>
       <PlotGrid>

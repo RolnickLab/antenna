@@ -18,9 +18,11 @@ import { useActiveCaptureId } from './useActiveCapture'
 export const Playback = ({
   session,
   projectScoreThreshold,
+  projectId,
 }: {
   session: SessionDetails
   projectScoreThreshold?: number
+  projectId?: string
 }) => {
   const { timeline = [] } = useSessionTimeline(session.id)
   const [poll, setPoll] = useState(false)
@@ -33,7 +35,8 @@ export const Playback = ({
   )
   const { capture: activeCapture } = useCaptureDetails(
     activeCaptureId as string,
-    poll
+    poll,
+    projectId
   )
 
   useEffect(() => {
