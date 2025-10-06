@@ -519,6 +519,10 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
             with_detections_default = True
+            # Get retrieved instance
+            if not project:
+                obj: SourceImage = self.get_object()
+                project = obj.project
 
         with_detections = self.request.query_params.get("with_detections", with_detections_default)
         if with_detections is not None:
@@ -526,7 +530,9 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             with_detections = BooleanField(required=False).clean(with_detections)
 
         if with_detections:
-            queryset = self.prefetch_detections(queryset)
+            if not project:
+                raise exceptions.ValidationError("Project must be specified to include detections")
+            queryset = self.prefetch_detections(queryset, project)
 
         return queryset
 
@@ -539,16 +545,39 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             ).filter(has_detections=has_detections)
         return queryset
 
-    def prefetch_detections(self, queryset: QuerySet) -> QuerySet:
-        # Return all detections for source images, let frontend filter them
-        prefetch_queryset = Detection.objects.all()
+    def prefetch_detections(self, queryset: QuerySet, project: Project | None = None) -> QuerySet:
+        # Return all detections for source images, but only include occurrence data
+        # for occurrences that pass the default filters
+
+        # Create a custom queryset that includes all detections but conditionally loads occurrence data
+        # We include all detections and add a flag indicating if the occurrence meets the default filters
+        qualifying_occurrence_ids = Occurrence.objects.filter_by_score_threshold(  # type: ignore
+            project, self.request
+        ).values_list("id", flat=True)
+        logger.info(f"Qualifying occurrence IDs: {list(qualifying_occurrence_ids)}")
+        score = get_default_classification_threshold(project, self.request)
+
+        prefetch_queryset = (
+            Detection.objects.all()
+            .annotate(
+                determination_score=models.Max("occurrence__detections__classifications__score"),
+                # Store whether this occurrence should be included based on default filters
+                occurrence_meets_criteria=models.Case(
+                    models.When(
+                        models.Q(occurrence_id__in=models.Subquery(qualifying_occurrence_ids)),
+                        then=models.Value(True),
+                    ),
+                    default=models.Value(False),  # False for detections without occurrences
+                    output_field=models.BooleanField(),
+                ),
+                score_threshold=models.Value(score, output_field=models.FloatField()),
+            )
+            .select_related("occurrence", "occurrence__determination")
+        )
 
         related_detections = Prefetch(
             "detections",
-            queryset=prefetch_queryset.select_related(
-                "occurrence",
-                "occurrence__determination",
-            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
+            queryset=prefetch_queryset,
             to_attr="filtered_detections",
         )
 

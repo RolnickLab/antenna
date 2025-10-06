@@ -999,6 +999,8 @@ class Event(BaseModel):
         ).distinct()
 
     def first_capture(self):
+        # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
+        # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
 
     def summary_data(self):
@@ -2411,6 +2413,9 @@ class Detection(BaseModel):
         self.source_image.save()
         return occurrence
 
+    def occurrence_meets_criteria(self) -> bool | None:
+        raise NotImplementedError("This is added an annotated field, it should not be called directly.")
+
     def update_calculated_fields(self, save=True):
         needs_update = False
         if not self.timestamp:
@@ -2473,6 +2478,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         if project is None:
             return self
         score_threshold = get_default_classification_threshold(project, request)
+        logger.debug(f"Filtering occurrences by determination score threshold of {score_threshold}")
         return self.filter(determination_score__gte=score_threshold)
 
 
