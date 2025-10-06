@@ -24,12 +24,19 @@ export const PipelinesSelect = ({
       value={pipeline?.id ?? ''}
     >
       <Select.Trigger loading={isLoading}>
-        <Select.Value placeholder="Select a pipeline" />
+        <Select.Value placeholder="Select a pipeline">
+          <span>{pipeline?.name}</span>
+        </Select.Value>
       </Select.Trigger>
       <Select.Content className="max-h-72">
         {pipelines.map((p) => (
-          <Select.Item key={p.id} value={p.id}>
-            {p.name}
+          <Select.Item className="h-auto min-h-12 py-2" key={p.id} value={p.id}>
+            <div className="grid gap-1">
+              <span className="body-base">{p.name}</span>
+              {p.description ? (
+                <span className="body-small">{p.description}</span>
+              ) : null}
+            </div>
           </Select.Item>
         ))}
       </Select.Content>
