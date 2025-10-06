@@ -1,6 +1,15 @@
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { Select } from 'nova-ui-kit'
+import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
+
+// TODO: Define these options backend side?
+const DEFAULT_PIPELINE_IDS = [
+  '3', // Quebec & Vermont moths
+  '2', // UK & Denmark moths
+  '1', // Panama moths
+  '4', // World moths
+]
 
 export const PipelinesSelect = ({
   onPipelineChange,
@@ -10,9 +19,23 @@ export const PipelinesSelect = ({
   pipeline?: { id: string; name: string }
 }) => {
   const { projectId } = useParams()
-  const { pipelines = [], isLoading } = usePipelines({
-    projectId: projectId as string,
+  const { pipelines: _pipelines = [], isLoading } = usePipelines({
+    projectId,
   })
+
+  const pipelines = useMemo(() => {
+    if (projectId) {
+      return _pipelines
+    }
+
+    return _pipelines
+      .filter((pipeline) => DEFAULT_PIPELINE_IDS.includes(pipeline.id))
+      .sort(
+        (p1, p2) =>
+          DEFAULT_PIPELINE_IDS.indexOf(p1.id) -
+          DEFAULT_PIPELINE_IDS.indexOf(p2.id)
+      )
+  }, [_pipelines, projectId])
 
   return (
     <Select.Root
