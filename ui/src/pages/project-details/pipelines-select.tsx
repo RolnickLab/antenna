@@ -28,6 +28,7 @@ export const PipelinesSelect = ({
       return _pipelines
     }
 
+    // In the case of new projects, return a limited and sorted list of pipelines to present as default options
     return _pipelines
       .filter((pipeline) => DEFAULT_PIPELINE_IDS.includes(pipeline.id))
       .sort(
