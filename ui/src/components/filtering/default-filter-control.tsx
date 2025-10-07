@@ -7,6 +7,7 @@ import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetail
 import { ProjectDetails } from 'data-services/models/project-details'
 import {
   IconButton,
+  IconButtonShape,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
@@ -27,16 +28,26 @@ export const DefaultFiltersControl = () => {
         <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
           {translate(STRING.NAV_ITEM_DEFAULT_FILTERS)}
         </span>
-        {project ? <InfoPopover project={project} /> : null}
+        {project ? <DefaultFiltersPopover project={project} /> : null}
       </div>
     </div>
   )
 }
 
-const InfoPopover = ({ project }: { project: ProjectDetails }) => (
+export const DefaultFiltersPopover = ({
+  buttonTheme = IconButtonTheme.Plain,
+  project,
+}: {
+  buttonTheme?: IconButtonTheme
+  project: ProjectDetails
+}) => (
   <Popover.Root>
     <Popover.Trigger asChild>
-      <IconButton icon={IconType.Info} theme={IconButtonTheme.Plain} />
+      <IconButton
+        icon={IconType.Info}
+        shape={IconButtonShape.Round}
+        theme={buttonTheme}
+      />
     </Popover.Trigger>
     <Popover.Content className="p-0">
       <FormSection
