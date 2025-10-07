@@ -10,7 +10,7 @@ const isRejected = (result: Result) => result.status === 'rejected'
 export const useUploadCaptures = (onSuccess?: () => void) => {
   const queryClient = useQueryClient()
   const [results, setResults] = useState<Result[]>()
-  const { uploadCapture, isLoading, isSuccess, reset } = useUploadCapture()
+  const { uploadCapture, isLoading, isSuccess } = useUploadCapture()
 
   const error = results?.some(isRejected)
     ? 'Not all images could be uploaded, please retry.'
