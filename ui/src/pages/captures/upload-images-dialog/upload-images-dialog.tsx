@@ -171,6 +171,30 @@ export const UploadImagesDialog = ({
   )
 }
 
+const SectionImages = ({
+  images,
+  setCurrentSection,
+  setImages,
+}: {
+  images: { file: File }[]
+  setCurrentSection: (section: Section) => void
+  setImages: (images: { file: File }[]) => void
+}) => (
+  <div>
+    <SelectImagesSection images={images} setImages={setImages} />
+    <div className="grow" />
+    <FormActions>
+      <Button
+        onClick={() => setCurrentSection(Section.Station)}
+        size="small"
+        variant="outline"
+      >
+        <span>{translate(STRING.NEXT)}</span>
+      </Button>
+    </FormActions>
+  </div>
+)
+
 const SectionStation = ({
   deployment,
   setCurrentSection,
@@ -225,43 +249,19 @@ const SectionStation = ({
           size="small"
           variant="outline"
         >
+          <span>{translate(STRING.BACK)}</span>
+        </Button>
+        <Button
+          onClick={() => setCurrentSection(Section.Upload)}
+          size="small"
+          variant="outline"
+        >
           <span>{translate(STRING.NEXT)}</span>
         </Button>
       </FormActions>
     </div>
   )
 }
-
-const SectionImages = ({
-  images,
-  setCurrentSection,
-  setImages,
-}: {
-  images: { file: File }[]
-  setCurrentSection: (section: Section) => void
-  setImages: (images: { file: File }[]) => void
-}) => (
-  <div>
-    <SelectImagesSection images={images} setImages={setImages} />
-    <div className="grow" />
-    <FormActions>
-      <Button
-        onClick={() => setCurrentSection(Section.Station)}
-        size="small"
-        variant="outline"
-      >
-        <span>{translate(STRING.BACK)}</span>
-      </Button>
-      <Button
-        onClick={() => setCurrentSection(Section.Upload)}
-        size="small"
-        variant="outline"
-      >
-        <span>{translate(STRING.NEXT)}</span>
-      </Button>
-    </FormActions>
-  </div>
-)
 
 const SectionUpload = ({
   deployment,
