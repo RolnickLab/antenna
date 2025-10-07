@@ -7,36 +7,65 @@ import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetail
 import { ProjectDetails } from 'data-services/models/project-details'
 import {
   IconButton,
+  IconButtonShape,
   IconButtonTheme,
 } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputValue } from 'design-system/components/input/input'
 import { ChevronRightIcon } from 'lucide-react'
-import { buttonVariants, Popover } from 'nova-ui-kit'
+import { buttonVariants, Popover, Switch } from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
+import { booleanToString, stringToBoolean } from './utils'
 
-export const DefaultFiltersControl = () => {
+export const DefaultFiltersControl = ({ field }: { field: string }) => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
+  const { filters, addFilter, clearFilter } = useFilters()
+  const filter = filters.find((filter) => filter.field === field)
+
+  if (!filter) {
+    return null
+  }
 
   return (
     <div className="flex items-center justify-between pl-2">
       <div className="flex items-center gap-1">
         <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
-          {translate(STRING.NAV_ITEM_DEFAULT_FILTERS)}
+          {filter.label}
         </span>
-        {project ? <InfoPopover project={project} /> : null}
+        {project ? <DefaultFiltersPopover project={project} /> : null}
       </div>
+      <Switch
+        checked={stringToBoolean(filter.value) ?? true}
+        onCheckedChange={(value) => {
+          if (value) {
+            clearFilter(field)
+          } else {
+            addFilter(field, booleanToString(false))
+          }
+        }}
+      />
     </div>
   )
 }
 
-const InfoPopover = ({ project }: { project: ProjectDetails }) => (
+export const DefaultFiltersPopover = ({
+  buttonTheme = IconButtonTheme.Plain,
+  project,
+}: {
+  buttonTheme?: IconButtonTheme
+  project: ProjectDetails
+}) => (
   <Popover.Root>
     <Popover.Trigger asChild>
-      <IconButton icon={IconType.Info} theme={IconButtonTheme.Plain} />
+      <IconButton
+        icon={IconType.Info}
+        shape={IconButtonShape.Round}
+        theme={buttonTheme}
+      />
     </Popover.Trigger>
     <Popover.Content className="p-0">
       <FormSection
@@ -64,15 +93,17 @@ const InfoPopover = ({ project }: { project: ProjectDetails }) => (
           />
         </FormRow>
       </FormSection>
-      <FormActions>
-        <Link
-          className={buttonVariants({ size: 'small', variant: 'outline' })}
-          to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
-        >
-          <span>Configure</span>
-          <ChevronRightIcon className="w-4 h-4" />
-        </Link>
-      </FormActions>
+      {project.canUpdate ? (
+        <FormActions>
+          <Link
+            className={buttonVariants({ size: 'small', variant: 'outline' })}
+            to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
+          >
+            <span>Configure</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        </FormActions>
+      ) : null}
     </Popover.Content>
   </Popover.Root>
 )

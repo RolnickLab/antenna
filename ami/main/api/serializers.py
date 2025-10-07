@@ -924,6 +924,7 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "bbox",
             "occurrence",
             "classifications",
+            "occurrence_meets_criteria",
         ]
 
     def get_classifications(self, obj) -> str:

@@ -208,7 +208,6 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     """
 
     tags: bool = False  # Whether the project supports tagging taxa
-    auto_process_manual_uploads: bool = False  # Whether to automatically process uploaded images
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
     default_filters: bool = False  # Whether to show default filters form in UI
 
@@ -1095,6 +1094,11 @@ class Event(BaseModel):
         ).distinct()
 
     def first_capture(self):
+        # @TODO these needs to return a source image with detections prefetched and filtered
+        # based on the project settings.
+        # Ideally this would be an annotated field, rather than an additional query.
+        # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
+        # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
 
     def summary_data(self):
@@ -2539,6 +2543,15 @@ class Detection(BaseModel):
         self.source_image.save()
         return occurrence
 
+    def occurrence_meets_criteria(self) -> bool | None:
+        """
+        This is added an annotated field, it should not be called directly.
+
+        If the value is None, it means it has not been annotated and not calculated.
+        In that case, no detections should be returned in the API.
+        """
+        return None
+
     def update_calculated_fields(self, save=True):
         needs_update = False
         if not self.timestamp:
@@ -2601,6 +2614,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         if project is None:
             return self
         score_threshold = get_default_classification_threshold(project, request)
+        logger.debug(f"Filtering occurrences by determination score threshold of {score_threshold}")
         return self.filter(determination_score__gte=score_threshold)
 
     def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):

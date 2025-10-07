@@ -72,7 +72,7 @@ export const Species = () => {
               <FilterControl data={tags} field="not_tag_id" />
             </>
           ) : null}
-          <DefaultFiltersControl />
+          <DefaultFiltersControl field="apply_defaults" />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader

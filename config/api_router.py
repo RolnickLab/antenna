@@ -1,8 +1,7 @@
-from django.conf import settings
 from django.urls import path
 from django.urls.conf import include
 from djoser.views import UserViewSet
-from rest_framework.routers import DefaultRouter, SimpleRouter
+from rest_framework.routers import DefaultRouter
 
 from ami.exports import views as export_views
 from ami.jobs import views as job_views
@@ -10,10 +9,7 @@ from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
 from ami.ml import views as ml_views
 
-if settings.DEBUG:
-    router = DefaultRouter()
-else:
-    router = SimpleRouter()
+router = DefaultRouter()
 
 router.register(r"users", UserViewSet)
 router.register(r"storage", views.StorageSourceViewSet)

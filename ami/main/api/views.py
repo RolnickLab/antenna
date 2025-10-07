@@ -485,8 +485,11 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
-        project = self.get_active_project()
         with_detections_default = False
+        # If this is a retrieve request or with detections is explicitly requested, require project
+        if self.action == "retrieve" or "with_detections" in self.request.query_params:
+            self.require_project = True
+        project = self.get_active_project()
 
         classification_threshold = get_default_classification_threshold(project, self.request)
         queryset = queryset.with_occurrences_count(  # type: ignore
@@ -516,7 +519,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             with_detections = BooleanField(required=False).clean(with_detections)
 
         if with_detections:
-            queryset = self.prefetch_detections(queryset)
+            queryset = self.prefetch_detections(queryset, project)
 
         return queryset
 
@@ -529,16 +532,52 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             ).filter(has_detections=has_detections)
         return queryset
 
-    def prefetch_detections(self, queryset: QuerySet) -> QuerySet:
-        # Return all detections for source images, let frontend filter them
-        prefetch_queryset = Detection.objects.all()
+    def prefetch_detections(self, queryset: QuerySet, project: Project | None = None) -> QuerySet:
+        """
+        Return all detections for source images, but only include occurrence data
+        for occurrences that pass the default filters
+
+        Create a custom queryset that includes all detections but conditionally loads occurrence data
+        We include all detections and add a flag indicating if the occurrence meets the default filters
+        """
+
+        if project is None:
+            # Return a prefetch with zero detections
+            logger.warning("Returning zero detections with source image because no project was specified")
+            return queryset.prefetch_related(
+                Prefetch(
+                    "detections",
+                    queryset=Detection.objects.none(),
+                    to_attr="filtered_detections",
+                )
+            )
+
+        qualifying_occurrence_ids = Occurrence.objects.filter_by_score_threshold(  # type: ignore
+            project, self.request
+        ).values_list("id", flat=True)
+        score = get_default_classification_threshold(project, self.request)
+
+        prefetch_queryset = (
+            Detection.objects.all()
+            .annotate(
+                determination_score=models.Max("occurrence__detections__classifications__score"),
+                # Store whether this occurrence should be included based on default filters
+                occurrence_meets_criteria=models.Case(
+                    models.When(
+                        models.Q(occurrence_id__in=models.Subquery(qualifying_occurrence_ids)),
+                        then=models.Value(True),
+                    ),
+                    default=models.Value(False),  # False for detections without occurrences
+                    output_field=models.BooleanField(),
+                ),
+                score_threshold=models.Value(score, output_field=models.FloatField()),
+            )
+            .select_related("occurrence", "occurrence__determination")
+        )
 
         related_detections = Prefetch(
             "detections",
-            queryset=prefetch_queryset.select_related(
-                "occurrence",
-                "occurrence__determination",
-            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
+            queryset=prefetch_queryset,
             to_attr="filtered_detections",
         )
 
@@ -770,13 +809,16 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
 
         # Get current user from request
         user = get_current_user(self.request)
-        project = self.get_active_project()
 
         # Create the SourceImageUpload object with the user
         obj = serializer.save(user=user)
 
         # Get process_now flag from project feature flags
-        process_now = project.feature_flags.auto_process_manual_uploads
+        process_now = SingleParamSerializer[bool].clean(
+            param_name="process_now",
+            field=serializers.BooleanField(required=True),
+            data=self.request.query_params,
+        )
 
         # Create source image from the upload
         source_image = create_source_image_from_upload(

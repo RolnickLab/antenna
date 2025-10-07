@@ -71,6 +71,7 @@ def get_default_classification_threshold(project, request: Request | None = None
     """
     # If request exists and apply_defaults is explicitly false, get from request
     if request is not None:
+        # @TODO use boolean serializer field to parse this
         apply_defaults = request.query_params.get("apply_defaults", "true").lower()
         if apply_defaults == "false":
             return get_active_classification_threshold(request)

@@ -1925,7 +1925,8 @@ class TestRunSingleImageJobPermission(APITestCase):
         self._grant_create_job__and_run_single_image_perm()
 
         # Verify permission is reflected in capture detail response
-        capture_detail_url = f"/api/v2/captures/{self.capture.pk}/"
+        assert self.capture is not None
+        capture_detail_url = f"/api/v2/captures/{self.capture.pk}/?project_id={self.project.pk}"
         response = self.client.get(capture_detail_url)
         self.assertEqual(response.status_code, 200)
         self.assertIn(

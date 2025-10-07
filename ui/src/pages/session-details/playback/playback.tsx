@@ -1,12 +1,15 @@
+import { DefaultFiltersPopover } from 'components/filtering/default-filter-control'
 import { LicenseInfo } from 'components/license-info/license-info'
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
 import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { useEffect, useState } from 'react'
+import { IconButtonTheme } from 'design-system/components/icon-button/icon-button'
+import { useEffect, useMemo, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
@@ -15,10 +18,18 @@ import styles from './playback.module.scss'
 import { SessionCapturesSlider } from './session-captures-slider/session-captures-slider'
 import { useActiveCaptureId } from './useActiveCapture'
 
-export const Playback = ({ session }: { session: SessionDetails }) => {
+export const Playback = ({
+  session,
+  projectId,
+}: {
+  session: SessionDetails
+  projectId?: string
+}) => {
+  const { project } = useProjectDetails(projectId as string, true)
   const { timeline = [] } = useSessionTimeline(session.id)
   const [poll, setPoll] = useState(false)
   const [showDetections, setShowDetections] = useState(true)
+  const [defaultFilters, setDefaultFilters] = useState(true)
   const [snapToDetections, setSnapToDetections] = useState(
     session.numDetections ? true : false
   )
@@ -27,7 +38,8 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
   )
   const { capture: activeCapture } = useCaptureDetails(
     activeCaptureId as string,
-    poll
+    poll,
+    projectId
   )
 
   useEffect(() => {
@@ -39,7 +51,19 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
     }
   }, [activeCapture])
 
-  const detections = activeCapture?.detections ?? []
+  const detections = useMemo(() => {
+    if (!activeCapture?.detections) {
+      return []
+    }
+
+    if (!defaultFilters) {
+      return activeCapture.detections
+    }
+
+    return activeCapture.detections.filter(
+      (detection) => detection.occurrenceMeetsCriteria
+    )
+  }, [activeCapture?.detections, defaultFilters])
 
   if (!session.firstCapture) {
     return null
@@ -60,14 +84,28 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
           )}
           <div className={styles.sidebarSection}>
             <span className={styles.title}>View settings</span>
-            <span className={styles.label}>Preferences</span>
             <Checkbox
               id="show-detections"
-              label="Show detection frames"
+              label="Show detections"
               checked={showDetections}
               onCheckedChange={setShowDetections}
               theme={CheckboxTheme.Neutral}
             />
+            <div className="flex items-center gap-1">
+              <Checkbox
+                id="default-filters"
+                label="Default filters"
+                checked={defaultFilters}
+                onCheckedChange={setDefaultFilters}
+                theme={CheckboxTheme.Neutral}
+              />
+              {project ? (
+                <DefaultFiltersPopover
+                  project={project}
+                  buttonTheme={IconButtonTheme.Neutral}
+                />
+              ) : null}
+            </div>
             <Checkbox
               id="snap-to-detections"
               label="Snap to images with detections"

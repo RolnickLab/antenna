@@ -97,7 +97,7 @@ export const Occurrences = () => {
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
-            <DefaultFiltersControl />
+            <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
             title="More filters"

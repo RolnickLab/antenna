@@ -124,6 +124,10 @@ export const AVAILABLE_FILTERS: {
     label: 'Show unobserved taxa',
     field: 'include_unobserved',
   },
+  {
+    label: 'Default filters',
+    field: 'apply_defaults',
+  },
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
