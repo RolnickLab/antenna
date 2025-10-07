@@ -81,15 +81,17 @@ export const DefaultFiltersPopover = ({
           />
         </FormRow>
       </FormSection>
-      <FormActions>
-        <Link
-          className={buttonVariants({ size: 'small', variant: 'outline' })}
-          to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
-        >
-          <span>Configure</span>
-          <ChevronRightIcon className="w-4 h-4" />
-        </Link>
-      </FormActions>
+      {project.canUpdate ? (
+        <FormActions>
+          <Link
+            className={buttonVariants({ size: 'small', variant: 'outline' })}
+            to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
+          >
+            <span>Configure</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        </FormActions>
+      ) : null}
     </Popover.Content>
   </Popover.Root>
 )
