@@ -1,6 +1,5 @@
 import { ErrorState } from 'components/error-state/error-state'
 import { FetchInfo } from 'components/fetch-info/fetch-info'
-import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
 import { Box } from 'design-system/components/box/box'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
@@ -21,7 +20,6 @@ export const SessionDetails = () => {
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { activeOccurrences } = useActiveOccurrences()
   const { activeCaptureId } = useActiveCaptureId()
-  const { project } = useProjectDetails(projectId as string, true)
   const { session, isLoading, isFetching, error } = useSessionDetails(
     id as string,
     { capture: activeCaptureId, occurrence: activeOccurrences[0] }
@@ -58,11 +56,7 @@ export const SessionDetails = () => {
         </div>
       )}
       <div className={styles.playbackWrapper}>
-        <Playback
-          session={session}
-          projectScoreThreshold={project?.settings.scoreThreshold}
-          projectId={projectId}
-        />
+        <Playback session={session} projectId={projectId} />
       </div>
       <PlotGrid>
         <Box>

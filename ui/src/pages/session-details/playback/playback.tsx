@@ -17,11 +17,9 @@ import { useActiveCaptureId } from './useActiveCapture'
 
 export const Playback = ({
   session,
-  projectScoreThreshold,
   projectId,
 }: {
   session: SessionDetails
-  projectScoreThreshold?: number
   projectId?: string
 }) => {
   const { timeline = [] } = useSessionTimeline(session.id)
@@ -94,7 +92,6 @@ export const Playback = ({
         height={activeCapture?.height ?? session.firstCapture.height}
         detections={detections}
         showDetections={showDetections}
-        projectScoreThreshold={projectScoreThreshold}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>

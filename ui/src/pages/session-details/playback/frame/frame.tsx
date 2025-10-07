@@ -10,7 +10,7 @@ import {
   TABS,
 } from 'pages/occurrence-details/occurrence-details'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { getScoreColorClass } from 'utils/constants'
+import { SCORE_THRESHOLDS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../useActiveOccurrences'
 import styles from './frame.module.scss'
@@ -24,7 +24,6 @@ interface FrameProps {
   height: number | null
   detections: CaptureDetection[]
   showDetections?: boolean
-  projectScoreThreshold?: number
 }
 
 export const Frame = ({
@@ -33,7 +32,6 @@ export const Frame = ({
   height,
   detections,
   showDetections,
-  projectScoreThreshold,
 }: FrameProps) => {
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -131,7 +129,6 @@ export const Frame = ({
           boxStyles={boxStyles}
           detections={detections}
           showDetections={showDetections}
-          projectScoreThreshold={projectScoreThreshold}
         />
       </div>
       {isLoading && (
@@ -178,12 +175,10 @@ const FrameDetections = ({
   boxStyles,
   detections,
   showDetections,
-  projectScoreThreshold,
 }: {
   boxStyles: { [key: number]: BoxStyle }
   detections: CaptureDetection[]
   showDetections?: boolean
-  projectScoreThreshold?: number
 }) => {
   const containerRef = useRef(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
@@ -223,12 +218,9 @@ const FrameDetections = ({
                     style={style}
                     className={classNames(styles.detection, {
                       [styles.active]: isActive,
-                      [styles[
-                        getScoreColorClass(
-                          detection.score,
-                          projectScoreThreshold
-                        )
-                      ]]: true,
+                      [styles.warning]:
+                        detection.score < SCORE_THRESHOLDS.WARNING,
+                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.clickable]: !!detection.occurrenceId,
                     })}
                     onClick={() => {
