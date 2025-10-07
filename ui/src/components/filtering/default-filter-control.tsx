@@ -13,23 +13,41 @@ import {
 import { IconType } from 'design-system/components/icon/icon'
 import { InputValue } from 'design-system/components/input/input'
 import { ChevronRightIcon } from 'lucide-react'
-import { buttonVariants, Popover } from 'nova-ui-kit'
+import { buttonVariants, Popover, Switch } from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { useFilters } from 'utils/useFilters'
+import { booleanToString, stringToBoolean } from './utils'
 
-export const DefaultFiltersControl = () => {
+export const DefaultFiltersControl = ({ field }: { field: string }) => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
+  const { filters, addFilter, clearFilter } = useFilters()
+  const filter = filters.find((filter) => filter.field === field)
+
+  if (!filter) {
+    return null
+  }
 
   return (
     <div className="flex items-center justify-between pl-2">
       <div className="flex items-center gap-1">
         <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
-          {translate(STRING.NAV_ITEM_DEFAULT_FILTERS)}
+          {filter.label}
         </span>
         {project ? <DefaultFiltersPopover project={project} /> : null}
       </div>
+      <Switch
+        checked={stringToBoolean(filter.value) ?? true}
+        onCheckedChange={(value) => {
+          if (value) {
+            clearFilter(field)
+          } else {
+            addFilter(field, booleanToString(false))
+          }
+        }}
+      />
     </div>
   )
 }
