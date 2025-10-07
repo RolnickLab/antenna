@@ -565,7 +565,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         qualifying_occurrence_ids = Occurrence.objects.filter_by_score_threshold(  # type: ignore
             project, self.request
         ).values_list("id", flat=True)
-        logger.info(f"Qualifying occurrence IDs: {list(qualifying_occurrence_ids)}")
         score = get_default_classification_threshold(project, self.request)
 
         prefetch_queryset = (

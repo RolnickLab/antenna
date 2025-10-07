@@ -909,7 +909,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
 
 
 class CaptureDetectionsSerializer(DefaultSerializer):
-    occurrence = serializers.SerializerMethodField()
+    occurrence = CaptureOccurrenceSerializer(read_only=True)
     classifications = serializers.SerializerMethodField()
 
     class Meta:
@@ -926,17 +926,6 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "classifications",
             "occurrence_meets_criteria",
         ]
-
-    def get_occurrence(self, obj):
-        """
-        Return occurrence data only if it meets the filtering criteria.
-        """
-        if hasattr(obj, "occurrence_meets_criteria") and not obj.occurrence_meets_criteria:
-            return None
-
-        if obj.occurrence:
-            return CaptureOccurrenceSerializer(obj.occurrence, context=self.context).data
-        return None
 
     def get_classifications(self, obj) -> str:
         """
