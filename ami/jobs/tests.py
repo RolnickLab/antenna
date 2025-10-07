@@ -1,7 +1,10 @@
 # from rich import print
+import datetime
 import logging
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
+from django.utils import timezone
 from guardian.shortcuts import assign_perm
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -198,3 +201,350 @@ class TestJobView(APITestCase):
         # This cannot be tested until we have a way to cancel jobs
         # and a way to run async tasks in tests.
         pass
+
+
+class TestJobStatusChecking(TestCase):
+    """
+    Test the job status checking functionality.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Status Check Test Project")
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML pipeline",
+            description="Test ML pipeline",
+        )
+        self.pipeline.projects.add(self.project)
+        self.source_image_collection = SourceImageCollection.objects.create(
+            name="Test collection",
+            project=self.project,
+        )
+
+    def test_check_status_no_task_id_recently_scheduled(self):
+        """Test that recently scheduled jobs without task_id are not marked as failed."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - no task_id",
+            scheduled_at=timezone.now(),
+        )
+
+        status_changed = job.check_status()
+
+        self.assertFalse(status_changed)
+        self.assertEqual(job.status, JobState.CREATED.value)
+        self.assertIsNotNone(job.last_checked_at)
+
+    def test_check_status_no_task_id_old_scheduled(self):
+        """Test that old scheduled jobs without task_id are marked as failed."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - stale no task_id",
+            scheduled_at=timezone.now() - datetime.timedelta(minutes=10),
+        )
+
+        status_changed = job.check_status()
+
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE.value)
+        self.assertIsNotNone(job.finished_at)
+        self.assertIsNotNone(job.last_checked_at)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_with_matching_status(self, mock_async_result):
+        """Test that jobs with matching Celery status are not changed."""
+        mock_task = MagicMock()
+        mock_task.status = JobState.STARTED.value
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - matching status",
+            task_id="test-task-id-123",
+            status=JobState.STARTED.value,
+            started_at=timezone.now(),
+        )
+
+        status_changed = job.check_status()
+
+        self.assertFalse(status_changed)
+        self.assertEqual(job.status, JobState.STARTED.value)
+        self.assertIsNotNone(job.last_checked_at)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_with_mismatched_status(self, mock_async_result):
+        """Test that jobs with mismatched Celery status are updated."""
+        mock_task = MagicMock()
+        mock_task.status = JobState.FAILURE.value
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - mismatched status",
+            task_id="test-task-id-456",
+            status=JobState.STARTED.value,
+            started_at=timezone.now(),
+        )
+
+        status_changed = job.check_status()
+
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE.value)
+        self.assertIsNotNone(job.finished_at)
+        self.assertIsNotNone(job.last_checked_at)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_stale_running_job(self, mock_async_result):
+        """Test that jobs running for too long are marked as failed."""
+        mock_task = MagicMock()
+        mock_task.status = JobState.STARTED.value
+        mock_async_result.return_value = mock_task
+
+        # Create job that started 3 days ago (exceeds 2 day max)
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - stale running",
+            task_id="test-task-id-789",
+            status=JobState.STARTED.value,
+            started_at=timezone.now() - datetime.timedelta(days=3),
+        )
+
+        status_changed = job.check_status()
+
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE.value)
+        self.assertIsNotNone(job.finished_at)
+        # Verify task was attempted to be revoked
+        mock_task.revoke.assert_called_once_with(terminate=True)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_stuck_pending(self, mock_async_result):
+        """Test that jobs stuck in PENDING for too long are marked as failed."""
+        mock_task = MagicMock()
+        mock_task.status = JobState.PENDING.value
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - stuck pending",
+            task_id="test-task-id-pending",
+            status=JobState.PENDING.value,
+            scheduled_at=timezone.now() - datetime.timedelta(minutes=15),
+        )
+
+        status_changed = job.check_status()
+
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE.value)
+        self.assertIsNotNone(job.finished_at)
+
+    def test_check_status_does_not_check_completed_jobs(self):
+        """Test that completed jobs are not checked unless forced."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - completed",
+            task_id="test-task-id-completed",
+            status=JobState.SUCCESS.value,
+            finished_at=timezone.now(),
+        )
+
+        status_changed = job.check_status(force=False)
+
+        self.assertFalse(status_changed)
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        self.assertIsNotNone(job.last_checked_at)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_forces_check_on_completed_jobs(self, mock_async_result):
+        """Test that force=True checks even completed jobs."""
+        mock_task = MagicMock()
+        mock_task.status = JobState.SUCCESS.value
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - force check",
+            task_id="test-task-id-force",
+            status=JobState.SUCCESS.value,
+            finished_at=timezone.now(),
+        )
+
+        status_changed = job.check_status(force=True)
+
+        # Status shouldn't change since Celery status matches
+        self.assertFalse(status_changed)
+        self.assertIsNotNone(job.last_checked_at)
+
+    @patch("ami.jobs.tasks.cache")
+    @patch("ami.jobs.models.Job.objects")
+    def test_check_unfinished_jobs_with_lock(self, mock_job_objects, mock_cache):
+        """Test that check_unfinished_jobs uses locking to prevent duplicates."""
+        from ami.jobs.tasks import check_unfinished_jobs
+
+        # Simulate lock already acquired
+        mock_cache.add.return_value = False
+
+        result = check_unfinished_jobs()
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "already_running")
+        mock_cache.add.assert_called_once()
+        mock_cache.delete.assert_not_called()
+
+    @patch("ami.jobs.tasks.cache")
+    def test_check_unfinished_jobs_processes_jobs(self, mock_cache):
+        """Test that check_unfinished_jobs processes unfinished jobs."""
+        from ami.jobs.tasks import check_unfinished_jobs
+
+        # Allow lock to be acquired
+        mock_cache.add.return_value = True
+
+        # Create some unfinished jobs
+        job1 = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Unfinished job 1",
+            status=JobState.STARTED.value,
+            task_id="test-task-1",
+            started_at=timezone.now(),
+            last_checked_at=timezone.now() - datetime.timedelta(minutes=5),
+        )
+
+        job2 = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Unfinished job 2",
+            status=JobState.PENDING.value,
+            task_id="test-task-2",
+            scheduled_at=timezone.now() - datetime.timedelta(minutes=3),
+        )
+
+        # Create a completed job (should not be checked)
+        Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Completed job",
+            status=JobState.SUCCESS.value,
+            finished_at=timezone.now(),
+        )
+
+        with patch("ami.jobs.models.AsyncResult") as mock_async_result:
+            mock_task = MagicMock()
+            mock_task.status = JobState.STARTED.value
+            mock_async_result.return_value = mock_task
+
+            result = check_unfinished_jobs()
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["total_unfinished"], 2)
+        self.assertGreaterEqual(result["checked"], 1)
+
+        # Verify lock was released
+        mock_cache.delete.assert_called_once()
+
+        # Verify jobs were checked
+        job1.refresh_from_db()
+        job2.refresh_from_db()
+        self.assertIsNotNone(job1.last_checked_at)
+        self.assertIsNotNone(job2.last_checked_at)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_task_disappeared_with_retry(self, mock_async_result):
+        """Test that jobs with disappeared tasks are retried if they just started."""
+        mock_task = MagicMock()
+        mock_task.status = None  # Task not found
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - task disappeared",
+            task_id="test-task-disappeared",
+            status=JobState.STARTED.value,
+            started_at=timezone.now() - datetime.timedelta(minutes=2),  # Started 2 mins ago
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        # Mock the retry method
+        with patch.object(job, "retry") as mock_retry:
+            status_changed = job.check_status(auto_retry=True)
+
+            # Should attempt retry
+            mock_retry.assert_called_once_with(async_task=True)
+            self.assertTrue(status_changed)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_task_disappeared_no_retry_old_job(self, mock_async_result):
+        """Test that old jobs with disappeared tasks are marked failed, not retried."""
+        mock_task = MagicMock()
+        mock_task.status = None  # Task not found
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - old disappeared task",
+            task_id="test-task-old-disappeared",
+            status=JobState.STARTED.value,
+            started_at=timezone.now() - datetime.timedelta(minutes=10),  # Started 10 mins ago
+        )
+
+        status_changed = job.check_status(auto_retry=True)
+
+        # Should not retry, just mark as failed
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE.value)
+        self.assertIsNotNone(job.finished_at)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_task_disappeared_auto_retry_disabled(self, mock_async_result):
+        """Test that auto_retry=False prevents automatic retry."""
+        mock_task = MagicMock()
+        mock_task.status = None  # Task not found
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - no auto retry",
+            task_id="test-task-no-retry",
+            status=JobState.STARTED.value,
+            started_at=timezone.now() - datetime.timedelta(minutes=2),
+        )
+
+        status_changed = job.check_status(auto_retry=False)
+
+        # Should not retry, just mark as failed
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE.value)
+        self.assertIsNotNone(job.finished_at)
+
+    @patch("ami.jobs.models.AsyncResult")
+    def test_check_status_task_pending_but_job_running(self, mock_async_result):
+        """Test that PENDING status from Celery when job thinks it's running indicates disappeared task."""
+        mock_task = MagicMock()
+        mock_task.status = "PENDING"  # Celery returns PENDING for unknown tasks
+        mock_async_result.return_value = mock_task
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - pending but should be running",
+            task_id="test-task-fake-pending",
+            status=JobState.STARTED.value,
+            started_at=timezone.now() - datetime.timedelta(minutes=2),
+        )
+
+        status_changed = job.check_status(auto_retry=False)
+
+        # Should detect this as a disappeared task
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE.value)
