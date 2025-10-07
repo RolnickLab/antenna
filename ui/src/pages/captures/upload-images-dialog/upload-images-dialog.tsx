@@ -92,7 +92,7 @@ export const UploadImagesDialog = ({
               ) : (
                 <>
                   <p className="text-center body-large mb-16">
-                    Your images was uploaded and added to the selected
+                    Your images were uploaded and added to the selected
                     monitoring station.
                   </p>
                   <Link
