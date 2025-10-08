@@ -104,7 +104,7 @@ class RankRollupTask(BasePostProcessingTask):
                             taxon=new_taxon,
                             score=new_score,
                             terminal=True,
-                            algorithm=clf.algorithm,
+                            algorithm=self.algorithm,
                             timestamp=timezone.now(),
                         )
 
