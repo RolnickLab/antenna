@@ -1,9 +1,14 @@
+import typing
+
 import requests
 from django.forms import FloatField
 from drf_spectacular.utils import OpenApiParameter
 from requests.adapters import HTTPAdapter
 from rest_framework.request import Request
 from urllib3.util import Retry
+
+if typing.TYPE_CHECKING:
+    from ami.main.models import Project
 
 
 def create_session(
@@ -56,7 +61,7 @@ def get_active_classification_threshold(request: Request) -> float:
     return classification_threshold
 
 
-def get_default_classification_threshold(project, request: Request | None = None) -> float:
+def get_default_classification_threshold(project: "Project | None" = None, request: Request | None = None) -> float:
     """
     Get the classification threshold from project settings by default,
     or from request query parameters if `apply_defaults=false` is set in the request.
@@ -69,6 +74,8 @@ def get_default_classification_threshold(project, request: Request | None = None
         The classification threshold value from project settings by default,
         or from request if `apply_defaults=false` is provided.
     """
+    default_threshold = 0.0
+
     # If request exists and apply_defaults is explicitly false, get from request
     if request is not None:
         # @TODO use boolean serializer field to parse this
@@ -76,11 +83,10 @@ def get_default_classification_threshold(project, request: Request | None = None
         if apply_defaults == "false":
             return get_active_classification_threshold(request)
 
-    # Otherwise, get from project
-    if project is None:
-        return 0.0
-
-    return getattr(project, "default_filters_score_threshold", 0.0) or 0.0
+    if project:
+        return project.default_filters_score_threshold
+    else:
+        return default_threshold
 
 
 project_id_doc_param = OpenApiParameter(
