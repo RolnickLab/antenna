@@ -33,7 +33,7 @@ const config: FormConfig = {
   defaultProcessingPipeline: {
     label: 'Default processing pipeline',
     description:
-      'The default pipeline to use for processing images in this project.',
+      'Based on the region of interest, select a default pipeline to use for processing in this project.',
   },
 }
 
