@@ -32,7 +32,7 @@ class SmallSizeFilter(BasePostProcessingTask):
 
         try:
             collection = SourceImageCollection.objects.get(pk=collection_id)
-            job.logger.info(f"Loaded SourceImageCollection {collection_id} " f"(Project={collection.project_id})")
+            job.logger.info(f"Loaded SourceImageCollection {collection_id} " f"(Project={collection.project})")
         except SourceImageCollection.DoesNotExist:
             msg = f"SourceImageCollection {collection_id} not found"
             job.logger.error(msg)
@@ -83,7 +83,7 @@ class SmallSizeFilter(BasePostProcessingTask):
                             occurrence=det.occurrence,
                             taxon=not_identifiable_taxon,
                             user=None,  # since this comes from a post-processing algorithm  not a human
-                            comment=f"Auto-set by {self.name} Filter post-processing task",
+                            comment=f"Auto-set by {self.name} post-processing task",
                         )
                 modified += 1
                 job.logger.debug(f"Detection {det.pk}: marked as 'Not identifiable'")

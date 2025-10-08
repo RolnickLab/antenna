@@ -3,9 +3,9 @@ from collections import defaultdict
 
 from django.db import transaction
 from django.utils import timezone
-from main.models import Classification, Identification, Taxon
 
 from ami.jobs.models import Job
+from ami.main.models import Classification, Identification, Taxon
 from ami.ml.post_processing.base import BasePostProcessingTask, register_postprocessing_task
 
 logger = logging.getLogger(__name__)
@@ -40,10 +40,10 @@ class RankRollupTask(BasePostProcessingTask):
     ROLLUP_ORDER = ["species", "genus", "family"]
 
     def run(self, job: "Job") -> None:
-        job.logger.info(f"Running Rank Rollup task for job {job.id}")
+        job.logger.info(f"Running Rank Rollup task for job {job.pk}")
 
         # ---- Read config parameters ----
-        config = job.config or {}
+        config = self.config or {}
         collection_id = config.get("source_image_collection_id")
         thresholds = config.get("thresholds", self.DEFAULT_THRESHOLDS)
         rollup_order = config.get("rollup_order", self.ROLLUP_ORDER)
