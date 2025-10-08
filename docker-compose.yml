@@ -8,8 +8,6 @@ volumes:
       o: bind
   minio_data:
     driver: local
-  rabbitmq_data:
-    driver: local
   node_modules:
 
 services:
@@ -23,7 +21,7 @@ services:
     depends_on:
       - postgres
       - redis
-      - rabbitmq
+      - nats
       - minio-init
       - ml_backend
     volumes:
@@ -35,7 +33,10 @@ services:
         required: false
     ports:
       - "8000:8000"
+      - "5679:5679"
     command: /start
+    # for debugging with debugpy:
+    # command: python -m debugpy --listen 0.0.0.0:5679 -m django runserver 0.0.0.0:8000
     networks:
       - default
       - antenna_network
@@ -88,25 +89,18 @@ services:
     image: redis:6
     container_name: ami_local_redis
 
-  rabbitmq:
-    image: rabbitmq:3.12-management
-    container_name: ami_local_rabbitmq
-    hostname: rabbitmq
+  nats:
+    image: nats:2.10-alpine
+    container_name: ami_local_nats
+    hostname: nats
     ports:
-      - "5672:5672" # AMQP port
-      - "15672:15672" # Management UI port
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER:-admin}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_ADMIN_PASS:-admin123}
-      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-/}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-      - ./compose/local/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
-      - ./compose/local/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - "4222:4222" # Client port
+      - "8222:8222" # HTTP monitoring port
+    command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
     healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 30s
-      timeout: 30s
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
       retries: 3
 
   celeryworker:

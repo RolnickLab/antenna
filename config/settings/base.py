@@ -263,14 +263,9 @@ CACHES = {
     }
 }
 
-# RABBITMQ
+# NATS
 # ------------------------------------------------------------------------------
-RABBITMQ_URL = env("RABBITMQ_URL", default="amqp://guest:guest@localhost:5672/")  # type: ignore[no-untyped-call]
-RABBITMQ_HOST = env("RABBITMQ_HOST", default="localhost")  # type: ignore[no-untyped-call]
-RABBITMQ_PORT = env.int("RABBITMQ_PORT", default=5672)  # type: ignore[no-untyped-call]
-RABBITMQ_DJANGO_USER = env("RABBITMQ_DJANGO_USER", default="guest")  # type: ignore[no-untyped-call]
-RABBITMQ_DJANGO_PASS = env("RABBITMQ_DJANGO_PASS", default="guest")  # type: ignore[no-untyped-call]
-RABBITMQ_DEFAULT_VHOST = env("RABBITMQ_DEFAULT_VHOST", default="/")  # type: ignore[no-untyped-call]
+NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
 
 # ADMIN
 # ------------------------------------------------------------------------------
