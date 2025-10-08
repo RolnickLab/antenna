@@ -1,7 +1,7 @@
 import typing
 
 import requests
-from django.forms import FloatField
+from django.forms import BooleanField, FloatField
 from drf_spectacular.utils import OpenApiParameter
 from requests.adapters import HTTPAdapter
 from rest_framework.request import Request
@@ -78,9 +78,9 @@ def get_default_classification_threshold(project: "Project | None" = None, reque
 
     # If request exists and apply_defaults is explicitly false, get from request
     if request is not None:
-        # @TODO use boolean serializer field to parse this
-        apply_defaults = request.query_params.get("apply_defaults", "true").lower()
-        if apply_defaults == "false":
+        apply_defaults = request.query_params.get("apply_defaults", "true")
+        apply_defaults = BooleanField(required=False).clean(apply_defaults)
+        if apply_defaults is False:
             return get_active_classification_threshold(request)
 
     if project:
