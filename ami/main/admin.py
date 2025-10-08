@@ -667,7 +667,34 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Queued Class Masking for {queryset.count()} collection(s). Jobs: {jobs}")
 
-    actions = [populate_collection, populate_collection_async, run_small_size_filter, run_class_masking]
+    @admin.action(description="Run Rank Rollup post-processing task (async)")
+    def run_rank_rollup(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        """Trigger the Rank Rollup post-processing job asynchronously."""
+        jobs = []
+        DEFAULT_THRESHOLDS = {"species": 0.8, "genus": 0.6, "family": 0.4}
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: RankRollup on Collection {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "rank_rollup",
+                    "config": {"source_image_collection_id": collection.pk, "thresholds": DEFAULT_THRESHOLDS},
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Rank Rollup for {queryset.count()} collection(s). Jobs: {jobs}")
+
+    actions = [
+        populate_collection,
+        populate_collection_async,
+        run_small_size_filter,
+        run_class_masking,
+        run_rank_rollup,
+    ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
