@@ -14,12 +14,14 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import { DownloadIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
   TABS,
 } from 'pages/occurrence-details/occurrence-details'
 import { useContext, useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -148,6 +150,13 @@ export const Occurrences = () => {
               columnSettings={columnSettings}
               onColumnSettingsChange={setColumnSettings}
             />
+            <Link
+              className={buttonVariants({ size: 'small', variant: 'outline' })}
+              to={APP_ROUTES.EXPORTS({ projectId: projectId as string })}
+            >
+              <DownloadIcon className="w-4 h-4" />
+              <span>Export </span>
+            </Link>
           </PageHeader>
           {selectedView === 'table' && (
             <Table

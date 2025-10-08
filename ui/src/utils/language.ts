@@ -167,6 +167,7 @@ export enum STRING {
   MESSAGE_NO_ACCOUNT_YET,
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS,
+  MESSAGE_NO_RESULTS_TO_SHOW,
   MESSAGE_NO_RESULTS_FOR_FILTERING,
   MESSAGE_NO_RESULTS_FOR_PAGE,
   MESSAGE_PASSWORD_FORMAT,
@@ -451,11 +452,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
-  [STRING.MESSAGE_NO_RESULTS]: 'No results to show.',
+  [STRING.MESSAGE_NO_RESULTS]: 'No results',
+  [STRING.MESSAGE_NO_RESULTS_TO_SHOW]: 'There are no results to show here yet.',
   [STRING.MESSAGE_NO_RESULTS_FOR_FILTERING]:
-    'No results to show for the current filtering.',
+    'There are no results to show for the current filtering.',
   [STRING.MESSAGE_NO_RESULTS_FOR_PAGE]:
-    'No results to show for the current page.',
+    'There are no results to show for the current page.',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
   [STRING.MESSAGE_PASSWORD_UPDATED]: 'Your password has been updated!',
