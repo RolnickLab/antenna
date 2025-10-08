@@ -2674,6 +2674,12 @@ class Occurrence(BaseModel):
 
     class Meta:
         ordering = ["-determination_score"]
+        # indexes = [
+        #     # Composite index for taxon occurrence queries filtered by project
+        #     models.Index(fields=["determination_id", "project_id", "event_id", "determination_score"]),
+        #     # Index for timestamp queries
+        #     models.Index(fields=["determination_id", "project_id", "event_id"]),
+        # ]
 
 
 def update_occurrence_determination(
