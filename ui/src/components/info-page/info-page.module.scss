@@ -47,21 +47,22 @@
     margin: 0;
 
     &:not(:last-child) {
-      margin-bottom: 32px;
+      margin-bottom: 8px;
     }
   }
 
   h3 {
-    @include paragraph-large();
+    @include paragraph-medium();
+    font-weight: 600;
     margin: 0;
 
     &:not(:last-child) {
-      margin-bottom: 32px;
+      margin-bottom: 8px;
     }
   }
 
   p {
-    @include paragraph-small();
+    @include paragraph-medium();
     margin: 0;
 
     &:not(:last-child) {
@@ -84,7 +85,7 @@
 
     li {
       display: list-item;
-      @include paragraph-small();
+      @include paragraph-medium();
 
       &:not(:last-child) {
         margin-bottom: 8px;
@@ -95,11 +96,12 @@
   ol {
     display: block;
     list-style-type: decimal;
+    list-style-position: inside;
     margin: 0 0 32px 16px;
 
     li {
       display: list-item;
-      @include paragraph-small();
+      @include paragraph-medium();
 
       &:not(:last-child) {
         margin-bottom: 8px;
@@ -111,6 +113,10 @@
 
       li {
         @include heading-6();
+
+        h2 {
+          display: inline;
+        }
       }
     }
   }
