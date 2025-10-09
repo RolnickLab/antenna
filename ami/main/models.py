@@ -37,7 +37,7 @@ from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp
-from ami.utils.requests import get_default_classification_threshold
+from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
@@ -2623,6 +2623,10 @@ class OccurrenceQuerySet(BaseQuerySet):
     def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
         if project is None:
             return self
+
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
         qs = self
         include_taxa = project.default_filters_include_taxa.all()
         exclude_taxa = project.default_filters_exclude_taxa.all()

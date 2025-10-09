@@ -61,6 +61,25 @@ def get_active_classification_threshold(request: Request) -> float:
     return classification_threshold
 
 
+def get_apply_default_filters_flag(request: Request | None = None) -> bool:
+    """
+    Get the apply_default_filters parameter from request parameters.
+
+    Args:
+        request: The incoming request object
+    Returns:
+        The apply_default_filters value, defaulting to True if not specified
+    """
+    default = True
+
+    if request is None:
+        return default
+
+    apply_default_filters = request.query_params.get("apply_defaults") or default
+    apply_default_filters = BooleanField(required=False).clean(apply_default_filters)
+    return apply_default_filters
+
+
 def get_default_classification_threshold(project: "Project | None" = None, request: Request | None = None) -> float:
     """
     Get the classification threshold from project settings by default,
@@ -76,12 +95,8 @@ def get_default_classification_threshold(project: "Project | None" = None, reque
     """
     default_threshold = 0.0
 
-    # If request exists and apply_defaults is explicitly false, get from request
-    if request is not None:
-        apply_defaults = request.query_params.get("apply_defaults", "true")
-        apply_defaults = BooleanField(required=False).clean(apply_defaults)
-        if apply_defaults is False:
-            return get_active_classification_threshold(request)
+    if get_apply_default_filters_flag(request) is False:
+        return get_active_classification_threshold(request)
 
     if project:
         return project.default_filters_score_threshold
