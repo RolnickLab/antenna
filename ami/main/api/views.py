@@ -41,6 +41,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceQuerySet,
     Page,
     Project,
     ProjectQuerySet,
@@ -1409,63 +1410,68 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
+
+        OPTIMIZED: Uses efficient subqueries with default filters applied directly via Q objects
+        to leverage composite indexes on (determination_id, project_id, event_id, determination_score).
+        This avoids the N+1 query problem by building a single Q filter that can be reused
+        across all subqueries.
         """
         occurrence_filters = self.get_occurrence_filters(project)
 
-        # @TODO make this recursive into child taxa and cache
-        occurrences_count = models.Subquery(
-            Occurrence.objects.filter(
+        # Build a single Q filter for default filters (score threshold + taxa filters)
+        # This creates an efficient filter that works with composite indexes
+        default_filters_q = OccurrenceQuerySet.build_default_filters_q(project, self.request)
+
+        # Combine base occurrence filters with default filters
+        base_filter = (
+            models.Q(
                 occurrence_filters,
                 determination_id=models.OuterRef("id"),
             )
-            .apply_default_filters(project, self.request)  # type: ignore
+            & default_filters_q
+        )
+
+        # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
+        occurrences_count_subquery = models.Subquery(
+            Occurrence.objects.filter(base_filter)
             .values("determination_id")
             .annotate(count=models.Count("id"))
-            .values("count"),
+            .values("count")[:1],
             output_field=models.IntegerField(),
         )
 
-        last_detected = models.Subquery(
-            Occurrence.objects.filter(
-                occurrence_filters,
-                determination_id=models.OuterRef("id"),
-                detections__timestamp__isnull=False,  # ensure we have a timestamp
-            )
+        # Get best score - uses same composite index
+        best_score_subquery = models.Subquery(
+            Occurrence.objects.filter(base_filter)
             .values("determination_id")
-            .annotate(last_detected=models.Max("detections__timestamp"))
-            .values("last_detected"),
-            output_field=models.DateTimeField(),
-        )
-
-        # Get the best score using the determination_score field directly
-        best_score = models.Subquery(
-            Occurrence.objects.filter(
-                occurrence_filters,
-                determination_id=models.OuterRef("id"),
-            )
-            .values("determination_id")
-            .annotate(best_score=models.Max("determination_score"))
-            .values("best_score")[:1],
+            .annotate(max_score=models.Max("determination_score"))
+            .values("max_score")[:1],
             output_field=models.FloatField(),
         )
 
+        # Get last detected timestamp - requires join with detections
+        last_detected_subquery = models.Subquery(
+            Occurrence.objects.filter(
+                base_filter,
+                detections__timestamp__isnull=False,
+            )
+            .values("determination_id")
+            .annotate(last_detected=models.Max("detections__timestamp"))
+            .values("last_detected")[:1],
+            output_field=models.DateTimeField(),
+        )
+
+        # Apply annotations
         qs = qs.annotate(
-            occurrences_count=Coalesce(occurrences_count, 0),
-            last_detected=last_detected,
-            best_determination_score=best_score,
+            occurrences_count=Coalesce(occurrences_count_subquery, 0),
+            best_determination_score=best_score_subquery,
+            last_detected=last_detected_subquery,
         )
 
         if not include_unobserved:
-            qs = qs.filter(
-                models.Exists(
-                    Occurrence.objects.filter(
-                        occurrence_filters,
-                        determination_id=models.OuterRef("id"),
-                    ).apply_default_filters(  # type: ignore
-                        project, self.request
-                    ),
-                )
-            )
+            # Efficient EXISTS check that uses the composite index
+            qs = qs.filter(models.Exists(Occurrence.objects.filter(base_filter)))
+
         return qs
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
