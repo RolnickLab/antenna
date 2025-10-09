@@ -853,19 +853,7 @@ class Deployment(BaseModel):
 
         self.occurrences_count = occ_qs.distinct().count()
 
-        self.taxa_count = (
-            Taxon.objects.filter(id__in=occ_qs.values("determination_id"))
-            .distinct()
-            .filter_by_project_default_taxa(  # type: ignore
-                project=self.project,
-                request=None,
-            )
-            .count()
-        )  # type: ignore
-
-        self.occurrences_count = occ_qs.distinct().count()
-
-        self.taxa_count = Taxon.objects.filter(id__in=occ_qs.values("determination_id")).distinct().count()
+        self.taxa_count = occ_qs.values("determination_id").distinct().count()
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
