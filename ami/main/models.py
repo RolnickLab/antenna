@@ -299,14 +299,10 @@ class Project(ProjectSettingsMixin, BaseModel):
         for deployment in self.deployments.all():
             deployment.update_calculated_fields(save=True)
 
-    def save(self, *args, update_related_calculated_fields: bool = True, **kwargs):
+    def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
-        # Update calculated fields including filtered occurrence counts
-        # and taxa counts for related deployments and events
-        if update_related_calculated_fields:
-            self.update_related_calculated_fields()
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
@@ -870,6 +866,10 @@ class Deployment(BaseModel):
             )
             .count()
         )  # type: ignore
+
+        self.occurrences_count = occ_qs.distinct().count()
+
+        self.taxa_count = Taxon.objects.filter(id__in=occ_qs.values("determination_id")).distinct().count()
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 

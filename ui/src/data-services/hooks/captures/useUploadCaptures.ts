@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { API_ROUTES, SUCCESS_TIMEOUT } from 'data-services/constants'
+import { API_ROUTES } from 'data-services/constants'
 import { useState } from 'react'
 import { useUploadCapture } from './useUploadCapture'
 
@@ -10,13 +10,7 @@ const isRejected = (result: Result) => result.status === 'rejected'
 export const useUploadCaptures = (onSuccess?: () => void) => {
   const queryClient = useQueryClient()
   const [results, setResults] = useState<Result[]>()
-  const { uploadCapture, isLoading, isSuccess, reset } = useUploadCapture(
-    () => {
-      setTimeout(() => {
-        reset()
-      }, SUCCESS_TIMEOUT)
-    }
-  )
+  const { uploadCapture, isLoading, isSuccess } = useUploadCapture()
 
   const error = results?.some(isRejected)
     ? 'Not all images could be uploaded, please retry.'
