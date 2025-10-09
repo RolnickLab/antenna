@@ -2863,6 +2863,22 @@ class Occurrence(BaseModel):
 
     class Meta:
         ordering = ["-determination_score"]
+        indexes = [
+            # Composite index for taxa queries filtered by project
+            # Optimizes the taxa list query which executes correlated subqueries for each taxon
+            # Pattern: WHERE determination_id=? AND project_id=? AND event_id IS NOT NULL AND determination_score>=?
+            models.Index(
+                fields=["determination_id", "project_id", "event_id", "determination_score"],
+                name="occur_det_proj_evt_score",
+            ),
+            # Composite index for timestamp queries (last_detected)
+            # Optimizes queries that join with detections table for timestamps
+            # Pattern: WHERE determination_id=? AND project_id=? AND event_id IS NOT NULL
+            models.Index(
+                fields=["determination_id", "project_id", "event_id"],
+                name="occur_det_proj_evt",
+            ),
+        ]
 
 
 def update_occurrence_determination(
