@@ -876,21 +876,47 @@ class Deployment(BaseModel):
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
 
 
+class EventQuerySet(models.QuerySet):
+    def dissociate_related_objects(self):
+        """
+        Clear all related objects from the event, including source images and occurrences.
+        This is useful when the event is being deleted or dissociated from its captures.
+        It does not delete the event itself, but removes its associations with source images and occurrences.
+
+        This was created to reassociate source imag es and occurrences with a new event
+        when an event is being split into multiple events, or collapsed into one.
+        """
+        with transaction.atomic():
+            events = self.filter().distinct()
+            image_qs = SourceImage.objects.filter(event__in=events)
+            occ_qs = Occurrence.objects.filter(detections__source_image__in=image_qs).distinct()
+            if not image_qs.exists() and not occ_qs.exists():
+                logger.info("No objects to remove from events")
+                return events
+            logger.info(
+                f"Dissociating {image_qs.count()} source images and {occ_qs.count()} occurrences "
+                f"from {events.count()} events."
+            )
+            occ_updated_count = occ_qs.update(event=None)
+            # Ensure the image_qs is updated last
+            image_updated_count = image_qs.update(event=None)
+            update_calculated_fields_for_events(
+                qs=events,
+                last_updated=timezone.now(),
+                save=True,
+            )
+            logger.info(f"Dissociated event from {image_updated_count} source images, {occ_updated_count} occurrences")
+            return events
+
+
+class EventManager(models.Manager):
+    def get_queryset(self) -> EventQuerySet:
+        return EventQuerySet(self.model, using=self._db)
+
+
 @final
 class Event(BaseModel):
     """A monitoring session"""
-
-    group_by = models.CharField(
-        max_length=255,
-        db_index=True,
-        help_text=(
-            "A unique identifier for this event, used to group images into events. "
-            "This allows images to be prepended or appended to an existing event. "
-            "The default value is the day the event started, in the format YYYY-MM-DD. "
-            "However images could also be grouped by camera settings, image dimensions, hour of day, "
-            "or a random sample."
-        ),
-    )
 
     start = models.DateTimeField(db_index=True, help_text="The timestamp of the first image in the event.")
     end = models.DateTimeField(null=True, blank=True, help_text="The timestamp of the last image in the event.")
@@ -907,14 +933,15 @@ class Event(BaseModel):
     occurrences_count = models.IntegerField(blank=True, null=True)
     calculated_fields_updated_at = models.DateTimeField(blank=True, null=True)
 
+    objects = EventManager()
+
     class Meta:
         ordering = ["start"]
         indexes = [
-            models.Index(fields=["group_by"]),
             models.Index(fields=["start"]),
         ]
         constraints = [
-            models.UniqueConstraint(fields=["deployment", "group_by"], name="unique_event"),
+            models.UniqueConstraint(fields=["deployment", "start", "end"], name="unique_event"),
         ]
 
     def __str__(self) -> str:
@@ -1018,10 +1045,6 @@ class Event(BaseModel):
         Important: if you update a new field, add it to the bulk_update call in update_calculated_fields_for_events
         """
         event = self
-        if not event.group_by and event.start:
-            # If no group_by is set, use the start "day"
-            event.group_by = str(event.start.date())
-
         if not event.project and event.deployment:
             event.project = event.deployment.project
 
@@ -1053,14 +1076,14 @@ def update_calculated_fields_for_events(
     qs: models.QuerySet[Event] | None = None,
     pks: list[typing.Any] | None = None,
     last_updated: datetime.datetime | None = None,
-    save=True,
-):
+    save: bool = True,
+) -> list[Event]:
     """
     This function is called by a migration to update the calculated fields for all events.
 
     @TODO this can likely be abstracted to a more generic function that can be used for any model
     """
-    to_update = []
+    to_update: list[Event] = []
 
     qs = qs or Event.objects.all()
     if pks:
@@ -1071,18 +1094,17 @@ def update_calculated_fields_for_events(
             Q(calculated_fields_updated_at__isnull=True) | Q(calculated_fields_updated_at__lte=last_updated)
         )
 
-    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
-
     updated_timestamp = timezone.now()
     for event in qs:
         event.update_calculated_fields(save=False, updated_timestamp=updated_timestamp)
         to_update.append(event)
 
-    if save:
+    logging.info(f"Updating pre-calculated fields for {len(to_update)} events")
+
+    if save and to_update:
         updated_count = Event.objects.bulk_update(
             to_update,
             [
-                "group_by",
                 "start",
                 "end",
                 "project",
@@ -1119,16 +1141,47 @@ def audit_event_lengths(deployment: Deployment):
         logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
 
 
+def merge_with_following_events(event: Event, events_qs: models.QuerySet, max_time_gap: datetime.timedelta) -> None:
+    """
+    Merge the given event with any following events in the list that overlap or are close enough
+    based on the max_time_gap.
+    """
+    # Evaluate the events_qs to be able to get the index of the current event
+    events = list(events_qs)
+    current_index = events.index(event)
+    remaining_events = events[current_index + 1 :]  # noqa
+    for next_event in remaining_events:
+        if next_event.start > event.end + max_time_gap:
+            break  # No further overlapping or close events possible
+
+        if ami.utils.dates.time_ranges_overlap_or_close(
+            event.start,
+            event.end,
+            next_event.start,
+            next_event.end,
+            max_time_gap,
+        ):
+            SourceImage.objects.filter(event=next_event).update(event=event)
+            event.end = max(event.end, next_event.end)
+
+    logger.info(f"Finished merging events into event {event.pk}")
+
+
 def group_images_into_events(
-    deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
+    deployment: Deployment,
+    max_time_gap=datetime.timedelta(minutes=120),
+    delete_empty=True,
+    use_existing=True,
 ) -> list[Event]:
-    # Log a warning if multiple SourceImages have the same timestamp
+    logger.info(f"Grouping images into events for deployment '{deployment}' (use_existing={use_existing})")
+
+    # Log duplicate timestamps
     dupes = (
         SourceImage.objects.filter(deployment=deployment)
         .values("timestamp")
         .annotate(count=models.Count("id"))
         .filter(count__gt=1)
-        .exclude(timestamp=None)
+        .exclude(timestamp__isnull=True)
     )
     if dupes.count():
         values = "\n".join(
@@ -1138,69 +1191,104 @@ def group_images_into_events(
             f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
             f"Only one image will be used for each timestamp for each event."
         )
+    # Get all images
+    image_qs = SourceImage.objects.filter(deployment=deployment).exclude(timestamp=None)
+    if use_existing:
+        # Get only newly added images (images without an event)
+        image_qs = image_qs.filter(event__isnull=True)
 
-    image_timestamps = list(
-        SourceImage.objects.filter(deployment=deployment)
-        .exclude(timestamp=None)
-        .values_list("timestamp", flat=True)
-        .order_by("timestamp")
-        .distinct()
-    )
+    if not image_qs.exists():
+        logger.info("No relevant images found; skipping")
+        return []
 
-    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
-    # @TODO this event grouping needs testing. Still getting events over 24 hours
-    # timestamp_groups = ami.utils.dates.group_datetimes_by_shifted_day(image_timestamps)
+    # Group timestamps
+    timestamps = list(image_qs.values_list("timestamp", flat=True).distinct())
+    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(timestamps, max_time_gap)
+    # Get existing events for this deployment ordered by start time
+    existing_events_qs = Event.objects.filter(deployment=deployment).order_by("start")
+    events: list[Event] = []
 
-    events = []
+    # For each group of images check if we can merge with an existing
+    # event based on overlapping or proximity if use_existing is True.
+    # Otherwise if use is_existing is False, we look for an existing event
+    #  with the exact same start and end times and reuse it,
+    # if not found create a new event.
     for group in timestamp_groups:
-        if not len(group):
-            continue
+        group_start, group_end = group[0], group[-1]
+        group_set = set(group)
+        group_image_ids = image_qs.filter(timestamp__in=group_set).values_list("pk", flat=True)
 
-        start_date = group[0]
-        end_date = group[-1]
+        event = None
+        if use_existing:
+            # Look for overlap or proximity
+            for existing_event in existing_events_qs:
+                existing_event.refresh_from_db(fields=["start", "end"])
+                assert existing_event.end is not None, "Existing event end time should not be None"
+                if ami.utils.dates.time_ranges_overlap_or_close(
+                    group_start, group_end, existing_event.start, existing_event.end, max_time_gap
+                ):
+                    event = existing_event
+                    break
+        else:
+            # Look for exact match
+            event = Event.objects.filter(
+                deployment=deployment,
+                start=group_start,
+                end=group_end,
+            ).first()
 
-        # Print debugging info about groups
-        delta = end_date - start_date
-        hours = round(delta.seconds / 60 / 60, 1)
-        logger.debug(
-            f"Found session starting at {start_date} with {len(group)} images that ran for {hours} hours.\n"
-            f"From {start_date.strftime('%c')} to {end_date.strftime('%c')}."
-        )
+        if event:
+            # Adjust times if necessary (merge)
+            assert event.end is not None, "Event end time should not be None if event exists"
+            event.start = min(event.start, group_start)
+            event.end = max(event.end, group_end)
 
-        # Creating events & assigning images
-        group_by = start_date.date()
-        event, _ = Event.objects.get_or_create(
-            deployment=deployment,
-            group_by=group_by,
-            defaults={"start": start_date, "end": end_date},
-        )
+            # We do not need to do this if use_existing is False
+            # because we will either have and exact match or a new event.
+            if use_existing:
+                # Try to merge with following events if there are any overlapping or close enough events
+                merge_with_following_events(event, existing_events_qs, max_time_gap)
+
+        else:
+            # Create new event
+            event = Event.objects.create(
+                deployment=deployment,
+                start=group_start,
+                end=group_end,
+            )
+            logger.info(f"Created new event {event} with {len(group_image_ids)} images")
+
+        SourceImage.objects.filter(id__in=group_image_ids).update(event=event)
+        event.save()
         events.append(event)
-        SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
-        event.save()  # Update start and end times and other cached fields
-        logger.info(
-            f"Created/updated event {event} with {len(group)} images for deployment {deployment}. "
-            f"Duration: {event.duration_label()}"
-        )
 
-    logger.info(
-        f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
-    )
-
-    if delete_empty:
-        logger.info("Deleting empty events for deployment")
-        delete_empty_events(deployment=deployment)
-
+    # Process each event: set dimensions and update occurrences
     for event in events:
-        # Set the width and height of all images in each event based on the first image
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
+        logger.info("Updating related occurrences for images in event")
+        # @TODO can occurrences stay up-to-date with the event via a signal? (efficiently?)
+        Occurrence.objects.filter(detections__source_image__event=event).update(
+            event=event,
+        )
+
+    # Delete empty events after occurrences have been updated
+    # This ensures that events with occurrences that pointed to old/incorrect events
+    # are properly cleaned up after the occurrences have been moved to correct events
+    if delete_empty:
+        logger.info("Deleting empty events for deployment (after occurrence updates)")
+        delete_empty_events(deployment=deployment)
+
     logger.info("Updating relevant cached fields on deployment")
-    deployment.events_count = len(events)
+    deployment.events_count = Event.objects.filter(deployment=deployment).count()
     deployment.save(update_calculated_fields=False, update_fields=["events_count"])
 
     audit_event_lengths(deployment)
 
+    audit_event_lengths(deployment)
+
+    logger.info(f"Finished grouping {len(timestamps)} images into {len(events)} events for deployment '{deployment}'")
     return events
 
 
@@ -1739,6 +1827,13 @@ class SourceImage(BaseModel):
             self.project = self.deployment.project
         if self.pk is not None:
             self.detections_count = self.get_detections_count()
+        # This is another approach to keep related occurrences up-to-date.
+        # But it is not used currently because it can be inefficient
+        # occurrences_with_incorrect_event = Occurrence.objects.filter(detection__source_image=self).exclude(
+        #     event=self.event
+        # )
+        # if occurrences_with_incorrect_event.exists():
+        #     occurrences_with_incorrect_event.update(event=self.event)
         if save:
             self.save(update_calculated_fields=False)
 
