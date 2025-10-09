@@ -2584,7 +2584,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         # Apply taxa inclusion/exclusion filter
         include_taxa = project.default_filters_include_taxa.all()
         exclude_taxa = project.default_filters_exclude_taxa.all()
-        taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="determination__")
+        taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="determination")
         if taxa_q:
             qs = qs.filter(taxa_q)
 

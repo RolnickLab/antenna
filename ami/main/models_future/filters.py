@@ -28,12 +28,12 @@ def build_taxa_recursive_filter_q(
     Args:
         include_taxa: QuerySet of taxa to include (if any)
         exclude_taxa: QuerySet of taxa to exclude (if any)
-        taxon_accessor: Path to the taxon field:
+        taxon_accessor: Path to the taxon field (without trailing __):
             - "": Direct Taxon model (uses id__in, parents_json__contains)
-            - "determination__": Occurrence's determination field
-            - "occurrences__determination__": Event→Occurrence→determination
-            - "detections__occurrence__determination__": Image→Detection→Occurrence→determination
-            - "images__detections__occurrence__determination__": Collection→...
+            - "determination": Occurrence's determination field
+            - "occurrences__determination": Event→Occurrence→determination
+            - "detections__occurrence__determination": Image→Detection→Occurrence→determination
+            - "images__detections__occurrence__determination": Collection→...
 
     Returns:
         Q object for filtering by included/excluded taxa and their descendants
@@ -47,7 +47,7 @@ def build_taxa_recursive_filter_q(
 
         Combining with other filters:
             >>> score_q = build_occurrence_score_threshold_q(0.8, "")
-            >>> taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, "determination__")
+            >>> taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, "determination")
             >>> combined_q = score_q & taxa_q & Q(determination__isnull=False)
             >>> occurrences = Occurrence.objects.filter(combined_q)
     """
@@ -55,9 +55,9 @@ def build_taxa_recursive_filter_q(
 
     # Determine field names based on taxon_accessor
     if taxon_accessor:
-        # For filtering through relationships, use the accessor path
-        id_field = f"{taxon_accessor}in"
-        parents_field = f"{taxon_accessor}parents_json__contains"
+        # For filtering through relationships, add __ separator and use the accessor path
+        id_field = f"{taxon_accessor}__id__in"
+        parents_field = f"{taxon_accessor}__parents_json__contains"
     else:
         # For direct Taxon model filtering
         id_field = "id__in"
@@ -200,9 +200,9 @@ def build_occurrence_default_filters_q(
     filter_q &= build_occurrence_score_threshold_q(score_threshold, occurrence_accessor)
 
     # Build taxa inclusion/exclusion filter
-    # For taxa filtering, we need to append "__determination__" to the occurrence accessor
+    # For taxa filtering, we need to append "__determination" to the occurrence accessor
     prefix = f"{occurrence_accessor}__" if occurrence_accessor else ""
-    taxon_accessor = f"{prefix}determination__"
+    taxon_accessor = f"{prefix}determination"
     include_taxa = project.default_filters_include_taxa.all()
     exclude_taxa = project.default_filters_exclude_taxa.all()
     taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor)
