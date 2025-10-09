@@ -30,7 +30,7 @@ from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.serializers import TagSerializer
-from ami.utils.requests import get_active_classification_threshold, project_id_doc_param
+from ami.utils.requests import get_default_classification_threshold, project_id_doc_param
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -336,7 +336,9 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                     "occurrences__determination",
                     distinct=True,
                     filter=models.Q(
-                        occurrences__determination_score__gte=get_active_classification_threshold(self.request),
+                        occurrences__determination_score__gte=get_default_classification_threshold(
+                            project, self.request
+                        ),
                     ),
                 ),
             )
@@ -494,8 +496,12 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         with_detections_default = False
+        # If this is a retrieve request or with detections is explicitly requested, require project
+        if self.action == "retrieve" or "with_detections" in self.request.query_params:
+            self.require_project = True
+        project = self.get_active_project()
 
-        classification_threshold = get_active_classification_threshold(self.request)
+        classification_threshold = get_default_classification_threshold(project, self.request)
         queryset = queryset.with_occurrences_count(  # type: ignore
             classification_threshold=classification_threshold
         ).with_taxa_count(  # type: ignore
@@ -523,7 +529,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             with_detections = BooleanField(required=False).clean(with_detections)
 
         if with_detections:
-            queryset = self.prefetch_detections(queryset)
+            queryset = self.prefetch_detections(queryset, project)
 
         return queryset
 
@@ -536,16 +542,52 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             ).filter(has_detections=has_detections)
         return queryset
 
-    def prefetch_detections(self, queryset: QuerySet) -> QuerySet:
-        # Return all detections for source images, let frontend filter them
-        prefetch_queryset = Detection.objects.all()
+    def prefetch_detections(self, queryset: QuerySet, project: Project | None = None) -> QuerySet:
+        """
+        Return all detections for source images, but only include occurrence data
+        for occurrences that pass the default filters
+
+        Create a custom queryset that includes all detections but conditionally loads occurrence data
+        We include all detections and add a flag indicating if the occurrence meets the default filters
+        """
+
+        if project is None:
+            # Return a prefetch with zero detections
+            logger.warning("Returning zero detections with source image because no project was specified")
+            return queryset.prefetch_related(
+                Prefetch(
+                    "detections",
+                    queryset=Detection.objects.none(),
+                    to_attr="filtered_detections",
+                )
+            )
+
+        qualifying_occurrence_ids = Occurrence.objects.filter_by_score_threshold(  # type: ignore
+            project, self.request
+        ).values_list("id", flat=True)
+        score = get_default_classification_threshold(project, self.request)
+
+        prefetch_queryset = (
+            Detection.objects.all()
+            .annotate(
+                determination_score=models.Max("occurrence__detections__classifications__score"),
+                # Store whether this occurrence should be included based on default filters
+                occurrence_meets_criteria=models.Case(
+                    models.When(
+                        models.Q(occurrence_id__in=models.Subquery(qualifying_occurrence_ids)),
+                        then=models.Value(True),
+                    ),
+                    default=models.Value(False),  # False for detections without occurrences
+                    output_field=models.BooleanField(),
+                ),
+                score_threshold=models.Value(score, output_field=models.FloatField()),
+            )
+            .select_related("occurrence", "occurrence__determination")
+        )
 
         related_detections = Prefetch(
             "detections",
-            queryset=prefetch_queryset.select_related(
-                "occurrence",
-                "occurrence__determination",
-            ).annotate(determination_score=models.Max("occurrence__detections__classifications__score")),
+            queryset=prefetch_queryset,
             to_attr="filtered_detections",
         )
 
@@ -652,9 +694,9 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     ]
 
     def get_queryset(self) -> QuerySet:
-        classification_threshold = get_active_classification_threshold(self.request)
         query_set: QuerySet = super().get_queryset()
         project = self.get_active_project()
+        classification_threshold = get_default_classification_threshold(project, self.request)
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(  # type: ignore
@@ -1055,11 +1097,6 @@ class TaxonCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
-OccurrenceDeterminationScoreFilter = ThresholdFilter.create(
-    query_param="classification_threshold", filter_param="determination_score"
-)
-
-
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1077,7 +1114,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         OccurrenceVerified,
         OccurrenceVerifiedByMeFilter,
         OccurrenceTaxaListFilter,
-        OccurrenceDeterminationScoreFilter,
     ]
     filterset_fields = [
         "event",
@@ -1121,7 +1157,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-
+        qs = qs.filter_by_score_threshold(project, self.request)  # type: ignore
         if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
@@ -1363,7 +1399,9 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.filter(self.get_occurrence_filters(project))[:1],
+                        queryset=Occurrence.objects.filter_by_score_threshold(  # type: ignore
+                            project, self.request
+                        ).filter(self.get_occurrence_filters(project))[:1],
                         to_attr="example_occurrences",
                     )
                 )
@@ -1388,6 +1426,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 occurrence_filters,
                 determination_id=models.OuterRef("id"),
             )
+            .filter_by_score_threshold(project, self.request)  # type: ignore
             .values("determination_id")
             .annotate(count=models.Count("id"))
             .values("count"),
@@ -1430,6 +1469,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                     Occurrence.objects.filter(
                         occurrence_filters,
                         determination_id=models.OuterRef("id"),
+                    ).filter_by_score_threshold(  # type: ignore
+                        project, self.request
                     ),
                 )
             )
@@ -1567,13 +1608,15 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
                 .filter(deployment__project=project)
                 .count(),
-                "occurrences_count": Occurrence.objects.valid()
+                "occurrences_count": Occurrence.objects.valid()  # type: ignore
                 .visible_for_user(user)
                 .filter(project=project)
-                .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.visible_for_user(user)
+                .filter_by_score_threshold(project, self.request)  # type: ignore
+                .count(),
+                "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+                .filter_by_score_threshold(project, self.request)
                 .unique_taxa(project=project)
-                .count(),  # type: ignore
+                .count(),
             }
         else:
             data = {

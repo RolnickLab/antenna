@@ -360,17 +360,20 @@ def create_occurrences(
     deployment: Deployment,
     num: int = 6,
     taxon: Taxon | None = None,
+    determination_score: float = 0.9,
 ):
     # Get all source images for the deployment that have an event
     source_images = list(SourceImage.objects.filter(deployment=deployment))
     if not source_images:
         raise ValueError("No source images with events found for deployment")
 
-    # Get taxon if not provided
+    # Get  a random taxon if not provided
     if not taxon:
-        taxon = Taxon.objects.filter(projects=deployment.project).order_by("?").first()
-        if not taxon:
+        taxa_qs = Taxon.objects.filter(projects=deployment.project)
+        count = taxa_qs.count()
+        if count == 0:
             raise ValueError("No taxa found for project")
+        taxon = taxa_qs[random.randint(0, count - 1)]
 
     # Create occurrences evenly distributed across all source images
     for i in range(num):
@@ -385,7 +388,7 @@ def create_occurrences(
 
         detection.classifications.create(
             taxon=taxon,
-            score=0.9,
+            score=determination_score,
             timestamp=datetime.datetime.now(),
         )
         occurrence = detection.associate_new_occurrence()

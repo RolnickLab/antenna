@@ -1,3 +1,4 @@
+import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
@@ -30,7 +31,6 @@ import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { OccurrenceActions } from './occurrence-actions'
@@ -40,7 +40,6 @@ import { OccurrenceNavigation } from './occurrence-navigation'
 
 export const Occurrences = () => {
   const { user } = useUser()
-  const { userPreferences } = useUserPreferences()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -61,9 +60,7 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { activeFilters, filters } = useFilters({
-    classification_threshold: `${userPreferences.scoreThreshold}`,
-  })
+  const { activeFilters, filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -96,15 +93,13 @@ export const Occurrences = () => {
           <FilterSection defaultOpen>
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
-            <FilterControl field="date_start" />
-            <FilterControl field="date_end" />
             <FilterControl field="taxon" />
             {taxaLists.length > 0 && (
               <FilterControl data={taxaLists} field="taxa_list_id" />
             )}
-            <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
+            <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
             title="More filters"
@@ -113,6 +108,8 @@ export const Occurrences = () => {
               activeFilters
             )}
           >
+            <FilterControl field="date_start" />
+            <FilterControl field="date_end" />
             <FilterControl field="collection" />
             <FilterControl field="deployment" />
             <FilterControl field="algorithm" />
