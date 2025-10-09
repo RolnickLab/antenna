@@ -846,13 +846,9 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        occ_qs = (
-            self.occurrences.filter(event__isnull=False)
-            .filter_by_score_threshold(  # type: ignore
-                project=self.project,
-                request=None,
-            )
-            .filter_by_project_default_taxa(project=self.project, request=None)
+        occ_qs = self.occurrences.filter(event__isnull=False).apply_default_filters(  # type: ignore
+            project=self.project,
+            request=None,
         )  # type: ignore
 
         self.occurrences_count = occ_qs.distinct().count()
@@ -893,49 +889,15 @@ class Deployment(BaseModel):
 
 
 class EventQuerySet(BaseQuerySet):
-    def _build_default_taxa_filter(
-        self,
-        classification_threshold: float = 0,
-        project: Project | None = None,
-    ) -> models.Q:
-        """
-        Build a reusable Q filter for occurrences on events,
-        applying classification threshold and project default taxa.
-        """
-        filter_q = models.Q(
-            occurrences__determination_score__gte=classification_threshold,
-        )
-
-        if not project:
-            return filter_q
-
-        include_taxa = project.default_filters_include_taxa.all()
-        exclude_taxa = project.default_filters_exclude_taxa.all()
-
-        if include_taxa.exists():
-            include_q = models.Q(occurrences__determination__in=include_taxa)
-            for taxon in include_taxa:
-                include_q |= models.Q(occurrences__determination__parents_json__contains=[{"id": taxon.pk}])
-            filter_q &= include_q
-
-        if exclude_taxa.exists():
-            exclude_q = models.Q(occurrences__determination__in=exclude_taxa)
-            for taxon in exclude_taxa:
-                exclude_q |= models.Q(occurrences__determination__parents_json__contains=[{"id": taxon.pk}])
-            filter_q &= ~exclude_q
-
-        return filter_q
-
     def with_taxa_count(self, project: Project | None = None, request: Request | None = None):
         """
         Annotate each event with the number of distinct taxa observed,
-        filtered by classification threshold
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
         """
         if project is None:
             return self
 
-        classification_threshold = get_default_classification_threshold(project, request)
-        filter_q = self._build_default_taxa_filter(classification_threshold, project)
+        filter_q = OccurrenceQuerySet.build_default_filters_q(project, request, "occurrences__")
 
         return self.annotate(
             taxa_count=models.Count(
@@ -948,13 +910,12 @@ class EventQuerySet(BaseQuerySet):
     def with_occurrences_count(self, project: Project | None = None, request: Request | None = None):
         """
         Annotate each event with the number of occurrences,
-        filtered by classification threshold
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
         """
         if project is None:
             return self
 
-        classification_threshold = get_default_classification_threshold(project, request)
-        filter_q = self._build_default_taxa_filter(classification_threshold, project)
+        filter_q = OccurrenceQuerySet.build_default_filters_q(project, request, "occurrences__")
 
         return self.annotate(
             occurrences_count=models.Count(
@@ -1064,10 +1025,14 @@ class Event(BaseModel):
         return Detection.objects.filter(Q(source_image__event=self)).count()
 
     def get_occurrences_count(self, classification_threshold: float = 0) -> int:
+        """
+        Get the count of occurrences for this event, filtered by default filters.
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
         return (
             self.occurrences.distinct()
-            .filter(determination_score__gte=classification_threshold)
-            .filter_by_project_default_taxa(project=self.project, request=None)  # type: ignore
+            .apply_default_filters(project=self.project, request=None)  # type: ignore
             .count()
         )
 
@@ -1135,9 +1100,7 @@ class Event(BaseModel):
 
             event.captures_count = event.get_captures_count()
             event.detections_count = event.get_detections_count()
-            event.occurrences_count = event.get_occurrences_count(
-                classification_threshold=get_default_classification_threshold(event.project)
-            )
+            event.occurrences_count = event.get_occurrences_count()
 
             event.calculated_fields_updated_at = updated_timestamp or timezone.now()
 
@@ -1609,39 +1572,14 @@ def delete_source_image(sender, instance, **kwargs):
 
 
 class SourceImageQuerySet(BaseQuerySet):
-    def _build_default_taxa_filter(
-        self,
-        classification_threshold: float = 0,
-        project: Project | None = None,
-    ) -> Q:
-        """
-        Build a reusable Q filter that applies the classification threshold
-        and the project's default include/exclude taxa settings.
-        """
-        filter_q = Q(detections__occurrence__determination_score__gte=classification_threshold)
-
-        if not project:
-            return filter_q
-
-        include_taxa = project.default_filters_include_taxa.all()
-        exclude_taxa = project.default_filters_exclude_taxa.all()
-
-        if include_taxa.exists():
-            include_q = Q(detections__occurrence__determination__in=include_taxa)
-            for taxon in include_taxa:
-                include_q |= Q(detections__occurrence__determination__parents_json__contains=[{"id": taxon.pk}])
-            filter_q &= include_q
-
-        if exclude_taxa.exists():
-            exclude_q = Q(detections__occurrence__determination__in=exclude_taxa)
-            for taxon in exclude_taxa:
-                exclude_q |= Q(detections__occurrence__determination__parents_json__contains=[{"id": taxon.pk}])
-            filter_q &= ~exclude_q
-
-        return filter_q
-
     def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
-        filter_q = self._build_default_taxa_filter(classification_threshold, project)
+        """
+        Annotate each source image with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = OccurrenceQuerySet.build_default_filters_q(project, None, "detections__occurrence__")
         return self.annotate(
             occurrences_count=models.Count(
                 "detections__occurrence",
@@ -1651,7 +1589,13 @@ class SourceImageQuerySet(BaseQuerySet):
         )
 
     def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
-        filter_q = self._build_default_taxa_filter(classification_threshold, project)
+        """
+        Annotate each source image with the number of distinct taxa,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = OccurrenceQuerySet.build_default_filters_q(project, None, "detections__occurrence__")
 
         return self.annotate(
             taxa_count=models.Count(
@@ -2610,6 +2554,65 @@ class OccurrenceQuerySet(BaseQuerySet):
         )
         return qs
 
+    @staticmethod
+    def build_default_filters_q(
+        project: Project | None = None,
+        request: Request | None = None,
+        occurrence_prefix: str = "",
+    ) -> Q:
+        """
+        Build a Q filter that applies default filters for occurrence relationships.
+
+        This is a helper method for building Q filters to use in annotations or filtering
+        on models that have nested occurrence relationships (e.g., Event, SourceImage, etc.).
+
+        Args:
+            project: The project whose default filters should be applied
+            request: The request object (optional, used to check for apply_defaults=false)
+            occurrence_prefix: The relationship path to occurrences (e.g., "occurrences__",
+                             "detections__occurrence__", "images__detections__occurrence__")
+
+        Returns:
+            Q object that can be used in filters or annotations
+
+        Example:
+            # For Event with direct occurrences relationship
+            filter_q = OccurrenceQuerySet.build_default_filters_q(
+                project, request, occurrence_prefix="occurrences__"
+            )
+            Event.objects.annotate(count=Count("occurrences", filter=filter_q))
+
+            # For SourceImage with nested relationship through detections
+            filter_q = OccurrenceQuerySet.build_default_filters_q(
+                project, request, occurrence_prefix="detections__occurrence__"
+            )
+        """
+        if project is None:
+            return Q()
+
+        score_threshold = get_default_classification_threshold(project, request)
+
+        # Build score threshold filter
+        filter_q = Q(**{f"{occurrence_prefix}determination_score__gte": score_threshold})
+
+        # Build taxa inclusion filter
+        include_taxa = project.default_filters_include_taxa.all()
+        if include_taxa.exists():
+            include_q = Q(**{f"{occurrence_prefix}determination__in": include_taxa})
+            for taxon in include_taxa:
+                include_q |= Q(**{f"{occurrence_prefix}determination__parents_json__contains": [{"id": taxon.pk}]})
+            filter_q &= include_q
+
+        # Build taxa exclusion filter
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+        if exclude_taxa.exists():
+            exclude_q = Q(**{f"{occurrence_prefix}determination__in": exclude_taxa})
+            for taxon in exclude_taxa:
+                exclude_q |= Q(**{f"{occurrence_prefix}determination__parents_json__contains": [{"id": taxon.pk}]})
+            filter_q &= ~exclude_q
+
+        return filter_q
+
     def filter_by_score_threshold(self, project: Project | None = None, request: Request | None = None):
         if project is None:
             return self
@@ -2637,6 +2640,38 @@ class OccurrenceQuerySet(BaseQuerySet):
             for taxon in exclude_taxa:
                 exclude_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
             qs = qs.exclude(exclude_filter)
+
+        return qs
+
+    def apply_default_filters(self, project: Project | None = None, request: Request | None = None):
+        """
+        Apply all default filters to occurrences based on project settings.
+
+        This is the standard method for filtering occurrences according to project defaults.
+        It applies both score threshold and taxa filters in a single call.
+
+        Args:
+            project: The project whose default filters should be applied
+            request: The request object (optional, used to check for apply_defaults=false)
+
+        Returns:
+            Filtered queryset with both score and taxa filters applied
+
+        Example:
+            # In a viewset
+            qs = Occurrence.objects.apply_default_filters(project, self.request)
+
+            # In a model method
+            qs = Occurrence.objects.apply_default_filters(self.project, None)
+        """
+        if project is None:
+            return self
+
+        # Apply score threshold filter
+        qs = self.filter_by_score_threshold(project, request)
+
+        # Apply taxa inclusion/exclusion filters
+        qs = qs.filter_by_project_default_taxa(project, request)
 
         return qs
 
@@ -3510,42 +3545,6 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 
 
 class SourceImageCollectionQuerySet(BaseQuerySet):
-    def _build_default_taxa_filter(
-        self,
-        classification_threshold: float = 0,
-        project: Project | None = None,
-    ) -> Q:
-        """
-        Build a reusable Q filter for occurrences and taxa, applying:
-        - classification score threshold
-        - project-level include/exclude taxa defaults
-        """
-        filter_q = Q(images__detections__occurrence__determination_score__gte=classification_threshold)
-
-        if not project:
-            return filter_q
-
-        include_taxa = project.default_filters_include_taxa.all()
-        exclude_taxa = project.default_filters_exclude_taxa.all()
-
-        if include_taxa.exists():
-            include_q = Q(images__detections__occurrence__determination__in=include_taxa)
-            for taxon in include_taxa:
-                include_q |= Q(
-                    images__detections__occurrence__determination__parents_json__contains=[{"id": taxon.pk}]
-                )
-            filter_q &= include_q
-
-        if exclude_taxa.exists():
-            exclude_q = Q(images__detections__occurrence__determination__in=exclude_taxa)
-            for taxon in exclude_taxa:
-                exclude_q |= Q(
-                    images__detections__occurrence__determination__parents_json__contains=[{"id": taxon.pk}]
-                )
-            filter_q &= ~exclude_q
-
-        return filter_q
-
     def with_source_images_count(self):
         return self.annotate(
             source_images_count=models.Count(
@@ -3571,7 +3570,13 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         )
 
     def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
-        filter_q = self._build_default_taxa_filter(classification_threshold, project)
+        """
+        Annotate each collection with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = OccurrenceQuerySet.build_default_filters_q(project, None, "images__detections__occurrence__")
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
@@ -3581,7 +3586,13 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         )
 
     def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
-        filter_q = self._build_default_taxa_filter(classification_threshold, project)
+        """
+        Annotate each collection with the number of distinct taxa,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = OccurrenceQuerySet.build_default_filters_q(project, None, "images__detections__occurrence__")
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",

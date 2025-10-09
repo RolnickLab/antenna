@@ -552,7 +552,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
-        qualifying_occurrence_ids = Occurrence.objects.filter_by_score_threshold(  # type: ignore
+        qualifying_occurrence_ids = Occurrence.objects.apply_default_filters(  # type: ignore
             project, self.request
         ).values_list("id", flat=True)
         score = get_default_classification_threshold(project, self.request)
@@ -1147,8 +1147,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        qs = qs.filter_by_score_threshold(project, self.request)  # type: ignore
-        qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
+        qs = qs.apply_default_filters(project, self.request)  # type: ignore
         if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
@@ -1392,7 +1391,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.filter_by_score_threshold(  # type: ignore
+                        queryset=Occurrence.objects.apply_default_filters(  # type: ignore
                             project, self.request
                         ).filter(self.get_occurrence_filters(project))[:1],
                         to_attr="example_occurrences",
@@ -1419,7 +1418,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 occurrence_filters,
                 determination_id=models.OuterRef("id"),
             )
-            .filter_by_score_threshold(project, self.request)  # type: ignore
+            .apply_default_filters(project, self.request)  # type: ignore
             .values("determination_id")
             .annotate(count=models.Count("id"))
             .values("count"),
@@ -1462,7 +1461,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                     Occurrence.objects.filter(
                         occurrence_filters,
                         determination_id=models.OuterRef("id"),
-                    ).filter_by_score_threshold(  # type: ignore
+                    ).apply_default_filters(  # type: ignore
                         project, self.request
                     ),
                 )
@@ -1605,14 +1604,12 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 .count(),
                 # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
                 "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .filter_by_score_threshold(project=project, request=self.request)  # type: ignore
-                .filter_by_project_default_taxa(project=project, request=self.request)
+                .apply_default_filters(project=project, request=self.request)  # type: ignore
                 .valid()
                 .filter(project=project)
                 .count(),  # type: ignore
                 "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .filter_by_score_threshold(project=project, request=self.request)  # type: ignore
-                .filter_by_project_default_taxa(project=project, request=self.request)
+                .apply_default_filters(project=project, request=self.request)  # type: ignore
                 .unique_taxa(project=project)
                 .count(),
             }
