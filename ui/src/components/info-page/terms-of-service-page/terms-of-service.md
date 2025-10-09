@@ -1,4 +1,4 @@
-# Terms of Use (October 9 2025)
+# Terms of Use (October 9, 2025)
 
 1. ## General
 
