@@ -55,10 +55,6 @@
     @include paragraph-medium();
     font-weight: 600;
     margin: 0;
-
-    &:not(:last-child) {
-      margin-bottom: 8px;
-    }
   }
 
   p {
