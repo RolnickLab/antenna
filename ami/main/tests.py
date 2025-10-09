@@ -2742,6 +2742,50 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         for taxon in self.exclude_taxa:
             self.assertNotIn(taxon.id, ids)
 
+    def test_taxon_viewset_apply_defaults_false_bypasses_taxa_filters(self):
+        """
+        With apply_defaults=false, taxa view should bypass include/exclude filters.
+        This test ensures that build_default_filters_q respects the apply_defaults flag.
+        """
+        # Set up strict filters: only include a subset of taxa
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+
+        # With defaults applied, should only see included taxa
+        url_with_defaults = f"/api/v2/taxa/?project_id={self.project.pk}"
+        res_with_defaults = self.client.get(url_with_defaults)
+        self.assertEqual(res_with_defaults.status_code, status.HTTP_200_OK)
+        ids_with_defaults = {r["id"] for r in res_with_defaults.json()["results"]}
+
+        # With apply_defaults=false, should see ALL taxa (including excluded ones)
+        url_without_defaults = f"/api/v2/taxa/?project_id={self.project.pk}&apply_defaults=false"
+        res_without_defaults = self.client.get(url_without_defaults)
+        self.assertEqual(res_without_defaults.status_code, status.HTTP_200_OK)
+        ids_without_defaults = {r["id"] for r in res_without_defaults.json()["results"]}
+
+        # Verify: without defaults should include ALL taxa (both include and exclude lists)
+        all_test_taxa = self.include_taxa + self.exclude_taxa
+        for taxon in all_test_taxa:
+            self.assertIn(
+                taxon.id,
+                ids_without_defaults,
+                f"With apply_defaults=false, {taxon.name} should be present in taxa list",
+            )
+
+        # Verify: without defaults returns more taxa than with defaults
+        self.assertGreater(
+            len(ids_without_defaults),
+            len(ids_with_defaults),
+            "apply_defaults=false should return more taxa than with filters applied",
+        )
+
+        # Verify: excluded taxa should NOT appear with defaults
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(
+                taxon.id,
+                ids_with_defaults,
+                f"With defaults applied, excluded taxon {taxon.name} should NOT be present",
+            )
+
     # EventViewSet tests
     def _get_event_counts(self):
         """Helper to return list of (event_id, occurrences_count, taxa_count) from EventViewSet"""

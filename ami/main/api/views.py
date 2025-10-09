@@ -41,7 +41,6 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
-    OccurrenceQuerySet,
     Page,
     Project,
     ProjectQuerySet,
@@ -1378,11 +1377,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset()
         project = self.get_active_project()
-        qs = self.attach_tags_by_project(qs, project)
+        if project:
+            qs = self.attach_tags_by_project(qs, project)
 
         if project:
-            # Filter by project default taxa
+            # Apply default taxa filtering (respects apply_defaults flag)
             qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
+
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             if self.action == "list":
@@ -1411,7 +1412,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
 
-        OPTIMIZED: Uses efficient subqueries with default filters applied directly via Q objects
+        Uses efficient subqueries with default filters applied directly via Q objects
         to leverage composite indexes on (determination_id, project_id, event_id, determination_score).
         This avoids the N+1 query problem by building a single Q filter that can be reused
         across all subqueries.
@@ -1420,7 +1421,10 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         # Build a single Q filter for default filters (score threshold + taxa filters)
         # This creates an efficient filter that works with composite indexes
-        default_filters_q = OccurrenceQuerySet.build_default_filters_q(project, self.request)
+        # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
+        from ami.main.models_future.filters import build_occurrence_default_filters_q
+
+        default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
 
         # Combine base occurrence filters with default filters
         base_filter = (
