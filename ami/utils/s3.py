@@ -601,7 +601,10 @@ def public_url(config: S3Config, key: str):
         return get_presigned_url(config, key)
     else:
         # return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
-        return urllib.parse.urljoin(config.public_base_url, make_full_key_uri(config, key, with_protocol=False))
+        full_key_path = make_full_key_uri(config, key, with_protocol=False)
+        # URL-encode the path to handle spaces and special characters
+        encoded_path = urllib.parse.quote(full_key_path)
+        return urllib.parse.urljoin(config.public_base_url, encoded_path)
 
 
 def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24 * 7) -> str:

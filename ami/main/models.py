@@ -1665,7 +1665,9 @@ class SourceImage(BaseModel):
         ):
             url = ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
         elif self.public_base_url:
-            url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
+            # URL-encode the path to handle spaces and special characters
+            encoded_path = urllib.parse.quote(self.path.lstrip("/"))
+            url = urllib.parse.urljoin(self.public_base_url, encoded_path)
         else:
             msg = f"Public URL for {self} is not available. Public base URL: '{self.public_base_url}'"
             if raise_errors:
