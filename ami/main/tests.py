@@ -2636,3 +2636,746 @@ class TestProjectDefaultThresholdFilter(APITestCase):
             summary_taxa_count,
             f"Mismatch with outside taxon: taxa endpoint returned {taxa_count}, summary {summary_taxa_count}",
         )
+
+
+class TestProjectDefaultTaxaFilter(APITestCase):
+    """
+    Tests for project default taxa filtering (include/exclude lists).
+
+    These tests verify that the apply_default_filters() and build_default_filters_q()
+    methods correctly apply taxa inclusion and exclusion filters across all viewsets
+    and model methods.
+
+    Edge Cases to be Tested (TODO):
+    - Empty include/exclude lists (should not filter)
+    - Conflicting filters (taxa in both include AND exclude - exclude should win)
+    - Hierarchical taxa filtering edge cases (excluding parent excludes children)
+    - Invalid project_id or None project handling
+    - Direct model method testing (Event.get_occurrences_count, Deployment.update_calculated_fields)
+    - apply_defaults=true explicit vs default behavior
+    - Taxa with no occurrences in filtered results
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+
+        # Multiple taxa for include/exclude testing
+        self.include_taxa = [
+            Taxon.objects.create(name="IncludeTaxonA"),
+            Taxon.objects.create(name="IncludeTaxonB"),
+        ]
+        self.exclude_taxa = [
+            Taxon.objects.create(name="ExcludeTaxonA"),
+            Taxon.objects.create(name="ExcludeTaxonB"),
+        ]
+
+        # Add parent/child taxa for include/exclude
+        include_parent = Taxon.objects.create(name="IncludeParent", rank="GENUS")
+        include_child = Taxon.objects.create(name="IncludeChild", parent=include_parent, rank="SPECIES")
+        exclude_parent = Taxon.objects.create(name="ExcludeParent", rank="GENUS")
+        exclude_child = Taxon.objects.create(name="ExcludeChild", parent=exclude_parent, rank="SPECIES")
+
+        # Add parents/children to project & to include/exclude lists
+        for t in [include_parent, include_child, exclude_parent, exclude_child]:
+            t.projects.add(self.project)
+        self.include_taxa_and_parents = self.include_taxa.copy() + [include_parent]
+        self.exclude_taxa_and_parents = self.exclude_taxa.copy() + [exclude_parent]
+        self.include_taxa += [include_parent, include_child]
+        self.exclude_taxa += [exclude_parent, exclude_child]
+
+        # Create occurrences for all taxa
+        for taxon in self.include_taxa:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon, determination_score=0.5)
+        for taxon in self.exclude_taxa:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon, determination_score=0.95)
+        self.high_score_taxa = [self.include_taxa[0], self.include_taxa[1]]
+        for taxon in self.high_score_taxa:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon, determination_score=0.95)
+        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    # OccurrenceViewSet tests
+    def _get_occurrence_ids(self):
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {r.get("determination", {}).get("id") for r in res.json()["results"] if r.get("determination")}
+
+    def test_occurrence_viewset_include_taxa_filter(self):
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+        ids = self._get_occurrence_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
+
+    def test_occurrence_viewset_exclude_taxa_filter(self):
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+        ids = self._get_occurrence_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
+
+    # TaxonViewSet tests
+    def _get_taxon_ids(self):
+        url = f"/api/v2/taxa/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {r["id"] for r in res.json()["results"]}
+
+    def test_taxon_viewset_include_taxa_filter(self):
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+        ids = self._get_taxon_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
+
+    def test_taxon_viewset_exclude_taxa_filter(self):
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+        ids = self._get_taxon_ids()
+        for taxon in self.include_taxa:
+            self.assertIn(taxon.id, ids)
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, ids)
+
+    def test_taxon_viewset_apply_defaults_false_bypasses_taxa_filters(self):
+        """
+        With apply_defaults=false, taxa view should bypass include/exclude filters.
+        This test ensures that build_default_filters_q respects the apply_defaults flag.
+        """
+        # Set up strict filters: only include a subset of taxa
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+
+        # With defaults applied, should only see included taxa
+        url_with_defaults = f"/api/v2/taxa/?project_id={self.project.pk}"
+        res_with_defaults = self.client.get(url_with_defaults)
+        self.assertEqual(res_with_defaults.status_code, status.HTTP_200_OK)
+        ids_with_defaults = {r["id"] for r in res_with_defaults.json()["results"]}
+
+        # With apply_defaults=false, should see ALL taxa (including excluded ones)
+        url_without_defaults = f"/api/v2/taxa/?project_id={self.project.pk}&apply_defaults=false"
+        res_without_defaults = self.client.get(url_without_defaults)
+        self.assertEqual(res_without_defaults.status_code, status.HTTP_200_OK)
+        ids_without_defaults = {r["id"] for r in res_without_defaults.json()["results"]}
+
+        # Verify: without defaults should include ALL taxa (both include and exclude lists)
+        all_test_taxa = self.include_taxa + self.exclude_taxa
+        for taxon in all_test_taxa:
+            self.assertIn(
+                taxon.id,
+                ids_without_defaults,
+                f"With apply_defaults=false, {taxon.name} should be present in taxa list",
+            )
+
+        # Verify: without defaults returns more taxa than with defaults
+        self.assertGreater(
+            len(ids_without_defaults),
+            len(ids_with_defaults),
+            "apply_defaults=false should return more taxa than with filters applied",
+        )
+
+        # Verify: excluded taxa should NOT appear with defaults
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(
+                taxon.id,
+                ids_with_defaults,
+                f"With defaults applied, excluded taxon {taxon.name} should NOT be present",
+            )
+
+    # EventViewSet tests
+    def _get_event_counts(self):
+        """Helper to return list of (event_id, occurrences_count, taxa_count) from EventViewSet"""
+        url = f"/api/v2/events/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return [(e["id"], e["occurrences_count"], e["taxa_count"]) for e in res.json()["results"]]
+
+    def _update_calculated_fields(self):
+        for event in Event.objects.filter(project=self.project):
+            event.save()
+
+    def test_event_viewset_counts_respect_include_taxa_filter(self):
+        """
+        EventViewSet occurrences_count and taxa_count should respect default include taxa filters.
+        """
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+        self._update_calculated_fields()
+        events = self._get_event_counts()
+
+        for event_id, occ_count, taxa_count in events:
+            expected_occ_count = Occurrence.objects.filter(
+                event_id=event_id, determination__in=self.include_taxa
+            ).count()
+            expected_taxa_count = (
+                Occurrence.objects.filter(event_id=event_id, determination__in=self.include_taxa)
+                .values("determination_id")
+                .distinct()
+                .count()
+            )
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Event {event_id}: occurrences_count did not respect include taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Event {event_id}: taxa_count did not respect include taxa filter",
+            )
+
+    def test_event_viewset_counts_respect_exclude_taxa_filter(self):
+        """
+        EventViewSet occurrences_count and taxa_count should respect default exclude taxa filters.
+        """
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+        self._update_calculated_fields()
+        events = self._get_event_counts()
+
+        for event_id, occ_count, taxa_count in events:
+            expected_occ_count = (
+                Occurrence.objects.exclude(determination__in=self.exclude_taxa).filter(event_id=event_id).count()
+            )
+            expected_taxa_count = (
+                Occurrence.objects.exclude(determination__in=self.exclude_taxa)
+                .filter(event_id=event_id)
+                .values("determination_id")
+                .distinct()
+                .count()
+            )
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Event {event_id}: occurrences_count did not respect exclude taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Event {event_id}: taxa_count did not respect exclude taxa filter",
+            )
+
+    # DeploymentViewSet tests
+    def _get_deployment_counts(self):
+        """Helper to return list of (deployment_id, occurrences_count, taxa_count) from DeploymentViewSet"""
+        url = f"/api/v2/deployments/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return [(d["id"], d["occurrences_count"], d["taxa_count"]) for d in res.json()["results"]]
+
+    def _update_deployment_calculated_fields(self):
+        """Ensure pre-calculated fields on deployments are up to date before testing"""
+        for deployment in Deployment.objects.filter(project=self.project):
+            deployment.save()  # This should trigger update_calculated_fields in model save()
+
+    def test_deployment_viewset_counts_respect_include_taxa_filter(self):
+        """
+        DeploymentViewSet occurrences_count and taxa_count should respect default include taxa filters.
+        """
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+        self._update_deployment_calculated_fields()
+        deployments = self._get_deployment_counts()
+
+        for dep_id, occ_count, taxa_count in deployments:
+            expected_occ_count = Occurrence.objects.filter(
+                deployment_id=dep_id, determination__in=self.include_taxa
+            ).count()
+            expected_taxa_count = (
+                Occurrence.objects.filter(deployment_id=dep_id, determination__in=self.include_taxa)
+                .values("determination_id")
+                .distinct()
+                .count()
+            )
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Deployment {dep_id}: occurrences_count did not respect include taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Deployment {dep_id}: taxa_count did not respect include taxa filter",
+            )
+
+    def test_deployment_viewset_counts_respect_exclude_taxa_filter(self):
+        """
+        DeploymentViewSet occurrences_count and taxa_count should respect default exclude taxa filters.
+        """
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+        self._update_deployment_calculated_fields()
+        deployments = self._get_deployment_counts()
+
+        for dep_id, occ_count, taxa_count in deployments:
+            expected_occ_count = (
+                Occurrence.objects.exclude(determination__in=self.exclude_taxa).filter(deployment_id=dep_id).count()
+            )
+            expected_taxa_count = (
+                Occurrence.objects.exclude(determination__in=self.exclude_taxa)
+                .filter(deployment_id=dep_id)
+                .values("determination_id")
+                .distinct()
+                .count()
+            )
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Deployment {dep_id}: occurrences_count did not respect exclude taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Deployment {dep_id}: taxa_count did not respect exclude taxa filter",
+            )
+
+    # SourceImageViewSet tests
+    def _get_source_image_counts(self):
+        """
+        Helper to fetch list of (capture_id, occurrences_count, taxa_count) from SourceImageViewSet
+        """
+        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return [(c["id"], c["occurrences_count"], c["taxa_count"]) for c in res.json()["results"]]
+
+    def test_sourceimage_viewset_counts_respect_include_taxa_filter(self):
+        """
+        SourceImageViewSet occurrences_count and taxa_count should respect default include taxa filters.
+        """
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+        captures = self._get_source_image_counts()
+
+        for capture_id, occ_count, taxa_count in captures:
+            # Get all occurrences linked to this capture via detections
+            expected_occurrence_qs = Occurrence.objects.filter(
+                detections__source_image_id=capture_id,
+                determination__in=self.include_taxa,
+            ).distinct()
+
+            expected_occ_count = expected_occurrence_qs.count()
+            expected_taxa_count = expected_occurrence_qs.values("determination_id").distinct().count()
+
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Capture {capture_id}: occurrences_count did not respect include taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Capture {capture_id}: taxa_count did not respect include taxa filter",
+            )
+
+    def test_sourceimage_viewset_counts_respect_exclude_taxa_filter(self):
+        """
+        SourceImageViewSet occurrences_count and taxa_count should respect default exclude taxa filters.
+        """
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+        captures = self._get_source_image_counts()
+
+        for capture_id, occ_count, taxa_count in captures:
+            expected_occurrence_qs = (
+                Occurrence.objects.exclude(determination__in=self.exclude_taxa)
+                .filter(detections__source_image_id=capture_id)
+                .distinct()
+            )
+
+            expected_occ_count = expected_occurrence_qs.count()
+            expected_taxa_count = expected_occurrence_qs.values("determination_id").distinct().count()
+
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Capture {capture_id}: occurrences_count did not respect exclude taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Capture {capture_id}: taxa_count did not respect exclude taxa filter",
+            )
+
+    # SourceImageCollectionViewSet tests
+    def _get_collection_counts(self):
+        """Helper to return list of (collection_id, occurrences_count, taxa_count)"""
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return [(c["id"], c["occurrences_count"], c["taxa_count"]) for c in res.json()["results"]]
+
+    def test_sourceimagecollection_viewset_counts_respect_include_taxa_filter(self):
+        """
+        SourceImageCollectionViewSet occurrences_count and taxa_count should respect default include taxa filters.
+        """
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+        collections = self._get_collection_counts()
+
+        for collection_id, occ_count, taxa_count in collections:
+            expected_occurrence_qs = Occurrence.objects.filter(
+                detections__source_image__collections__id=collection_id,
+                determination__in=self.include_taxa,
+            ).distinct()
+
+            expected_occ_count = expected_occurrence_qs.count()
+            expected_taxa_count = expected_occurrence_qs.values("determination_id").distinct().count()
+
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Collection {collection_id}: occurrences_count did not respect include taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Collection {collection_id}: taxa_count did not respect include taxa filter",
+            )
+
+    def test_sourceimagecollection_viewset_counts_respect_exclude_taxa_filter(self):
+        """
+        SourceImageCollectionViewSet occurrences_count and taxa_count should respect default exclude taxa filters.
+        """
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+        collections = self._get_collection_counts()
+
+        for collection_id, occ_count, taxa_count in collections:
+            expected_occurrence_qs = (
+                Occurrence.objects.exclude(determination__in=self.exclude_taxa)
+                .filter(detections__source_image__collections__id=collection_id)
+                .distinct()
+            )
+
+            expected_occ_count = expected_occurrence_qs.count()
+            expected_taxa_count = expected_occurrence_qs.values("determination_id").distinct().count()
+
+            self.assertEqual(
+                occ_count,
+                expected_occ_count,
+                f"Collection {collection_id}: occurrences_count did not respect exclude taxa filter",
+            )
+            self.assertEqual(
+                taxa_count,
+                expected_taxa_count,
+                f"Collection {collection_id}: taxa_count did not respect exclude taxa filter",
+            )
+
+    # SummaryView tests
+    def _get_summary_counts(self):
+        """Helper to return occurrences_count and taxa_count from SummaryView."""
+        url = f"/api/v2/status/summary/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.json()
+        return data["occurrences_count"], data["taxa_count"]
+
+    def test_summary_view_counts_respect_include_taxa_filter(self):
+        """
+        SummaryView occurrences_count and taxa_count should respect default include taxa filters.
+        """
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+        occ_count, taxa_count = self._get_summary_counts()
+
+        expected_occ_count = Occurrence.objects.filter(
+            project=self.project,
+            determination__in=self.include_taxa,
+        ).count()
+
+        expected_taxa_count = (
+            Occurrence.objects.filter(project=self.project, determination__in=self.include_taxa)
+            .values("determination_id")
+            .distinct()
+            .count()
+        )
+
+        self.assertEqual(
+            occ_count,
+            expected_occ_count,
+            "SummaryView occurrences_count did not respect include taxa filter",
+        )
+        self.assertEqual(
+            taxa_count,
+            expected_taxa_count,
+            "SummaryView taxa_count did not respect include taxa filter",
+        )
+
+    def test_summary_view_counts_respect_exclude_taxa_filter(self):
+        """
+        SummaryView occurrences_count and taxa_count should respect default exclude taxa filters.
+        """
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+        occ_count, taxa_count = self._get_summary_counts()
+
+        expected_occ_count = (
+            Occurrence.objects.exclude(determination__in=self.exclude_taxa).filter(project=self.project).count()
+        )
+        expected_taxa_count = (
+            Occurrence.objects.exclude(determination__in=self.exclude_taxa)
+            .filter(project=self.project)
+            .values("determination_id")
+            .distinct()
+            .count()
+        )
+
+        self.assertEqual(
+            occ_count,
+            expected_occ_count,
+            "SummaryView occurrences_count did not respect exclude taxa filter",
+        )
+        self.assertEqual(
+            taxa_count,
+            expected_taxa_count,
+            "SummaryView taxa_count did not respect exclude taxa filter",
+        )
+
+    def test_summary_counts_respect_threshold_and_include_taxa(self):
+        """
+        SummaryView occurrences_count and taxa_count should respect both
+        default score threshold and include taxa filters.
+        """
+        threshold = 0.9
+        self.project.default_filters_score_threshold = threshold
+        self.project.save()
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+
+        occ_count, taxa_count = self._get_summary_counts()
+
+        expected_occurrences = Occurrence.objects.filter(
+            project=self.project,
+            determination__in=self.high_score_taxa,
+            determination_score__gte=threshold,
+        )
+        expected_occ_count = expected_occurrences.count()
+        expected_taxa_count = expected_occurrences.values("determination_id").distinct().count()
+
+        self.assertEqual(
+            occ_count,
+            expected_occ_count,
+            "SummaryView occurrences_count did not respect threshold + include taxa filters",
+        )
+        self.assertEqual(
+            taxa_count,
+            expected_taxa_count,
+            "SummaryView taxa_count did not respect threshold + include taxa filters",
+        )
+
+    # Combined filter tests (threshold + taxa)
+    def test_combined_threshold_and_include_taxa_occurrences(self):
+        """
+        OccurrenceViewSet should apply both score threshold and include taxa filters together.
+        Only occurrences that meet BOTH criteria should be returned.
+        """
+        threshold = 0.8
+        self.project.default_filters_score_threshold = threshold
+        self.project.save()
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        returned_ids = {r.get("determination", {}).get("id") for r in res.json()["results"] if r.get("determination")}
+
+        # Should only include taxa from include list with high scores
+        for taxon in self.high_score_taxa:
+            self.assertIn(taxon.id, returned_ids, f"High-score included taxon {taxon.name} should be present")
+
+        # Should exclude low-score included taxa
+        for taxon in [t for t in self.include_taxa if t not in self.high_score_taxa]:
+            self.assertNotIn(taxon.id, returned_ids, f"Low-score included taxon {taxon.name} should be filtered out")
+
+        # Should exclude all excluded taxa regardless of score
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, returned_ids, f"Excluded taxon {taxon.name} should not be present")
+
+    def test_combined_threshold_and_exclude_taxa_occurrences(self):
+        """
+        OccurrenceViewSet should apply both score threshold and exclude taxa filters together.
+        Occurrences must meet threshold AND not be in exclude list.
+        """
+        threshold = 0.8
+        self.project.default_filters_score_threshold = threshold
+        self.project.save()
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        returned_ids = {r.get("determination", {}).get("id") for r in res.json()["results"] if r.get("determination")}
+
+        # Should include high-score included taxa
+        for taxon in self.high_score_taxa:
+            self.assertIn(taxon.id, returned_ids, f"High-score non-excluded taxon {taxon.name} should be present")
+
+        # Should exclude low-score included taxa (filtered by threshold)
+        for taxon in [t for t in self.include_taxa if t not in self.high_score_taxa]:
+            self.assertNotIn(taxon.id, returned_ids, f"Low-score taxon {taxon.name} should be filtered by threshold")
+
+        # Should exclude all excluded taxa even if high score
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(
+                taxon.id,
+                returned_ids,
+                f"Excluded taxon {taxon.name} should not be present even with high score",
+            )
+
+    def test_combined_threshold_and_include_taxa_in_taxa_list(self):
+        """
+        TaxonViewSet should show only taxa that have occurrences meeting both
+        score threshold and taxa inclusion criteria.
+        """
+        threshold = 0.8
+        self.project.default_filters_score_threshold = threshold
+        self.project.save()
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        returned_ids = {r["id"] for r in res.json()["results"]}
+
+        # Should only show taxa from include list that have high-score occurrences
+        for taxon in self.high_score_taxa:
+            self.assertIn(taxon.id, returned_ids, f"High-score included taxon {taxon.name} should appear in taxa list")
+
+        # Should NOT show low-score included taxa
+        for taxon in [t for t in self.include_taxa if t not in self.high_score_taxa]:
+            self.assertNotIn(taxon.id, returned_ids, f"Low-score taxon {taxon.name} should not appear")
+
+        # Should NOT show excluded taxa
+        for taxon in self.exclude_taxa:
+            self.assertNotIn(taxon.id, returned_ids, f"Excluded taxon {taxon.name} should not appear")
+
+    def test_combined_filters_bypass_with_apply_defaults_false(self):
+        """
+        Setting apply_defaults=false should bypass BOTH threshold and taxa filters.
+        """
+        threshold = 0.8
+        self.project.default_filters_score_threshold = threshold
+        self.project.save()
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+
+        # With apply_defaults=false and low threshold, should get everything
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}&apply_defaults=false&classification_threshold=0.0"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        returned_ids = {r.get("determination", {}).get("id") for r in res.json()["results"] if r.get("determination")}
+
+        # Should include ALL taxa (include and exclude) with any score
+        all_taxa = self.include_taxa + self.exclude_taxa
+        for taxon in all_taxa:
+            self.assertIn(taxon.id, returned_ids, f"With apply_defaults=false, {taxon.name} should be present")
+
+    # SourceImageCollectionViewSet tests with taxa filters
+    def test_collection_counts_respect_include_taxa_with_threshold(self):
+        """
+        SourceImageCollectionViewSet counts should respect both score threshold
+        and include taxa filters for nested occurrences.
+        """
+        threshold = 0.8
+        self.project.default_filters_score_threshold = threshold
+        self.project.save()
+        self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
+
+        # Create a collection with some images
+        collection = SourceImageCollection.objects.filter(project=self.project).first()
+        if not collection:
+            collection = SourceImageCollection.objects.create(
+                name="Test Collection",
+                project=self.project,
+                method="manual",
+            )
+
+        # Add some images to the collection
+        images = SourceImage.objects.filter(deployment=self.deployment)[:3]
+        collection.images.set(images)
+
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Find our collection in results
+        results = {r["id"]: r for r in res.json()["results"]}
+        self.assertIn(collection.pk, results, "Collection should be in results")
+
+        collection_data = results[collection.pk]
+
+        # Calculate expected counts: occurrences through images->detections->occurrences
+        # that meet both threshold and taxa inclusion
+        expected_occurrences = Occurrence.objects.filter(
+            detections__source_image__in=images,
+            determination__in=self.high_score_taxa,
+            determination_score__gte=threshold,
+        ).distinct()
+
+        expected_occ_count = expected_occurrences.count()
+        expected_taxa_count = expected_occurrences.values("determination_id").distinct().count()
+
+        self.assertEqual(
+            collection_data["occurrences_count"],
+            expected_occ_count,
+            "Collection occurrences_count should respect combined filters",
+        )
+        self.assertEqual(
+            collection_data["taxa_count"],
+            expected_taxa_count,
+            "Collection taxa_count should respect combined filters",
+        )
+
+    def test_collection_counts_respect_exclude_taxa_with_threshold(self):
+        """
+        SourceImageCollectionViewSet counts should respect both score threshold
+        and exclude taxa filters for nested occurrences.
+        """
+        threshold = 0.8
+        self.project.default_filters_score_threshold = threshold
+        self.project.save()
+        self.project.default_filters_exclude_taxa.set(self.exclude_taxa_and_parents)
+
+        # Create a collection with some images
+        collection = SourceImageCollection.objects.filter(project=self.project).first()
+        if not collection:
+            collection = SourceImageCollection.objects.create(
+                name="Test Collection 2",
+                project=self.project,
+                method="manual",
+            )
+
+        # Add some images to the collection
+        images = SourceImage.objects.filter(deployment=self.deployment)[:3]
+        collection.images.set(images)
+
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Find our collection in results
+        results = {r["id"]: r for r in res.json()["results"]}
+        self.assertIn(collection.pk, results, "Collection should be in results")
+
+        collection_data = results[collection.pk]
+
+        # Calculate expected counts: high-score occurrences NOT in exclude list
+        expected_occurrences = (
+            Occurrence.objects.filter(
+                detections__source_image__in=images,
+                determination_score__gte=threshold,
+            )
+            .exclude(determination__in=self.exclude_taxa)
+            .distinct()
+        )
+
+        expected_occ_count = expected_occurrences.count()
+        expected_taxa_count = expected_occurrences.values("determination_id").distinct().count()
+
+        self.assertEqual(
+            collection_data["occurrences_count"],
+            expected_occ_count,
+            "Collection occurrences_count should respect threshold + exclude filters",
+        )
+        self.assertEqual(
+            collection_data["taxa_count"],
+            expected_taxa_count,
+            "Collection taxa_count should respect threshold + exclude filters",
+        )

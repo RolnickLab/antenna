@@ -331,17 +331,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
-            qs = qs.annotate(
-                taxa_count=models.Count(
-                    "occurrences__determination",
-                    distinct=True,
-                    filter=models.Q(
-                        occurrences__determination_score__gte=get_default_classification_threshold(
-                            project, self.request
-                        ),
-                    ),
-                ),
-            )
+            qs = qs.with_taxa_count(project=project, request=self.request)  # type: ignore
 
         return qs
 
@@ -503,9 +493,9 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         classification_threshold = get_default_classification_threshold(project, self.request)
         queryset = queryset.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         )
 
         queryset.select_related(
@@ -562,7 +552,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 )
             )
 
-        qualifying_occurrence_ids = Occurrence.objects.filter_by_score_threshold(  # type: ignore
+        qualifying_occurrence_ids = Occurrence.objects.apply_default_filters(  # type: ignore
             project, self.request
         ).values_list("id", flat=True)
         score = get_default_classification_threshold(project, self.request)
@@ -700,9 +690,9 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold
+            classification_threshold=classification_threshold, project=project
         )
         return queryset
 
@@ -1157,7 +1147,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        qs = qs.filter_by_score_threshold(project, self.request)  # type: ignore
+        qs = qs.apply_default_filters(project, self.request)  # type: ignore
         if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
@@ -1387,9 +1377,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset()
         project = self.get_active_project()
-        qs = self.attach_tags_by_project(qs, project)
+        if project:
+            qs = self.attach_tags_by_project(qs, project)
 
         if project:
+            # Apply default taxa filtering (respects apply_defaults flag)
+            qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
+
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             if self.action == "list":
@@ -1399,7 +1393,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.filter_by_score_threshold(  # type: ignore
+                        queryset=Occurrence.objects.apply_default_filters(  # type: ignore
                             project, self.request
                         ).filter(self.get_occurrence_filters(project))[:1],
                         to_attr="example_occurrences",
@@ -1417,63 +1411,71 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
+
+        Uses efficient subqueries with default filters applied directly via Q objects
+        to leverage composite indexes on (determination_id, project_id, event_id, determination_score).
+        This avoids the N+1 query problem by building a single Q filter that can be reused
+        across all subqueries.
         """
         occurrence_filters = self.get_occurrence_filters(project)
 
-        # @TODO make this recursive into child taxa and cache
-        occurrences_count = models.Subquery(
-            Occurrence.objects.filter(
+        # Build a single Q filter for default filters (score threshold + taxa filters)
+        # This creates an efficient filter that works with composite indexes
+        # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
+        from ami.main.models_future.filters import build_occurrence_default_filters_q
+
+        default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
+
+        # Combine base occurrence filters with default filters
+        base_filter = (
+            models.Q(
                 occurrence_filters,
                 determination_id=models.OuterRef("id"),
             )
-            .filter_by_score_threshold(project, self.request)  # type: ignore
+            & default_filters_q
+        )
+
+        # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
+        occurrences_count_subquery = models.Subquery(
+            Occurrence.objects.filter(base_filter)
             .values("determination_id")
             .annotate(count=models.Count("id"))
-            .values("count"),
+            .values("count")[:1],
             output_field=models.IntegerField(),
         )
 
-        last_detected = models.Subquery(
-            Occurrence.objects.filter(
-                occurrence_filters,
-                determination_id=models.OuterRef("id"),
-                detections__timestamp__isnull=False,  # ensure we have a timestamp
-            )
+        # Get best score - uses same composite index
+        best_score_subquery = models.Subquery(
+            Occurrence.objects.filter(base_filter)
             .values("determination_id")
-            .annotate(last_detected=models.Max("detections__timestamp"))
-            .values("last_detected"),
-            output_field=models.DateTimeField(),
-        )
-
-        # Get the best score using the determination_score field directly
-        best_score = models.Subquery(
-            Occurrence.objects.filter(
-                occurrence_filters,
-                determination_id=models.OuterRef("id"),
-            )
-            .values("determination_id")
-            .annotate(best_score=models.Max("determination_score"))
-            .values("best_score")[:1],
+            .annotate(max_score=models.Max("determination_score"))
+            .values("max_score")[:1],
             output_field=models.FloatField(),
         )
 
+        # Get last detected timestamp - requires join with detections
+        last_detected_subquery = models.Subquery(
+            Occurrence.objects.filter(
+                base_filter,
+                detections__timestamp__isnull=False,
+            )
+            .values("determination_id")
+            .annotate(last_detected=models.Max("detections__timestamp"))
+            .values("last_detected")[:1],
+            output_field=models.DateTimeField(),
+        )
+
+        # Apply annotations
         qs = qs.annotate(
-            occurrences_count=Coalesce(occurrences_count, 0),
-            last_detected=last_detected,
-            best_determination_score=best_score,
+            occurrences_count=Coalesce(occurrences_count_subquery, 0),
+            best_determination_score=best_score_subquery,
+            last_detected=last_detected_subquery,
         )
 
         if not include_unobserved:
-            qs = qs.filter(
-                models.Exists(
-                    Occurrence.objects.filter(
-                        occurrence_filters,
-                        determination_id=models.OuterRef("id"),
-                    ).filter_by_score_threshold(  # type: ignore
-                        project, self.request
-                    ),
-                )
-            )
+            # Efficient EXISTS check that uses the composite index
+            qs = qs.filter(models.Exists(Occurrence.objects.filter(base_filter)))
+
         return qs
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
@@ -1598,7 +1600,9 @@ class SummaryView(GenericAPIView, ProjectMixin):
         project = self.get_active_project()
         if project:
             data = {
-                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
+                "projects_count": Project.objects.visible_for_user(  # type: ignore
+                    user
+                ).count(),  # @TODO filter by current user, here and everywhere!
                 "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
                 .filter(project=project)
                 .count(),
@@ -1608,13 +1612,14 @@ class SummaryView(GenericAPIView, ProjectMixin):
                 "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
                 .filter(deployment__project=project)
                 .count(),
-                "occurrences_count": Occurrence.objects.valid()  # type: ignore
-                .visible_for_user(user)
+                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
+                "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+                .apply_default_filters(project=project, request=self.request)  # type: ignore
+                .valid()
                 .filter(project=project)
-                .filter_by_score_threshold(project, self.request)  # type: ignore
-                .count(),
+                .count(),  # type: ignore
                 "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .filter_by_score_threshold(project, self.request)
+                .apply_default_filters(project=project, request=self.request)  # type: ignore
                 .unique_taxa(project=project)
                 .count(),
             }
