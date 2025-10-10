@@ -662,13 +662,16 @@ class PostProcessingJob(JobType):
         params = job.params or {}
         task_key: str = params.get("task", "")
         config = params.get("config", {})
-        job.logger.info(f"Post-processing task: {task_key} with params: {job.params}")
-
+        job.logger.info(f"Post-processing task: {task_key} with params: {config}")
+        # Get the registered task class
         task_cls = get_postprocessing_task(task_key)
         if not task_cls:
             raise ValueError(f"Unknown post-processing task '{task_key}'")
 
+        # Instantiate the task with job context and config
         task = task_cls(job=job, **config)
+
+        # Run the task
         task.run()
         job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
