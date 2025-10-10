@@ -10,6 +10,7 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
+from ami.jobs.models import Job
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
 
@@ -619,7 +620,81 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
         )
 
-    actions = [populate_collection, populate_collection_async]
+    @admin.action(description="Run Small Size Filter post-processing task (async)")
+    def run_small_size_filter(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        jobs = []
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: SmallSizeFilter on Collection {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "small_size_filter",
+                    "config": {
+                        "size_threshold": 0.01,  # default threshold
+                        "source_image_collection_id": collection.pk,
+                    },
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} collection(s). Jobs: {jobs}")
+
+    @admin.action(description="Run Class Masking post-processing task (async)")
+    def run_class_masking(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        jobs = []
+
+        DEFAULT_TAXA_LIST_ID = 5
+        DEFAULT_ALGORITHM_ID = 11
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: ClassMasking on Collection {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "class_masking",
+                    "config": {
+                        "collection_id": collection.pk,
+                        "taxa_list_id": DEFAULT_TAXA_LIST_ID,
+                        "algorithm_id": DEFAULT_ALGORITHM_ID,
+                    },
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Class Masking for {queryset.count()} collection(s). Jobs: {jobs}")
+
+    @admin.action(description="Run Rank Rollup post-processing task (async)")
+    def run_rank_rollup(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        """Trigger the Rank Rollup post-processing job asynchronously."""
+        jobs = []
+        DEFAULT_THRESHOLDS = {"species": 0.8, "genus": 0.6, "family": 0.4}
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: RankRollup on Collection {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "rank_rollup",
+                    "config": {"source_image_collection_id": collection.pk, "thresholds": DEFAULT_THRESHOLDS},
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Rank Rollup for {queryset.count()} collection(s). Jobs: {jobs}")
+
+    actions = [
+        populate_collection,
+        populate_collection_async,
+        run_small_size_filter,
+        run_class_masking,
+        run_rank_rollup,
+    ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
