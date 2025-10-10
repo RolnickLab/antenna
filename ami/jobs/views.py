@@ -1,11 +1,13 @@
+import asyncio
 import logging
 
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
@@ -55,6 +57,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "pipeline",
         "job_type_key",
     ]
+    search_fields = ["name", "pipeline__name"]
     ordering_fields = [
         "name",
         "created_at",
@@ -153,6 +156,115 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             updated_at__lt=cutoff_datetime,
         )
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="pipeline",
+                description="Filter jobs by pipeline ID",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="ids_only",
+                description="Return only job IDs instead of full job objects",
+                required=False,
+                type=OpenApiTypes.BOOL,
+            ),
+        ]
+    )
     def list(self, request, *args, **kwargs):
+        # Check if ids_only parameter is set
+        ids_only = request.query_params.get("ids_only", "false").lower() in ["true", "1", "yes"]
+
+        if ids_only:
+            # Get filtered queryset and return only IDs
+            queryset = self.filter_queryset(self.get_queryset())
+            job_ids = list(queryset.values_list("id", flat=True))
+            return Response({"job_ids": job_ids, "count": len(job_ids)})
+
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="batch",
+                description="Number of tasks to pull in the batch",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ],
+        responses={200: dict},
+    )
+    @action(detail=True, methods=["get"], name="tasks")
+    def tasks(self, request, pk=None):
+        """
+        Get tasks from the job queue.
+
+        Returns task data with reply_subject for acknowledgment. External workers should:
+        1. Call this endpoint to get tasks
+        2. Process the tasks
+        3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
+
+        This stateless approach allows workers to communicate over HTTP without
+        maintaining persistent connections to the queue system.
+        """
+        job: Job = self.get_object()
+        batch = IntegerField(required=False, min_value=1).clean(request.query_params.get("batch", 1))
+        job_id = f"job{job.pk}"
+
+        # Validate that the job has a pipeline
+        if not job.pipeline:
+            raise ValidationError("This job does not have a pipeline configured")
+
+        # Get tasks from NATS JetStream
+        from ami.utils.nats_queue import TaskQueueManager
+
+        async def get_tasks():
+            tasks = []
+            async with TaskQueueManager() as manager:
+                for i in range(batch):
+                    task = await manager.reserve_job(job_id)
+                    if task:
+                        tasks.append(task)
+            return tasks
+
+        tasks = asyncio.run(get_tasks())
+        return Response({"tasks": tasks})
+
+    @action(detail=True, methods=["post"], name="result")
+    def result(self, request, pk=None):
+        """
+        Acknowledge task completion.
+
+        External services should POST task results with the reply_subject received
+        from the /tasks endpoint to acknowledge task completion.
+
+        The request body should contain:
+        {
+            "reply_subject": "string",  # Required: from the task response
+            "status": "completed" | "failed",  # Optional
+            "result_data": {...},  # Optional
+            "error_message": "Error details...",  # Optional for failed tasks
+        }
+        """
+        from ami.utils.nats_queue import TaskQueueManager
+
+        reply_subject = request.data.get("reply_subject")
+
+        if reply_subject is None:
+            raise ValidationError("reply_subject is required")
+
+        # Acknowledge the task via NATS
+        async def ack_task():
+            async with TaskQueueManager() as manager:
+                return await manager.acknowledge_job(reply_subject)
+
+        success = asyncio.run(ack_task())
+
+        # TODO: Record the job results
+
+        if success:
+            return Response({"status": "acknowledged"})
+        else:
+            return Response({"status": "failed to acknowledge"}, status=500)
