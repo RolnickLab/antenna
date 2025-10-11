@@ -6,7 +6,6 @@ adapted for the processing service framework.
 
 import datetime
 import logging
-from typing import List
 
 import torch
 import torchvision.transforms
@@ -57,22 +56,22 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
         """Initialize the global moth classifier."""
         # Initialize Algorithm parent class
         Algorithm.__init__(self)
-        
+
         # Store kwargs for later use in compile()
         self._init_kwargs = kwargs
-        
+
         # Initialize basic attributes without loading model
         self.model = None
         self.transforms = None
         self.category_map = {}  # Empty dict for now
         self.num_classes = 29176  # Known number of classes
-        
+
         logger.info(f"Initialized {self.name} (model loading deferred to compile())")
 
     @property
     def algorithm_config_response(self) -> AlgorithmConfigResponse:
         """Get algorithm configuration for API response."""
-        if not hasattr(self, '_algorithm_config_response'):
+        if not hasattr(self, "_algorithm_config_response"):
             # Create a basic config response before compilation
             self._algorithm_config_response = AlgorithmConfigResponse(
                 name=self.name,
@@ -102,20 +101,20 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
         if self.model is not None:
             logger.info("Model already compiled, skipping...")
             return
-            
+
         logger.info(f"🔧 Compiling {self.name}...")
         logger.info(f"   📊 Expected classes: {self.num_classes}")
         logger.info(f"   🏷️  Labels URL: {self.labels_path}")
         logger.info(f"   ⚖️  Weights URL: {self.weights_path}")
-        
+
         # Initialize the TimmResNet50Base now (this will download weights/labels)
         logger.info("   📥 Downloading model weights and labels...")
         TimmResNet50Base.__init__(self, **self._init_kwargs)
-        
+
         # Set algorithm config response
         logger.info("   📋 Setting up algorithm configuration...")
         self.algorithm_config_response = self.get_algorithm_config_response()
-        
+
         logger.info(f"✅ {self.name} compiled successfully!")
         logger.info(f"   📊 Loaded {len(self.category_map)} species categories")
         logger.info(f"   🔧 Model device: {getattr(self, 'device', 'unknown')}")
@@ -131,7 +130,7 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
             ]
         )
 
-    def run(self, detections: List[Detection]) -> List[Detection]:
+    def run(self, detections: list[Detection]) -> list[Detection]:
         """
         Run classification on a list of detections.
 
@@ -154,7 +153,7 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
         classified_detections = []
 
         for i in range(0, len(detections), self.batch_size):
-            batch_detections = detections[i : i + self.batch_size]
+            batch_detections = detections[i: i + self.batch_size]
             batch_images = []
 
             # Prepare batch of images
@@ -217,9 +216,7 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
 
     def get_category_map(self) -> AlgorithmCategoryMapResponse:
         """Get category map for API response."""
-        categories_sorted_by_index = sorted(
-            self.category_map.items(), key=lambda x: x[0]
-        )
+        categories_sorted_by_index = sorted(self.category_map.items(), key=lambda x: x[0])
         categories_data = [
             {
                 "index": index,
@@ -250,5 +247,3 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
             category_map=self.get_category_map(),
             uri=self.weights_path,
         )
-
-

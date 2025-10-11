@@ -5,7 +5,7 @@ Adapted from trapdata.ml.models.base but streamlined for processing service use.
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import torch
 import torchvision.transforms
@@ -34,14 +34,14 @@ class SimplifiedInferenceBase:
 
     name: str = "Unknown Inference Model"
     description: str = ""
-    weights_path: Optional[str] = None
-    labels_path: Optional[str] = None
-    category_map: Dict[int, str] = {}
-    num_classes: Optional[int] = None
+    weights_path: str | None = None
+    labels_path: str | None = None
+    category_map: dict[int, str] = {}
+    num_classes: int | None = None
     default_taxon_rank: str = "SPECIES"
     normalization = tensorflow_normalization
     batch_size: int = 4
-    device: Optional[str] = None
+    device: str | None = None
 
     def __init__(self, **kwargs):
         # Override any class attributes with provided kwargs
@@ -56,9 +56,7 @@ class SimplifiedInferenceBase:
         self.weights = self.get_weights(self.weights_path)
         self.transforms = self.get_transforms()
 
-        logger.info(
-            f"Loading model for {self.name} with {len(self.category_map or [])} categories"
-        )
+        logger.info(f"Loading model for {self.name} with {len(self.category_map or [])} categories")
         self.model = self.get_model()
 
     @classmethod
@@ -69,7 +67,7 @@ class SimplifiedInferenceBase:
         else:
             return cls.name.lower().replace(" ", "-").replace("/", "-")
 
-    def get_weights(self, weights_path: Optional[str]) -> Optional[str]:
+    def get_weights(self, weights_path: str | None) -> str | None:
         """Download and cache model weights."""
         if weights_path:
             logger.info(f"⬇️  Downloading model weights from: {weights_path}")
@@ -80,7 +78,7 @@ class SimplifiedInferenceBase:
             logger.warning(f"No weights specified for model {self.name}")
             return None
 
-    def get_labels(self, labels_path: Optional[str]) -> Dict[int, str]:
+    def get_labels(self, labels_path: str | None) -> dict[int, str]:
         """Download and load category labels."""
         if not labels_path:
             return {}
@@ -220,9 +218,7 @@ class TimmResNet50Base(ResNet50Base):
         import timm
 
         # Create timm ResNet50 model
-        model = timm.create_model(
-            "resnet50", pretrained=False, num_classes=self.num_classes
-        )
+        model = timm.create_model("resnet50", pretrained=False, num_classes=self.num_classes)
 
         # Load pretrained weights
         if self.weights:
