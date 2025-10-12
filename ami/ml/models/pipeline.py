@@ -1060,17 +1060,18 @@ class Pipeline(BaseModel):
             f"{[processing_service.name for processing_service in processing_services]}"
         )
 
-        # check the status of all processing services
-        timeout = 5 * 60.0  # 5 minutes
-        lowest_latency = timeout
+        # check the status of all processing services and pick the one with the lowest latency
+        lowest_latency = float("inf")
         processing_services_online = False
 
         for processing_service in processing_services:
-            status_response = processing_service.get_status()  # @TODO pass timeout to get_status()
-            if status_response.server_live:
+            if processing_service.last_checked_live:
                 processing_services_online = True
-                if status_response.latency < lowest_latency:
-                    lowest_latency = status_response.latency
+                if (
+                    processing_service.last_checked_latency
+                    and processing_service.last_checked_latency < lowest_latency
+                ):
+                    lowest_latency = processing_service.last_checked_latency
                     # pick the processing service that has lowest latency
                     processing_service_lowest_latency = processing_service
 
