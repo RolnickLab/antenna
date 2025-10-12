@@ -1,4 +1,5 @@
 import datetime
+import functools
 import logging
 import random
 import time
@@ -49,9 +50,45 @@ def check_celery_workers_available() -> tuple[bool, int]:
         return True, 0
 
 
+@functools.lru_cache(maxsize=1)
+def check_celery_workers_available_cached(timestamp: int) -> tuple[bool, int]:
+    """
+    Cached version of check_celery_workers_available.
+
+    Cache is keyed by timestamp (current minute), so results are cached
+    for approximately 1 minute to avoid excessive worker checks when
+    processing many jobs.
+
+    Args:
+        timestamp: Current minute as an integer (int(time.time() / 60))
+
+    Returns:
+        tuple: (workers_available: bool, worker_count: int)
+    """
+    return check_celery_workers_available()
+
+
 class JobState(str, OrderedEnum):
     """
     These come from Celery, except for CREATED, which is a custom state.
+
+    Future Enhancement: Consider implementing a state machine validator to enforce
+    valid state transitions. Example structure:
+
+        VALID_TRANSITIONS = {
+            JobState.CREATED: [JobState.PENDING, JobState.STARTED, JobState.FAILURE],
+            JobState.PENDING: [JobState.STARTED, JobState.RECEIVED, JobState.FAILURE],
+            JobState.STARTED: [JobState.SUCCESS, JobState.FAILURE, JobState.RETRY],
+            JobState.RETRY: [JobState.PENDING, JobState.STARTED, JobState.FAILURE],
+            JobState.CANCELING: [JobState.REVOKED, JobState.FAILURE],
+            # Final states generally shouldn't transition
+            JobState.SUCCESS: [],
+            JobState.FAILURE: [JobState.RETRY],  # Only allow retry from failure
+            JobState.REVOKED: [],
+        }
+
+    This would help catch invalid state transitions early and make the job
+    lifecycle more predictable.
     """
 
     # CREATED = "Created"
@@ -709,8 +746,16 @@ def get_job_type_by_inferred_key(job: "Job") -> type[JobType] | None:
 class Job(BaseModel):
     """A job to be run by the scheduler"""
 
-    # Hide old failed jobs after 3 days
-    FAILED_CUTOFF_HOURS = 24 * 3
+    # Hide old failed jobs after 30 days
+    FAILED_CUTOFF_HOURS = 24 * 30
+
+    # Job status check configuration thresholds
+    NO_TASK_ID_TIMEOUT_SECONDS = 300  # 5 minutes
+    DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS = 300  # 5 minutes
+    MAX_JOB_RUNTIME_SECONDS = 7 * 24 * 60 * 60  # 7 days
+    STUCK_PENDING_TIMEOUT_SECONDS = 600  # 10 minutes
+    STUCK_PENDING_NO_WORKERS_TIMEOUT_SECONDS = 3600  # 1 hour
+    PENDING_LOG_INTERVAL_SECONDS = 300  # 5 minutes
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
@@ -875,6 +920,272 @@ class Job(BaseModel):
             self.status = JobState.REVOKED
             self.save()
 
+    def _mark_as_failed(self, error_message: str, now: datetime.datetime) -> bool:
+        """
+        Mark the job as failed.
+
+        Args:
+            error_message: The error message to log
+            now: The current datetime to use for finished_at
+
+        Returns:
+            Always returns True since status is being changed to FAILURE
+        """
+        if self.status == JobState.FAILURE:
+            return False  # No change
+        self.logger.error(error_message)
+        self.status = JobState.FAILURE
+        self.progress.summary.status = JobState.FAILURE
+        self.finished_at = now
+        return True
+
+    def _check_if_resurrected(self, now: datetime.datetime, save: bool) -> tuple[bool, bool]:
+        """
+        Check if a failed job has been resurrected (Celery task is now running/completed).
+
+        Args:
+            now: Current datetime
+            save: Whether to save changes
+
+        Returns:
+            Tuple of (should_continue_checks, status_changed)
+        """
+        if self.status != JobState.FAILURE or not self.task_id:
+            return True, False
+
+        try:
+            task = AsyncResult(self.task_id)
+            celery_status = task.status
+            # If the task is now running or succeeded, resurrect the job
+            if celery_status in [JobState.STARTED, JobState.SUCCESS]:
+                self.logger.warning(
+                    f"Job {self.pk} was marked as FAILURE but task is now {celery_status}, resurrecting job"
+                )
+                self.update_status(celery_status, save=False)
+                self.finished_at = None if celery_status == JobState.STARTED else self.finished_at
+                if save:
+                    update_fields = ["last_checked_at", "status", "progress"]
+                    if celery_status == JobState.STARTED:
+                        update_fields.append("finished_at")
+                    self.save(update_fields=update_fields, update_progress=False)
+                return False, True
+        except Exception as e:
+            self.logger.debug(f"Could not check resurrection of failed job {self.pk}: {e}")
+
+        return False, False
+
+    def _check_missing_task_id(self, now: datetime.datetime, timeout_seconds: int) -> bool:
+        """
+        Check if job was scheduled but never got a task_id.
+
+        Args:
+            now: Current datetime
+            timeout_seconds: How long to wait before marking as failed
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if self.task_id or not self.scheduled_at:
+            return False
+
+        time_since_scheduled = (now - self.scheduled_at).total_seconds()
+        if time_since_scheduled > timeout_seconds:
+            return self._mark_as_failed(
+                f"Job {self.pk} was scheduled {time_since_scheduled:.0f}s ago but never got a task_id", now
+            )
+        return False
+
+    def _check_disappeared_task(
+        self,
+        task: AsyncResult,
+        celery_status: str | None,
+        now: datetime.datetime,
+        auto_retry: bool,
+        retry_threshold_seconds: int,
+        save: bool,
+    ) -> tuple[bool, bool]:
+        """
+        Check if task has disappeared from Celery backend and handle retry logic.
+
+        Args:
+            task: The Celery AsyncResult
+            celery_status: The task status (may be None)
+            now: Current datetime
+            auto_retry: Whether to auto-retry disappeared tasks
+            retry_threshold_seconds: Time threshold for auto-retry
+            save: Whether to save changes
+
+        Returns:
+            Tuple of (should_return_early, status_changed)
+        """
+        # Task not found or status unavailable
+        if celery_status is None or (
+            celery_status == "PENDING" and self.status not in [JobState.CREATED, JobState.PENDING]
+        ):
+            self.logger.warning(
+                f"Job {self.pk} task {self.task_id} not found in Celery backend "
+                f"(current job status: {self.status})"
+            )
+
+            # Only retry if job was supposedly running
+            if self.status in JobState.running_states() and auto_retry:
+                if self.started_at:
+                    time_since_start = (now - self.started_at).total_seconds()
+                    if time_since_start < retry_threshold_seconds:
+                        # Task disappeared shortly after starting - likely a worker crash
+                        self.logger.info(f"Job {self.pk} task disappeared shortly after starting, attempting retry")
+                        try:
+                            self.retry(async_task=True)
+                            if save:
+                                self.save(update_fields=["last_checked_at"], update_progress=False)
+                            return True, True
+                        except Exception as retry_err:
+                            self.logger.error(f"Failed to retry job {self.pk}: {retry_err}")
+
+            # If we didn't retry or retry failed, mark as failed
+            status_changed = self._mark_as_failed(
+                f"Job {self.pk} task disappeared from Celery, marking as failed", now
+            )
+            return True, status_changed  # Return early - job is now failed
+
+        return False, False
+
+    def _check_status_mismatch(self, celery_status: str, now: datetime.datetime) -> bool:
+        """
+        Check if job status doesn't match Celery task status and reconcile.
+
+        Args:
+            celery_status: The status reported by Celery
+            now: Current datetime
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if celery_status == self.status:
+            return False
+
+        self.logger.warning(f"Job {self.pk} status '{self.status}' doesn't match Celery task status '{celery_status}'")
+
+        # Update to match Celery's status
+        old_status = self.status
+        self.update_status(celery_status, save=False)
+
+        # If Celery says it failed but we thought it was running
+        if celery_status in JobState.failed_states() and old_status in JobState.running_states():
+            self.finished_at = now
+            self.logger.error(f"Job {self.pk} task failed in Celery")
+        # If Celery says it succeeded but we thought it was running
+        elif celery_status == JobState.SUCCESS and old_status in JobState.running_states():
+            self.finished_at = now
+
+        return True
+
+    def _check_if_stale(self, task: AsyncResult, now: datetime.datetime, max_runtime_seconds: int) -> bool:
+        """
+        Check if job has been running for too long and should be marked as stale.
+
+        Args:
+            task: The Celery AsyncResult
+            now: Current datetime
+            max_runtime_seconds: Maximum allowed runtime
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if self.status not in JobState.running_states() or not self.started_at:
+            return False
+
+        time_since_start = (now - self.started_at).total_seconds()
+        if time_since_start > max_runtime_seconds:
+            time_running = timesince(self.started_at, now)
+            max_runtime_hours = max_runtime_seconds / 3600
+            status_changed = self._mark_as_failed(
+                f"Job {self.pk} has been running for {time_running}, "
+                f"marking as failed (max runtime: {max_runtime_hours:.0f} hours)",
+                now,
+            )
+
+            # Try to revoke the task if we just marked it as failed
+            if status_changed:
+                try:
+                    task.revoke(terminate=True)
+                except Exception as e:
+                    self.logger.error(f"Failed to revoke stale task {self.task_id}: {e}")
+
+            return status_changed
+
+        return False
+
+    def _check_stuck_pending(
+        self,
+        celery_status: str,
+        now: datetime.datetime,
+        timeout_with_workers: int,
+        timeout_no_workers: int,
+        log_interval: int,
+    ) -> bool:
+        """
+        Check if task is stuck in PENDING state for too long.
+
+        Args:
+            celery_status: The status reported by Celery
+            now: Current datetime
+            timeout_with_workers: Timeout when workers are available
+            timeout_no_workers: Timeout when no workers are available
+            log_interval: How often to log waiting messages
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if celery_status != JobState.PENDING or not self.scheduled_at:
+            return False
+
+        time_since_scheduled = (now - self.scheduled_at).total_seconds()
+
+        # Check if workers are available (using cached check to avoid excessive queries)
+        current_minute = int(time.time() / 60)
+        workers_available, worker_count = check_celery_workers_available_cached(current_minute)
+
+        # Determine timeout based on worker availability
+        timeout = timeout_with_workers if workers_available else timeout_no_workers
+
+        # Log periodic waiting messages (approximately every log_interval seconds)
+        # Only log if we're past the interval and within a reasonable window
+        if time_since_scheduled > log_interval:
+            # Calculate how many intervals have passed
+            intervals_passed = int(time_since_scheduled / log_interval)
+            time_since_last_interval = time_since_scheduled - (intervals_passed * log_interval)
+
+            # Log if we're within the first 60 seconds of a new interval
+            if time_since_last_interval < 60:
+                time_waiting = timesince(self.scheduled_at, now)
+                if workers_available:
+                    self.logger.warning(
+                        f"Job {self.pk} has been waiting for {time_waiting} "
+                        f"with {worker_count} worker(s) available. Task may be queued behind other jobs."
+                    )
+                else:
+                    self.logger.error(
+                        f"Job {self.pk} has been waiting for {time_waiting}. "
+                        f"NO WORKERS RUNNING - task cannot be picked up until workers start."
+                    )
+
+        # Check if timeout exceeded
+        if time_since_scheduled > timeout:
+            time_waiting = timesince(self.scheduled_at, now)
+            if workers_available:
+                error_message = (
+                    f"Job {self.pk} has been pending for {time_waiting} " f"with workers available, marking as failed"
+                )
+            else:
+                error_message = (
+                    f"Job {self.pk} has been pending for {time_waiting} "
+                    f"with no workers detected, marking as failed"
+                )
+            return self._mark_as_failed(error_message, now)
+
+        return False
+
     def check_status(self, force: bool = False, save: bool = True, auto_retry: bool = True) -> bool:
         """
         Check the status of the job by querying the underlying Celery task.
@@ -890,16 +1201,14 @@ class Job(BaseModel):
         Returns:
             True if job status was updated, False otherwise
         """
-        # Configuration thresholds (TODO: make these configurable via settings)
-        NO_TASK_ID_TIMEOUT_SECONDS = 300  # 5 minutes - time to wait for task_id before marking as failed
-        DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS = 300  # 5 minutes - auto-retry if task disappeared within this time
-        MAX_JOB_RUNTIME_SECONDS = 2 * 24 * 60 * 60  # 2 days - max time a job can run before being marked stale
-        STUCK_PENDING_TIMEOUT_SECONDS = 600  # 10 minutes - max time in PENDING with workers available
-        STUCK_PENDING_NO_WORKERS_TIMEOUT_SECONDS = 3600  # 1 hour - max time in PENDING without workers
-        PENDING_LOG_INTERVAL_SECONDS = 300  # 5 minutes - how often to log waiting messages
-
         now = datetime.datetime.now()
         self.last_checked_at = now
+
+        # Special case: check if a failed job has come back to life
+        if not force:
+            should_continue, status_changed = self._check_if_resurrected(now, save)
+            if not should_continue:
+                return status_changed
 
         # Don't check jobs that are already in final states unless forced
         if not force and self.status in JobState.final_states():
@@ -910,21 +1219,9 @@ class Job(BaseModel):
         status_changed = False
 
         # Check if task_id exists
+        status_changed = self._check_missing_task_id(now, self.NO_TASK_ID_TIMEOUT_SECONDS)
         if not self.task_id:
-            # Job was scheduled but never got a task_id - this is unusual
-            if self.scheduled_at:
-                time_since_scheduled = (now - self.scheduled_at).total_seconds()
-                # If more than configured timeout have passed, mark as failed
-                if time_since_scheduled > NO_TASK_ID_TIMEOUT_SECONDS:
-                    self.logger.error(
-                        f"Job {self.pk} was scheduled {time_since_scheduled:.0f}s ago but never got a task_id"
-                    )
-                    self.status = JobState.FAILURE
-                    self.progress.summary.status = JobState.FAILURE
-                    self.finished_at = now
-                    status_changed = True
             if save:
-                # Only update the fields we changed to avoid concurrency issues
                 update_fields = ["last_checked_at"]
                 if status_changed:
                     update_fields.extend(["status", "progress", "finished_at"])
@@ -935,144 +1232,44 @@ class Job(BaseModel):
         try:
             task = AsyncResult(self.task_id)
 
-            # Try to get task status - this is the most common failure point
+            # Try to get task status
             try:
                 celery_status = task.status
             except Exception as status_err:
-                # If we can't get the status, the task likely doesn't exist anymore
                 self.logger.warning(f"Job {self.pk} task {self.task_id} status could not be retrieved: {status_err}")
                 celery_status = None
 
-            # Task not found or status unavailable - the most common case
-            if celery_status is None or (
-                celery_status == "PENDING" and self.status not in [JobState.CREATED, JobState.PENDING]
-            ):
-                # Task has disappeared from Celery's backend
-                self.logger.warning(
-                    f"Job {self.pk} task {self.task_id} not found in Celery backend "
-                    f"(current job status: {self.status})"
+            # Check if task has disappeared
+            should_return, disappeared_status_changed = self._check_disappeared_task(
+                task, celery_status, now, auto_retry, self.DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS, save
+            )
+            status_changed = status_changed or disappeared_status_changed
+            if should_return:
+                return disappeared_status_changed
+
+            # Check for status mismatches with Celery
+            if celery_status:
+                mismatch_changed = self._check_status_mismatch(celery_status, now)
+                status_changed = status_changed or mismatch_changed
+
+                # Check if job is stale (running too long)
+                stale_changed = self._check_if_stale(task, now, self.MAX_JOB_RUNTIME_SECONDS)
+                status_changed = status_changed or stale_changed
+
+                # Check if stuck in PENDING
+                pending_changed = self._check_stuck_pending(
+                    celery_status,
+                    now,
+                    self.STUCK_PENDING_TIMEOUT_SECONDS,
+                    self.STUCK_PENDING_NO_WORKERS_TIMEOUT_SECONDS,
+                    self.PENDING_LOG_INTERVAL_SECONDS,
                 )
-
-                # Only retry if job was supposedly running
-                if self.status in JobState.running_states() and auto_retry:
-                    # Check if we should retry based on when it was started
-                    if self.started_at:
-                        time_since_start = (now - self.started_at).total_seconds()
-                        if time_since_start < DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS:
-                            # Task disappeared shortly after starting - likely a worker crash
-                            self.logger.info(
-                                f"Job {self.pk} task disappeared shortly after starting, attempting retry"
-                            )
-                            try:
-                                self.retry(async_task=True)
-                                status_changed = True
-                                if save:
-                                    # Only update fields changed by retry (status, progress, task_id, etc)
-                                    # retry() method already saves, so we just need to update last_checked_at
-                                    self.save(update_fields=["last_checked_at"], update_progress=False)
-                                return status_changed
-                            except Exception as retry_err:
-                                self.logger.error(f"Failed to retry job {self.pk}: {retry_err}")
-
-                # If we didn't retry or retry failed, mark as failed
-                self.logger.error(f"Job {self.pk} task disappeared from Celery, marking as failed")
-                self.status = JobState.FAILURE
-                self.progress.summary.status = JobState.FAILURE
-                self.finished_at = now
-                status_changed = True
-
-            # Task found - check for inconsistencies
-            elif celery_status != self.status:
-                self.logger.warning(
-                    f"Job {self.pk} status '{self.status}' doesn't match Celery task status '{celery_status}'"
-                )
-
-                # Update to match Celery's status
-                old_status = self.status
-                self.update_status(celery_status, save=False)
-                status_changed = True
-
-                # If Celery says it failed but we thought it was running
-                if celery_status in JobState.failed_states() and old_status in JobState.running_states():
-                    self.finished_at = now
-                    self.logger.error(f"Job {self.pk} task failed in Celery")
-
-                # If Celery says it succeeded but we thought it was running
-                elif celery_status == JobState.SUCCESS and old_status in JobState.running_states():
-                    self.finished_at = now
-
-            # Check for stale jobs - started but no updates for a long time
-            if self.status in JobState.running_states() and self.started_at:
-                time_since_start = (now - self.started_at).total_seconds()
-
-                if time_since_start > MAX_JOB_RUNTIME_SECONDS:
-                    time_running = timesince(self.started_at, now)
-                    max_runtime_hours = MAX_JOB_RUNTIME_SECONDS / 3600
-                    self.logger.error(
-                        f"Job {self.pk} has been running for {time_running}, "
-                        f"marking as failed (max runtime: {max_runtime_hours:.0f} hours)"
-                    )
-                    self.status = JobState.FAILURE
-                    self.progress.summary.status = JobState.FAILURE
-                    self.finished_at = now
-                    status_changed = True
-
-                    # Try to revoke the task
-                    try:
-                        task.revoke(terminate=True)
-                    except Exception as e:
-                        self.logger.error(f"Failed to revoke stale task {self.task_id}: {e}")
-
-            # Check if task is in PENDING state for too long
-            if celery_status == JobState.PENDING and self.scheduled_at:
-                time_since_scheduled = (now - self.scheduled_at).total_seconds()
-
-                # Check if workers are available
-                workers_available, worker_count = check_celery_workers_available()
-
-                # Determine timeout based on worker availability
-                if workers_available:
-                    timeout = STUCK_PENDING_TIMEOUT_SECONDS
-                else:
-                    timeout = STUCK_PENDING_NO_WORKERS_TIMEOUT_SECONDS
-
-                # Log periodic waiting messages
-                if time_since_scheduled > PENDING_LOG_INTERVAL_SECONDS:
-                    time_waiting = timesince(self.scheduled_at, now)
-                    if workers_available:
-                        self.logger.warning(
-                            f"Job {self.pk} has been waiting for {time_waiting} "
-                            f"with {worker_count} worker(s) available. Task may be queued behind other jobs."
-                        )
-                    else:
-                        self.logger.error(
-                            f"Job {self.pk} has been waiting for {time_waiting}. "
-                            f"NO WORKERS RUNNING - task cannot be picked up until workers start."
-                        )
-
-                # Check if timeout exceeded
-                if time_since_scheduled > timeout:
-                    time_waiting = timesince(self.scheduled_at, now)
-                    if workers_available:
-                        self.logger.error(
-                            f"Job {self.pk} has been pending for {time_waiting} "
-                            f"with workers available, marking as failed"
-                        )
-                    else:
-                        self.logger.error(
-                            f"Job {self.pk} has been pending for {time_waiting} "
-                            f"with no workers detected, marking as failed"
-                        )
-                    self.status = JobState.FAILURE
-                    self.progress.summary.status = JobState.FAILURE
-                    self.finished_at = now
-                    status_changed = True
+                status_changed = status_changed or pending_changed
 
         except Exception as e:
             self.logger.error(f"Error checking status for job {self.pk}: {e}")
 
         if save:
-            # Only update the fields we changed to avoid concurrency issues
             update_fields = ["last_checked_at"]
             if status_changed:
                 update_fields.extend(["status", "progress", "finished_at"])

@@ -303,14 +303,15 @@ class TestJobStatusChecking(TestCase):
         mock_task.status = JobState.STARTED.value
         mock_async_result.return_value = mock_task
 
-        # Create job that started 3 days ago (exceeds 2 day max)
+        # Create job that started longer than MAX_JOB_RUNTIME_SECONDS ago
+        stale_time = datetime.timedelta(seconds=Job.MAX_JOB_RUNTIME_SECONDS + 3600)  # 1 hour past limit
         job = Job.objects.create(
             job_type_key=MLJob.key,
             project=self.project,
             name="Test job - stale running",
             task_id="test-task-id-789",
             status=JobState.STARTED.value,
-            started_at=timezone.now() - datetime.timedelta(days=3),
+            started_at=timezone.now() - stale_time,
         )
 
         status_changed = job.check_status()
