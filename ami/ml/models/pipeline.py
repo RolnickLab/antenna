@@ -51,7 +51,7 @@ from ami.ml.schemas import (
     SourceImageResponse,
 )
 from ami.ml.tasks import celery_app, create_detection_images
-from ami.utils.requests import create_session
+from ami.utils.requests import create_session, extract_error_message_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -242,14 +242,12 @@ def process_images(
     session = create_session()
     resp = session.post(endpoint_url, json=request_data.dict())
     if not resp.ok:
-        try:
-            msg = resp.json()["detail"]
-        except (ValueError, KeyError):
-            msg = str(resp.content)
+        msg = extract_error_message_from_response(resp)
+
         if job:
-            job.logger.error(msg)
+            job.logger.error(f"Processing service request failed: {msg}")
         else:
-            logger.error(msg)
+            logger.error(f"Processing service request failed: {msg}")
             raise requests.HTTPError(msg)
 
         results = PipelineResultsResponse(
