@@ -22,7 +22,6 @@ from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
-from django.forms import IntegerField
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
@@ -3383,16 +3382,14 @@ class Taxon(BaseModel):
         if save:
             self.save(update_fields=["search_names"])
 
-    def summary_data(self, request: Request | None = None):
+    def summary_data(self, project_id: int):
         """
         Data prepared for rendering charts with plotly.js
         """
 
         plots = []
 
-        project_id = IntegerField(required=False).clean(request.query_params.get("project_id")) if request else None
-        if project_id:
-            plots.append(charts.average_occurrences_per_month(project_pk=project_id, taxon_pk=self.pk))
+        plots.append(charts.average_occurrences_per_month(project_pk=project_id, taxon_pk=self.pk))
 
         return plots
 

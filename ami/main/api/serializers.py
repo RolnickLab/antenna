@@ -790,17 +790,17 @@ class TaxonSerializer(DefaultSerializer):
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     tags = serializers.SerializerMethodField()
+    summary_data = serializers.SerializerMethodField()
 
     def get_tags(self, obj):
         # Use prefetched tags
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        if "summary_data" in data:
-            data["summary_data"] = instance.summary_data(self.context.get("request"))
-        return data
+    def get_summary_data(self, instance):
+        request = self.context.get("request")
+        project_id = IntegerField(required=False).clean(request.query_params.get("project_id")) if request else None
+        return instance.summary_data(project_id)
 
     class Meta:
         model = Taxon

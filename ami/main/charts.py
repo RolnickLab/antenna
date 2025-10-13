@@ -385,20 +385,17 @@ def unique_species_per_month(project_pk: int):
 def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None):
     # Average occurrences per month
     Occurrence = apps.get_model("main", "Occurrence")
+
+    qs = Occurrence.objects.filter(project=project_pk)
+
     if taxon_pk:
-        occurrences_per_month = (
-            Occurrence.objects.filter(project=project_pk, determination_id=taxon_pk)
-            .values_list("event__start__month")
-            .annotate(num_occurrences=models.Count("id"))
-            .order_by("event__start__month")
-        )
-    else:
-        occurrences_per_month = (
-            Occurrence.objects.filter(project=project_pk)
-            .values_list("event__start__month")
-            .annotate(num_occurrences=models.Count("id"))
-            .order_by("event__start__month")
-        )
+        qs = qs.filter(determination_id=taxon_pk)
+
+    occurrences_per_month = (
+        qs.values_list("event__start__month")
+        .annotate(num_occurrences=models.Count("id"))
+        .order_by("event__start__month")
+    )
 
     # Create a dictionary mapping month numbers to occurrence counts
     month_to_count = {month: count for month, count in occurrences_per_month}
