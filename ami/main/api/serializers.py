@@ -1,6 +1,7 @@
 import datetime
 
 from django.db.models import QuerySet
+from django.forms import IntegerField
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -794,6 +795,12 @@ class TaxonSerializer(DefaultSerializer):
         # Use prefetched tags
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if "summary_data" in data:
+            data["summary_data"] = instance.summary_data(self.context.get("request"))
+        return data
 
     class Meta:
         model = Taxon
