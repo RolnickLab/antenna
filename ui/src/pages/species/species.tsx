@@ -160,14 +160,18 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root
       open={!!id}
-      onOpenChange={() =>
+      onOpenChange={(open) => {
+        if (!open) {
+          setSelectedView(undefined)
+        }
+
         navigate(
           getAppRoute({
             to: APP_ROUTES.TAXA({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )
-      }
+      }}
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
