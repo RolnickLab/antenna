@@ -53,7 +53,7 @@ def update_job_status(sender, task_id, task, *args, **kwargs):
 
     task = AsyncResult(task_id)  # I'm not sure if this is reliable
     job.update_status(task.status, save=False)
-    job.save()
+    job.save(update_fields=["status", "progress"])
 
 
 @task_failure.connect(sender=run_job, retry=False)
@@ -65,7 +65,7 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
 
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
-    job.save()
+    job.save(update_fields=["status", "progress"])
 
 
 @celery_app.task(soft_time_limit=300, time_limit=360)

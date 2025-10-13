@@ -549,3 +549,181 @@ class TestJobStatusChecking(TestCase):
         # Should detect this as a disappeared task
         self.assertTrue(status_changed)
         self.assertEqual(job.status, JobState.FAILURE.value)
+
+
+class TestJobConcurrency(TestCase):
+    """Test concurrent updates to jobs from multiple workers."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Test project")
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML pipeline",
+            description="Test ML pipeline",
+        )
+        self.pipeline.projects.add(self.project)
+
+    def test_atomic_job_update_context_manager(self):
+        """Test that atomic_job_update locks and updates the job."""
+        from ami.jobs.models import atomic_job_update
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - atomic update",
+            pipeline=self.pipeline,
+        )
+
+        # Use the context manager to update the job
+        with atomic_job_update(job.pk) as locked_job:
+            locked_job.logs.stdout.insert(0, "Test log message")
+            locked_job.save(update_fields=["logs"], update_progress=False)
+
+        # Refresh from DB and verify the update persisted
+        job.refresh_from_db()
+        self.assertIn("Test log message", job.logs.stdout)
+
+    def test_concurrent_log_writes(self):
+        """Test that concurrent log writes don't overwrite each other."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - concurrent logs",
+            pipeline=self.pipeline,
+        )
+
+        # Simulate multiple workers adding logs
+        messages = [f"Log message {i}" for i in range(5)]
+
+        for msg in messages:
+            # Use the logger which uses JobLogHandler with atomic updates
+            job.logger.info(msg)
+
+        # Refresh from DB
+        job.refresh_from_db()
+
+        # All messages should be present (no overwrites)
+        for msg in messages:
+            # Messages are formatted with timestamps and log levels
+            self.assertTrue(any(msg in log for log in job.logs.stdout), f"Message '{msg}' not found in logs")
+
+    def test_log_handler_with_atomic_update(self):
+        """Test that JobLogHandler properly uses atomic updates."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - log handler",
+            pipeline=self.pipeline,
+        )
+
+        # Get the logger (which adds JobLogHandler)
+        job_logger = job.logger
+
+        # Add multiple log messages
+        job_logger.info("Info message")
+        job_logger.warning("Warning message")
+        job_logger.error("Error message")
+
+        # Refresh from DB
+        job.refresh_from_db()
+
+        # Verify all logs are present
+        self.assertTrue(any("Info message" in log for log in job.logs.stdout))
+        self.assertTrue(any("Warning message" in log for log in job.logs.stdout))
+        self.assertTrue(any("Error message" in log for log in job.logs.stdout))
+
+        # Verify error also appears in stderr
+        self.assertTrue(any("Error message" in err for err in job.logs.stderr))
+
+    def test_max_log_length_enforcement(self):
+        """Test that log length limits are enforced with atomic updates."""
+        import logging
+
+        from ami.jobs.models import JobLogHandler
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - max logs",
+            pipeline=self.pipeline,
+        )
+
+        # Temporarily suppress log output to avoid spamming test results
+        job_logger = job.logger
+        original_level = job_logger.level
+        job_logger.setLevel(logging.CRITICAL)
+
+        try:
+            # Add more logs than the max
+            max_logs = JobLogHandler.max_log_length
+            for i in range(max_logs + 10):
+                job.logger.info(f"Message {i}")
+
+            # Refresh from DB
+            job.refresh_from_db()
+
+            # Should not exceed max length
+            self.assertLessEqual(len(job.logs.stdout), max_logs)
+            self.assertLessEqual(len(job.logs.stderr), max_logs)
+        finally:
+            # Restore original log level
+            job_logger.setLevel(original_level)
+
+    def test_log_length_never_decreases(self):
+        """Test that the save method prevents logs from getting shorter."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - log safety",
+            pipeline=self.pipeline,
+        )
+
+        # Add some logs
+        job.logger.info("Log message 1")
+        job.logger.info("Log message 2")
+        job.logger.info("Log message 3")
+
+        job.refresh_from_db()
+        initial_log_count = len(job.logs.stdout)
+        self.assertGreaterEqual(initial_log_count, 3)
+
+        # Simulate stale in-memory job with fewer logs (like what happens with concurrent workers)
+        stale_job = Job.objects.get(pk=job.pk)
+        stale_job.logs.stdout = stale_job.logs.stdout[:1]  # Artificially reduce logs to just 1
+
+        # Try to save with update_fields that doesn't include logs
+        # The safety check should prevent logs from being overwritten
+        stale_job.status = JobState.STARTED
+        stale_job.save(update_fields=["status", "progress"])
+
+        # Verify logs weren't reduced
+        stale_job.refresh_from_db()
+        final_log_count = len(stale_job.logs.stdout)
+        self.assertEqual(
+            final_log_count,
+            initial_log_count,
+            "Logs should never decrease in length when not explicitly updating logs",
+        )
+
+    def test_log_can_be_explicitly_updated(self):
+        """Test that logs CAN be updated when explicitly included in update_fields."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job - explicit log update",
+            pipeline=self.pipeline,
+        )
+
+        # Add initial logs
+        job.logger.info("Log message 1")
+        job.logger.info("Log message 2")
+
+        job.refresh_from_db()
+
+        # Explicitly update logs (like JobLogHandler does)
+        job.logs.stdout = ["New log only"]
+        job.save(update_fields=["logs"])
+
+        # Verify logs were updated as requested
+        job.refresh_from_db()
+        self.assertEqual(len(job.logs.stdout), 1)
+        self.assertEqual(job.logs.stdout[0], "New log only")

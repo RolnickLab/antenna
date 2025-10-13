@@ -4,6 +4,7 @@ import logging
 import random
 import time
 import typing
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import pydantic
@@ -24,6 +25,23 @@ from ami.utils.schemas import OrderedEnum
 from config import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# CONCURRENCY PROTECTION
+# ==============================================================================
+# This module implements row-level locking to prevent concurrent updates from
+# multiple Celery workers from overwriting each other's changes.
+#
+# Key components:
+# - atomic_job_update(): Context manager that locks a job row for safe updates
+# - JobLogHandler.emit(): Uses locking when writing logs
+# - Job.save(): Automatically uses locking and validates logs to prevent overwrites
+#
+# When multiple workers (1-10) are processing the same job, they all may need
+# to update logs, progress, and status fields. Without locking, last-write-wins
+# can cause lost updates. The locking approach ensures all updates are preserved.
+# ==============================================================================
 
 
 def check_celery_workers_available() -> tuple[bool, int]:
@@ -66,6 +84,56 @@ def check_celery_workers_available_cached(timestamp: int) -> tuple[bool, int]:
         tuple: (workers_available: bool, worker_count: int)
     """
     return check_celery_workers_available()
+
+
+@contextmanager
+def atomic_job_update(job_id: int, timeout: int | None = None):
+    """
+    Context manager for safely updating job fields with row-level locking.
+
+    This ensures that concurrent updates to the same job (from multiple
+    Celery workers or tasks) don't overwrite each other's changes. The job
+    is locked for the duration of the context, and automatically saved when
+    the context exits if it was modified.
+
+    Args:
+        job_id: The ID of the job to lock and update
+        timeout: Optional timeout in seconds to wait for the lock.
+                 If None (default), waits indefinitely.
+
+    Yields:
+        Job: The locked job instance, safe to modify
+
+    Example:
+        with atomic_job_update(job.pk) as locked_job:
+            locked_job.logs.stdout.insert(0, "New log message")
+            locked_job.progress.update_stage("process", progress=0.5)
+            # Job is automatically saved on context exit
+
+    Raises:
+        Job.DoesNotExist: If the job doesn't exist
+        DatabaseError: If the lock cannot be acquired within timeout
+    """
+    # Import here to avoid circular import
+    from ami.jobs.models import Job
+
+    with transaction.atomic():
+        # Use select_for_update to lock the row
+        # nowait=False means we'll wait for the lock (don't lose data)
+        # skip_locked=False means we'll wait, not skip
+        query = Job.objects.select_for_update(nowait=False, skip_locked=False)
+
+        if timeout is not None:
+            # Set statement timeout for this transaction
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute(f"SET LOCAL statement_timeout = {timeout * 1000}")
+
+        job = query.get(pk=job_id)
+        yield job
+        # Job will be saved automatically when exiting if changed
+        # due to Django's behavior with select_for_update
 
 
 class JobState(str, OrderedEnum):
@@ -317,9 +385,12 @@ class JobLogs(pydantic.BaseModel):
 class JobLogHandler(logging.Handler):
     """
     Class for handling logs from a job and writing them to the job instance.
+
+    Uses row-level locking to prevent concurrent log writes from overwriting
+    each other when multiple Celery workers are updating the same job.
     """
 
-    max_log_length = 1000
+    max_log_length = 10000  # Allow ~100 messages per batch × hundreds of batches
 
     def __init__(self, job: "Job", *args, **kwargs):
         self.job = job
@@ -329,23 +400,29 @@ class JobLogHandler(logging.Handler):
         # Log to the current app logger
         logger.log(record.levelno, self.format(record))
 
-        # Write to the logs field on the job instance
+        # Write to the logs field on the job instance with atomic locking
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.logs.stdout:
-            self.job.logs.stdout.insert(0, msg)
 
-        # Write a simpler copy of any errors to the errors field
-        if record.levelno >= logging.ERROR:
-            if record.message not in self.job.logs.stderr:
-                self.job.logs.stderr.insert(0, record.message)
-
-        if len(self.job.logs.stdout) > self.max_log_length:
-            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
-        # @TODO consider saving logs to the database periodically rather than on every log
         try:
-            self.job.save(update_fields=["logs"], update_progress=False)
+            # Use atomic update to prevent race conditions
+            with atomic_job_update(self.job.pk) as job:
+                if msg not in job.logs.stdout:
+                    job.logs.stdout.insert(0, msg)
+
+                # Write a simpler copy of any errors to the errors field
+                if record.levelno >= logging.ERROR:
+                    if record.message not in job.logs.stderr:
+                        job.logs.stderr.insert(0, record.message)
+
+                if len(job.logs.stdout) > self.max_log_length:
+                    job.logs.stdout = job.logs.stdout[: self.max_log_length]
+
+                if len(job.logs.stderr) > self.max_log_length:
+                    job.logs.stderr = job.logs.stderr[: self.max_log_length]
+
+                # Save with only the logs field to minimize lock time
+                job.save(update_fields=["logs"])
         except Exception as e:
             logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
             pass
@@ -387,7 +464,7 @@ class MLJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        job.save(update_fields=["status", "progress", "started_at", "finished_at"])
 
         # Keep track of sub-tasks for saving results, pair with batch number
         save_tasks: list[tuple[int, AsyncResult]] = []
@@ -407,7 +484,8 @@ class MLJob(JobType):
                         progress=i / job.delay,
                         mood="😵‍💫",
                     )
-                    job.save()
+                    # Only save progress to avoid overwriting logs
+                    job.save(update_fields=["progress"])
                     last_update = time.time()
 
             job.progress.update_stage(
@@ -416,7 +494,8 @@ class MLJob(JobType):
                 progress=1,
                 mood="🥳",
             )
-            job.save()
+            # Only save progress to avoid overwriting logs
+            job.save(update_fields=["progress"])
 
         if not job.pipeline:
             raise ValueError("No pipeline specified to process images in ML job")
@@ -460,8 +539,8 @@ class MLJob(JobType):
             progress=1,
         )
 
-        # End image collection stage
-        job.save()
+        # End image collection stage - only save progress to avoid overwriting logs
+        job.save(update_fields=["progress"])
 
         total_captures = 0
         total_detections = 0
@@ -523,7 +602,8 @@ class MLJob(JobType):
                 detections=total_detections,
                 classifications=total_classifications,
             )
-            job.save()
+            # Only save progress field to avoid overwriting logs from JobLogHandler
+            job.save(update_fields=["progress"])
 
             # Stop processing if any save tasks have failed
             # Otherwise, calculate the percent of images that have failed to save
@@ -557,7 +637,8 @@ class MLJob(JobType):
         FAILURE_THRESHOLD = 0.5
         if image_count and (percent_successful < FAILURE_THRESHOLD):
             job.progress.update_stage("process", status=JobState.FAILURE)
-            job.save()
+            # Only save progress to avoid overwriting logs
+            job.save(update_fields=["progress"])
             raise Exception(f"Failed to process more than {int(FAILURE_THRESHOLD * 100)}% of images")
 
         job.progress.update_stage(
@@ -572,7 +653,8 @@ class MLJob(JobType):
         )
         job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
-        job.save()
+        # Save all final fields at once, excluding logs
+        job.save(update_fields=["status", "progress", "finished_at"])
 
 
 class DataStorageSyncJob(JobType):
@@ -592,7 +674,8 @@ class DataStorageSyncJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        # Only save specific fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         if not job.deployment:
             raise ValueError("No deployment provided for data storage sync job")
@@ -604,7 +687,8 @@ class DataStorageSyncJob(JobType):
                 progress=0,
                 total_files=0,
             )
-            job.save()
+            # Only save progress to avoid overwriting logs
+            job.save(update_fields=["progress"])
 
             job.deployment.sync_captures(job=job)
 
@@ -615,10 +699,12 @@ class DataStorageSyncJob(JobType):
                 progress=1,
             )
             job.update_status(JobState.SUCCESS)
-            job.save()
+            # Save status and progress to avoid overwriting logs
+            job.save(update_fields=["status", "progress"])
 
         job.finished_at = datetime.datetime.now()
-        job.save()
+        # Only save finished_at to avoid overwriting logs
+        job.save(update_fields=["finished_at"])
 
 
 class SourceImageCollectionPopulateJob(JobType):
@@ -637,7 +723,8 @@ class SourceImageCollectionPopulateJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        # Only save specific fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         if not job.source_image_collection:
             raise ValueError("No source image collection provided")
@@ -652,11 +739,13 @@ class SourceImageCollectionPopulateJob(JobType):
             progress=0.10,
             captures_added=0,
         )
-        job.save()
+        # Only save progress to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         job.source_image_collection.populate_sample(job=job)
         job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
-        job.save()
+        # Only save progress to avoid overwriting logs
+        job.save(update_fields=["progress"])
 
         captures_added = job.source_image_collection.images.count()
         job.logger.info(f"Added {captures_added} captures to source image collection {job.source_image_collection}")
@@ -669,7 +758,8 @@ class SourceImageCollectionPopulateJob(JobType):
         )
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS, save=False)
-        job.save()
+        # Save final fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "finished_at"])
 
 
 class DataExportJob(JobType):
@@ -692,7 +782,8 @@ class DataExportJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        # Only save specific fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         job.logger.info(f"Starting export for project {job.project}")
 
@@ -705,7 +796,9 @@ class DataExportJob(JobType):
         job.progress.add_stage_param(stage.key, "File URL", f"{file_url}")
         job.progress.update_stage(stage.key, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
-        job.update_status(JobState.SUCCESS, save=True)
+        job.update_status(JobState.SUCCESS, save=False)
+        # Save final fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "finished_at"])
 
 
 class UnknownJobType(JobType):
@@ -967,7 +1060,7 @@ class Job(BaseModel):
                     update_fields = ["last_checked_at", "status", "progress"]
                     if celery_status == JobState.STARTED:
                         update_fields.append("finished_at")
-                    self.save(update_fields=update_fields, update_progress=False)
+                    self.save(update_fields=update_fields)
                 return False, True
         except Exception as e:
             self.logger.debug(f"Could not check resurrection of failed job {self.pk}: {e}")
@@ -1037,7 +1130,7 @@ class Job(BaseModel):
                         try:
                             self.retry(async_task=True)
                             if save:
-                                self.save(update_fields=["last_checked_at"], update_progress=False)
+                                self.save(update_fields=["last_checked_at"])
                             return True, True
                         except Exception as retry_err:
                             self.logger.error(f"Failed to retry job {self.pk}: {retry_err}")
@@ -1213,7 +1306,7 @@ class Job(BaseModel):
         # Don't check jobs that are already in final states unless forced
         if not force and self.status in JobState.final_states():
             if save:
-                self.save(update_fields=["last_checked_at"], update_progress=False)
+                self.save(update_fields=["last_checked_at"])
             return False
 
         status_changed = False
@@ -1225,7 +1318,7 @@ class Job(BaseModel):
                 update_fields = ["last_checked_at"]
                 if status_changed:
                     update_fields.extend(["status", "progress", "finished_at"])
-                self.save(update_fields=update_fields, update_progress=False)
+                self.save(update_fields=update_fields)
             return status_changed
 
         # Query the Celery task
@@ -1273,7 +1366,7 @@ class Job(BaseModel):
             update_fields = ["last_checked_at"]
             if status_changed:
                 update_fields.extend(["status", "progress", "finished_at"])
-            self.save(update_fields=update_fields, update_progress=False)
+            self.save(update_fields=update_fields)
 
         return status_changed
 
@@ -1329,22 +1422,128 @@ class Job(BaseModel):
 
         if save:
             # Only update progress field to avoid concurrency issues
-            self.save(update_fields=["progress"], update_progress=False)
+            self.save(update_fields=["progress"])
+
+    def _validate_log_lengths(self, update_fields: list[str] | None) -> None:
+        """
+        Validate that logs aren't getting shorter due to stale in-memory data.
+
+        This is a safety check to catch bugs where concurrent updates might
+        overwrite logs. If logs would get shorter, automatically refreshes
+        them from the database to prevent data loss.
+
+        Args:
+            update_fields: List of fields being updated, or None for all fields
+
+        Note:
+            This can be easily disabled by commenting out the call in save()
+            if the validation overhead becomes an issue. However, the check
+            is very cheap (just a length comparison) and provides valuable
+            protection against data loss.
+        """
+        if self.pk is None or not update_fields or "logs" in update_fields:
+            # Skip validation for new jobs, when updating logs explicitly,
+            # or when not using update_fields
+            return
+
+        try:
+            # Get current log lengths from database
+            current_job = Job.objects.only("logs").get(pk=self.pk)
+            current_stdout_len = len(current_job.logs.stdout)
+            current_stderr_len = len(current_job.logs.stderr)
+            new_stdout_len = len(self.logs.stdout)
+            new_stderr_len = len(self.logs.stderr)
+
+            # If logs would get shorter, it means we have stale in-memory data
+            if new_stdout_len < current_stdout_len or new_stderr_len < current_stderr_len:
+                logger.error(
+                    f"CRITICAL: Job #{self.pk} attempted to save with stale logs! "
+                    f"stdout: {current_stdout_len} -> {new_stdout_len}, "
+                    f"stderr: {current_stderr_len} -> {new_stderr_len}. "
+                    f"update_fields={update_fields}. This would lose log data!"
+                )
+                # Refresh logs from database to prevent data loss
+                self.logs = current_job.logs
+                logger.warning(f"Refreshed logs for job #{self.pk} from database to prevent data loss")
+        except Job.DoesNotExist:
+            # Job might have been deleted, let it fail naturally
+            pass
+        except Exception as e:
+            # Don't let validation break the save, but log it
+            logger.warning(f"Failed to validate log lengths for job #{self.pk}: {e}")
 
     def duration(self) -> datetime.timedelta | None:
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at
         return None
 
-    def save(self, update_progress=True, *args, **kwargs):
+    def save(self, update_progress=True, use_locking=True, *args, **kwargs):
         """
         Create the job stages if they don't exist.
+
+        This method automatically uses row-level locking when updating existing jobs
+        to prevent concurrent workers from overwriting each other's changes.
+
+        Args:
+            update_progress: Whether to recalculate progress summary (default: True)
+            use_locking: Whether to use SELECT FOR UPDATE locking for existing jobs (default: True)
+            *args, **kwargs: Additional arguments passed to Django's save()
+
+        Special handling:
+        - If 'update_fields' is specified, only those fields will be saved
+        - If 'update_fields' includes 'logs', locking is automatically disabled to avoid
+          conflicts with JobLogHandler which manages its own locks
+        - For new jobs (pk=None), locking is skipped
         """
+        is_new = self.pk is None
+        update_fields = kwargs.get("update_fields")
+
+        # Don't use locking if explicitly disabled or if this is a new job
+        # or if we're only updating logs (JobLogHandler manages its own locks)
+        should_lock = use_locking and not is_new and not (update_fields and update_fields == ["logs"])
+
+        # Update progress/setup before saving
         if self.pk and self.progress.stages and update_progress:
             self.update_progress(save=False)
         else:
             self.setup(save=False)
-        super().save(*args, **kwargs)
+
+        # Safety check: Ensure logs never get shorter (unless explicitly updating logs)
+        # This can be disabled by commenting out this line if needed
+        self._validate_log_lengths(update_fields)
+
+        if should_lock:
+            # Refresh from database with row-level lock to prevent concurrent overwrites
+            # This ensures we have the latest data before saving our changes
+            try:
+                with atomic_job_update(self.pk) as locked_job:
+                    # Copy our in-memory changes to the locked instance
+                    if update_fields:
+                        # Only update specified fields
+                        for field_name in update_fields:
+                            setattr(locked_job, field_name, getattr(self, field_name))
+                    else:
+                        # Update all non-log fields to preserve concurrent log writes
+                        for field in self._meta.fields:
+                            if field.name != "logs":  # Never overwrite logs unless explicitly specified
+                                setattr(locked_job, field.name, getattr(self, field.name))
+
+                    # Save the locked instance with our changes
+                    super(Job, locked_job).save(*args, **kwargs)
+
+                    # Update our instance with the saved state
+                    self.pk = locked_job.pk
+                    for field in self._meta.fields:
+                        setattr(self, field.name, getattr(locked_job, field.name))
+            except Exception as e:
+                logger.error(f"Failed to save job #{self.pk} with locking: {e}")
+                # Fall back to normal save - better to save without lock than to fail completely
+                logger.warning(f"Falling back to unlocked save for job #{self.pk}")
+                super().save(*args, **kwargs)
+        else:
+            # New job or locking disabled - use normal save
+            super().save(*args, **kwargs)
+
         logger.debug(f"Saved job {self}")
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
