@@ -815,6 +815,7 @@ class TaxonSerializer(DefaultSerializer):
             "fieldguide_id",
             "cover_image_url",
             "cover_image_credit",
+            "summary_data",
         ]
 
 

@@ -4,10 +4,12 @@ import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
+import { Box } from 'design-system/components/box/box'
 import {
   InfoBlockField,
   InfoBlockFieldValue,
 } from 'design-system/components/info-block/info-block'
+import Plot from 'design-system/components/plot/plot'
 import { ExternalLinkIcon } from 'lucide-react'
 import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
@@ -148,6 +150,22 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
                 ) : null}
               </div>
             </InfoBlockField>
+            {species.summaryData.length ? (
+              <InfoBlockField className="no-print" label="Charts">
+                <div className="grid gap-6">
+                  {species.summaryData.map((summary, index) => (
+                    <Box key={index}>
+                      <Plot
+                        data={summary.data}
+                        orientation={summary.orientation}
+                        title={summary.title}
+                        type={summary.type}
+                      />
+                    </Box>
+                  ))}
+                </div>
+              </InfoBlockField>
+            ) : null}
           </div>
         </div>
         <div className={styles.blueprintWrapper}>

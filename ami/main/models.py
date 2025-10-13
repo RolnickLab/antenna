@@ -3382,6 +3382,15 @@ class Taxon(BaseModel):
         if save:
             self.save(update_fields=["search_names"])
 
+    def summary_data(self):
+        """
+        Data prepared for rendering charts with plotly.js
+        """
+
+        plots = []
+
+        return plots
+
     class Meta:
         ordering = [
             "ordering",
