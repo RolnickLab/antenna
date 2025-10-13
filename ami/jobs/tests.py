@@ -3,6 +3,7 @@ import logging
 
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
+from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -114,7 +115,7 @@ class TestJobView(APITestCase):
         self.client.force_authenticate(user=None)
         resp = self.client.post(jobs_create_url, job_data)
         # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
-        self.assertIn(resp.status_code, [401, 403])
+        self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
     def _create_job(self, name: str, start_now: bool = True):
         jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
@@ -193,7 +194,8 @@ class TestJobView(APITestCase):
         jobs_run_url = reverse_with_params("api:job-run", args=[self.job.pk], params={"project_id": self.project.pk})
         self.client.force_authenticate(user=None)
         resp = self.client.post(jobs_run_url)
-        self.assertEqual(resp.status_code, 401)
+        # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
+        self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
     def test_cancel_job(self):
         # This cannot be tested until we have a way to cancel jobs
