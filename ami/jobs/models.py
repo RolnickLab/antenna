@@ -990,7 +990,7 @@ class Job(BaseModel):
         """
         self.logger.info(f"Re-running job {self}")
         self.finished_at = None
-        self.progress.reset()
+        self.progress.reset(status=JobState.RETRY)
         self.status = JobState.RETRY
         self.save()
         if async_task:
@@ -1003,6 +1003,7 @@ class Job(BaseModel):
         Terminate the celery task.
         """
         self.status = JobState.CANCELING
+        self.progress.summary.status = JobState.CANCELING
         self.save()
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
@@ -1011,6 +1012,7 @@ class Job(BaseModel):
                 self.save()
         else:
             self.status = JobState.REVOKED
+            self.progress.summary.status = JobState.REVOKED
             self.save()
 
     def _mark_as_failed(self, error_message: str, now: datetime.datetime) -> bool:
