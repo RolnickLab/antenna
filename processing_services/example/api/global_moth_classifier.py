@@ -153,7 +153,7 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
         classified_detections = []
 
         for i in range(0, len(detections), self.batch_size):
-            batch_detections = detections[i: i + self.batch_size]
+            batch_detections = detections[i : i + self.batch_size]
             batch_images = []
 
             # Prepare batch of images
