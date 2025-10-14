@@ -67,6 +67,7 @@ class TaxonRank(OrderedEnum):
     SUBTRIBE = "SUBTRIBE"
     GENUS = "GENUS"
     SPECIES = "SPECIES"
+    SUBSPECIES = "SUBSPECIES"
     UNKNOWN = "UNKNOWN"
 
 
@@ -81,6 +82,7 @@ DEFAULT_RANKS = sorted(
         TaxonRank.TRIBE,
         TaxonRank.GENUS,
         TaxonRank.SPECIES,
+        TaxonRank.SUBSPECIES,
     ]
 )
 
