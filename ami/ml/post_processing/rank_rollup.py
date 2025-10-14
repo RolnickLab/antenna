@@ -147,8 +147,8 @@ class RankRollupTask(BasePostProcessingTask):
                 else:
                     self.logger.info(f"No rollup applied for classification #{clf.pk} (taxon={clf.taxon})")
 
-                # 🔹 Periodic progress updates
-                if i % 50 == 0 or i == total:
+                # Update progress every 10 iterations
+                if i % 10 == 0 or i == total:
                     progress = i / total if total > 0 else 1.0
                     self.update_progress(progress)
 
