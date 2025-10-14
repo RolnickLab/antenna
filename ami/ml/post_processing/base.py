@@ -2,7 +2,7 @@
 
 import abc
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from ami.jobs.models import Job
 from ami.ml.models import Algorithm
@@ -39,34 +39,54 @@ class BasePostProcessingTask(abc.ABC):
     Abstract base class for all post-processing tasks.
     """
 
+    # Each task must override these
     key: str = ""
     name: str = ""
 
     def __init__(
         self,
-        job: Optional["Job"] = None,
-        task_logger: logging.Logger | None = None,
+        job: Job | None = None,
+        logger: logging.Logger | None = None,
         **config: Any,
     ):
-        """
-        Initialize task with optional job and logger context.
-        """
         self.job = job
-        self.config: dict[str, Any] = config
-
-        if job:
+        self.config = config
+        # Choose the right logger
+        if logger is not None:
+            self.logger = logger
+        elif job is not None:
             self.logger = job.logger
-        elif task_logger:
-            self.logger = task_logger
         else:
             self.logger = logging.getLogger(f"ami.post_processing.{self.key}")
-        self.log_config()
+
+        algorithm, _ = Algorithm.objects.get_or_create(
+            name=self.__class__.__name__,
+            defaults={
+                "description": f"Post-processing task: {self.key}",
+                "task_type": AlgorithmTaskType.POST_PROCESSING.value,
+            },
+        )
+        self.algorithm: Algorithm = algorithm
+
+        self.logger.info(f"Initialized {self.__class__.__name__} with config={self.config}, job={job}")
+
+    def update_progress(self, progress: float):
+        """
+        Update progress if job is present, otherwise just log.
+        """
+
+        if self.job:
+            self.job.progress.update_stage(self.job.job_type_key, progress=progress)
+            self.job.save(update_fields=["progress"])
+
+        else:
+            # No job object — fallback to plain logging
+            self.logger.info(f"[{self.name}] Progress {progress:.0%}")
 
     @abc.abstractmethod
     def run(self) -> None:
-        """Run the task logic. Must be implemented by subclasses."""
-        raise NotImplementedError("Subclasses must implement run()")
-
-    def log_config(self):
-        """Helper to log the task configuration at start."""
-        self.logger.info(f"Running task {self.name} ({self.key}) with config: {self.config}")
+        """
+        Run the task logic.
+        Must be implemented by subclasses.
+        """
+        raise NotImplementedError("BasePostProcessingTask subclasses must implement run()")

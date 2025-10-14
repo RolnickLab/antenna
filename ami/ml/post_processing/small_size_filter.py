@@ -31,7 +31,7 @@ class SmallSizeFilter(BasePostProcessingTask):
 
         try:
             collection = SourceImageCollection.objects.get(pk=collection_id)
-            self.logger.info(f"Loaded SourceImageCollection {collection_id} " f"(Project={collection.project})")
+            self.logger.info(f"Loaded SourceImageCollection {collection_id} (Project={collection.project})")
         except SourceImageCollection.DoesNotExist:
             msg = f"SourceImageCollection {collection_id} not found"
             self.logger.error(msg)
@@ -85,6 +85,11 @@ class SmallSizeFilter(BasePostProcessingTask):
                             comment=f"Auto-set by {self.name} post-processing task",
                         )
                 modified += 1
-                self.logger.debug(f"Detection {det.pk}: marked as 'Not identifiable'")
+                self.logger.info(f"Detection {det.pk}: marked as 'Not identifiable'")
+
+            # Update progress every 10 detections
+            if i % 10 == 0 or i == total:
+                progress = i / total if total > 0 else 1.0
+                self.update_progress(progress)
 
         self.logger.info(f"=== Completed {self.name}: {modified}/{total} detections modified ===")
