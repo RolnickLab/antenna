@@ -668,8 +668,8 @@ class PostProcessingJob(JobType):
         if not task_cls:
             raise ValueError(f"Unknown post-processing task '{task_key}'")
 
-        task = task_cls(**config)
-        task.run(job)
+        task = task_cls(job=job, **config)
+        task.run()
         job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS)
