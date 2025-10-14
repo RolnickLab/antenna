@@ -641,32 +641,6 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Queued Small Size Filter for {queryset.count()} collection(s). Jobs: {jobs}")
 
-    @admin.action(description="Run Class Masking post-processing task (async)")
-    def run_class_masking(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
-        jobs = []
-
-        DEFAULT_TAXA_LIST_ID = 5
-        DEFAULT_ALGORITHM_ID = 11
-
-        for collection in queryset:
-            job = Job.objects.create(
-                name=f"Post-processing: ClassMasking on Collection {collection.pk}",
-                project=collection.project,
-                job_type_key="post_processing",
-                params={
-                    "task": "class_masking",
-                    "config": {
-                        "collection_id": collection.pk,
-                        "taxa_list_id": DEFAULT_TAXA_LIST_ID,
-                        "algorithm_id": DEFAULT_ALGORITHM_ID,
-                    },
-                },
-            )
-            job.enqueue()
-            jobs.append(job.pk)
-
-        self.message_user(request, f"Queued Class Masking for {queryset.count()} collection(s). Jobs: {jobs}")
-
     @admin.action(description="Run Rank Rollup post-processing task (async)")
     def run_rank_rollup(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         """Trigger the Rank Rollup post-processing job asynchronously."""
@@ -692,7 +666,6 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
         populate_collection,
         populate_collection_async,
         run_small_size_filter,
-        run_class_masking,
         run_rank_rollup,
     ]
 
