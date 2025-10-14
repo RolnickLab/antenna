@@ -21,15 +21,23 @@ logger = logging.getLogger(__name__)
 # Set level
 logger.setLevel(logging.INFO)
 
-# Panama species list
-# url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQLlxfuzZHrHEeHFXmhjtngy0JFqhdOju-wJGNOCWSAbtsIpoZ8OoQFvW6IsqUaUA/pub?gid=1847011020&single=true&output=csv" # noqa
-
-# Panama genera
-# https://docs.google.com/spreadsheets/d/e/2PACX-1vQFY_FmkjS1GYpNccRQaRMt4I7yIXmErieu5LMK23HZLsBUbfBXtOr749vMfD9qJfpmTJSnAPrp3hGp/pub?gid=409403959&single=true&output=csv # noqa
-
 # Arthropod upper ranks
 # https://docs.google.com/spreadsheets/d/e/2PACX-1vRzHE3kjjIc8iWV1Be4hlTUBU4M1oD7R5h3imEZcsO5C2MWLlk40FolNfkAZiQetyhxm7ya6DDPd9Ye/pub?gid=0&single=true&output=csv # noqa
 # docker compose  run --rm django python manage.py import_taxa --format csv https://docs.google.com/spreadsheets/d/e/2PACX-1vRzHE3kjjIc8iWV1Be4hlTUBU4M1oD7R5h3imEZcsO5C2MWLlk40FolNfkAZiQetyhxm7ya6DDPd9Ye/pub\?gid\=0\&single\=true\&output\=csv --list upper-ranks  # noqa
+
+# Global genera
+# https://docs.google.com/spreadsheets/d/e/2PACX-1vQldfom76O5GHny5uSTxSKYqpcT2omUX7D3oOXR20bnXA-oN8YX3rrE6j75gi7lZ_tv6wWl-t2rjmOi/pub?gid=1844334363&single=true&output=csv # noqa
+
+# Species from all models (Global and others, with enough training data)
+# url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTNC-R8AvxrrGcbfy-l88Q9SuNfACuSADa1wT6aNR5JdBgw8gbqK-kvX64I8VjJx679KG0skKxPMuzM/pub?gid=1312012419&single=true&output=csv" # noqa
+
+# CFIA Moths
+# https://docs.google.com/spreadsheets/d/e/2PACX-1vSzqhUpFYLzC2gYwLFWZTcGjW1JBHfPEULIGOWvdrGcsnputDzRGM4gWlz1azmsueRQNJQ4IcdlLYWz/pub?gid=103564831&single=true&output=csv
+# docker compose  run --rm django python manage.py import_taxa --format csv "https://docs.google.com/spreadsheets/d/e/2PACX-1vSzqhUpFYLzC2gYwLFWZTcGjW1JBHfPEULIGOWvdrGcsnputDzRGM4gWlz1azmsueRQNJQ4IcdlLYWz/pub?gid=103564831&single=true&output=csv" --list "CFIA Moths"  # noqa
+
+# Connect genera to upper ranks
+# docker compose -f docker-compose.staging.yml run --rm django python manage.py shell -c "from ami.main.models import Taxon; Taxon.objects.add_genus_parents()"  # noqa
+# docker compose -f docker-compose.staging.yml run --rm django python manage.py shell -c "from ami.main.models import Taxon; Taxon.objects.update_all_parents()" # noqa
 
 
 def read_csv(fname: str) -> list[dict]:
