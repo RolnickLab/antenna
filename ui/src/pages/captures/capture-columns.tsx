@@ -44,9 +44,32 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     id: 'timestamp',
     name: translate(STRING.FIELD_LABEL_TIMESTAMP),
     sortField: 'timestamp',
-    renderCell: (item: Capture) => (
-      <BasicTableCell value={item.dateTimeLabel} />
-    ),
+    renderCell: (item: Capture) => {
+      const detailsRoute = item.sessionId
+        ? getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId,
+              sessionId: item.sessionId,
+            }),
+            filters: {
+              capture: item.id,
+            },
+          })
+        : undefined
+
+      if (detailsRoute) {
+        return (
+          <Link to={detailsRoute}>
+            <BasicTableCell
+              value={item.dateTimeLabel}
+              theme={CellTheme.Primary}
+            />
+          </Link>
+        )
+      }
+
+      return <BasicTableCell value={item.dateTimeLabel} />
+    },
   },
   {
     id: 'deployment',

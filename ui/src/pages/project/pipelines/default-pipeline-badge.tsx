@@ -11,8 +11,8 @@ export const DefaultPipelineBadge = ({ projectId }: { projectId: string }) => (
       <Tooltip.Trigger>
         <Badge label="Default" />
       </Tooltip.Trigger>
-      <Tooltip.Content side="bottom" className="p-4 max-w-xs">
-        <p className="mb-4 whitespace-normal">
+      <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
+        <p className="whitespace-normal">
           This is the default pipeline used for processing images in this
           project.
         </p>

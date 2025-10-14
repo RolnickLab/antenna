@@ -4,7 +4,7 @@ import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
-import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
+import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -40,7 +40,7 @@ export const OccurrenceActions = ({
       />
       <IdQuickActions
         occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-        occurrenceTaxons={occurrences.map(
+        occurrenceTaxa={occurrences.map(
           (occurrence) => occurrence.determinationTaxon
         )}
       />

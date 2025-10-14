@@ -1,3 +1,4 @@
+import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
@@ -23,7 +24,6 @@ import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
@@ -42,12 +42,9 @@ export const Species = () => {
     'created-at': false,
     'updated-at': false,
   })
-  const { userPreferences } = useUserPreferences()
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters({
-    best_determination_score: `${userPreferences.scoreThreshold}`,
-  })
+  const { filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -68,7 +65,6 @@ export const Species = () => {
           {taxaLists.length > 0 && (
             <FilterControl data={taxaLists} field="taxa_list_id" />
           )}
-          <FilterControl clearable={false} field="best_determination_score" />
           <FilterControl field="include_unobserved" />
           {project?.featureFlags.tags ? (
             <>
@@ -76,6 +72,7 @@ export const Species = () => {
               <FilterControl data={tags} field="not_tag_id" />
             </>
           ) : null}
+          <DefaultFiltersControl field="apply_defaults" />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader
