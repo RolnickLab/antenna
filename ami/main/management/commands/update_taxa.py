@@ -18,7 +18,7 @@ logger.setLevel(logging.INFO)
 def read_csv(fname: str) -> list[dict[str, Any]]:
     with open(fname) as f:
         reader = csv.DictReader(f)
-        taxa = [row for row in reader]
+        taxa = list(reader)
     return taxa
 
 
@@ -248,6 +248,6 @@ class Command(BaseCommand):
         if not_found:
             self.stdout.write(self.style.WARNING(f"Could not find {len(not_found)} taxa"))
             for i, data in enumerate(not_found[:5]):  # Show only first 5
-                self.stdout.write(f"  {i+1}. {data}")
+                self.stdout.write(f"  {i + 1}. {data}")
             if len(not_found) > 5:
                 self.stdout.write(f"  ... and {len(not_found) - 5} more")

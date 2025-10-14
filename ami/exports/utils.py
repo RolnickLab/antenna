@@ -80,7 +80,7 @@ def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.
     batch = []
 
     fake_request = generate_fake_request()
-    for i, item in enumerate(items):
+    for _i, item in enumerate(items):
         try:
             serializer = Serializer(
                 item,

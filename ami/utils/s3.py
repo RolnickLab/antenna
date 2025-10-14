@@ -300,7 +300,7 @@ def list_files_paginated(
     regex = _compile_regex_filter(regex_filter)
 
     num_files_checked = 0
-    for i, page in enumerate(page_iterator):
+    for _i, page in enumerate(page_iterator):
         if "Contents" in page:
             for obj in page["Contents"]:
                 num_files_checked += 1
@@ -685,7 +685,7 @@ def test():
         deployments = list_deployments(config, project)
         print("\tDeployments:", deployments)
 
-        for deployment in deployments:
+        for _deployment in deployments:
             # print("\t\tFile Count:", count_files(deployment))
 
             for file, _ in list_files(config, limit=1):

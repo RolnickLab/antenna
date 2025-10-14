@@ -1299,12 +1299,12 @@ class OccurrenceListSerializer(DefaultSerializer):
         else:
             prediction = ClassificationNestedSerializer(obj.best_prediction, context=context).data
 
-        return dict(
-            taxon=taxon,
-            identification=identification,
-            prediction=prediction,
-            score=obj.determination_score,
-        )
+        return {
+            "taxon": taxon,
+            "identification": identification,
+            "prediction": prediction,
+            "score": obj.determination_score,
+        }
 
 
 class OccurrenceSerializer(OccurrenceListSerializer):

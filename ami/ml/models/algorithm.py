@@ -75,7 +75,7 @@ class AlgorithmCategoryMap(BaseModel):
         max_length=255,
         blank=True,
         null=True,
-        help_text=("A URI to the category map file. " "Could be a public web URL or object store path."),
+        help_text=("A URI to the category map file. Could be a public web URL or object store path."),
     )
 
     algorithms: models.QuerySet[Algorithm]

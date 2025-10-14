@@ -62,7 +62,7 @@ class Command(BaseCommand):
 
         project, created = Project.objects.get_or_create(name="Default Project")
         if created:
-            self.stdout.write(self.style.SUCCESS('Successfully created project "%s"' % project))
+            self.stdout.write(self.style.SUCCESS(f'Successfully created project "{project}"'))
         algorithm, created = Algorithm.objects.get_or_create(name="Latest Model", version="1.0")
         for occurrence in occurrences:
             deployment, created = Deployment.objects.get_or_create(
@@ -70,14 +70,14 @@ class Command(BaseCommand):
                 project=project,
             )
             if created:
-                self.stdout.write(self.style.SUCCESS('Successfully created deployment "%s"' % deployment))
+                self.stdout.write(self.style.SUCCESS(f'Successfully created deployment "{deployment}"'))
 
             event, created = Event.objects.get_or_create(
                 start=parse_date(occurrence["event"]["day"]),
                 deployment=deployment,
             )
             if created:
-                self.stdout.write(self.style.SUCCESS('Successfully created event "%s"' % event))
+                self.stdout.write(self.style.SUCCESS(f'Successfully created event "{event}"'))
 
             best_taxon, created = Taxon.objects.get_or_create(name=occurrence["label"])
             occ = Occurrence.objects.create(
@@ -86,7 +86,7 @@ class Command(BaseCommand):
                 project=project,
                 determination=best_taxon,
             )
-            self.stdout.write(self.style.SUCCESS('Successfully created occurrence "%s"' % occ))
+            self.stdout.write(self.style.SUCCESS(f'Successfully created occurrence "{occ}"'))
 
             for example in occurrence["examples"]:
                 try:
@@ -100,9 +100,9 @@ class Command(BaseCommand):
                         size=example["source_image_filesize"],
                     )
                     if created:
-                        self.stdout.write(self.style.SUCCESS('Successfully created image "%s"' % image))
+                        self.stdout.write(self.style.SUCCESS(f'Successfully created image "{image}"'))
                 except KeyError as e:
-                    self.stdout.write(self.style.ERROR('Error creating image "%s"' % e))
+                    self.stdout.write(self.style.ERROR(f'Error creating image "{e}"'))
                     image = None
 
                 if image:
@@ -114,7 +114,7 @@ class Command(BaseCommand):
                         bbox=example["bbox"],
                     )
                     if created:
-                        self.stdout.write(self.style.SUCCESS('Successfully created detection "%s"' % detection))
+                        self.stdout.write(self.style.SUCCESS(f'Successfully created detection "{detection}"'))
                 else:
                     detection = None
 
@@ -132,7 +132,7 @@ class Command(BaseCommand):
                     )
                     if created:
                         self.stdout.write(
-                            self.style.SUCCESS('Successfully created classification "%s"' % classification)
+                            self.style.SUCCESS(f'Successfully created classification "{classification}"')
                         )
 
         # Update event start and end times based on the first and last detections

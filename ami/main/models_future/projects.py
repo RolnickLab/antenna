@@ -49,7 +49,7 @@ class ProjectSettingsMixin(models.Model):
         related_name="exclude_taxa_default_projects",
         blank=True,
         help_text=(
-            "Taxa that are excluded by default in the occurrence filters and metrics. " "For example, 'Not a Moth'."
+            "Taxa that are excluded by default in the occurrence filters and metrics. For example, 'Not a Moth'."
         ),
     )
 

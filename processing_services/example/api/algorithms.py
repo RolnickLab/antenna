@@ -210,7 +210,7 @@ class HFImageClassifier(Algorithm):
         end_time = datetime.datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()
 
-        for detection, preds in zip(detections, results):
+        for detection, preds in zip(detections, results, strict=False):
             labels = [pred["label"] for pred in preds]
             scores = [pred["score"] for pred in preds]
             max_score_index = scores.index(max(scores))
@@ -264,7 +264,7 @@ class HFImageClassifier(Algorithm):
 
             # Create labels and data
             labels = [id2label[str(i)] for i in indices]
-            data = [{"label": label, "index": idx} for idx, label in zip(indices, labels)]
+            data = [{"label": label, "index": idx} for idx, label in zip(indices, labels, strict=False)]
 
         # Build description
         description_text = (

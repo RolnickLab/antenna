@@ -54,9 +54,9 @@ def create_processing_service(project: Project, name: str = "Test Processing Ser
     processing_service.save()
 
     if created:
-        logger.info(f'Successfully created processing service with {processing_service_to_add["endpoint_url"]}.')
+        logger.info(f"Successfully created processing service with {processing_service_to_add['endpoint_url']}.")
     else:
-        logger.info(f'Using existing processing service with {processing_service_to_add["endpoint_url"]}.')
+        logger.info(f"Using existing processing service with {processing_service_to_add['endpoint_url']}.")
 
     for project_data in processing_service_to_add["projects"]:
         try:
@@ -64,7 +64,7 @@ def create_processing_service(project: Project, name: str = "Test Processing Ser
             processing_service.projects.add(project)
             processing_service.save()
         except Exception:
-            logger.error(f'Could not find project {project_data["name"]}.')
+            logger.error(f"Could not find project {project_data['name']}.")
     processing_service.get_status()
     processing_service.create_pipelines()
 
@@ -82,16 +82,16 @@ def create_deployment(
     deployment, _ = Deployment.objects.get_or_create(
         project=project,
         name=name,
-        defaults=dict(
-            description=f"Created at {timezone.now()}",
-            data_source=data_source,
-            data_source_subdir="/",
-            data_source_regex=".*\\.jpg",
-            latitude=45.0,
-            longitude=-123.0,
-            research_site=project.sites.first(),
-            device=project.devices.first(),
-        ),
+        defaults={
+            "description": f"Created at {timezone.now()}",
+            "data_source": data_source,
+            "data_source_subdir": "/",
+            "data_source_regex": ".*\\.jpg",
+            "latitude": 45.0,
+            "longitude": -123.0,
+            "research_site": project.sites.first(),
+            "device": project.devices.first(),
+        },
     )
     return deployment
 
@@ -191,11 +191,11 @@ def create_captures_from_files(
     source_images = SourceImage.objects.filter(deployment=deployment).order_by("timestamp")
     source_images = [img for img in source_images if any(img.path.endswith(frame.filename) for frame in frame_data)]
 
-    assert len(source_images) == len(
-        frame_data
-    ), f"There are {len(source_images)} source images and {len(frame_data)} frame data items."
+    assert len(source_images) == len(frame_data), (
+        f"There are {len(source_images)} source images and {len(frame_data)} frame data items."
+    )
     frame_data = sorted(frame_data, key=lambda x: x.timestamp)
-    frames_with_images = list(zip(source_images, frame_data))
+    frames_with_images = list(zip(source_images, frame_data, strict=False))
     for source_image, frame in frames_with_images:
         assert source_image.timestamp == frame.timestamp
         assert source_image.path.endswith(frame.filename)
@@ -216,10 +216,10 @@ def create_taxa(project: Project) -> TaxaList:
         species_taxa = []
         taxon, _ = Taxon.objects.get_or_create(
             name=species,
-            defaults=dict(
-                parent=genus_taxon,
-                rank=TaxonRank.SPECIES.name,
-            ),
+            defaults={
+                "parent": genus_taxon,
+                "rank": TaxonRank.SPECIES.name,
+            },
         )
         species_taxa.append(taxon)
         taxon.projects.add(project)
@@ -272,7 +272,7 @@ def create_detections(
     source_image: SourceImage,
     bboxes: list[tuple[float, float, float, float]],
 ):
-    for i, bbox in enumerate(bboxes):
+    for _i, bbox in enumerate(bboxes):
         detection = Detection.objects.create(
             source_image=source_image,
             timestamp=source_image.timestamp,

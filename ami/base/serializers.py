@@ -13,7 +13,9 @@ from .permissions import add_object_level_permissions
 logger = logging.getLogger(__name__)
 
 
-def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = {}, **extra) -> str:
+def reverse_with_params(viewname: str, args=None, kwargs=None, request=None, params: dict = None, **extra) -> str:
+    if params is None:
+        params = {}
     query_string = urllib.parse.urlencode(params)
     base_url = reverse(viewname, request=request, args=args, kwargs=kwargs, **extra)
     url = urllib.parse.urlunsplit(("", "", base_url, query_string, ""))

@@ -430,9 +430,11 @@ S3_TEST_BUCKET = env("MINIO_TEST_BUCKET", default="ami-test")  # type: ignore[no
 # Default processing service settings
 # If not set, we will not create a default processing service
 DEFAULT_PROCESSING_SERVICE_NAME = env(
-    "DEFAULT_PROCESSING_SERVICE_NAME", default="Default Processing Service"  # type: ignore[no-untyped-call]
+    "DEFAULT_PROCESSING_SERVICE_NAME",
+    default="Default Processing Service",  # type: ignore[no-untyped-call]
 )
 DEFAULT_PROCESSING_SERVICE_ENDPOINT = env(
-    "DEFAULT_PROCESSING_SERVICE_ENDPOINT", default=None  # type: ignore[no-untyped-call]
+    "DEFAULT_PROCESSING_SERVICE_ENDPOINT",
+    default=None,  # type: ignore[no-untyped-call]
 )
 DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None)  # type: ignore[no-untyped-call]

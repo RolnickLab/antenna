@@ -57,10 +57,16 @@ class Pipeline:
     def __init__(
         self,
         source_images: list[SourceImage],
-        request_config: PipelineRequestConfigParameters | dict = {},
-        existing_detections: list[Detection] = [],
-        custom_batch_sizes: list[int] = [],
+        request_config: "PipelineRequestConfigParameters | dict | None" = None,
+        existing_detections: list[Detection] | None = None,
+        custom_batch_sizes: list[int] | None = None,
     ):
+        if custom_batch_sizes is None:
+            custom_batch_sizes = []
+        if existing_detections is None:
+            existing_detections = []
+        if request_config is None:
+            request_config = {}
         self.source_images = source_images
         self.request_config = request_config if isinstance(request_config, dict) else request_config.model_dump()
         self.existing_detections = existing_detections
@@ -81,7 +87,7 @@ class Pipeline:
     def compile(self):
         logger.info("Compiling algorithms....")
         for stage_idx, stage in enumerate(self.stages):
-            logger.info(f"[{stage_idx+1}/{len(self.stages)}] Compiling {stage.algorithm_config_response.name}...")
+            logger.info(f"[{stage_idx + 1}/{len(self.stages)}] Compiling {stage.algorithm_config_response.name}...")
             stage.compile()
 
     def run(self) -> PipelineResultsResponse:

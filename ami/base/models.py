@@ -153,7 +153,7 @@ class BaseModel(models.Model):
     def __str__(self) -> str:
         """All django models should have this method."""
         if hasattr(self, "name"):
-            name = getattr(self, "name") or "Untitled"
+            name = self.name or "Untitled"
             return f"#{self.pk} {name}"
         else:
             return f"{self.__class__.__name__} #{self.pk}"

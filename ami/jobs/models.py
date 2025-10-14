@@ -412,17 +412,17 @@ class MLJob(JobType):
 
         for i, chunk in enumerate(chunks):
             request_sent = time.time()
-            job.logger.info(f"Processing image batch {i+1} of {len(chunks)}")
+            job.logger.info(f"Processing image batch {i + 1} of {len(chunks)}")
             try:
                 results = job.pipeline.process_images(
                     images=chunk,
                     job_id=job.pk,
                     project_id=job.project.pk,
                 )
-                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
+                job.logger.info(f"Processed image batch {i + 1} in {time.time() - request_sent:.2f}s")
             except Exception as e:
                 # Log error about image batch and continue
-                job.logger.error(f"Failed to process image batch {i+1}: {e}")
+                job.logger.error(f"Failed to process image batch {i + 1}: {e}")
                 request_failed_images.extend([img.pk for img in chunk])
             else:
                 total_captures += len(results.source_images)
@@ -433,7 +433,7 @@ class MLJob(JobType):
                     # @TODO add callback to report errors while saving results marking the job as failed
                     save_results_task: AsyncResult = job.pipeline.save_results_async(results=results, job_id=job.pk)
                     save_tasks.append((i + 1, save_results_task))
-                    job.logger.info(f"Saving results for batch {i+1} in sub-task {save_results_task.id}")
+                    job.logger.info(f"Saving results for batch {i + 1} in sub-task {save_results_task.id}")
 
             job.progress.update_stage(
                 "process",

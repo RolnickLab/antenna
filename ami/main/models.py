@@ -1164,7 +1164,8 @@ def audit_event_lengths(deployment: Deployment):
         logger.warning(f"Found {events_over_24_hours} event(s) over 24 hours in deployment {deployment}. ")
 
     events_starting_before_noon = Event.objects.filter(
-        deployment=deployment, start__hour__lt=12  # Before hour 12
+        deployment=deployment,
+        start__hour__lt=12,  # Before hour 12
     ).count()
     if events_starting_before_noon:
         logger.warning(
@@ -1189,7 +1190,7 @@ def group_images_into_events(
     )
     if dupes.count():
         values = "\n".join(
-            [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
+            [f"{d.strftime('%Y-%m-%d %H:%M:%S')} x{c}" for d, c in dupes.values_list("timestamp", "count")]
         )
         logger.warning(
             f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
@@ -1240,7 +1241,7 @@ def group_images_into_events(
         )
 
     logger.info(
-        f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
+        f"Done grouping {len(image_timestamps)} captures into {len(events)} events for deployment {deployment}"
     )
 
     if delete_empty:
@@ -1912,9 +1913,7 @@ def set_dimensions_for_collection(
             width, height = image.get_dimensions()
 
     if width and height:
-        logger.info(
-            f"Setting dimensions for {event.captures.count()} images in event {event.pk} to " f"{width}x{height}"
-        )
+        logger.info(f"Setting dimensions for {event.captures.count()} images in event {event.pk} to {width}x{height}")
         if replace_existing:
             captures = event.captures.all()
         else:
@@ -2106,9 +2105,7 @@ class Identification(BaseModel):
             Identification.objects.filter(
                 occurrence=self.occurrence,
                 user=self.user,
-            ).exclude(
-                pk=self.pk
-            ).update(withdrawn=True)
+            ).exclude(pk=self.pk).update(withdrawn=True)
 
         super().save(*args, **kwargs)
 
@@ -2260,7 +2257,7 @@ class Classification(BaseModel):
         if not self.category_map:
             raise ValueError("Classification must have a category map to get predictions.")
         scores = self.scores or []
-        preds = zip(self.category_map.labels, scores)
+        preds = zip(self.category_map.labels, scores, strict=False)
         if sort:
             return sorted(preds, key=lambda x: x[1], reverse=True)
         else:
@@ -2278,7 +2275,7 @@ class Classification(BaseModel):
         scores = self.scores or []
         category_data_with_taxa = self.category_map.with_taxa()
         taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
-        preds = zip(taxa_sorted_by_index, scores)
+        preds = zip(taxa_sorted_by_index, scores, strict=False)
         if sort:
             return sorted(preds, key=lambda x: x[1], reverse=True)
         else:
@@ -2972,7 +2969,7 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
         Create a genus if it doesn't exist based on the scientific name of the species.
         This will replace any parents of a species that are not of the GENUS rank.
         """
-        Taxon: "Taxon" = self.model  # type: ignore
+        Taxon: Taxon = self.model  # type: ignore
         species = self.get_queryset().filter(rank=TaxonRank.SPECIES)  # , parent=None)
         updated = []
         for taxon in species:
@@ -3010,9 +3007,11 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
         self.bulk_update(taxa, ["display_name"])
 
     # Method that returns taxa nested in a tree structure
-    def tree(self, root: typing.Optional["Taxon"] = None, filter_ranks: list[TaxonRank] = []) -> dict:
+    def tree(self, root: typing.Optional["Taxon"] = None, filter_ranks: list[TaxonRank] = None) -> dict:
         """Build a recursive tree of taxa."""
 
+        if filter_ranks is None:
+            filter_ranks = []
         root = root or self.root()
 
         # Fetch all taxa
@@ -3795,7 +3794,7 @@ class SourceImageCollection(BaseModel):
     def sample_interval(
         self,
         minute_interval: int = 10,
-        exclude_events: list[int] = [],
+        exclude_events: list[int] = None,
         deployment_id: int | None = None,  # Deprecated
         hour_start: int | None = None,
         hour_end: int | None = None,
@@ -3809,6 +3808,8 @@ class SourceImageCollection(BaseModel):
     ):
         """Create a sample of source images based on a time interval"""
 
+        if exclude_events is None:
+            exclude_events = []
         qs = self.get_queryset()
         qs = self._filter_sample(
             qs=qs,

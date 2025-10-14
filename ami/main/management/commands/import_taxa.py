@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from ...models import TaxaList, Taxon, TaxonRank
 
-RANK_CHOICES = [rank for rank in TaxonRank]
+RANK_CHOICES = list(TaxonRank)
 
 logger = logging.getLogger(__name__)
 # Set level
@@ -34,7 +34,7 @@ logger.setLevel(logging.INFO)
 
 def read_csv(fname: str) -> list[dict]:
     reader = csv.DictReader(open(fname))
-    taxa = [row for row in reader]
+    taxa = list(reader)
     return taxa
 
 
@@ -79,7 +79,7 @@ def fix_generic_names(taxon_data: dict) -> dict:
     fixed_taxon_data = taxon_data.copy()
     generic_names = ["sp.", "sp", "spp", "spp.", "cf.", "cf", "aff.", "aff"]
     fallback_name_keys = ["bold_taxon_bin", "inat_taxon_id", "gbif_taxon_key"]
-    for key, value in taxon_data.items():
+    for _key, value in taxon_data.items():
         if value and value.lower() in generic_names:
             # set name to first fallback name that exists
             fallback_name = None
@@ -236,7 +236,7 @@ class Command(BaseCommand):
 
         taxalist, created = TaxaList.objects.get_or_create(name=list_name)
         if created:
-            self.stdout.write(self.style.SUCCESS('Successfully created taxa list "%s"' % taxalist))
+            self.stdout.write(self.style.SUCCESS(f'Successfully created taxa list "{taxalist}"'))
 
         if options["purge"]:
             self.stdout.write(self.style.WARNING("Purging all taxa from the database in 5 seconds..."))
@@ -319,11 +319,11 @@ class Command(BaseCommand):
                 # If the taxon already exists, use it and maybe update it
                 taxon, created = Taxon.objects.get_or_create(
                     name=name,
-                    defaults=dict(
-                        rank=rank,
-                        gbif_taxon_key=gbif_taxon_key,
-                        parent=parent_taxon,
-                    ),
+                    defaults={
+                        "rank": rank,
+                        "gbif_taxon_key": gbif_taxon_key,
+                        "parent": parent_taxon,
+                    },
                 )
                 taxa_in_row.append(taxon)
 

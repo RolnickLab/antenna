@@ -345,7 +345,9 @@ class TestEvents(TestCase):
 
         update_calculated_fields_for_events(last_updated=datetime.datetime(3000, 1, 1, 0, 0, 0))
 
-        for event, last_updated in zip(self.deployment.events.all().order_by("pk"), last_updated_timestamps):
+        for event, last_updated in zip(
+            self.deployment.events.all().order_by("pk"), last_updated_timestamps, strict=False
+        ):
             self.assertEqual(event.captures_count, event.get_captures_count())
             self.assertEqual(event.detections_count, event.get_detections_count())
             self.assertEqual(event.occurrences_count, event.get_occurrences_count())
@@ -356,7 +358,9 @@ class TestEvents(TestCase):
 
         update_calculated_fields_for_events(last_updated=datetime.datetime(3000, 1, 1, 0, 0, 0))
 
-        for event, last_updated in zip(self.deployment.events.all().order_by("pk"), last_updated_timestamps):
+        for event, last_updated in zip(
+            self.deployment.events.all().order_by("pk"), last_updated_timestamps, strict=False
+        ):
             self.assertEqual(event.captures_count, event.get_captures_count())
             self.assertEqual(event.detections_count, event.get_detections_count())
             self.assertEqual(event.occurrences_count, event.get_occurrences_count())
