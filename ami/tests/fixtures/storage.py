@@ -26,14 +26,14 @@ def create_storage_source(project: Project, name: str, prefix: str = S3_TEST_CON
     data_source, _created = S3StorageSource.objects.get_or_create(
         project=project,
         name=name,
-        defaults=dict(
-            bucket=S3_TEST_CONFIG.bucket_name,
-            prefix=prefix,
-            endpoint_url=S3_TEST_CONFIG.endpoint_url,
-            access_key=S3_TEST_CONFIG.access_key_id,
-            secret_key=S3_TEST_CONFIG.secret_access_key,
-            public_base_url=S3_TEST_CONFIG.public_base_url,
-        ),
+        defaults={
+            "bucket": S3_TEST_CONFIG.bucket_name,
+            "prefix": prefix,
+            "endpoint_url": S3_TEST_CONFIG.endpoint_url,
+            "access_key": S3_TEST_CONFIG.access_key_id,
+            "secret_key": S3_TEST_CONFIG.secret_access_key,
+            "public_base_url": S3_TEST_CONFIG.public_base_url,
+        },
     )
     return data_source
 

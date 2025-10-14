@@ -248,7 +248,7 @@ def generate_multiple_series(
     max_moths: int = 8,
 ) -> None:
     all_series_data = []
-    for i in range(num_series):
+    for _i in range(num_series):
         num_moths = random.randint(min_moths, max_moths)
         series_data = generate_moth_series(frames_per_series, width, height, num_moths)
         all_series_data.extend(series_data)

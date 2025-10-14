@@ -103,3 +103,32 @@ indent_size = 2
 
 [tool.djlint.js]
 indent_size = 2
+
+# ==== Ruff Implementation ====
+[tool.ruff]
+line-length = 119
+target-version = "py311"
+extend-exclude = ["migrations", "static/CACHE", "docs", "node_modules"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "DJ",  # flake8-django
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+ignore = ["E501","B904","DJ001","DJ012","B007","B019","F823"]  # Ruff is Black-compatible by default
+
+[tool.ruff.lint.isort]
+known-first-party = ["ami", "config"]
+
+[tool.ruff.format]
+# Use Black-compatible formatting style
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

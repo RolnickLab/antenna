@@ -91,7 +91,7 @@ def captures_per_day(project_pk: int):
     )
 
     if captures_per_date:
-        days, counts = list(zip(*captures_per_date))
+        days, counts = list(zip(*captures_per_date, strict=False))
         days = [day for day in days if day]
         # tickvals_per_month = [f"{d:%b}" for d in days]
         tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
@@ -119,7 +119,7 @@ def captures_per_month(project_pk: int):
     )
 
     if captures_per_month:
-        months, counts = list(zip(*captures_per_month))
+        months, counts = list(zip(*captures_per_month, strict=False))
         # tickvals_per_month = [f"{d:%b}" for d in days]
         tickvals = [f"{months[0]}", f"{months[-1]}"]
         # labels = [f"{d}" for d in months]
@@ -146,7 +146,7 @@ def events_per_week(project_pk: int):
     )
 
     if captures_per_week:
-        weeks, counts = list(zip(*captures_per_week))
+        weeks, counts = list(zip(*captures_per_week, strict=False))
         # tickvals_per_month = [f"{d:%b}" for d in days]
         tickvals = [f"{weeks[0]}", f"{weeks[-1]}"]
         labels = [f"{d}" for d in weeks]
@@ -172,7 +172,7 @@ def events_per_month(project_pk: int):
     )
 
     if captures_per_month:
-        months, counts = list(zip(*captures_per_month))
+        months, counts = list(zip(*captures_per_month, strict=False))
         # tickvals_per_month = [f"{d:%b}" for d in days]
         tickvals = [f"{months[0]}", f"{months[-1]}"]
         # labels = [f"{d}" for d in months]
@@ -257,7 +257,7 @@ def occurrences_accumulated(project_pk: int):
 
     occurrences_exist = Occurrence.objects.filter(project=project_pk).exists()
     if occurrences_exist:
-        days, counts = list(zip(*occurrences_per_day))
+        days, counts = list(zip(*occurrences_per_day, strict=False))
         # Accumulate the counts
         counts = list(itertools.accumulate(counts))
         # tickvals = [f"{d:%b %d}" for d in days]
@@ -288,7 +288,9 @@ def event_detections_per_hour(event_pk: int):
     # hours, counts = list(zip(*detections_per_hour))
     if detections_per_hour:
         hours, counts = list(
-            zip(*[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour])
+            zip(
+                *[(d["source_image__timestamp__hour"], d["num_detections"]) for d in detections_per_hour], strict=False
+            )
         )
         hours, counts = shift_to_nighttime(list(hours), list(counts))
         # @TODO show a tick for every hour even if there are no detections
@@ -317,7 +319,7 @@ def event_top_taxa(event_pk: int, top_n: int = 10):
     )
 
     if top_taxa:
-        taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in reversed(top_taxa)]))
+        taxa, counts = list(zip(*[(t["name"], t["num_detections"]) for t in reversed(top_taxa)], strict=False))
         taxa = [t or "Unknown" for t in taxa]
         counts = [c or 0 for c in counts]
     else:
@@ -340,7 +342,7 @@ def project_top_taxa(project_pk: int, top_n: int = 10):
     )
 
     if top_taxa:
-        taxa, counts = list(zip(*[(t.name, t.occurrence_count) for t in reversed(top_taxa)]))
+        taxa, counts = list(zip(*[(t.name, t.occurrence_count) for t in reversed(top_taxa)], strict=False))
     else:
         taxa, counts = [], []
 
@@ -363,7 +365,7 @@ def unique_species_per_month(project_pk: int):
     )
 
     # Create a dictionary mapping month numbers to species counts
-    month_to_count = {month: count for month, count in unique_species_per_month}
+    month_to_count = dict(unique_species_per_month)
 
     # Create lists for all 12 months, using 0 for months with no data
     all_months = list(range(1, 13))  # 1-12 for January-December
@@ -393,7 +395,7 @@ def average_occurrences_per_month(project_pk: int):
     )
 
     # Create a dictionary mapping month numbers to occurrence counts
-    month_to_count = {month: count for month, count in occurrences_per_month}
+    month_to_count = dict(occurrences_per_month)
 
     # Create lists for all 12 months, using 0 for months with no data
     all_months = list(range(1, 13))  # 1-12 for January-December

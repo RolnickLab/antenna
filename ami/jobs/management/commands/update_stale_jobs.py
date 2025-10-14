@@ -7,9 +7,7 @@ from ami.jobs.models import Job, JobState
 
 
 class Command(BaseCommand):
-    help = (
-        "Update the status of all jobs that are not in a final state " "and have not been updated in the last X hours."
-    )
+    help = "Update the status of all jobs that are not in a final state and have not been updated in the last X hours."
 
     # Add argument for the number of hours to consider a job stale
     def add_arguments(self, parser):

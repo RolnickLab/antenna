@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import ProcessingService, ProjectPipelineConfig
     from ami.jobs.models import Job
+    from ami.ml.models import ProcessingService, ProjectPipelineConfig
 
 import collections
 import dataclasses
@@ -215,7 +215,7 @@ def process_images(
         if pipeline_config.get("reprocess_existing_detections", True):
             reprocess_existing_detections = True
 
-    for source_image, url in zip(images, urls):
+    for source_image, url in zip(images, urls, strict=False):
         if url:
             source_image_request = SourceImageRequest(
                 id=str(source_image.pk),
@@ -404,9 +404,9 @@ def get_or_create_detection(
     serialized_bbox = list(detection_resp.bbox.dict().values())
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
-    assert str(detection_resp.source_image_id) == str(
-        source_image.pk
-    ), f"Detection belongs to a different source image: {detection_repr}"
+    assert str(detection_resp.source_image_id) == str(source_image.pk), (
+        f"Detection belongs to a different source image: {detection_repr}"
+    )
 
     existing_detection = Detection.objects.filter(
         source_image=source_image,
@@ -595,9 +595,9 @@ def create_classification(
 
     :return: A tuple of the Classification object and a boolean indicating whether it was created
     """
-    assert (
-        classification_resp.algorithm
-    ), f"No classification algorithm was specified for classification {classification_resp}"
+    assert classification_resp.algorithm, (
+        f"No classification algorithm was specified for classification {classification_resp}"
+    )
     logger.debug(f"Processing classification {classification_resp}")
 
     try:
@@ -705,7 +705,7 @@ def create_classifications(
     existing_classifications: list[Classification] = []
     new_classifications: list[Classification] = []
 
-    for detection, detection_resp in zip(detections, detection_responses):
+    for detection, detection_resp in zip(detections, detection_responses, strict=False):
         for classification_resp in detection_resp.classifications:
             classification, created = create_classification(
                 detection=detection,
@@ -1017,10 +1017,10 @@ class Pipeline(BaseModel):
                 if project_pipeline_config.config:
                     config.update(project_pipeline_config.config)
                 logger.debug(
-                    f"Using ProjectPipelineConfig for Pipeline {self} and Project #{project_id}:" f"config: {config}"
+                    f"Using ProjectPipelineConfig for Pipeline {self} and Project #{project_id}:config: {config}"
                 )
             except self.project_pipeline_configs.model.DoesNotExist as e:
-                logger.warning(f"No project-pipeline config for Pipeline {self} " f"and Project #{project_id}: {e}")
+                logger.warning(f"No project-pipeline config for Pipeline {self} and Project #{project_id}: {e}")
         return config
 
     def collect_images(
@@ -1056,8 +1056,7 @@ class Pipeline(BaseModel):
         # get all processing services that are associated with the provided pipeline project
         processing_services = self.processing_services.filter(projects=project_id)
         task_logger.info(
-            f"Searching processing services:"
-            f"{[processing_service.name for processing_service in processing_services]}"
+            f"Searching processing services:{[processing_service.name for processing_service in processing_services]}"
         )
 
         # check the status of all processing services

@@ -8,8 +8,9 @@ from django.db import models
 from django.db.models import Q
 
 if TYPE_CHECKING:
-    from ami.main.models import Project, Taxon
     from rest_framework.request import Request
+
+    from ami.main.models import Project, Taxon
 
 from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
 

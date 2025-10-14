@@ -63,7 +63,7 @@ class JSONExporter(BaseExporter):
             first = True
             f.write("[")
             records_exported = 0
-            for i, batch in enumerate(get_data_in_batches(self.queryset, self.get_serializer_class())):
+            for _i, batch in enumerate(get_data_in_batches(self.queryset, self.get_serializer_class())):
                 json_data = json.dumps(batch, cls=DjangoJSONEncoder)
                 json_data = json_data[1:-1]  # remove [ and ] from json string
                 f.write(",\n" if not first else "")
@@ -153,7 +153,7 @@ class CSVExporter(BaseExporter):
             writer = csv.DictWriter(csvfile, fieldnames=field_names)
             writer.writeheader()
 
-            for i, batch in enumerate(get_data_in_batches(self.queryset, self.serializer_class)):
+            for _i, batch in enumerate(get_data_in_batches(self.queryset, self.serializer_class)):
                 writer.writerows(batch)
                 records_exported += len(batch)
                 self.update_job_progress(records_exported)
