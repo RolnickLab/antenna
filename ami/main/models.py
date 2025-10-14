@@ -18,7 +18,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
@@ -26,16 +26,23 @@ from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
 from guardian.shortcuts import get_perms
+from rest_framework.request import Request
 
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
+from ami.main.models_future.filters import (
+    build_occurrence_default_filters_q,
+    build_occurrence_score_threshold_q,
+    build_taxa_recursive_filter_q,
+)
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp
+from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
@@ -206,7 +213,6 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     """
 
     tags: bool = False  # Whether the project supports tagging taxa
-    auto_process_manual_uploads: bool = False  # Whether to automatically process uploaded images
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
     default_filters: bool = False  # Whether to show default filters form in UI
 
@@ -285,6 +291,18 @@ class Project(ProjectSettingsMixin, BaseModel):
         plots.append(charts.unique_species_per_month(project_pk=self.pk))
 
         return plots
+
+    def update_related_calculated_fields(self):
+        """
+        Update calculated fields for all related events and deployments.
+        """
+        # Update events
+        for event in self.events.all():
+            event.update_calculated_fields(save=True)
+
+        # Update deployments
+        for deployment in self.deployments.all():
+            deployment.update_calculated_fields(save=True)
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -835,21 +853,14 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        self.occurrences_count = (
-            self.occurrences.filter(
-                event__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
-        self.taxa_count = (
-            Taxon.objects.filter(
-                occurrences__deployment=self,
-                occurrences__event__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
+        occ_qs = self.occurrences.filter(event__isnull=False).apply_default_filters(  # type: ignore
+            project=self.project,
+            request=None,
+        )  # type: ignore
+
+        self.occurrences_count = occ_qs.distinct().count()
+
+        self.taxa_count = occ_qs.values("determination_id").distinct().count()
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
@@ -872,10 +883,53 @@ class Deployment(BaseModel):
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
 
 
+class EventQuerySet(BaseQuerySet):
+    def with_taxa_count(self, project: Project | None = None, request: Request | None = None):
+        """
+        Annotate each event with the number of distinct taxa observed,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+        """
+        if project is None:
+            return self
+
+        filter_q = build_occurrence_default_filters_q(project, request, "occurrences")
+
+        return self.annotate(
+            taxa_count=models.Count(
+                "occurrences__determination",
+                distinct=True,
+                filter=filter_q,
+            )
+        )
+
+    def with_occurrences_count(self, project: Project | None = None, request: Request | None = None):
+        """
+        Annotate each event with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+        """
+        if project is None:
+            return self
+
+        filter_q = build_occurrence_default_filters_q(project, request, "occurrences")
+
+        return self.annotate(
+            occurrences_count=models.Count(
+                "occurrences",
+                distinct=True,
+                filter=filter_q,
+            )
+        )
+
+
+class EventManager(models.Manager.from_queryset(EventQuerySet)):
+    pass
+
+
 @final
 class Event(BaseModel):
     """A monitoring session"""
 
+    objects: EventManager = EventManager()
     group_by = models.CharField(
         max_length=255,
         db_index=True,
@@ -966,7 +1020,16 @@ class Event(BaseModel):
         return Detection.objects.filter(Q(source_image__event=self)).count()
 
     def get_occurrences_count(self, classification_threshold: float = 0) -> int:
-        return self.occurrences.distinct().filter(determination_score__gte=classification_threshold).count()
+        """
+        Get the count of occurrences for this event, filtered by default filters.
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        return (
+            self.occurrences.distinct()
+            .apply_default_filters(project=self.project, request=None)  # type: ignore
+            .count()
+        )
 
     def stats(self) -> dict[str, int | None]:
         return (
@@ -991,6 +1054,11 @@ class Event(BaseModel):
         ).distinct()
 
     def first_capture(self):
+        # @TODO these needs to return a source image with detections prefetched and filtered
+        # based on the project settings.
+        # Ideally this would be an annotated field, rather than an additional query.
+        # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
+        # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
 
     def summary_data(self):
@@ -1499,24 +1567,35 @@ def delete_source_image(sender, instance, **kwargs):
 
 
 class SourceImageQuerySet(BaseQuerySet):
-    def with_occurrences_count(self, classification_threshold: float = 0):
+    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+        """
+        Annotate each source image with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
         return self.annotate(
             occurrences_count=models.Count(
                 "detections__occurrence",
-                filter=models.Q(
-                    detections__occurrence__determination_score__gte=classification_threshold,
-                ),
+                filter=filter_q,
                 distinct=True,
             )
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0):
+    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+        """
+        Annotate each source image with the number of distinct taxa,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
+
         return self.annotate(
             taxa_count=models.Count(
                 "detections__occurrence__determination",
-                filter=models.Q(
-                    detections__occurrence__determination_score__gte=classification_threshold,
-                ),
+                filter=filter_q,
                 distinct=True,
             )
         )
@@ -2403,6 +2482,15 @@ class Detection(BaseModel):
         self.source_image.save()
         return occurrence
 
+    def occurrence_meets_criteria(self) -> bool | None:
+        """
+        This is added an annotated field, it should not be called directly.
+
+        If the value is None, it means it has not been annotated and not calculated.
+        In that case, no detections should be returned in the API.
+        """
+        return None
+
     def update_calculated_fields(self, save=True):
         needs_update = False
         if not self.timestamp:
@@ -2460,6 +2548,81 @@ class OccurrenceQuerySet(BaseQuerySet):
             .distinct("determination_id")
         )
         return qs
+
+    def filter_by_score_threshold(self, project: Project | None = None, request: Request | None = None):
+        """
+        Filter occurrences by score threshold.
+
+        This is a convenience method for applying only the score threshold filter.
+        Respects the apply_defaults flag - if False, filtering is bypassed.
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        score_threshold = get_default_classification_threshold(project, request)
+        logger.debug(f"Filtering occurrences by determination score threshold of {score_threshold}")
+        filter_q = build_occurrence_score_threshold_q(score_threshold, occurrence_accessor="")
+        return self.filter(filter_q)
+
+    def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
+        """
+        Filter occurrences by project's default include/exclude taxa lists.
+
+        Respects the apply_defaults flag - if False, filtering is bypassed.
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        qs = self
+
+        # Apply taxa inclusion/exclusion filter
+        include_taxa = project.default_filters_include_taxa.all()
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+        taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="determination")
+        if taxa_q:
+            qs = qs.filter(taxa_q)
+
+        return qs
+
+    def apply_default_filters(self, project: Project | None = None, request: Request | None = None):
+        """
+        Apply all default filters to occurrences based on project settings.
+
+        This is the standard method for filtering occurrences according to project defaults.
+        It applies both score threshold and taxa filters in a single call.
+
+        Args:
+            project: The project whose default filters should be applied
+            request: The request object (optional, used to check for apply_defaults=false)
+
+        Returns:
+            Filtered queryset with both score and taxa filters applied
+
+        Example:
+            # In a viewset
+            qs = Occurrence.objects.apply_default_filters(project, self.request)
+
+            # In a model method
+            qs = Occurrence.objects.apply_default_filters(self.project, None)
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed entirely
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        # Use build_occurrence_default_filters_q to get the combined filter and apply it
+        filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
+        return self.filter(filter_q)
 
 
 class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
@@ -2645,6 +2808,22 @@ class Occurrence(BaseModel):
 
     class Meta:
         ordering = ["-determination_score"]
+        indexes = [
+            # Composite index for taxa queries filtered by project
+            # Optimizes the taxa list query which executes correlated subqueries for each taxon
+            # Pattern: WHERE determination_id=? AND project_id=? AND event_id IS NOT NULL AND determination_score>=?
+            models.Index(
+                fields=["determination_id", "project_id", "event_id", "determination_score"],
+                name="occur_det_proj_evt_score",
+            ),
+            # Composite index for timestamp queries (last_detected)
+            # Optimizes queries that join with detections table for timestamps
+            # Pattern: WHERE determination_id=? AND project_id=? AND event_id IS NOT NULL
+            models.Index(
+                fields=["determination_id", "project_id", "event_id"],
+                name="occur_det_proj_evt",
+            ),
+        ]
 
 
 def update_occurrence_determination(
@@ -2726,6 +2905,60 @@ class TaxonQuerySet(BaseQuerySet):
         qs = qs.filter(occurrences__project=project)
 
         return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+
+    def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
+        """
+        Filter taxa according to a project's default include and exclude settings,
+        keeping taxa in the include set along with their descendants
+        and removing taxa in the exclude set along with their descendants.
+
+        Note: For TaxonQuerySet, this method DOES check apply_defaults since it's
+        filtering Taxa objects directly, not Occurrences.
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        include_taxa = project.default_filters_include_taxa.all()
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+
+        # Use taxon_accessor="" for direct Taxa model filtering (not through occurrences)
+        taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="")
+        if taxa_q:
+            return self.filter(taxa_q)
+
+        return self
+
+    def visible_for_user(self, user: User | AnonymousUser):
+        if user.is_superuser:
+            return self
+
+        is_anonymous = isinstance(user, AnonymousUser)
+
+        # Visible projects
+        project_qs = Project.objects.all()
+        if is_anonymous:
+            project_qs = project_qs.filter(draft=False)
+        else:
+            project_qs = project_qs.filter(Q(draft=False) | Q(owner=user) | Q(members=user))
+
+        # Taxa explicitly linked to visible projects
+        direct_taxa = self.filter(projects__in=project_qs)
+
+        # Taxa with at least one occurrence in visible projects
+        occurrence_taxa = self.filter(
+            Exists(
+                Occurrence.objects.filter(
+                    project__in=project_qs,
+                    determination_id=OuterRef("id"),
+                )
+            )
+        )
+
+        return (direct_taxa | occurrence_taxa).distinct()
 
 
 @final
@@ -3300,25 +3533,35 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
             )
         )
 
-    def with_occurrences_count(self, classification_threshold: float = 0):
+    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+        """
+        Annotate each collection with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
-                filter=models.Q(
-                    images__detections__occurrence__determination_score__gte=classification_threshold,
-                ),
+                filter=filter_q,
                 distinct=True,
             )
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0):
+    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+        """
+        Annotate each collection with the number of distinct taxa,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",
+                filter=filter_q,
                 distinct=True,
-                filter=models.Q(
-                    images__detections__occurrence__determination_score__gte=classification_threshold,
-                ),
             )
         )
 

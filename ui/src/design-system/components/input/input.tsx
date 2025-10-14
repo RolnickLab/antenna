@@ -132,7 +132,7 @@ export const InputValue = ({
           {value}
         </Link>
       ) : (
-        <span className={styles.value}>{valueLabel}</span>
+        <span className="body-small text-muted-foreground">{valueLabel}</span>
       )}
     </InputContent>
   )

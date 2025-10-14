@@ -19,7 +19,7 @@ class ProjectMixin:
     request: rest_framework.request.Request
     kwargs: dict
 
-    def get_active_project(self) -> Project:
+    def get_active_project(self) -> Project | None:
         from ami.base.serializers import SingleParamSerializer
 
         param = "project_id"

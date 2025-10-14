@@ -10,7 +10,7 @@ import {
 } from 'design-system/components/table/types'
 import { TaxonDetails } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
-import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
+import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -212,7 +212,7 @@ const TaxonCell = ({
               <SuggestIdPopover occurrenceIds={[item.id]} />
               <IdQuickActions
                 occurrenceIds={[item.id]}
-                occurrenceTaxons={[item.determinationTaxon]}
+                occurrenceTaxa={[item.determinationTaxon]}
                 zIndex={1}
               />
             </div>

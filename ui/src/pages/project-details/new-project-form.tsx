@@ -1,4 +1,5 @@
 import { FormController } from 'components/form/form-controller'
+import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
@@ -6,47 +7,55 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { ProjectDetails } from 'data-services/models/project-details'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
-import { CheckIcon, Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { PipelinesSelect } from './pipelines-select'
 
-interface ProcessingFormValues {
+interface NewProjectFormValues {
+  name?: string
+  description?: string
   defaultProcessingPipeline: { id: string; name: string }
 }
 
 const config: FormConfig = {
+  name: {
+    label: translate(STRING.FIELD_LABEL_NAME),
+    rules: {
+      required: true,
+    },
+  },
+  description: {
+    label: translate(STRING.FIELD_LABEL_DESCRIPTION),
+  },
   defaultProcessingPipeline: {
     label: 'Default processing pipeline',
     description:
-      'The default pipeline to use for processing images in this project.',
+      'Based on the region of interest, select a default pipeline to use for processing in this project.',
   },
 }
 
-export const ProcessingForm = ({
+export const NewProjectForm = ({
   error,
   isLoading,
   isSuccess,
   onSubmit,
-  project,
 }: {
   error?: unknown
   isLoading?: boolean
   isSuccess?: boolean
-  onSubmit: (data: ProcessingFormValues) => void
-  project: ProjectDetails
+  onSubmit: (data: NewProjectFormValues) => void
 }) => {
   const {
     control,
     handleSubmit,
     setError: setFieldError,
-  } = useForm<ProcessingFormValues>({
+  } = useForm<NewProjectFormValues>({
     defaultValues: {
-      defaultProcessingPipeline: project.settings.defaultProcessingPipeline,
+      name: '',
+      description: '',
     },
     mode: 'onChange',
   })
@@ -54,11 +63,7 @@ export const ProcessingForm = ({
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
-    <form
-      onSubmit={handleSubmit((values) => {
-        onSubmit(values)
-      })}
-    >
+    <form onSubmit={handleSubmit((values) => onSubmit(values))}>
       {errorMessage && (
         <FormError
           inDialog
@@ -67,6 +72,20 @@ export const ProcessingForm = ({
         />
       )}
       <FormSection>
+        <FormRow>
+          <FormField
+            name="name"
+            type="text"
+            config={config}
+            control={control}
+          />
+          <FormField
+            name="description"
+            type="text"
+            config={config}
+            control={control}
+          />
+        </FormRow>
         <FormRow>
           <FormController
             name="defaultProcessingPipeline"
@@ -88,16 +107,7 @@ export const ProcessingForm = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button size="small" type="submit" variant="success">
-          <span>
-            {isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          </span>
-          {isSuccess ? (
-            <CheckIcon className="w-4 h-4 ml-2" />
-          ) : isLoading ? (
-            <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
-          ) : null}
-        </Button>
+        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
       </FormActions>
     </form>
   )
