@@ -314,6 +314,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
         RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
+        RUN_POST_PROCESSING_JOB = "run_post_processing_job"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -376,6 +377,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
+            ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
             ("delete_job", "Can delete a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
