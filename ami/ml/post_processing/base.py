@@ -23,19 +23,6 @@ def register_postprocessing_task(task_cls: type["BasePostProcessingTask"]):
 
     # Register the task
     POSTPROCESSING_TASKS[task_cls.key] = task_cls
-
-    # Ensure Algorithm object exists for this task
-    algorithm, _ = Algorithm.objects.get_or_create(
-        name=task_cls.__name__,
-        defaults={
-            "description": f"Post-processing task: {task_cls.key}",
-            "task_type": AlgorithmTaskType.POST_PROCESSING.value,
-        },
-    )
-
-    # Attach the Algorithm object to the task class
-    task_cls.algorithm = algorithm
-
     return task_cls
 
 
@@ -56,24 +43,50 @@ class BasePostProcessingTask(abc.ABC):
     key: str = ""
     name: str = ""
 
-    def __init__(self, **config: Any):
+    def __init__(
+        self,
+        job: Job | None = None,
+        logger: logging.Logger | None = None,
+        **config: Any,
+    ):
+        self.job = job
+        self.config = config
+        # Choose the right logger
+        if logger is not None:
+            self.logger = logger
+        elif job is not None:
+            self.logger = job.logger
+        else:
+            self.logger = logging.getLogger(f"ami.post_processing.{self.key}")
+
+        algorithm, _ = Algorithm.objects.get_or_create(
+            name=self.__class__.__name__,
+            defaults={
+                "description": f"Post-processing task: {self.key}",
+                "task_type": AlgorithmTaskType.POST_PROCESSING.value,
+            },
+        )
+        self.algorithm: Algorithm = algorithm
+
+        self.logger.info(f"Initialized {self.__class__.__name__} with config={self.config}, job={job}")
+
+    def update_progress(self, progress: float):
         """
-        Initialize task with configuration parameters.
+        Update progress if job is present, otherwise just log.
         """
-        self.config: dict[str, Any] = config
-        self.logger = logging.getLogger(f"ami.post_processing.{self.key}")
+
+        if self.job:
+            self.job.progress.update_stage(self.job.job_type_key, progress=progress)
+            self.job.save(update_fields=["progress"])
+
+        else:
+            # No job object — fallback to plain logging
+            self.logger.info(f"[{self.name}] Progress {progress:.0%}")
 
     @abc.abstractmethod
-    def run(self, job: Job) -> None:
+    def run(self) -> None:
         """
         Run the task logic.
         Must be implemented by subclasses.
-        The job parameter provides context (project, logs, etc.).
         """
-        raise NotImplementedError("Subclasses must implement run()")
-
-    def log_config(self, job: Job):
-        """
-        Helper to log the task configuration at start.
-        """
-        job.logger.info(f"Running task {self.name} ({self.key}) with config: {self.config}")
+        raise NotImplementedError("BasePostProcessingTask subclasses must implement run()")
