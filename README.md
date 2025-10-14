@@ -252,3 +252,6 @@ The local environment uses a local PostgreSQL database in a Docker container.
 ### Load fixtures with test data
 
     docker compose run --rm django python manage.py migrate
+### Linting
+
+This project uses Ruff for linting and formatting — it’s super fast and replaces tools like Black, isort, and Flake8 for a cleaner, all-in-one setup.
