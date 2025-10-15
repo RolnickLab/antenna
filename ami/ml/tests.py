@@ -813,3 +813,11 @@ class TestPostProcessingTasks(TestCase):
                 not_identifiable_taxon,
                 f"Detection {det.pk} should be classified as 'Not identifiable'",
             )
+            occurrence = det.occurrence
+            self.assertIsNotNone(occurrence, f"Detection {det.pk} should belong to an occurrence.")
+            occurrence.refresh_from_db()
+            self.assertEqual(
+                occurrence.determination,
+                not_identifiable_taxon,
+                f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
+            )

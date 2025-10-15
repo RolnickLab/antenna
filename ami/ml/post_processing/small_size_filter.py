@@ -76,6 +76,8 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                         timestamp=timezone.now(),
                         algorithm=self.algorithm,
                     )
+                    occurrence = det.occurrence
+                    occurrence.save(update_determination=True)
                 modified += 1
                 self.logger.info(f"Detection {det.pk}: marked as 'Not identifiable'")
 

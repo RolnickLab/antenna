@@ -1,5 +1,3 @@
-# ami/ml/post_processing/base.py
-
 import abc
 import logging
 from typing import Any
