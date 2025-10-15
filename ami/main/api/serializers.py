@@ -798,9 +798,7 @@ class TaxonSerializer(DefaultSerializer):
         return TagSerializer(tag_list, many=True, context=self.context).data
 
     def get_summary_data(self, obj: Taxon):
-        project = get_active_project(request=self.context["request"], required=True)
-        if not project:
-            raise serializers.ValidationError("Project is required to get taxon summary data")
+        project = get_active_project(request=self.context["request"], required=False)
         return obj.summary_data(project)
 
     class Meta:
