@@ -3383,15 +3383,10 @@ class Taxon(BaseModel):
         if save:
             self.save(update_fields=["search_names"])
 
-    def summary_data(self, project: "Project | None" = None):
+    def summary_data(self, project: Project):
         """
         Data prepared for rendering charts with plotly.js
         """
-
-        if not project:
-            # This could either provide a summary across all projects a user has access to
-            # or no summary at all. For now, we return no summary.
-            return []
 
         plots = []
 

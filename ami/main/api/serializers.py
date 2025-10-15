@@ -7,6 +7,7 @@ from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
+from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
@@ -796,11 +797,10 @@ class TaxonSerializer(DefaultSerializer):
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
 
-    def get_summary_data(self, obj):
-        from ami.base.views import get_active_project
-
-        request = self.context["request"]
-        project = get_active_project(request=request, require_project=False)
+    def get_summary_data(self, obj: Taxon):
+        project = get_active_project(request=self.context["request"], required=True)
+        if not project:
+            raise serializers.ValidationError("Project is required to get taxon summary data")
         return obj.summary_data(project)
 
     class Meta:

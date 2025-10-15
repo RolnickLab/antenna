@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def get_active_project(
     request: rest_framework.request.Request,
     kwargs: dict | None = None,
-    require_project: bool = False,
+    required: bool = False,
 ) -> Project | None:
     """
     Extract and return the active project from a request.
@@ -42,7 +42,7 @@ def get_active_project(
 
         project_id = SingleParamSerializer[int].clean(
             param_name=param,
-            field=serializers.IntegerField(required=require_project, min_value=0),
+            field=serializers.IntegerField(required=required, min_value=0),
             data={param: project_id} if project_id else {},
         )
 
@@ -72,7 +72,7 @@ class ProjectMixin:
         project = get_active_project(
             request=self.request,
             kwargs=self.kwargs,
-            require_project=self.require_project,
+            required=self.require_project,
         )
 
         if not project and self.require_project:
