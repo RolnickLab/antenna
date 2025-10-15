@@ -123,18 +123,17 @@ class RankRollupTask(BasePostProcessingTask):
                 if new_taxon and new_taxon != clf.taxon:
                     self.logger.info(f"Rolling up {clf.taxon} => {new_taxon} ({new_taxon.rank})")
 
-                    with transaction.atomic():
-                        # Mark all classifications for this detection as non-terminal
-                        Classification.objects.filter(detection=clf.detection).update(terminal=False)
-                        Classification.objects.create(
-                            detection=clf.detection,
-                            taxon=new_taxon,
-                            score=new_score,
-                            terminal=True,
-                            algorithm=self.algorithm,
-                            timestamp=timezone.now(),
-                            applied_to=clf,
-                        )
+                    # Mark all classifications for this detection as non-terminal
+                    Classification.objects.filter(detection=clf.detection).update(terminal=False)
+                    Classification.objects.create(
+                        detection=clf.detection,
+                        taxon=new_taxon,
+                        score=new_score,
+                        terminal=True,
+                        algorithm=self.algorithm,
+                        timestamp=timezone.now(),
+                        applied_to=clf,
+                    )
 
                     occurrence = clf.detection.occurrence
                     updated_occurrences.append(occurrence)
