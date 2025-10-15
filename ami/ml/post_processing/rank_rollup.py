@@ -4,7 +4,7 @@ from collections import defaultdict
 from django.db import transaction
 from django.utils import timezone
 
-from ami.main.models import Classification, Identification, Taxon
+from ami.main.models import Classification, Taxon
 from ami.ml.post_processing.base import BasePostProcessingTask, register_postprocessing_task
 
 logger = logging.getLogger(__name__)
@@ -35,8 +35,8 @@ class RankRollupTask(BasePostProcessingTask):
     key = "rank_rollup"
     name = "Rank rollup"
 
-    DEFAULT_THRESHOLDS = {"species": 0.8, "genus": 0.6, "family": 0.4}
-    ROLLUP_ORDER = ["species", "genus", "family"]
+    DEFAULT_THRESHOLDS = {"SPECIES": 0.8, "GENUS": 0.6, "FAMILY": 0.4}
+    ROLLUP_ORDER = ["SPECIES", "GENUS", "FAMILY"]
 
     def run(self) -> None:
         job = self.job
@@ -49,7 +49,7 @@ class RankRollupTask(BasePostProcessingTask):
         rollup_order = config.get("rollup_order", self.ROLLUP_ORDER)
 
         if not collection_id:
-            self.logger.warning("No 'source_image_collection_id' provided in config. Aborting task.")
+            self.logger.info("No 'source_image_collection_id' provided in config. Aborting task.")
             return
 
         self.logger.info(
@@ -72,10 +72,10 @@ class RankRollupTask(BasePostProcessingTask):
                 self.logger.info(f"Processing classification #{clf.pk} (taxon={clf.taxon}, score={clf.score:.3f})")
 
                 if not clf.scores:
-                    self.logger.warning(f"Skipping classification #{clf.pk}: no scores available")
+                    self.logger.info(f"Skipping classification #{clf.pk}: no scores available")
                     continue
                 if not clf.category_map:
-                    self.logger.warning(f"Skipping classification #{clf.pk}: no category_map assigned")
+                    self.logger.info(f"Skipping classification #{clf.pk}: no category_map assigned")
                     continue
 
                 taxon_scores = defaultdict(float)
@@ -87,7 +87,7 @@ class RankRollupTask(BasePostProcessingTask):
 
                     taxon = Taxon.objects.filter(name=label).first()
                     if not taxon:
-                        self.logger.debug(f"Skipping label '{label}' (no matching Taxon in DB)")
+                        self.logger.info(f"Skipping label '{label}' (no matching Taxon Found)")
                         continue
 
                     for rank in rollup_order:
@@ -98,16 +98,20 @@ class RankRollupTask(BasePostProcessingTask):
 
                 new_taxon = None
                 new_score = None
+                self.logger.info(f"Aggregated taxon scores: { {t.name: s for t, s in taxon_scores.items()} }")
                 for rank in rollup_order:
                     threshold = thresholds.get(rank, 1.0)
+                    # import pdb
+
+                    # pdb.set_trace()
                     candidates = {t: s for t, s in taxon_scores.items() if t.rank == rank}
 
                     if not candidates:
-                        self.logger.debug(f"No candidates found at rank {rank}")
+                        self.logger.info(f"No candidates found at rank {rank}")
                         continue
 
                     best_taxon, best_score = max(candidates.items(), key=lambda kv: kv[1])
-                    self.logger.debug(
+                    self.logger.info(
                         f"Best at rank {rank}: {best_taxon.name} ({best_score:.3f}) [threshold={threshold}]"
                     )
 
@@ -117,10 +121,11 @@ class RankRollupTask(BasePostProcessingTask):
                         break
 
                 if new_taxon and new_taxon != clf.taxon:
-                    self.logger.info(f"Rolling up {clf.taxon} → {new_taxon} ({new_taxon.rank})")
+                    self.logger.info(f"Rolling up {clf.taxon} => {new_taxon} ({new_taxon.rank})")
 
                     with transaction.atomic():
-                        Classification.objects.filter(detection=clf.detection, terminal=True).update(terminal=False)
+                        # Mark all classifications for this detection as non-terminal
+                        Classification.objects.filter(detection=clf.detection).update(terminal=False)
                         Classification.objects.create(
                             detection=clf.detection,
                             taxon=new_taxon,
@@ -128,20 +133,13 @@ class RankRollupTask(BasePostProcessingTask):
                             terminal=True,
                             algorithm=self.algorithm,
                             timestamp=timezone.now(),
+                            applied_to=clf,
                         )
 
                     occurrence = clf.detection.occurrence
-                    if occurrence:
-                        Identification.objects.create(
-                            occurrence=occurrence,
-                            taxon=new_taxon,
-                            user=None,
-                            comment=f"Auto-set by {self.name} post-processing task",
-                        )
-                        updated_occurrences.append(occurrence.pk)
-
+                    updated_occurrences.append(occurrence)
                     self.logger.info(
-                        f"Rolled up occurrence {occurrence.pk}: {clf.taxon} → {new_taxon} "
+                        f"Rolled up occurrence {occurrence.pk}: {clf.taxon} => {new_taxon} "
                         f"({new_taxon.rank}) with rolled-up score={new_score:.3f}"
                     )
                 else:
