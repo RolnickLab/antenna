@@ -436,7 +436,9 @@ def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
     )
 
     if occurrences_per_day:
-        days, counts = list(zip(*occurrences_per_day))
+        occurrences_per_day_dict = {f"{d:%b %d}": count for d, count in occurrences_per_day if d is not None}
+        days = [(datetime.date(3000, 1, 1) + datetime.timedelta(days=i)) for i in range(365)]
+        counts = [occurrences_per_day_dict.get(f"{d:%b %d}", 0) for d in days]
 
         # Generate labels for all days
         labels = [f"{d:%b %d}" for d in days]
