@@ -445,7 +445,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A data source must be configured and saved before syncing images.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
-  [STRING.MESSAGE_DRAFTS]: 'Drafts are privite and limited to one user.',
+  [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
