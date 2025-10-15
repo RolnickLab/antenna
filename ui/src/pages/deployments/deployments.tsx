@@ -45,12 +45,12 @@ export const Deployments = () => {
         isFetching={isFetching}
         tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
-        {canCreate ? <NewDeploymentDialog /> : null}
         <ColumnSettings
           columns={columns(projectId as string)}
           columnSettings={columnSettings}
           onColumnSettingsChange={setColumnSettings}
         />
+        {canCreate ? <NewDeploymentDialog /> : null}
       </PageHeader>
       <Table
         columns={columns(projectId as string).filter(
