@@ -807,7 +807,7 @@ class TestPostProcessingTasks(TestCase):
         # Prepare the task configuration
         task = SmallSizeFilterTask(
             source_image_collection_id=self.collection.pk,
-            size_threshold=0.00001,
+            size_threshold=0.01,
         )
 
         task.run()
