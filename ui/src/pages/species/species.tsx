@@ -14,7 +14,7 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { SpeciesDetails } from 'pages/species-details/species-details'
+import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
@@ -144,6 +144,7 @@ export const Species = () => {
 
 const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
+  const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { species, isLoading, error } = useSpeciesDetails(id, projectId)
@@ -159,21 +160,31 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root
       open={!!id}
-      onOpenChange={() =>
+      onOpenChange={(open) => {
+        if (!open) {
+          setSelectedView(undefined)
+        }
+
         navigate(
           getAppRoute({
             to: APP_ROUTES.TAXA({ projectId: projectId as string }),
             keepSearchParams: true,
           })
         )
-      }
+      }}
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
         error={error}
       >
-        {species ? <SpeciesDetails species={species} /> : null}
+        {species ? (
+          <SpeciesDetails
+            species={species}
+            selectedTab={selectedView}
+            setSelectedTab={setSelectedView}
+          />
+        ) : null}
       </Dialog.Content>
     </Dialog.Root>
   )
