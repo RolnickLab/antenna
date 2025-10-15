@@ -423,29 +423,32 @@ def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None):
 def relative_occurrences_per_month(project_pk: int, taxon_pk: int):
     Occurrence = apps.get_model("main", "Occurrence")
 
+    # Single query to get total occurrences and taxon-specific occurrences per month
     occurrences_per_month = (
         Occurrence.objects.filter(project=project_pk)
-        .values_list("event__start__month")
-        .annotate(num_occurrences=models.Count("id"))
-        .order_by("event__start__month")
-    )
-    taxon_occurrences_per_month = (
-        Occurrence.objects.filter(project=project_pk, determination_id=taxon_pk)
-        .values_list("event__start__month")
-        .annotate(num_occurrences=models.Count("id"))
+        .values("event__start__month")
+        .annotate(
+            total_occurrences=models.Count("id"),
+            taxon_occurrences=models.Count("id", filter=models.Q(determination_id=taxon_pk)),
+        )
         .order_by("event__start__month")
     )
 
     # Create a dictionary mapping month numbers to occurrence counts
-    month_to_total_count = {month: count for month, count in occurrences_per_month}
-    month_to_taxon_count = {month: count for month, count in taxon_occurrences_per_month}
+    month_data = {
+        month["event__start__month"]: {
+            "total": month["total_occurrences"],
+            "taxon": month["taxon_occurrences"],
+        }
+        for month in occurrences_per_month
+    }
 
     # Create lists for all 12 months, using 0 for months with no data
     all_months = list(range(1, 13))  # 1-12 for January-December
     counts = [
         (
-            month_to_taxon_count.get(month, 0) / month_to_total_count.get(month, 0)
-            if month_to_total_count.get(month, 0)
+            month_data[month]["taxon"] / month_data[month]["total"]
+            if month in month_data and month_data[month]["total"] > 0
             else 0
         )
         for month in all_months
