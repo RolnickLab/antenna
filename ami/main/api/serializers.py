@@ -1,7 +1,6 @@
 import datetime
 
 from django.db.models import QuerySet
-from django.forms import IntegerField
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -797,10 +796,12 @@ class TaxonSerializer(DefaultSerializer):
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
 
-    def get_summary_data(self, instance):
-        request = self.context.get("request")
-        project_id = IntegerField(required=False).clean(request.query_params.get("project_id")) if request else None
-        return instance.summary_data(project_id)
+    def get_summary_data(self, obj):
+        from ami.base.views import get_active_project
+
+        request = self.context["request"]
+        project = get_active_project(request=request, require_project=False)
+        return obj.summary_data(project)
 
     class Meta:
         model = Taxon

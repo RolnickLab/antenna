@@ -3383,15 +3383,20 @@ class Taxon(BaseModel):
         if save:
             self.save(update_fields=["search_names"])
 
-    def summary_data(self, project_id: int):
+    def summary_data(self, project: "Project | None" = None):
         """
         Data prepared for rendering charts with plotly.js
         """
 
+        if not project:
+            # This could either provide a summary across all projects a user has access to
+            # or no summary at all. For now, we return no summary.
+            return []
+
         plots = []
 
-        plots.append(charts.average_occurrences_per_month(project_pk=project_id, taxon_pk=self.pk))
-        plots.append(charts.relative_occurrences_per_month(project_pk=project_id, taxon_pk=self.pk))
+        plots.append(charts.average_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
+        plots.append(charts.relative_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
 
         return plots
 
