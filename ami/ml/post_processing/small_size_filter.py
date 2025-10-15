@@ -2,10 +2,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from ami.main.models import Detection, SourceImageCollection, Taxon, TaxonRank
-from ami.ml.post_processing.base import BasePostProcessingTask, register_postprocessing_task
+from ami.ml.post_processing.base import BasePostProcessingTask
 
 
-@register_postprocessing_task
 class SmallSizeFilterTask(BasePostProcessingTask):
     key = "small_size_filter"
     name = "Small size filter"

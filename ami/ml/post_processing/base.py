@@ -1,35 +1,13 @@
 import abc
 import logging
-from typing import Any
+import typing
+from typing import Any, Optional
 
-from ami.jobs.models import Job
 from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
 
-# Registry of available post-processing tasks
-POSTPROCESSING_TASKS: dict[str, type["BasePostProcessingTask"]] = {}
-
-
-def register_postprocessing_task(task_cls: type["BasePostProcessingTask"]):
-    """
-    Decorator to register a post-processing task in the global registry.
-    Each task must define a unique `key`.
-    Ensures an Algorithm entry exists for this task.
-    """
-    if not hasattr(task_cls, "key") or not task_cls.key:
-        raise ValueError(f"Task {task_cls.__name__} missing required 'key' attribute")
-
-    # Register the task
-    POSTPROCESSING_TASKS[task_cls.key] = task_cls
-    return task_cls
-
-
-def get_postprocessing_task(name: str) -> type["BasePostProcessingTask"] | None:
-    """
-    Get a task class by its registry key.
-    Returns None if not found.
-    """
-    return POSTPROCESSING_TASKS.get(name)
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 
 class BasePostProcessingTask(abc.ABC):
@@ -43,7 +21,7 @@ class BasePostProcessingTask(abc.ABC):
 
     def __init__(
         self,
-        job: Job | None = None,
+        job: Optional["Job"] = None,
         logger: logging.Logger | None = None,
         **config: Any,
     ):
