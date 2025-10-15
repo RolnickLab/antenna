@@ -22,6 +22,10 @@ export class Project {
     return this._project.user_permissions.includes(UserPermission.Update)
   }
 
+  get deployments(): Deployment[] {
+    return this._deployments
+  }
+
   get description(): string {
     return this._project.description
   }
@@ -38,11 +42,11 @@ export class Project {
     return this._project.image ? `${this._project.image}` : undefined
   }
 
-  get name(): string {
-    return this._project.name
+  get isDraft(): boolean {
+    return this._project.draft
   }
 
-  get deployments(): Deployment[] {
-    return this._deployments
+  get name(): string {
+    return this._project.name
   }
 }
