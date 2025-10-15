@@ -2226,7 +2226,17 @@ class Classification(BaseModel):
         related_name="classifications",
     )
     # job = models.CharField(max_length=255, null=True)
-
+    applied_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derived_classifications",
+        help_text=(
+            "If this classification was produced by a post-processing algorithm, "
+            "this field references the original classification it was applied to."
+        ),
+    )
     objects = ClassificationManager()
 
     # Type hints for auto-generated fields

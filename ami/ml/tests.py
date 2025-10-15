@@ -1,13 +1,28 @@
 import datetime
+import pathlib
 import unittest
+import uuid
 
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.main.models import Detection, Project, SourceImage, SourceImageCollection
-from ami.ml.models import Algorithm, Pipeline, ProcessingService
+from ami.main.models import (
+    Classification,
+    Detection,
+    Occurrence,
+    Project,
+    SourceImage,
+    SourceImageCollection,
+    Taxon,
+    TaxonRank,
+    group_images_into_events,
+)
+from ami.ml.models import Algorithm, AlgorithmCategoryMap, Pipeline, ProcessingService
+from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.ml.post_processing.rank_rollup import RankRollupTask
+from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -17,7 +32,12 @@ from ami.ml.schemas import (
     PipelineResultsResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures_from_files,
+    create_processing_service,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
 
@@ -713,3 +733,186 @@ class TestAlgorithmCategoryMaps(TestCase):
         # Verify conversions are correct
         self.assertEqual(test_data, converted_data)
         self.assertEqual(test_labels, converted_labels)
+
+
+class TestPostProcessingTasks(TestCase):
+    def setUp(self):
+        # Create test project, deployment, and default setup
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        self._create_images_with_dimensions(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+
+        # Create a simple SourceImageCollection for testing
+        self.collection = SourceImageCollection.objects.create(
+            name="Test PostProcessing Collection",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": list(self.deployment.captures.values_list("pk", flat=True))},
+        )
+        self.collection.populate_sample()
+
+        # Select example taxa
+        self.species_taxon = Taxon.objects.filter(rank=TaxonRank.SPECIES.name).first()
+        self.genus_taxon = self.species_taxon.parent if self.species_taxon else None
+        self.assertIsNotNone(self.species_taxon)
+        self.assertIsNotNone(self.genus_taxon)
+        self.algorithm = self._create_category_map_with_algorithm()
+
+    def _create_images_with_dimensions(
+        self,
+        deployment,
+        num_images: int = 5,
+        width: int = 640,
+        height: int = 480,
+        update_deployment: bool = True,
+    ):
+        """
+        Create SourceImages for a deployment with specified width and height.
+        """
+
+        created = []
+        base_time = datetime.datetime.now(datetime.timezone.utc)
+
+        for i in range(num_images):
+            random_prefix = uuid.uuid4().hex[:8]
+            path = pathlib.Path("test") / f"{random_prefix}_{i}.jpg"
+
+            image = SourceImage.objects.create(
+                deployment=deployment,
+                project=deployment.project,
+                timestamp=base_time + datetime.timedelta(minutes=i * 5),
+                path=path,
+                width=width,
+                height=height,
+            )
+            created.append(image)
+
+        if update_deployment:
+            deployment.save(update_calculated_fields=True, regroup_async=False)
+
+    def test_small_size_filter_assigns_not_identifiable(self):
+        """
+        Test that SmallSizeFilterTask correctly assigns 'Not identifiable'
+        to detections below the configured minimum size.
+        """
+        # Create small detections on the collection images
+        for image in self.collection.images.all():
+            Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small detection
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).associate_new_occurrence()
+
+        # Prepare the task configuration
+        task = SmallSizeFilterTask(
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        )
+
+        task.run()
+
+        # Verify that all small detections are now classified as "Not identifiable"
+        not_identifiable_taxon = Taxon.objects.get(name="Not identifiable")
+        detections = Detection.objects.filter(source_image__in=self.collection.images.all())
+
+        for det in detections:
+            latest_classification = Classification.objects.filter(detection=det).order_by("-created_at").first()
+            self.assertIsNotNone(latest_classification, "Each detection should have a classification.")
+            self.assertEqual(
+                latest_classification.taxon,
+                not_identifiable_taxon,
+                f"Detection {det.pk} should be classified as 'Not identifiable'",
+            )
+
+    def _create_occurrences_with_classifications(self, num=3):
+        """Helper to create occurrences and terminal classifications below species threshold."""
+        occurrences = []
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for i in range(num):
+            det = Detection.objects.create(
+                source_image=self.collection.images.first(),
+                bbox=[0, 0, 200, 200],
+            )
+            occ = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+            occ.detections.add(det)
+            classification = Classification.objects.create(
+                detection=det,
+                taxon=self.species_taxon,
+                score=0.5,
+                scores=[0.5, 0.3, 0.2],
+                terminal=True,
+                timestamp=now,
+                algorithm=self.algorithm,
+            )
+            occurrences.append((occ, classification))
+        return occurrences
+
+    def _create_category_map_with_algorithm(self):
+        """Create a simple AlgorithmCategoryMap and Algorithm to attach to classifications."""
+        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name)[:3])
+        assert species_taxa, "No species taxa found in project; run create_taxa() first."
+
+        data = [
+            {
+                "index": i,
+                "label": taxon.name,
+                "taxon_rank": taxon.rank,
+                "gbif_key": getattr(taxon, "gbif_key", None),
+            }
+            for i, taxon in enumerate(species_taxa)
+        ]
+        labels = [item["label"] for item in data]
+
+        category_map = AlgorithmCategoryMap.objects.create(
+            data=data,
+            labels=labels,
+            version="v1.0",
+            description="Species-level category map for testing RankRollupTask",
+        )
+
+        algorithm = Algorithm.objects.create(
+            name="Test Species Classifier",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=category_map,
+        )
+
+        return algorithm
+
+    def test_rank_rollup_creates_new_terminal_classifications(self):
+        occurrences = self._create_occurrences_with_classifications(num=3)
+
+        task = RankRollupTask(
+            source_image_collection_id=self.collection.pk,
+            thresholds={"species": 0.8, "genus": 0.6, "family": 0.4},
+        )
+        task.run()
+
+        # Validate results
+        for occ, original_cls in occurrences:
+            detection = occ.detections.first()
+            original_cls.refresh_from_db(fields=["terminal"])
+            rolled_up_cls = Classification.objects.filter(detection=detection, terminal=True).first()
+
+            self.assertIsNotNone(
+                rolled_up_cls,
+                f"Expected a new rolled-up classification for original #{original_cls.pk}",
+            )
+            self.assertTrue(
+                rolled_up_cls.terminal,
+                "New rolled-up classification should be marked as terminal.",
+            )
+            self.assertFalse(
+                original_cls.terminal,
+                "Original classification should be marked as non-terminal after roll-up.",
+            )
+            self.assertEqual(
+                rolled_up_cls.taxon,
+                self.genus_taxon,
+                "Rolled-up classification should have genus-level taxon.",
+            )
+            self.assertEqual(
+                rolled_up_cls.applied_to,
+                original_cls,
+                "Rolled-up classification should reference the original classification.",
+            )
