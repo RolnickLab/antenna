@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { useSidebarSections } from './useSidebarSections'
 
 export const Sidebar = ({ project }: { project: ProjectDetails }) => {
@@ -118,12 +119,10 @@ export const DraftBadge = ({ project }: { project: ProjectDetails }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger>
-        <Badge label="Draft" />
+        <Badge label={translate(STRING.DRAFT)} />
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
-        <p className="whitespace-normal">
-          Drafts are privite and limited to one user.
-        </p>
+        <p className="whitespace-normal">{translate(STRING.MESSAGE_DRAFTS)}</p>
         {project.canUpdate ? (
           <Link
             className={classNames(

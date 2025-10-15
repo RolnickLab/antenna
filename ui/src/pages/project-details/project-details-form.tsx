@@ -55,8 +55,8 @@ const config: FormConfig = {
     },
   },
   isDraft: {
-    label: 'Draft',
-    description: 'Drafts are privite and limited to one user.',
+    label: translate(STRING.DRAFT),
+    description: translate(STRING.MESSAGE_DRAFTS),
   },
 }
 
