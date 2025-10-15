@@ -164,7 +164,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'firstDate',
     name: translate(STRING.FIELD_LABEL_FIRST_DATE),
-    sortField: 'firstDate',
+    sortField: 'firstDateLabel',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -175,13 +175,25 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'lastDate',
     name: translate(STRING.FIELD_LABEL_LAST_DATE),
-    sortField: 'lastDate',
+    sortField: 'lastDateLabel',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.lastDateLabel} />
     ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'createdAt',
+    renderCell: (item: Deployment) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updatedAt',
+    renderCell: (item: Deployment) => <BasicTableCell value={item.updatedAt} />,
   },
   {
     id: 'actions',
