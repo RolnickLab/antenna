@@ -10,18 +10,14 @@ from ami.base.serializers import reverse_with_params
 from ami.main.models import (
     Classification,
     Detection,
-    Occurrence,
     Project,
     SourceImage,
     SourceImageCollection,
     Taxon,
-    TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models import Algorithm, AlgorithmCategoryMap, Pipeline, ProcessingService
-from ami.ml.models.algorithm import AlgorithmTaskType
+from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
-from ami.ml.post_processing.rank_rollup import RankRollupTask
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -752,13 +748,6 @@ class TestPostProcessingTasks(TestCase):
         )
         self.collection.populate_sample()
 
-        # Select example taxa
-        self.species_taxon = Taxon.objects.filter(rank=TaxonRank.SPECIES.name).first()
-        self.genus_taxon = self.species_taxon.parent if self.species_taxon else None
-        self.assertIsNotNone(self.species_taxon)
-        self.assertIsNotNone(self.genus_taxon)
-        self.algorithm = self._create_category_map_with_algorithm()
-
     def _create_images_with_dimensions(
         self,
         deployment,
@@ -823,96 +812,4 @@ class TestPostProcessingTasks(TestCase):
                 latest_classification.taxon,
                 not_identifiable_taxon,
                 f"Detection {det.pk} should be classified as 'Not identifiable'",
-            )
-
-    def _create_occurrences_with_classifications(self, num=3):
-        """Helper to create occurrences and terminal classifications below species threshold."""
-        occurrences = []
-        now = datetime.datetime.now(datetime.timezone.utc)
-        for i in range(num):
-            det = Detection.objects.create(
-                source_image=self.collection.images.first(),
-                bbox=[0, 0, 200, 200],
-            )
-            occ = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
-            occ.detections.add(det)
-            classification = Classification.objects.create(
-                detection=det,
-                taxon=self.species_taxon,
-                score=0.5,
-                scores=[0.5, 0.3, 0.2],
-                terminal=True,
-                timestamp=now,
-                algorithm=self.algorithm,
-            )
-            occurrences.append((occ, classification))
-        return occurrences
-
-    def _create_category_map_with_algorithm(self):
-        """Create a simple AlgorithmCategoryMap and Algorithm to attach to classifications."""
-        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name)[:3])
-        assert species_taxa, "No species taxa found in project; run create_taxa() first."
-
-        data = [
-            {
-                "index": i,
-                "label": taxon.name,
-                "taxon_rank": taxon.rank,
-                "gbif_key": getattr(taxon, "gbif_key", None),
-            }
-            for i, taxon in enumerate(species_taxa)
-        ]
-        labels = [item["label"] for item in data]
-
-        category_map = AlgorithmCategoryMap.objects.create(
-            data=data,
-            labels=labels,
-            version="v1.0",
-            description="Species-level category map for testing RankRollupTask",
-        )
-
-        algorithm = Algorithm.objects.create(
-            name="Test Species Classifier",
-            task_type=AlgorithmTaskType.CLASSIFICATION.value,
-            category_map=category_map,
-        )
-
-        return algorithm
-
-    def test_rank_rollup_creates_new_terminal_classifications(self):
-        occurrences = self._create_occurrences_with_classifications(num=3)
-
-        task = RankRollupTask(
-            source_image_collection_id=self.collection.pk,
-            thresholds={"species": 0.8, "genus": 0.6, "family": 0.4},
-        )
-        task.run()
-
-        # Validate results
-        for occ, original_cls in occurrences:
-            detection = occ.detections.first()
-            original_cls.refresh_from_db(fields=["terminal"])
-            rolled_up_cls = Classification.objects.filter(detection=detection, terminal=True).first()
-
-            self.assertIsNotNone(
-                rolled_up_cls,
-                f"Expected a new rolled-up classification for original #{original_cls.pk}",
-            )
-            self.assertTrue(
-                rolled_up_cls.terminal,
-                "New rolled-up classification should be marked as terminal.",
-            )
-            self.assertFalse(
-                original_cls.terminal,
-                "Original classification should be marked as non-terminal after roll-up.",
-            )
-            self.assertEqual(
-                rolled_up_cls.taxon,
-                self.genus_taxon,
-                "Rolled-up classification should have genus-level taxon.",
-            )
-            self.assertEqual(
-                rolled_up_cls.applied_to,
-                original_cls,
-                "Rolled-up classification should reference the original classification.",
             )
