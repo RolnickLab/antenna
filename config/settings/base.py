@@ -24,7 +24,9 @@ if READ_DOT_ENV_FILE:
 # GENERAL
 # ------------------------------------------------------------------------------
 EXTERNAL_HOSTNAME = env("EXTERNAL_HOSTNAME", default="localhost:8000")  # type: ignore[no-untyped-call]
-EXTERNAL_BASE_URL = env("EXTERNAL_BASE_URL", default=f"http://{EXTERNAL_HOSTNAME}")  # type: ignore[no-untyped-call]
+EXTERNAL_BASE_URL = env(
+    "EXTERNAL_BASE_URL", default=f"http://{EXTERNAL_HOSTNAME}"  # noqa: E231, E501 # type: ignore[no-untyped-call]
+)
 
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)  # type: ignore[no-untyped-call]
@@ -260,6 +262,10 @@ CACHES = {
         },
     }
 }
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
 
 # ADMIN
 # ------------------------------------------------------------------------------

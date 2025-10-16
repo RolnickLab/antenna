@@ -10,7 +10,6 @@ volumes:
     driver: local
   node_modules:
 
-
 services:
   django: &django
     build:
@@ -22,6 +21,7 @@ services:
     depends_on:
       - postgres
       - redis
+      - nats
       - minio-init
       - ml_backend
     volumes:
@@ -33,7 +33,10 @@ services:
         required: false
     ports:
       - "8000:8000"
+      - "5679:5679"
     command: /start
+    # for debugging with debugpy:
+    # command: python -m debugpy --listen 0.0.0.0:5679 -m django runserver 0.0.0.0:8000
     networks:
       - default
       - antenna_network
@@ -86,6 +89,20 @@ services:
     image: redis:6
     container_name: ami_local_redis
 
+  nats:
+    image: nats:2.10-alpine
+    container_name: ami_local_nats
+    hostname: nats
+    ports:
+      - "4222:4222" # Client port
+      - "8222:8222" # HTTP monitoring port
+    command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   celeryworker:
     <<: *django
     image: ami_local_celeryworker
@@ -123,7 +140,7 @@ services:
     ports:
       - "9001:9001"
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5

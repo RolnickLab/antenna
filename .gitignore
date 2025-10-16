@@ -276,3 +276,6 @@ sandbox/
 
 # Other
 flower
+
+# huggingface cache
+huggingface_cache/
