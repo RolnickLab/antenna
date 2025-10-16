@@ -53,7 +53,11 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 self.logger.debug(f"Detection {det.pk}: missing source image dims, skipping")
                 continue
 
-            det_area = det.width() * det.height()
+            det_w, det_h = det.width(), det.height()
+            if not det_w or not det_h:
+                self.logger.warning(f"Detection {det.pk}: invalid bbox dims (width={det_w}, height={det_h}), skipping")
+                continue
+            det_area = det_w * det_h
             img_area = img_w * img_h
             rel_area = det_area / img_area if img_area else 0
 
