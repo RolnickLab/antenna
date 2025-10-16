@@ -2206,7 +2206,7 @@ class Classification(BaseModel):
 
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField()  # Is this to represent when classification was made? why not use created_at?
     terminal = models.BooleanField(
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
     )

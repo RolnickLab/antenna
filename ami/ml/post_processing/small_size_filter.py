@@ -1,7 +1,6 @@
-from django.db import transaction
 from django.utils import timezone
 
-from ami.main.models import Detection, SourceImageCollection, Taxon, TaxonRank
+from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask
 
 
@@ -10,6 +9,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
     name = "Small size filter"
 
     def run(self) -> None:
+        # Could we use a pydantic model for config validation if it's just for this task?
         threshold = self.config.get("size_threshold", 0.01)
         collection_id = self.config.get("source_image_collection_id")
 
@@ -36,11 +36,16 @@ class SmallSizeFilterTask(BasePostProcessingTask):
             self.logger.error(msg)
             raise ValueError(msg)
 
-        detections = Detection.objects.filter(source_image__collections=collection)
+        detections = Detection.objects.filter(source_image__collections=collection).select_related(
+            "source_image", "occurrence"
+        )
         total = detections.count()
         self.logger.info(f"Found {total} detections in collection {collection_id}")
 
-        modified = 0
+        classifications_to_create: list[Classification] = []  # Can't use set until an instance has an id
+        detections_to_update: set[Detection] = set()
+        occcurrences_to_update: set[Occurrence] = set()
+        modified_detections = 0
 
         for i, det in enumerate(detections.iterator(), start=1):
             bbox = det.get_bbox()
@@ -66,27 +71,43 @@ class SmallSizeFilterTask(BasePostProcessingTask):
             )
 
             if rel_area < threshold:
-                with transaction.atomic():
-                    # Mark existing classifications as non-terminal
-                    det.classifications.update(terminal=False)
-
-                    # Create the new "Not identifiable" classification
-                    det.classifications.create(
+                # Create the new "Not identifiable" classification
+                classifications_to_create.append(
+                    Classification(
                         detection=det,
                         taxon=not_identifiable_taxon,
                         score=1.0,
                         terminal=True,
-                        timestamp=timezone.now(),
+                        timestamp=timezone.now(),  # How is this different from created_at?
                         algorithm=self.algorithm,
+                        applied_to=None,  # Size filter is applied to original detection, not a previous classification
                     )
-                    occurrence = det.occurrence
-                    occurrence.save(update_determination=True)
-                modified += 1
-                self.logger.info(f"Detection {det.pk}: marked as 'Not identifiable'")
+                )
+                detections_to_update.add(det)
+                if det.occurrence is not None:
+                    occcurrences_to_update.add(det.occurrence)
+                self.logger.info(f"Marking detection {det.pk} as 'Not identifiable'")
 
-            # Update progress every 10 detections
-            if i % 10 == 0 or i == total:
+            # Update progress every 100 detections
+            if i % 100 == 0 or i == total:
+                modified_detections += len(detections_to_update)
+
+                # with transaction.atomic():
+                self.logger.info(f"Creating {len(classifications_to_create)} new classifications")
+                Classification.objects.bulk_create(classifications_to_create)
+                classifications_to_create.clear()
+
+                self.logger.info(f"Updating {len(detections_to_update)} detections")
+                for det in detections_to_update:
+                    det.updated_at = timezone.now()
+                Detection.objects.bulk_update(detections_to_update, ["updated_at"])
+                detections_to_update.clear()
+
+                self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
+                for occ in occcurrences_to_update:
+                    occ.save(update_determination=True)
+
                 progress = i / total if total > 0 else 1.0
                 self.update_progress(progress)
 
-        self.logger.info(f"=== Completed {self.name}: {modified}/{total} detections modified ===")
+        self.logger.info(f"=== Completed {self.name}: {modified_detections} of {total} detections modified ===")
