@@ -74,12 +74,16 @@ export class Deployment extends Entity {
     return this._deployment.taxa_count
   }
 
-  get device(): string | undefined {
-    return this._deployment.device?.name
+  get device(): Entity | undefined {
+    if (this._deployment.device) {
+      return new Entity(this._deployment.device)
+    }
   }
 
-  get researchSite(): string | undefined {
-    return this._deployment.research_site?.name
+  get researchSite(): Entity | undefined {
+    if (this._deployment.research_site) {
+      return new Entity(this._deployment.research_site)
+    }
   }
 
   get firstDateLabel(): string | undefined {
