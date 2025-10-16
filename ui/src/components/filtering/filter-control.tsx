@@ -33,6 +33,7 @@ const ComponentMap: {
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,
   not_tag_id: TagFilter,
+  not_taxa_list_id: TaxaListFilter,
   pipeline: PipelineFilter,
   source_image_collection: CollectionFilter,
   source_image_single: ImageFilter,
