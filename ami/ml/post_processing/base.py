@@ -16,8 +16,15 @@ class BasePostProcessingTask(abc.ABC):
     """
 
     # Each task must override these
-    key: str = ""
-    name: str = ""
+    key: str
+    name: str
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        required_attrs = ["key", "name"]
+        for attr in required_attrs:
+            if not hasattr(cls, attr) or getattr(cls, attr) is None:
+                raise TypeError(f"{cls.__name__} must define '{attr}' class attribute")
 
     def __init__(
         self,
@@ -37,6 +44,7 @@ class BasePostProcessingTask(abc.ABC):
 
         algorithm, _ = Algorithm.objects.get_or_create(
             name=self.name,
+            key=self.key,
             defaults={
                 "description": f"Post-processing task: {self.key}",
                 "task_type": AlgorithmTaskType.POST_PROCESSING.value,
@@ -44,7 +52,7 @@ class BasePostProcessingTask(abc.ABC):
         )
         self.algorithm: Algorithm = algorithm
 
-        self.logger.info(f"Initialized {self.__class__.__name__} with config={self.config}, job={job}")
+        self.logger.info(f"Initialized {self.name } with config={self.config}, job={job}")
 
     def update_progress(self, progress: float):
         """
