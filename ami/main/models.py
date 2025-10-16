@@ -277,21 +277,32 @@ class Project(ProjectSettingsMixin, BaseModel):
         Data prepared for rendering charts with plotly.js on the overview page.
         """
 
-        plots = []
-
-        plots.append(charts.captures_per_hour(project_pk=self.pk))
-        if self.occurrences.exists():
-            plots.append(charts.detections_per_hour(project_pk=self.pk))
-            # plots.append(charts.occurrences_accumulated(project_pk=self.pk))
-        else:
-            plots.append(charts.events_per_month(project_pk=self.pk))
-            # plots.append(charts.captures_per_month(project_pk=self.pk))
-        plots.append(charts.project_top_taxa(project_pk=self.pk))
-        plots.append(charts.captures_per_month(project_pk=self.pk))
-        plots.append(charts.average_occurrences_per_month(project_pk=self.pk))
-        plots.append(charts.unique_species_per_month(project_pk=self.pk))
-
-        return plots
+        return [
+            {
+                "id": "captures",
+                "title": "Captures",
+                "plots": [
+                    charts.captures_per_hour(project_pk=self.pk),
+                    charts.captures_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "occurrences",
+                "title": "Occurrences",
+                "plots": [
+                    charts.detections_per_hour(project_pk=self.pk),
+                    charts.average_occurrences_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "taxa",
+                "title": "Taxa",
+                "plots": [
+                    charts.project_top_taxa(project_pk=self.pk),
+                    charts.unique_species_per_month(project_pk=self.pk),
+                ],
+            },
+        ]
 
     def update_related_calculated_fields(self):
         """
