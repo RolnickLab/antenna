@@ -14,6 +14,7 @@ export enum STRING {
   DELETE,
   DELETED,
   DOWNLOAD,
+  DRAFT,
   EDIT,
   EXPAND,
   LOGIN,
@@ -161,6 +162,7 @@ export enum STRING {
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DELETE_CONFIRM,
+  MESSAGE_DRAFTS,
   MESSAGE_HAS_ACCOUNT,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
@@ -291,6 +293,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DELETE]: 'Delete',
   [STRING.DELETED]: 'Deleted',
   [STRING.DOWNLOAD]: 'Download',
+  [STRING.DRAFT]: 'Draft',
   [STRING.EDIT]: 'Edit',
   [STRING.EXPAND]: 'Expand',
   [STRING.LOGIN]: 'Login',
@@ -446,6 +449,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A data source must be configured and saved before syncing images.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
+  [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
