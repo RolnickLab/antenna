@@ -632,7 +632,6 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
                 params={
                     "task": "small_size_filter",
                     "config": {
-                        "size_threshold": 0.01,  # default threshold
                         "source_image_collection_id": collection.pk,
                     },
                 },
