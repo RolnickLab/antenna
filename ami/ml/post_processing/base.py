@@ -36,7 +36,7 @@ class BasePostProcessingTask(abc.ABC):
             self.logger = logging.getLogger(f"ami.post_processing.{self.key}")
 
         algorithm, _ = Algorithm.objects.get_or_create(
-            name=self.__class__.__name__,
+            name=self.name,
             defaults={
                 "description": f"Post-processing task: {self.key}",
                 "task_type": AlgorithmTaskType.POST_PROCESSING.value,

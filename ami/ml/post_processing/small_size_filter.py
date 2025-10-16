@@ -66,7 +66,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
             img_area = img_w * img_h
             rel_area = det_area / img_area if img_area else 0
 
-            self.logger.info(
+            self.logger.debug(
                 f"Detection {det.pk}: area={det_area}, rel_area={rel_area:.4f}, " f"threshold={threshold:.4f}"
             )
 
@@ -86,7 +86,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 detections_to_update.add(det)
                 if det.occurrence is not None:
                     occcurrences_to_update.add(det.occurrence)
-                self.logger.info(f"Marking detection {det.pk} as 'Not identifiable'")
+                self.logger.debug(f"Marking detection {det.pk} as {not_identifiable_taxon.name}")
 
             # Update progress every 100 detections
             if i % 100 == 0 or i == total:
@@ -97,7 +97,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 Classification.objects.bulk_create(classifications_to_create)
                 classifications_to_create.clear()
 
-                self.logger.info(f"Updating {len(detections_to_update)} detections")
+                self.logger.info(f"Marking {len(detections_to_update)} detections as {not_identifiable_taxon.name}")
                 for det in detections_to_update:
                     det.updated_at = timezone.now()
                 Detection.objects.bulk_update(detections_to_update, ["updated_at"])
