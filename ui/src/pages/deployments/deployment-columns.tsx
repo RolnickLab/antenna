@@ -164,14 +164,16 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     id: 'device',
     name: translate(STRING.FIELD_LABEL_DEVICE),
     sortField: 'device',
-    renderCell: (item: Deployment) => <BasicTableCell value={item.device} />,
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.device?.name} />
+    ),
   },
   {
     id: 'research-site',
     name: translate(STRING.FIELD_LABEL_RESEARCH_SITE),
     sortField: 'researchSite',
     renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.researchSite} />
+      <BasicTableCell value={item.researchSite?.name} />
     ),
   },
   {
