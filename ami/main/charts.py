@@ -420,6 +420,42 @@ def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None):
     }
 
 
+def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
+    # Average occurrences per day
+    Occurrence = apps.get_model("main", "Occurrence")
+
+    qs = Occurrence.objects.filter(project=project_pk)
+
+    if taxon_pk:
+        qs = qs.filter(determination_id=taxon_pk)
+
+    occurrences_per_day = (
+        qs.values_list("event__start__date")
+        .annotate(num_occurrences=models.Count("id"))
+        .order_by("event__start__date")
+    )
+
+    if occurrences_per_day:
+        occurrences_per_day_dict = {f"{d:%b %d}": count for d, count in occurrences_per_day if d is not None}
+        days = [(datetime.date(3000, 1, 1) + datetime.timedelta(days=i)) for i in range(365)]
+        counts = [occurrences_per_day_dict.get(f"{d:%b %d}", 0) for d in days]
+
+        # Generate labels for all days
+        labels = [f"{d:%b %d}" for d in days]
+
+        # Show first and last day as tick vals
+        tickvals = [f"{days[0]:%b %d}", f"{days[-1]:%b %d}"]
+    else:
+        labels, counts = [], []
+        tickvals = []
+
+    return {
+        "title": "Average occurrences per day",
+        "data": {"x": labels, "y": counts, "tickvals": tickvals},
+        "type": "scatter",
+    }
+
+
 def relative_occurrences_per_month(project_pk: int, taxon_pk: int):
     Occurrence = apps.get_model("main", "Occurrence")
 
