@@ -97,8 +97,12 @@ export const AVAILABLE_FILTERS: {
     field: 'taxon',
   },
   {
-    label: 'Taxa list',
+    label: 'Include taxa list',
     field: 'taxa_list_id',
+  },
+  {
+    label: 'Exclude taxa list',
+    field: 'not_taxa_list_id',
   },
   {
     label: 'Source image',
