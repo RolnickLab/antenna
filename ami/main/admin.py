@@ -595,6 +595,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
     """Admin panel example for ``SourceImageCollection`` model."""
 
     list_display = ("name", "image_count", "method", "kwargs", "created_at", "updated_at")
+    list_filter = ("project",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).annotate(image_count=models.Count("images"))
@@ -631,7 +632,6 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
                 params={
                     "task": "small_size_filter",
                     "config": {
-                        "size_threshold": 0.01,  # default threshold
                         "source_image_collection_id": collection.pk,
                     },
                 },

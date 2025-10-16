@@ -18,6 +18,7 @@ from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.post_processing.registry import get_postprocessing_task
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -651,9 +652,6 @@ class PostProcessingJob(JobType):
 
     @classmethod
     def run(cls, job: "Job"):
-        import ami.ml.post_processing  # noqa F401
-        from ami.ml.post_processing.base import get_postprocessing_task
-
         job.progress.add_stage(cls.name, key=cls.key)
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
@@ -662,16 +660,13 @@ class PostProcessingJob(JobType):
         params = job.params or {}
         task_key: str = params.get("task", "")
         config = params.get("config", {})
-        job.logger.info(f"Post-processing task: {task_key} with params: {config}")
-        # Get the registered task class
-        task_cls = get_postprocessing_task(task_key)
+        job.logger.info(f"Post-processing task: {task_key} with params: {job.params}")
+
+        task_cls = get_postprocessing_task(key=task_key)
         if not task_cls:
             raise ValueError(f"Unknown post-processing task '{task_key}'")
 
-        # Instantiate the task with job context and config
         task = task_cls(job=job, **config)
-
-        # Run the task
         task.run()
         job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()

@@ -825,6 +825,16 @@ class TestPostProcessingTasks(TestCase):
                 f"Detection {det.pk} should be classified as 'Not identifiable'",
             )
 
+            occurrence = det.occurrence
+            assert occurrence
+            self.assertIsNotNone(occurrence, f"Detection {det.pk} should belong to an occurrence.")
+            occurrence.refresh_from_db()
+            self.assertEqual(
+                occurrence.determination,
+                not_identifiable_taxon,
+                f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
+            )
+
     def _create_occurrences_with_classifications(self, num=3):
         """Helper to create occurrences and terminal classifications below species threshold."""
         occurrences = []

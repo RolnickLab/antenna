@@ -118,15 +118,18 @@ def captures_per_month(project_pk: int):
         .exclude(timestamp=None)
     )
 
-    if captures_per_month:
-        months, counts = list(zip(*captures_per_month))
-        # tickvals_per_month = [f"{d:%b}" for d in days]
-        tickvals = [f"{months[0]}", f"{months[-1]}"]
-        # labels = [f"{d}" for d in months]
-        labels = [datetime.date(3000, month, 1).strftime("%b") for month in months]
-    else:
-        labels, counts = [], []
-        tickvals = []
+    # Create a dictionary mapping month numbers to capture counts
+    month_to_count = {month: count for month, count in captures_per_month}
+
+    # Create lists for all 12 months, using 0 for months with no data
+    all_months = list(range(1, 13))  # 1-12 for January-December
+    counts = [month_to_count.get(month, 0) for month in all_months]
+
+    # Generate labels for all months
+    labels = [datetime.date(3000, month, 1).strftime("%b") for month in all_months]
+
+    # Show all months as tick vals
+    tickvals = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     return {
         "title": "Captures per month",
@@ -382,12 +385,17 @@ def unique_species_per_month(project_pk: int):
     }
 
 
-def average_occurrences_per_month(project_pk: int):
+def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None):
     # Average occurrences per month
     Occurrence = apps.get_model("main", "Occurrence")
+
+    qs = Occurrence.objects.filter(project=project_pk)
+
+    if taxon_pk:
+        qs = qs.filter(determination_id=taxon_pk)
+
     occurrences_per_month = (
-        Occurrence.objects.filter(project=project_pk)
-        .values_list("event__start__month")
+        qs.values_list("event__start__month")
         .annotate(num_occurrences=models.Count("id"))
         .order_by("event__start__month")
     )
@@ -407,6 +415,53 @@ def average_occurrences_per_month(project_pk: int):
 
     return {
         "title": "Average occurrences per month",
+        "data": {"x": labels, "y": counts, "tickvals": tickvals},
+        "type": "bar",
+    }
+
+
+def relative_occurrences_per_month(project_pk: int, taxon_pk: int):
+    Occurrence = apps.get_model("main", "Occurrence")
+
+    # Single query to get total occurrences and taxon-specific occurrences per month
+    occurrences_per_month = (
+        Occurrence.objects.filter(project=project_pk)
+        .values("event__start__month")
+        .annotate(
+            total_occurrences=models.Count("id"),
+            taxon_occurrences=models.Count("id", filter=models.Q(determination_id=taxon_pk)),
+        )
+        .order_by("event__start__month")
+    )
+
+    # Create a dictionary mapping month numbers to occurrence counts
+    month_data = {
+        month["event__start__month"]: {
+            "total": month["total_occurrences"],
+            "taxon": month["taxon_occurrences"],
+        }
+        for month in occurrences_per_month
+    }
+
+    # Create lists for all 12 months, using 0 for months with no data
+    all_months = list(range(1, 13))  # 1-12 for January-December
+    counts = [
+        (
+            month_data[month]["taxon"] / month_data[month]["total"]
+            if month in month_data and month_data[month]["total"] > 0
+            else 0
+        )
+        for month in all_months
+    ]
+
+    # Generate labels for all months
+    labels = [datetime.date(3000, month, 1).strftime("%b") for month in all_months]
+
+    # Show all months as tick vals
+    tickvals = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    return {
+        "title": "Relative proportion of all occurrences per month",
         "data": {"x": labels, "y": counts, "tickvals": tickvals},
         "type": "bar",
     }
