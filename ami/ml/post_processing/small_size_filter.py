@@ -10,7 +10,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
 
     def run(self) -> None:
         # Could we use a pydantic model for config validation if it's just for this task?
-        threshold = self.config.get("size_threshold", 0.01)
+        threshold = self.config.get("size_threshold", 0.001)
         collection_id = self.config.get("source_image_collection_id")
 
         # Get or create the "Not identifiable" taxon
@@ -106,6 +106,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
                 for occ in occcurrences_to_update:
                     occ.save(update_determination=True)
+                occcurrences_to_update.clear()
 
                 progress = i / total if total > 0 else 1.0
                 self.update_progress(progress)
