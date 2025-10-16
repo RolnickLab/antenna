@@ -1061,7 +1061,7 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
         if taxalist_id:
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxalist taxon objects
+                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
 
                 # Filter by the exact determination
                 query_filter = Q(determination__in=taxa)
@@ -1075,7 +1075,7 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
         if taxalist_id_exclusive:
             taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxalist taxon objects
+                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
 
                 # Filter by the exact determination
                 query_filter = Q(determination__in=taxa)
@@ -1224,7 +1224,7 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         if taxalist_id:
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa in the TaxaList
+                taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
                 query_filter = Q(id__in=taxa)
                 for taxon in taxa:
                     query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
@@ -1234,7 +1234,7 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         if taxalist_id_exclusive:
             taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa in the TaxaList
+                taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
                 query_filter = Q(id__in=taxa)
                 for taxon in taxa:
                     query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
