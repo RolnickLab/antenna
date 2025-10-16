@@ -18,6 +18,7 @@ from ami.ml.schemas import (
     ProcessingServiceInfoResponse,
     ProcessingServiceStatusResponse,
 )
+from ami.utils.requests import create_session
 
 logger = logging.getLogger(__name__)
 
@@ -137,10 +138,18 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
-    def get_status(self, timeout=6):
+    def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
         Check the status of the processing service.
         This is a simple health check that pings the /readyz endpoint of the service.
+
+        Uses urllib3 Retry with exponential backoff to handle cold starts and transient failures.
+        The timeout is set to 90s per attempt to accommodate serverless cold starts, especially for
+        services that need to load multiple models into memory. With automatic retries, transient
+        connection errors are handled gracefully.
+
+        Args:
+            timeout: Request timeout in seconds per attempt (default: 90s for serverless cold starts)
         """
         ready_check_url = urljoin(self.endpoint_url, "readyz")
         start_time = time.time()
@@ -151,11 +160,17 @@ class ProcessingService(BaseModel):
         self.last_checked = timestamp
         resp = None
 
+        # Create session with retry logic for connection errors and timeouts
+        session = create_session(
+            retries=3,
+            backoff_factor=2,  # 0s, 2s, 4s delays between retries
+            status_forcelist=(500, 502, 503, 504),
+        )
+
         try:
-            resp = requests.get(ready_check_url, timeout=timeout)
+            resp = session.get(ready_check_url, timeout=timeout)
             resp.raise_for_status()
             self.last_checked_live = True
-            latency = time.time() - start_time
         except requests.exceptions.RequestException as e:
             error = f"Error connecting to {ready_check_url}: {e}"
             logger.error(error)
@@ -176,6 +191,7 @@ class ProcessingService(BaseModel):
             # but the intention is to show which ones are loaded into memory and ready to use.
             # @TODO: this may be overkill, but it is displayed in the UI now.
             try:
+                assert resp is not None
                 pipelines_online: list[str] = resp.json().get("status", [])
             except (ValueError, KeyError) as e:
                 error = f"Error parsing pipeline statuses from {ready_check_url}: {e}"
