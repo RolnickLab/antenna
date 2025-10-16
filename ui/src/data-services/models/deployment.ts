@@ -74,6 +74,14 @@ export class Deployment extends Entity {
     return this._deployment.taxa_count
   }
 
+  get device(): string | undefined {
+    return this._deployment.device?.name
+  }
+
+  get researchSite(): string | undefined {
+    return this._deployment.research_site?.name
+  }
+
   get firstDateLabel(): string | undefined {
     return this.numImages
       ? getFormatedDateString({
