@@ -4,8 +4,8 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
-from ami.ml.models import Algorithm, AlgorithmCategoryMap
-from ami.ml.post_processing.base import BasePostProcessingTask, register_postprocessing_task
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType
+from ami.ml.post_processing.base import BasePostProcessingTask
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +26,22 @@ def update_single_occurrence(
         scores__isnull=False,
     ).distinct()
 
+    # Make a new Algorithm for the filtered classifications
+    new_algorithm, _ = Algorithm.objects.get_or_create(
+        name=f"{algorithm.name} (filtered by taxa list {taxa_list.name})",
+        key=f"{algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}",
+        defaults={
+            "description": f"Classification algorithm {algorithm.name} filtered by taxa list {taxa_list.name}",
+            "task_type": AlgorithmTaskType.CLASSIFICATION.value,
+            "category_map": algorithm.category_map,
+        },
+    )
+
     make_classifications_filtered_by_taxa_list(
         classifications=classifications,
         taxa_list=taxa_list,
         algorithm=algorithm,
+        new_algorithm=new_algorithm,
     )
 
 
@@ -38,6 +50,7 @@ def update_occurrences_in_collection(
     taxa_list: TaxaList,
     algorithm: Algorithm,
     params: dict,
+    new_algorithm: Algorithm,
     task_logger: logging.Logger = logger,
     job=None,
 ):
@@ -58,6 +71,7 @@ def update_occurrences_in_collection(
         classifications=classifications,
         taxa_list=taxa_list,
         algorithm=algorithm,
+        new_algorithm=new_algorithm,
     )
 
 
@@ -65,6 +79,7 @@ def make_classifications_filtered_by_taxa_list(
     classifications: QuerySet[Classification],
     taxa_list: TaxaList,
     algorithm: Algorithm,
+    new_algorithm: Algorithm,
 ):
     taxa_in_list = taxa_list.taxa.all()
 
@@ -167,7 +182,7 @@ def make_classifications_filtered_by_taxa_list(
         # Recalculate the top taxon and score
         new_classification = Classification(
             taxon=top_taxon,
-            algorithm=classification.algorithm,
+            algorithm=new_algorithm,
             score=max(scores),
             scores=scores,
             logits=logits,
@@ -211,7 +226,6 @@ def make_classifications_filtered_by_taxa_list(
     logger.info(f"Updated determinations for {len(occurrences_to_update)} occurrences")
 
 
-@register_postprocessing_task
 class ClassMaskingTask(BasePostProcessingTask):
     key = "class_masking"
     name = "Class masking"
@@ -240,6 +254,9 @@ class ClassMaskingTask(BasePostProcessingTask):
 
         self.logger.info(f"Applying class masking on collection {collection_id} using taxa list {taxa_list_id}")
 
+        # @TODO temporary, do we need a new algorithm for each class mask?
+        self.algorithm.category_map = algorithm.category_map  # Ensure the algorithm has its category map loaded
+
         update_occurrences_in_collection(
             collection=collection,
             taxa_list=taxa_list,
@@ -247,6 +264,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             params=self.config,
             task_logger=self.logger,
             job=job,
+            new_algorithm=self.algorithm,
         )
 
         self.logger.info("Class masking completed successfully.")
