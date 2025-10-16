@@ -176,6 +176,7 @@ class AlgorithmTaskType(str, enum.Enum):
     DEPTH_ESTIMATION = "depth_estimation"
     POSE_ESTIMATION = "pose_estimation"
     SIZE_ESTIMATION = "size_estimation"
+    POST_PROCESSING = "post_processing"
     OTHER = "other"
     UNKNOWN = "unknown"
 

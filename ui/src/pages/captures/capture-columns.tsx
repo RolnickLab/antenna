@@ -118,7 +118,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   },
   {
     id: 'occurrences',
-    name: 'Occurrences',
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -136,7 +136,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   },
   {
     id: 'taxa',
-    name: 'Taxa',
+    name: translate(STRING.FIELD_LABEL_TAXA),
     sortField: 'taxa_count',
     styles: {
       textAlign: TextAlign.Right,

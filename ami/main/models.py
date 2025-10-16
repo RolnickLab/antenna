@@ -277,21 +277,32 @@ class Project(ProjectSettingsMixin, BaseModel):
         Data prepared for rendering charts with plotly.js on the overview page.
         """
 
-        plots = []
-
-        plots.append(charts.captures_per_hour(project_pk=self.pk))
-        if self.occurrences.exists():
-            plots.append(charts.detections_per_hour(project_pk=self.pk))
-            # plots.append(charts.occurrences_accumulated(project_pk=self.pk))
-        else:
-            plots.append(charts.events_per_month(project_pk=self.pk))
-            # plots.append(charts.captures_per_month(project_pk=self.pk))
-        plots.append(charts.project_top_taxa(project_pk=self.pk))
-        plots.append(charts.captures_per_month(project_pk=self.pk))
-        plots.append(charts.average_occurrences_per_month(project_pk=self.pk))
-        plots.append(charts.unique_species_per_month(project_pk=self.pk))
-
-        return plots
+        return [
+            {
+                "id": "captures",
+                "title": "Captures",
+                "plots": [
+                    charts.captures_per_hour(project_pk=self.pk),
+                    charts.captures_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "occurrences",
+                "title": "Occurrences",
+                "plots": [
+                    charts.detections_per_hour(project_pk=self.pk),
+                    charts.average_occurrences_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "taxa",
+                "title": "Taxa",
+                "plots": [
+                    charts.project_top_taxa(project_pk=self.pk),
+                    charts.unique_species_per_month(project_pk=self.pk),
+                ],
+            },
+        ]
 
     def update_related_calculated_fields(self):
         """
@@ -333,6 +344,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
         RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
+        RUN_POST_PROCESSING_JOB = "run_post_processing_job"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -395,6 +407,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
+            ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
             ("delete_job", "Can delete a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
@@ -2204,7 +2217,7 @@ class Classification(BaseModel):
 
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField()  # Is this to represent when classification was made? why not use created_at?
     terminal = models.BooleanField(
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
     )
@@ -2225,7 +2238,17 @@ class Classification(BaseModel):
         related_name="classifications",
     )
     # job = models.CharField(max_length=255, null=True)
-
+    applied_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derived_classifications",
+        help_text=(
+            "If this classification was produced by a post-processing algorithm, "
+            "this field references the original classification it was applied to."
+        ),
+    )
     objects = ClassificationManager()
 
     # Type hints for auto-generated fields

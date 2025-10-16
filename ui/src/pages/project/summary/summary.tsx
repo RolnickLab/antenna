@@ -3,6 +3,7 @@ import { ProjectDetails } from 'data-services/models/project-details'
 import { Box } from 'design-system/components/box/box'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
+import * as Tabs from 'design-system/components/tabs/tabs'
 import { UploadImagesDialog } from 'pages/captures/upload-images-dialog/upload-images-dialog'
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
@@ -37,18 +38,33 @@ export const Summary = () => {
       ) : (
         <>
           <DeploymentsMap deployments={project.deployments} />
-          <PlotGrid>
-            {project.summaryData.map((summary, index) => (
-              <Box key={index}>
-                <Plot
-                  title={summary.title}
-                  data={summary.data}
-                  orientation={summary.orientation}
-                  type={summary.type}
+          <Tabs.Root defaultValue={project.summaryData[0]?.id}>
+            <Tabs.List>
+              {project.summaryData.map((section) => (
+                <Tabs.Trigger
+                  key={section.id}
+                  label={section.title}
+                  value={section.id}
                 />
-              </Box>
+              ))}
+            </Tabs.List>
+            {project.summaryData.map((section) => (
+              <Tabs.Content key={section.id} value={section.id}>
+                <PlotGrid>
+                  {section.plots.map((plot, index) => (
+                    <Box key={index}>
+                      <Plot
+                        data={plot.data}
+                        orientation={plot.orientation}
+                        title={plot.title}
+                        type={plot.type}
+                      />
+                    </Box>
+                  ))}
+                </PlotGrid>
+              </Tabs.Content>
             ))}
-          </PlotGrid>
+          </Tabs.Root>
         </>
       )}
     </div>
