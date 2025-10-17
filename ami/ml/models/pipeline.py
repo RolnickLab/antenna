@@ -300,14 +300,6 @@ def handle_async_process_images(
     batch_size = pipeline_config.get("batch_size", 1)
 
     # Group source images into batches
-
-    # @TODO: linter prevents me from commiting this cleaner code due to whitespace before ':'
-    # but the linter makes the whitespace automatically?
-    # source_image_request_batches = [
-    #     source_image_requests[i : i + batch_size] for i in range(0, len(source_image_requests), batch_size)
-    # ]
-    # source_image_batches = [source_images[i : i + batch_size] for i in range(0, len(source_images), batch_size)]
-
     source_image_request_batches = []
     source_image_batches = []
 
