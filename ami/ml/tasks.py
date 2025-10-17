@@ -122,6 +122,17 @@ def check_ml_job_status(ml_job_id: int):
         logger.info(f"Job subtasks are: {job.ml_task_records.all()}.")
         jobs_complete = job.check_inprogress_subtasks()
         logger.info(f"Successfully checked status for job {job}. .")
+        job.last_checked = datetime.datetime.now()
+        job.save(update_fields=["last_checked"])
+
+        if jobs_complete:
+            logger.info(f"ML Job {ml_job_id} is complete.")
+            job.logger.info(f"ML Job {ml_job_id} is complete.")
+        else:
+            from django.db import transaction
+
+            logger.info(f"ML Job {ml_job_id} still in progress. Checking again for completed tasks.")
+            transaction.on_commit(lambda: check_ml_job_status.apply_async([ml_job_id], countdown=5))
     except Job.DoesNotExist:
         raise ValueError(f"Job with ID {ml_job_id} does not exist.")
     except Exception as e:
@@ -132,11 +143,33 @@ def check_ml_job_status(ml_job_id: int):
         job.save()
         raise Exception(error_msg)
 
-    if jobs_complete:
-        logger.info(f"ML Job {ml_job_id} is complete.")
-        job.logger.info(f"ML Job {ml_job_id} is complete.")
-    else:
-        from django.db import transaction
 
-        logger.info(f"ML Job {ml_job_id} still in progress. Checking again for completed tasks.")
-        transaction.on_commit(lambda: check_ml_job_status.apply_async([ml_job_id], countdown=5))
+@celery_app.task(soft_time_limit=600, time_limit=800)
+def check_dangling_ml_jobs():
+    """
+    An inprogress ML job is dangling if the last_checked time
+    is older than 5 minutes.
+    """
+    import datetime
+
+    from ami.jobs.models import Job, JobState, MLJob
+
+    inprogress_jobs = Job.objects.filter(job_type_key=MLJob.key, status=JobState.STARTED.name)
+    logger.info(f"Found {inprogress_jobs.count()} inprogress ML jobs to check for dangling tasks.")
+
+    for job in inprogress_jobs:
+        last_checked = job.last_checked
+        if (
+            last_checked is None
+            or (
+                datetime.datetime.now(datetime.timezone.utc) - last_checked.replace(tzinfo=datetime.timezone.utc)
+            ).total_seconds()
+            > 5 * 60  # 5 minutes
+        ):
+            logger.warning(f"Job {job.pk} appears to be dangling. Marking as failed.")
+            job.logger.error(f"Job {job.pk} appears to be dangling. Marking as failed.")
+            job.update_status(JobState.FAILURE)
+            job.finished_at = datetime.datetime.now()
+            job.save()
+        else:
+            logger.info(f"Job {job.pk} is active. Last checked at {last_checked}.")

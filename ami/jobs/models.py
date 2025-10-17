@@ -1014,6 +1014,7 @@ class Job(BaseModel):
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
+    last_checked = models.DateTimeField(null=True, blank=True)
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
