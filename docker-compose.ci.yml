@@ -25,6 +25,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+      ml_backend:
+        condition: service_started
       celeryworker:  # required to subscribe the worker to the pipelines in the db
         condition: service_healthy
     env_file:
