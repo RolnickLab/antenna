@@ -597,7 +597,7 @@ class MLJob(JobType):
                         success = await manager.publish_job(
                             job_id=job_id,
                             data=message,
-                            ttr=300,  # 5 minutes visibility timeout
+                            ttr=120,  # visibility timeout in seconds
                         )
                     except Exception as e:
                         logger.error(f"Failed to queue image {image_pk} to stream for job '{job_id}': {e}")

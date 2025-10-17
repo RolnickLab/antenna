@@ -224,7 +224,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             tasks = []
             async with TaskQueueManager() as manager:
                 for i in range(batch):
-                    task = await manager.reserve_job(job_id)
+                    task = await manager.reserve_job(job_id, timeout=0.1)
                     if task:
                         tasks.append(task)
             return tasks
@@ -235,36 +235,90 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
         """
-        Acknowledge task completion.
+        Submit pipeline results for asynchronous processing.
 
-        External services should POST task results with the reply_subject received
-        from the /tasks endpoint to acknowledge task completion.
+        This endpoint accepts a list of pipeline results and queues them for
+        background processing. Each result will be validated, saved to the database,
+        and acknowledged via NATS in a Celery task.
 
-        The request body should contain:
-        {
-            "reply_subject": "string",  # Required: from the task response
-            "status": "completed" | "failed",  # Optional
-            "result_data": {...},  # Optional
-            "error_message": "Error details...",  # Optional for failed tasks
-        }
+        The request body should be a list of results:
+        [
+            {
+                "reply_subject": "string",  # Required: from the task response
+                "result": {  # Required: PipelineResultsResponse (kept as JSON)
+                    "pipeline": "string",
+                    "algorithms": {},
+                    "total_time": 0.0,
+                    "source_images": [...],
+                    "detections": [...],
+                    "errors": null
+                }
+            },
+            ...
+        ]
         """
-        from ami.utils.nats_queue import TaskQueueManager
 
-        reply_subject = request.data.get("reply_subject")
+        from ami.jobs.tasks import process_pipeline_result
 
-        if reply_subject is None:
-            raise ValidationError("reply_subject is required")
+        job_id = pk if pk else self.kwargs.get("pk")
+        if not job_id:
+            raise ValidationError("Job ID is required")
+        job_id = int(job_id)
 
-        # Acknowledge the task via NATS
-        async def ack_task():
-            async with TaskQueueManager() as manager:
-                return await manager.acknowledge_job(reply_subject)
+        # Validate request data is a list
+        if not isinstance(request.data, list):
+            raise ValidationError("Request body must be a list of results")
 
-        success = asyncio.run(ack_task())
+        if not request.data:
+            raise ValidationError("Request body cannot be empty")
 
-        # TODO: Record the job results
+        # Queue each result for background processing
+        queued_tasks = []
 
-        if success:
-            return Response({"status": "acknowledged"})
-        else:
-            return Response({"status": "failed to acknowledge"}, status=500)
+        for idx, item in enumerate(request.data):
+            reply_subject = item.get("reply_subject")
+            result_data = item.get("result")
+
+            if not reply_subject:
+                raise ValidationError(f"Item {idx}: reply_subject is required")
+
+            if not result_data:
+                raise ValidationError(f"Item {idx}: result is required")
+
+            try:
+                # Queue the background task
+                task = process_pipeline_result.delay(
+                    job_id=job_id, result_data=result_data, reply_subject=reply_subject
+                )
+
+                queued_tasks.append(
+                    {
+                        "reply_subject": reply_subject,
+                        "status": "queued",
+                        "task_id": task.id,
+                    }
+                )
+
+                logger.info(
+                    f"Queued pipeline result processing for job {job_id}, "
+                    f"task_id: {task.id}, reply_subject: {reply_subject}"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to queue result {idx} for job {job_id}: {e}")
+                queued_tasks.append(
+                    {
+                        "reply_subject": reply_subject,
+                        "status": "error",
+                        "error": str(e),
+                    }
+                )
+
+        return Response(
+            {
+                "status": "accepted",
+                "job_id": job_id,
+                "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
+                "tasks": queued_tasks,
+            }
+        )

@@ -146,7 +146,7 @@ class TaskQueueManager:
             logger.error(f"Failed to publish job to stream for job '{job_id}': {e}")
             return False
 
-    async def reserve_job(self, job_id: str, timeout: int | None = None) -> dict[str, Any] | None:
+    async def reserve_job(self, job_id: str, timeout: float | None = None) -> dict[str, Any] | None:
         """
         Reserve a job from the specified stream.
 

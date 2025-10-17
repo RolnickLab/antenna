@@ -33,7 +33,9 @@ class ProjectMixin:
         if not project_id:
             # Look for project_id in GET query parameters or POST data
             # POST data returns a list of ints, but QueryDict.get() returns a single value
-            project_id = self.request.query_params.get(param) or self.request.data.get(param)
+            project_id = self.request.query_params.get(param) or (
+                self.request.data if isinstance(self.request.data, dict) else {}
+            ).get(param)
 
             project_id = SingleParamSerializer[int].clean(
                 param_name=param,
