@@ -7,7 +7,7 @@ import django_pydantic_field.fields
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("jobs", "0017_mltaskrecord"),
+        ("jobs", "0019_mltaskrecord"),
     ]
 
     operations = [

@@ -9,7 +9,7 @@ import django_pydantic_field.fields
 class Migration(migrations.Migration):
     dependencies = [
         ("main", "0060_alter_sourceimagecollection_method"),
-        ("jobs", "0016_job_data_export_job_params_alter_job_job_type_key"),
+        ("jobs", "0018_alter_job_job_type_key"),
     ]
 
     operations = [

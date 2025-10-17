@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("jobs", "0019_remove_mltaskrecord_subtask_id_and_more"),
+        ("jobs", "0021_remove_mltaskrecord_subtask_id_and_more"),
     ]
 
     operations = [

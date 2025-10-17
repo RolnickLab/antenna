@@ -25,7 +25,7 @@ def delete_periodic_task(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("ml", "0022_alter_pipeline_default_config"),
+        ("ml", "0025_alter_algorithm_task_type"),
     ]
 
     operations = [

@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("jobs", "0018_alter_job_logs_alter_job_progress"),
+        ("jobs", "0020_alter_job_logs_alter_job_progress"),
     ]
 
     operations = [
