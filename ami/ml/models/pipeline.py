@@ -358,9 +358,9 @@ def handle_async_process_images(
                 task_id=task_id,
                 task_name="process_pipeline_request",
                 pipeline_request=prediction_request,
-                num_captures=len(source_image_batches[i]),
+                num_captures=len(source_image_batches[idx]),
             )
-            ml_task_record.source_images.set(source_image_batches[i])
+            ml_task_record.source_images.set(source_image_batches[idx])
             ml_task_record.save()
             task_logger.info(f"Created MLTaskRecord {ml_task_record} for task {task_id}")
         else:
@@ -1378,7 +1378,7 @@ class Pipeline(BaseModel):
                     if not results:
                         results = result
                     else:
-                        results.combine_pipeline_results(result)
+                        results.combine_with([result])
                     remaining.remove(task_id)
             time.sleep(poll_interval)
 

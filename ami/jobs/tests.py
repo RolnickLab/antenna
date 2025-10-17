@@ -408,16 +408,19 @@ class TestMLJobBatchProcessing(TransactionTestCase):
             from ami.ml.tasks import check_ml_job_status
 
             check_ml_job_status(job.pk)
+            MLJob.update_job_progress(job)
 
         # Check all subtasks were successful
         ml_subtask_records = job.ml_task_records.all()
-        self.assertEqual(
-            ml_subtask_records.count(),
-            self.source_image_collection.images.count() * 2,
-            "The excted number of tasks completed is incorrect",
-        )  # 2 subtasks per image (process and results)
         self.assertTrue(all(subtask.status == MLSubtaskState.SUCCESS.value for subtask in ml_subtask_records))
-
+        # Check each source image is part of 2 tasks (a process_pipeline_request and a save_results)
+        for image in self.source_image_collection.images.all():
+            tasks_for_image = ml_subtask_records.filter(source_images=image)
+            self.assertEqual(
+                tasks_for_image.count(),
+                2,
+                f"Image {image.id} is part of {tasks_for_image.count()} tasks instead of 2",
+            )
         # Check all the progress stages are marked as SUCCESS
         self.assertEqual(job.status, JobState.SUCCESS.value)
         self.assertEqual(job.progress.stages[0].key, "delay")

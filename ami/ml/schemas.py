@@ -1,6 +1,7 @@
 import datetime
 import logging
 import typing
+from statistics import mean
 
 import pydantic
 
@@ -190,32 +191,40 @@ class PipelineResultsResponse(pydantic.BaseModel):
     detections: list[DetectionResponse]
     errors: list | str | None = None
 
-    def combine_pipeline_results(
-        self,
-        resp: "PipelineResultsResponse",
-    ):
+    def combine_with(self, others: list["PipelineResultsResponse"]) -> "PipelineResultsResponse":
         """
-        Combine two PipelineResultsResponse objects into one.
+        Combine this PipelineResultsResponse with others.
+        Returns a new combined PipelineResultsResponse.
         """
-        assert self.pipeline == resp.pipeline, "Cannot combine results from different pipelines"
-        assert self.algorithms.keys() == resp.algorithms.keys(), "Cannot combine results with different algorithm keys"
-        for key in self.algorithms:
-            assert (
-                self.algorithms[key] == resp.algorithms[key]
-            ), f"Algorithm config for '{key}' differs between responses"
+        if not others:
+            return self
 
-        self.source_images.extend(resp.source_images)
-        self.detections.extend(resp.detections)
+        all_responses = [self] + others
 
-        def to_list(errors):
-            if errors is None:
-                return []
-            if isinstance(errors, str):
-                return [errors]
-            return list(errors)
+        pipelines = {r.pipeline for r in all_responses}
+        if len(pipelines) != 1:
+            raise AssertionError(f"Inconsistent pipelines: {pipelines}")
 
-        self.errors = to_list(self.errors)
-        self.errors.extend(to_list(resp.errors))
+        algorithms_list = [r.algorithms for r in all_responses]
+        if not all(a == algorithms_list[0] for a in algorithms_list):
+            raise AssertionError("Algorithm configurations differ among responses.")
+
+        errors_found = [r.errors for r in all_responses if r.errors]
+        if errors_found:
+            raise AssertionError(f"Some responses contain errors: {errors_found}")
+
+        combined_source_images = [img for r in all_responses for img in r.source_images]
+        combined_detections = [det for r in all_responses for det in r.detections]
+        avg_total_time = mean(r.total_time for r in all_responses)
+
+        return PipelineResultsResponse(
+            pipeline=self.pipeline,
+            algorithms=self.algorithms,
+            total_time=avg_total_time,
+            source_images=combined_source_images,
+            detections=combined_detections,
+            errors=None,
+        )
 
 
 class PipelineStageParam(pydantic.BaseModel):

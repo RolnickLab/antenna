@@ -337,20 +337,68 @@ class MLJob(JobType):
 
         Returns True if all subtasks are completed.
         """
-        inprogress_subtasks = job.ml_task_records.filter(
-            status=MLSubtaskState.STARTED.name,
-            created_at__gte=job.started_at,
-        ).all()
+        assert job.pipeline is not None, "Job pipeline is not set"
+
+        inprogress_subtasks = (
+            job.ml_task_records.exclude(
+                status__in=[
+                    MLSubtaskState.FAIL.name,
+                    MLSubtaskState.SUCCESS.name,
+                ]
+            )
+            .filter(
+                created_at__gte=job.started_at,
+            )
+            .all()
+        )
         if len(inprogress_subtasks) == 0:
             # No tasks inprogress, update the job progress
+            job.logger.info("No inprogress subtasks left.")
             cls.update_job_progress(job)
             return True
 
-        save_results_tasks_to_create = []
+        save_results_task_record = {  # if pipeline responses are produced, this task will be saved to the db
+            "job": job,
+            "task_id": None,
+            "status": MLSubtaskState.PENDING.name,  # save result tasks are not started immediately
+            "task_name": MLSubtaskNames.save_results.name,
+            "num_captures": 0,
+            "num_detections": 0,
+            "num_classifications": 0,
+        }
+        save_results_to_save = []  # list of tuples (pipeline response, source images)
         inprogress_subtasks_to_update = []
         for inprogress_subtask in inprogress_subtasks:
             task_name = inprogress_subtask.task_name
             task_id = inprogress_subtask.task_id
+            if not task_id:
+                assert (
+                    task_name == MLSubtaskNames.save_results.name
+                ), "Only save results tasks can have no task_id and be in a PENDING state."
+                # Ensure no other STARTED save_results tasks
+                if (
+                    job.ml_task_records.filter(
+                        status=MLSubtaskState.STARTED.name,
+                        task_name=MLSubtaskNames.save_results.name,
+                        created_at__gte=job.started_at,
+                    ).count()
+                    == 0
+                ):
+                    assert (
+                        inprogress_subtask.pipeline_response is not None
+                    ), "Save results task must have a pipeline response"
+                    # Start the save results task now
+                    save_results_task = job.pipeline.save_results_async(
+                        results=inprogress_subtask.pipeline_response, job_id=job.pk
+                    )
+                    inprogress_subtask.status = MLSubtaskState.STARTED.name
+                    inprogress_subtask.task_id = save_results_task.id
+                    task_id = save_results_task.id
+                    inprogress_subtask.save()
+                    job.logger.info(f"Started save results task {inprogress_subtask.task_id}")
+                else:
+                    job.logger.info("A save results task is already in progress, will not start another one yet.")
+                    continue
 
             task = AsyncResult(task_id)
             if task.ready():
@@ -378,22 +426,10 @@ class MLJob(JobType):
                     inprogress_subtask.num_classifications = num_classifications
 
                     if results.source_images or results.detections:
-                        # Submit a save results task
-                        save_results_task = job.pipeline.save_results_async(results=results, job_id=job.pk)
-                        save_results_task_record = MLTaskRecord(
-                            job=job,
-                            task_id=save_results_task.id,
-                            task_name=MLSubtaskNames.save_results.name,
-                            pipeline_response=results,
-                            num_captures=num_captures,
-                            num_detections=num_detections,
-                            num_classifications=num_classifications,
-                        )
-                        save_results_tasks_to_create.append(
-                            (save_results_task_record, inprogress_subtask.source_images.all())
-                        )  # Keep track of source images to set after bulk create
-
-                        inprogress_subtask.subtask_id = save_results_task.id
+                        save_results_to_save.append((results, inprogress_subtask.source_images.all()))
+                        save_results_task_record["num_captures"] += num_captures
+                        save_results_task_record["num_detections"] += num_detections
+                        save_results_task_record["num_classifications"] += num_classifications
                 elif task_name == MLSubtaskNames.save_results.name:
                     pass
                 else:
@@ -411,23 +447,28 @@ class MLJob(JobType):
                             "num_captures",
                             "num_detections",
                             "num_classifications",
-                            "subtask_id",
                         ],
                     )
-                    # Bulk create the save results tasks
-                    created_task_records = MLTaskRecord.objects.bulk_create(
-                        [t[0] for t in save_results_tasks_to_create]
-                    )
-                    for task_record, source_images in zip(
-                        created_task_records, [t[1] for t in save_results_tasks_to_create]
-                    ):
-                        task_record.source_images.set(source_images)
 
                     cls.update_job_progress(job)
 
                     # Reset the lists
                     inprogress_subtasks_to_update = []
-                    save_results_tasks_to_create = []
+
+        assert job.pipeline is not None, "Job pipeline is not set"
+        # submit a single save results task
+        if len(save_results_to_save) > 0:
+            created_task_record = MLTaskRecord.objects.create(**save_results_task_record)
+            for _, source_images in save_results_to_save:
+                created_task_record.source_images.add(*source_images)
+            pipeline_results = [t[0] for t in save_results_to_save]
+            combined_pipeline_results = (
+                pipeline_results[0].combine_with(pipeline_results[1:])
+                if len(pipeline_results) > 1
+                else pipeline_results[0]
+            )
+            created_task_record.pipeline_response = combined_pipeline_results
+            created_task_record.save()
 
         # Bulk save the remaining items
         # Bulk save the updated inprogress subtasks
@@ -440,18 +481,22 @@ class MLJob(JobType):
                 "num_captures",
                 "num_detections",
                 "num_classifications",
-                "subtask_id",
             ],
         )
-        # Bulk create the save results tasks
-        created_task_records = MLTaskRecord.objects.bulk_create([t[0] for t in save_results_tasks_to_create])
-        for task_record, source_images in zip(created_task_records, [t[1] for t in save_results_tasks_to_create]):
-            task_record.source_images.set(source_images)
 
         cls.update_job_progress(job)
 
-        inprogress_subtasks = job.ml_task_records.filter(
-            status=MLSubtaskState.STARTED.name, created_at__gte=job.started_at
+        inprogress_subtasks = (
+            job.ml_task_records.exclude(
+                status__in=[
+                    MLSubtaskState.FAIL.name,
+                    MLSubtaskState.SUCCESS.name,
+                ]
+            )
+            .filter(
+                created_at__gte=job.started_at,
+            )
+            .all()
         )
         total_subtasks = job.ml_task_records.all().count()
         if inprogress_subtasks.count() > 0:
@@ -468,7 +513,7 @@ class MLJob(JobType):
     @classmethod
     def update_job_progress(cls, job: "Job"):
         """
-        Using the MLTaskRecords and the job subtask_ids, update the job progress.
+        Using the MLTaskRecords of a related Job, update the job progress.
         This function only updates the UI's job status. No new data is created here.
         """
         # At any time, we should have all process_pipeline_request in queue
@@ -518,9 +563,11 @@ class MLJob(JobType):
                 failed=failed_process_captures,
             )
 
-        # More save_results tasks will be queued as len(inprogress_process_pipeline) --> 0
         inprogress_save_results = job.ml_task_records.filter(
-            status=MLSubtaskState.STARTED.name,
+            status__in=[
+                MLSubtaskState.STARTED.name,
+                MLSubtaskState.PENDING.name,
+            ],
             task_name=MLSubtaskNames.save_results.name,
             created_at__gte=job.started_at,
         )
@@ -912,6 +959,7 @@ class MLSubtaskNames(str, OrderedEnum):
 
 
 class MLSubtaskState(str, OrderedEnum):
+    PENDING = "PENDING"
     STARTED = "STARTED"
     SUCCESS = "SUCCESS"
     FAIL = "FAIL"
@@ -924,7 +972,7 @@ class MLTaskRecord(BaseModel):
     """
 
     job = models.ForeignKey("Job", on_delete=models.CASCADE, related_name="ml_task_records")
-    task_id = models.CharField(max_length=255)
+    task_id = models.CharField(max_length=255, null=True, blank=True)
     source_images = models.ManyToManyField(SourceImage, related_name="ml_task_records")
     task_name = models.CharField(
         max_length=255,
@@ -950,11 +998,12 @@ class MLTaskRecord(BaseModel):
     num_detections = models.IntegerField(default=0)
     num_classifications = models.IntegerField(default=0)
 
-    # only relevant to process pipeline request tasks which have a subsequent save results task
-    subtask_id = models.CharField(max_length=255, blank=True, null=True)
-
     def __str__(self):
         return f"MLTaskRecord(job={self.job.pk}, task_id={self.task_id}, task_name={self.task_name})"
+
+    def clean(self):
+        if self.status == MLSubtaskState.PENDING.name and self.task_name != MLSubtaskNames.save_results.name:
+            raise ValueError(f"{self.task_name} tasks cannot have a PENDING status.")
 
 
 class Job(BaseModel):
