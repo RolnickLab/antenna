@@ -14,6 +14,7 @@ class Migration(migrations.Migration):
             options={
                 "ordering": ["-priority", "created_at"],
                 "permissions": [
+                    ("create_project", "Can create a project"),
                     ("create_identification", "Can create identifications"),
                     ("update_identification", "Can update identifications"),
                     ("delete_identification", "Can delete identifications"),
