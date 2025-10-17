@@ -189,14 +189,6 @@ class BaseModel(models.Model):
         """
         from ami.users.roles import BasicMember
 
-        project = self.get_project() if hasattr(self, "get_project") else None
-        if not project:
-            return False
-        if action == "retrieve":
-            if project.draft:
-                # Allow view permission for members and owners of draft projects
-                return BasicMember.has_role(user, project) or user == project.owner or user.is_superuser
-            return True
         model = self._meta.model_name
         crud_map = {
             "create": f"create_{model}",
@@ -204,6 +196,16 @@ class BaseModel(models.Model):
             "partial_update": f"update_{model}",
             "destroy": f"delete_{model}",
         }
+        project = self.get_project() if hasattr(self, "get_project") else None
+        # Check if the related project exists
+        if not project.pk:
+            return user.has_perm(f"main.{crud_map[action]}")
+
+        if action == "retrieve":
+            if project.draft:
+                # Allow view permission for members and owners of draft projects
+                return BasicMember.has_role(user, project) or user == project.owner or user.is_superuser
+            return True
 
         if action in crud_map:
             return user.has_perm(crud_map[action], project)
