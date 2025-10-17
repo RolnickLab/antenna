@@ -430,6 +430,8 @@ class Project(ProjectSettingsMixin, BaseModel):
     class Meta:
         ordering = ["-priority", "created_at"]
         permissions = [
+            # Project permissions
+            ("create_project", "Can create a project"),
             # Identification permissions
             ("create_identification", "Can create identifications"),
             ("update_identification", "Can update identifications"),
