@@ -47,13 +47,21 @@ export const getFetchDetailsUrl = ({
   collection,
   itemId,
   queryParams = {},
+  projectId,
 }: {
   collection: string
   itemId?: string
   queryParams?: QueryParams
+  projectId?: string
 }) => {
+  const allQueryParams: QueryParams = { ...queryParams }
+
+  if (projectId) {
+    allQueryParams.project_id = projectId
+  }
+
   const baseUrl = `${API_URL}/${collection}/${itemId}`
-  const queryString = new URLSearchParams(queryParams).toString()
+  const queryString = new URLSearchParams(allQueryParams).toString()
 
   if (!queryString.length) {
     return baseUrl

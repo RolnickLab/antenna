@@ -14,6 +14,7 @@ export enum STRING {
   DELETE,
   DELETED,
   DOWNLOAD,
+  DRAFT,
   EDIT,
   EXPAND,
   LOGIN,
@@ -77,6 +78,7 @@ export enum STRING {
   FIELD_LABEL_DEPLOYMENT,
   FIELD_LABEL_DESCRIPTION,
   FIELD_LABEL_DEVICE,
+  FIELD_LABEL_DIRECT_OCCURRENCES,
   FIELD_LABEL_DURATION,
   FIELD_LABEL_EMAIL,
   FIELD_LABEL_EMAIL_NEW,
@@ -112,6 +114,7 @@ export enum STRING {
   FIELD_LABEL_PROCESS,
   FIELD_LABEL_PROJECT,
   FIELD_LABEL_RECORDS_EXPORTED,
+  FIELD_LABEL_RESEARCH_SITE,
   FIELD_LABEL_TOTAL_RECORDS,
   FIELD_LABEL_RESULT,
   FIELD_LABEL_SAMPLING_METHOD,
@@ -126,7 +129,6 @@ export enum STRING {
   FIELD_LABEL_DATA_SOURCE,
   FIELD_LABEL_SAMPLE_CAPTURES,
   FIELD_LABEL_SCORE,
-  FIELD_LABEL_SCORE_THRESHOLD,
   FIELD_LABEL_SNAPSHOTS,
   FIELD_LABEL_STARTED_AT,
   FIELD_LABEL_STATUS,
@@ -160,6 +162,7 @@ export enum STRING {
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DELETE_CONFIRM,
+  MESSAGE_DRAFTS,
   MESSAGE_HAS_ACCOUNT,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
@@ -167,6 +170,7 @@ export enum STRING {
   MESSAGE_NO_ACCOUNT_YET,
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS,
+  MESSAGE_NO_RESULTS_TO_SHOW,
   MESSAGE_NO_RESULTS_FOR_FILTERING,
   MESSAGE_NO_RESULTS_FOR_PAGE,
   MESSAGE_PASSWORD_FORMAT,
@@ -181,6 +185,7 @@ export enum STRING {
 
   /* NAV_ITEM */
   NAV_ITEM_ALGORITHMS,
+  NAV_ITEM_CAPTURES,
   NAV_ITEM_COLLECTIONS,
   NAV_ITEM_DEFAULT_FILTERS,
   NAV_ITEM_DEPLOYMENTS,
@@ -190,6 +195,7 @@ export enum STRING {
   NAV_ITEM_JOBS,
   NAV_ITEM_OCCURRENCES,
   NAV_ITEM_PIPELINES,
+  NAV_ITEM_PROCESSING,
   NAV_ITEM_PROCESSING_SERVICES,
   NAV_ITEM_PROJECT,
   NAV_ITEM_PROJECTS,
@@ -200,9 +206,8 @@ export enum STRING {
   NAV_ITEM_TAXA,
 
   /* TAB_ITEM */
-  TAB_ITEM_ALGORITHMS,
-  TAB_ITEM_PROCESSING_SERVICES,
   TAB_ITEM_ALL_PROJECTS,
+  TAB_ITEM_CHARTS,
   TAB_ITEM_FIELDS,
   TAB_ITEM_GALLERY,
   TAB_ITEM_IDENTIFICATION,
@@ -288,6 +293,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.DELETE]: 'Delete',
   [STRING.DELETED]: 'Deleted',
   [STRING.DOWNLOAD]: 'Download',
+  [STRING.DRAFT]: 'Draft',
   [STRING.EDIT]: 'Edit',
   [STRING.EXPAND]: 'Expand',
   [STRING.LOGIN]: 'Login',
@@ -324,7 +330,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_CATEGORY_MAP_ID]: 'Category map ID',
   [STRING.FIELD_LABEL_CATEGORY_COUNT]: 'Taxa',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
-  [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures w/detections',
+  [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures with detections',
   [STRING.FIELD_LABEL_COMMENT]: 'Comment',
   [STRING.FIELD_LABEL_CONNECTION_STATUS]: 'Connection status',
   [STRING.FIELD_LABEL_CREATED_AT]: 'Created at',
@@ -333,6 +339,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DATE_OBSERVED]: 'Date observed',
   [STRING.FIELD_LABEL_DELAY]: 'Delay',
   [STRING.FIELD_LABEL_DEVICE]: 'Device type',
+  [STRING.FIELD_LABEL_DIRECT_OCCURRENCES]: 'Direct occurrences',
   [STRING.FIELD_LABEL_DEPLOYMENT]: 'Station',
   [STRING.FIELD_LABEL_DESCRIPTION]: 'Description',
   [STRING.FIELD_LABEL_DURATION]: 'Duration',
@@ -361,7 +368,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_NAME]: 'Name',
   [STRING.FIELD_LABEL_NEW_PASSWORD]: 'New password',
   [STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED]: 'Pipelines registered',
-  [STRING.FIELD_LABEL_OCCURRENCES]: 'Direct occurrences',
+  [STRING.FIELD_LABEL_OCCURRENCES]: 'Occurrences',
   [STRING.FIELD_LABEL_PASSWORD]: 'Password',
   [STRING.FIELD_LABEL_PASSWORD_CURRENT]: 'Current password',
   [STRING.FIELD_LABEL_PASSWORD_NEW]: 'New password',
@@ -370,6 +377,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_PROCESS]: 'Process',
   [STRING.FIELD_LABEL_PROJECT]: 'Project',
   [STRING.FIELD_LABEL_RECORDS_EXPORTED]: 'Records exported',
+  [STRING.FIELD_LABEL_RESEARCH_SITE]: 'Research site',
   [STRING.FIELD_LABEL_TOTAL_RECORDS]: 'Total records',
   [STRING.FIELD_LABEL_RESULT]: 'Result',
   [STRING.FIELD_LABEL_SAMPLING_METHOD]: 'Sampling method',
@@ -384,7 +392,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_DATA_SOURCE]: 'Data source',
   [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample images',
   [STRING.FIELD_LABEL_SCORE]: 'Score',
-  [STRING.FIELD_LABEL_SCORE_THRESHOLD]: 'Score threshold',
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
   [STRING.FIELD_LABEL_STARTED_AT]: 'Started at',
   [STRING.FIELD_LABEL_STATUS]: 'Status',
@@ -408,7 +415,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version Name',
 
   /* ENTITY */
-  [STRING.ENTITY_CREATE]: 'Register new {{type}}',
+  [STRING.ENTITY_CREATE]: 'Create new {{type}}',
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
@@ -428,7 +435,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp with year, month, day, hours, minutes and seconds (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} images can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} images for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
     'Station must be created before syncing images.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
@@ -442,6 +449,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A data source must be configured and saved before syncing images.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
+  [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
@@ -449,11 +457,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
-  [STRING.MESSAGE_NO_RESULTS]: 'No results to show.',
+  [STRING.MESSAGE_NO_RESULTS]: 'No results',
+  [STRING.MESSAGE_NO_RESULTS_TO_SHOW]: 'There are no results to show here yet.',
   [STRING.MESSAGE_NO_RESULTS_FOR_FILTERING]:
-    'No results to show for the current filtering.',
+    'There are no results to show for the current filtering.',
   [STRING.MESSAGE_NO_RESULTS_FOR_PAGE]:
-    'No results to show for the current page.',
+    'There are no results to show for the current page.',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
   [STRING.MESSAGE_PASSWORD_UPDATED]: 'Your password has been updated!',
@@ -471,6 +480,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* NAV_ITEM */
   [STRING.NAV_ITEM_ALGORITHMS]: 'Algorithms',
+  [STRING.NAV_ITEM_CAPTURES]: 'Captures',
   [STRING.NAV_ITEM_COLLECTIONS]: 'Collections',
   [STRING.NAV_ITEM_DEFAULT_FILTERS]: 'Default filters',
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',
@@ -480,6 +490,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_JOBS]: 'Jobs',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
   [STRING.NAV_ITEM_PIPELINES]: 'Pipelines',
+  [STRING.NAV_ITEM_PROCESSING]: 'Processing',
   [STRING.NAV_ITEM_PROCESSING_SERVICES]: 'Processing services',
   [STRING.NAV_ITEM_PROJECT]: 'Project',
   [STRING.NAV_ITEM_PROJECTS]: 'Projects',
@@ -490,9 +501,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
 
   /* TAB_ITEM */
-  [STRING.TAB_ITEM_ALGORITHMS]: 'Algorithms',
-  [STRING.TAB_ITEM_PROCESSING_SERVICES]: 'Processing services',
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
+  [STRING.TAB_ITEM_CHARTS]: 'Charts',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery view',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',

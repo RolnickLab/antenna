@@ -183,8 +183,12 @@ class PipelineResultsResponse(pydantic.BaseModel):
     pipeline: str
     algorithms: dict[str, AlgorithmConfigResponse] = pydantic.Field(
         default_factory=dict,
-        description="A dictionary of all algorithms used in the pipeline, including their class list and other "
-        "metadata, keyed by the algorithm key.",
+        description=(
+            "A dictionary of all algorithms used in the pipeline, including their class list and other "
+            "metadata, keyed by the algorithm key. "
+            "DEPRECATED: Algorithms should only be provided in the ProcessingServiceInfoResponse."
+        ),
+        depreciated=True,
     )
     total_time: float
     source_images: list[SourceImageResponse]
@@ -244,8 +248,16 @@ class PipelineStage(pydantic.BaseModel):
     description: str | None = None
 
 
-class PipelineConfig(pydantic.BaseModel):
-    """A configurable pipeline."""
+class PipelineConfigResponse(pydantic.BaseModel):
+    """
+    Details of a pipeline available in the processing service.
+
+    Includes the algorithm (model) definitions used in the pipeline, and
+    their category maps (class lists).
+
+    This must be retrieved from the processing service API and saved in Antenna
+    before images are submitted for processing.
+    """
 
     name: str
     slug: str
@@ -262,7 +274,7 @@ class ProcessingServiceInfoResponse(pydantic.BaseModel):
 
     name: str
     description: str | None = None
-    pipelines: list[PipelineConfig] = []
+    pipelines: list[PipelineConfigResponse] = []
     algorithms: list[AlgorithmConfigResponse] = []
 
 
@@ -273,7 +285,7 @@ class ProcessingServiceStatusResponse(pydantic.BaseModel):
 
     timestamp: datetime.datetime
     request_successful: bool
-    pipeline_configs: list[PipelineConfig] = []
+    pipeline_configs: list[PipelineConfigResponse] = []
     error: str | None = None
     server_live: bool | None = None
     pipelines_online: list[str] = []
@@ -285,6 +297,6 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     success: bool
     error: str | None = None
-    pipelines: list[PipelineConfig] = []
+    pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []

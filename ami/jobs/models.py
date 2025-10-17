@@ -20,6 +20,7 @@ from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.post_processing.registry import get_postprocessing_task
 from ami.ml.schemas import PipelineRequest, PipelineResultsResponse
 from ami.ml.signals import get_worker_name, subscribe_celeryworker_to_pipeline_queues
 from ami.ml.tasks import check_ml_job_status
@@ -918,6 +919,34 @@ class DataExportJob(JobType):
         job.update_status(JobState.SUCCESS, save=True)
 
 
+class PostProcessingJob(JobType):
+    name = "Post Processing"
+    key = "post_processing"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        job.progress.add_stage(cls.name, key=cls.key)
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.save()
+
+        params = job.params or {}
+        task_key: str = params.get("task", "")
+        config = params.get("config", {})
+        job.logger.info(f"Post-processing task: {task_key} with params: {job.params}")
+
+        task_cls = get_postprocessing_task(key=task_key)
+        if not task_cls:
+            raise ValueError(f"Unknown post-processing task '{task_key}'")
+
+        task = task_cls(job=job, **config)
+        task.run()
+        job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS)
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -927,7 +956,14 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
-VALID_JOB_TYPES = [MLJob, SourceImageCollectionPopulateJob, DataStorageSyncJob, UnknownJobType, DataExportJob]
+VALID_JOB_TYPES = [
+    MLJob,
+    SourceImageCollectionPopulateJob,
+    DataStorageSyncJob,
+    UnknownJobType,
+    DataExportJob,
+    PostProcessingJob,
+]
 
 
 def get_job_type_by_key(key: str) -> type[JobType] | None:

@@ -18,6 +18,7 @@ export type CaptureDetection = {
   score: number
   occurrenceId?: string
   occurrence?: DetectionOccurrence
+  occurrenceMeetsCriteria: boolean
 }
 
 const getDetectionLabel = (detection: CaptureDetection) => {
@@ -53,7 +54,7 @@ export class Capture {
 
     if (capture.detections?.length) {
       this._detections = capture.detections.map(
-        (detection: CaptureDetection) => {
+        (detection: any): CaptureDetection => {
           return {
             bbox: detection.bbox,
             id: `${detection.id}`,
@@ -62,6 +63,7 @@ export class Capture {
             occurrenceId: detection.occurrence
               ? `${detection.occurrence.id}`
               : undefined,
+            occurrenceMeetsCriteria: detection.occurrence_meets_criteria,
           }
         }
       )
@@ -82,12 +84,14 @@ export class Capture {
     })
   }
 
-  get deploymentId(): string {
-    return this._capture.deployment.id
+  get deploymentId(): string | undefined {
+    return this._capture.deployment
+      ? `${this._capture.deployment.id}`
+      : undefined
   }
 
-  get deploymentLabel(): string {
-    return this._capture.deployment.name
+  get deploymentLabel(): string | undefined {
+    return this._capture.deployment?.name
   }
 
   get detections(): CaptureDetection[] {

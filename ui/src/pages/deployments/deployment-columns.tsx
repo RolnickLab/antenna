@@ -55,6 +55,20 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
+    id: 'device',
+    name: translate(STRING.FIELD_LABEL_DEVICE),
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.device?.name} />
+    ),
+  },
+  {
+    id: 'research-site',
+    name: translate(STRING.FIELD_LABEL_RESEARCH_SITE),
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.researchSite?.name} />
+    ),
+  },
+  {
     id: 'status',
     name: 'Latest job status',
     renderCell: (item: Deployment) => {
@@ -89,6 +103,24 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
+    id: 'captures',
+    name: translate(STRING.FIELD_LABEL_CAPTURES),
+    sortField: 'numImages',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.CAPTURES({ projectId }),
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
     id: 'sessions',
     name: translate(STRING.FIELD_LABEL_SESSIONS),
     sortField: 'numEvents',
@@ -105,15 +137,6 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
         <BasicTableCell value={item.numEvents} theme={CellTheme.Bubble} />
       </Link>
     ),
-  },
-  {
-    id: 'captures',
-    name: translate(STRING.FIELD_LABEL_CAPTURES),
-    sortField: 'numImages',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
   },
   {
     id: 'occurrences',
@@ -154,7 +177,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'firstDate',
     name: translate(STRING.FIELD_LABEL_FIRST_DATE),
-    sortField: 'firstDate',
+    sortField: 'firstDateLabel',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -165,13 +188,25 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'lastDate',
     name: translate(STRING.FIELD_LABEL_LAST_DATE),
-    sortField: 'lastDate',
+    sortField: 'lastDateLabel',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.lastDateLabel} />
     ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'createdAt',
+    renderCell: (item: Deployment) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updatedAt',
+    renderCell: (item: Deployment) => <BasicTableCell value={item.updatedAt} />,
   },
   {
     id: 'actions',

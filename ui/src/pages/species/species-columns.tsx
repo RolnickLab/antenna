@@ -78,7 +78,7 @@ export const columns: (project: {
   {
     id: 'occurrences',
     sortField: 'occurrences_count',
-    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    name: translate(STRING.FIELD_LABEL_DIRECT_OCCURRENCES),
     styles: {
       textAlign: TextAlign.Right,
     },
