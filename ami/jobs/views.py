@@ -171,18 +171,46 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 required=False,
                 type=OpenApiTypes.BOOL,
             ),
+            OpenApiParameter(
+                name="incomplete_only",
+                description="Filter to only show incomplete jobs (excludes SUCCESS, FAILURE, REVOKED)",
+                required=False,
+                type=OpenApiTypes.BOOL,
+            ),
         ]
     )
     def list(self, request, *args, **kwargs):
         # Check if ids_only parameter is set
         ids_only = request.query_params.get("ids_only", "false").lower() in ["true", "1", "yes"]
 
+        # Check if incomplete_only parameter is set
+        incomplete_only = request.query_params.get("incomplete_only", "false").lower() in ["true", "1", "yes"]
+
+        # Get the base queryset
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Filter to incomplete jobs if requested (checks "results" stage status)
+        if incomplete_only:
+            from django.db.models import Q
+
+            # Create filters for each final state to exclude
+            final_states = JobState.final_states()
+            exclude_conditions = Q()
+
+            # Exclude jobs where the "results" stage has a final state status
+            for state in final_states:
+                # JSON path query to check if results stage status is in final states
+                exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
+
+            queryset = queryset.exclude(exclude_conditions)
+
         if ids_only:
-            # Get filtered queryset and return only IDs
-            queryset = self.filter_queryset(self.get_queryset())
+            # Return only IDs
             job_ids = list(queryset.values_list("id", flat=True))
             return Response({"job_ids": job_ids, "count": len(job_ids)})
 
+        # Override the queryset for the list view
+        self.queryset = queryset
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
@@ -270,7 +298,15 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raise ValidationError("Request body must be a list of results")
 
         if not request.data:
-            raise ValidationError("Request body cannot be empty")
+            task = process_pipeline_result.delay(job_id=job_id, result_data={}, reply_subject="")
+            return Response(
+                {
+                    "status": "accepted",
+                    "job_id": job_id,
+                    "tasks": [{"reply_subject": "", "status": "queued", "task_id": task.id}],
+                }
+            )
+            # raise ValidationError("Request body cannot be empty")
 
         # Queue each result for background processing
         queued_tasks = []

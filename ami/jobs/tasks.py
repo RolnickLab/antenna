@@ -40,25 +40,28 @@ def run_job(self, job_id: int) -> None:
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
-def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> dict:
+def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
     """
     Process a single pipeline result asynchronously.
 
     This task:
     1. Deserializes the pipeline result
     2. Saves it to the database
-    3. Acknowledges the task via NATS
+    3. Updates progress by removing processed image IDs from Redis
+    4. Acknowledges the task via NATS
 
     Args:
         job_id: The job ID
-        result_json: JSON string of the pipeline result
+        result_data: Dictionary containing the pipeline result
         reply_subject: NATS reply subject for acknowledgment
 
     Returns:
         dict with status information
     """
 
-    from ami.jobs.models import Job
+    from django.core.cache import cache
+
+    from ami.jobs.models import Job, JobState
     from ami.ml.schemas import PipelineResultsResponse
 
     try:
@@ -66,15 +69,70 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         job.logger.info(f"Processing pipeline result for job {job_id}, reply_subject: {reply_subject}")
 
         # Deserialize the result
-        pipeline_result = PipelineResultsResponse(**result_data)
 
         # Save to database (this is the slow operation)
-        if job.pipeline:
-            job.pipeline.save_results(results=pipeline_result, job_id=job.pk)
-            job.logger.info(f"Successfully saved results for job {job_id}")
-        else:
+        if not job.pipeline:
             job.logger.warning(f"Job {job_id} has no pipeline, skipping save_results")
+            return
 
+        # TODO CGJS: do we need this? it was for jobs that got in a bad state
+        # if len(result_data) == 0:
+        #     job.logger.warning(f"Job {job_id} received empty result_data, skipping save_results")
+        #     job.progress.update_stage(
+        #         "results",
+        #         status=JobState.SUCCESS,
+        #         progress=1.0,
+        #     )
+        #     job.progress.update_stage(
+        #         "process",
+        #         status=JobState.SUCCESS,
+        #         progress=1.0,
+        #     )
+        #     job.save()
+        #     return
+
+        job.logger.info(f"Successfully saved results for job {job_id}")
+
+        # Update progress tracking in Redis
+        redis_key = f"job:{job.pk}:pending_images"  # noqa E231
+        redis_key_total = f"job:{job.pk}:pending_images_total"  # noqa E231
+        pending_images = cache.get(redis_key)
+        total_images = cache.get(redis_key_total)
+        logger.info(f"Pending images from Redis for job {job_id}: {len(pending_images)}/{total_images}")
+        progress_percentage = 1.0
+        pipeline_result = PipelineResultsResponse(**result_data)
+        if pending_images is not None:
+            # Extract processed image IDs from the result
+            processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
+
+            remaining_images = [img_id for img_id in pending_images if img_id not in processed_image_ids]
+
+            # Update Redis with remaining images
+            if remaining_images:
+                cache.set(redis_key, remaining_images, timeout=86400 * 7)  # 7 days
+            else:
+                cache.delete(redis_key)
+
+            # Calculate progress percentage
+            images_processed = total_images - len(remaining_images)
+            progress_percentage = float(images_processed) / total_images if total_images > 0 else 1.0
+
+            job.logger.info(
+                f"Job {job_id} progress: {images_processed}/{total_images} images processed "
+                f"({progress_percentage*100}%), {len(remaining_images)} remaining"
+            )
+
+        else:
+            job.logger.warning(f"No pending images found in Redis for job {job_id}, setting progress to 100%")
+
+        job.progress.update_stage(
+            "process",
+            status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
+            progress=progress_percentage,
+        )
+        job.save()
+
+        job.pipeline.save_results(results=pipeline_result, job_id=job.pk)
         # Acknowledge the task via NATS
         try:
 
@@ -93,12 +151,13 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
             job.logger.error(f"Error acknowledging task via NATS: {ack_error}")
             # Don't fail the task if ACK fails - data is already saved
 
-        return {
-            "status": "success",
-            "job_id": job_id,
-            "reply_subject": reply_subject,
-            "acknowledged": ack_success if "ack_success" in locals() else False,
-        }
+        # Update job stage with calculated progress
+        job.progress.update_stage(
+            "results",
+            status=JobState.STARTED if remaining_images else JobState.SUCCESS,
+            progress=progress_percentage,
+        )
+        job.save()
 
     except Job.DoesNotExist:
         logger.error(f"Job {job_id} not found")

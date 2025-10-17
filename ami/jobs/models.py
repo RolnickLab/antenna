@@ -360,7 +360,7 @@ class MLJob(JobType):
             progress=0,
         )
 
-        images = list(
+        images: list[SourceImage] = list(
             # @TODO return generator plus image count
             # @TODO pass to celery group chain?
             job.pipeline.collect_images(
@@ -551,7 +551,7 @@ class MLJob(JobType):
             loop.close()
 
     @classmethod
-    def queue_images_to_nats(cls, job: "Job", images: list):
+    def queue_images_to_nats(cls, job: "Job", images: list[SourceImage]):
         """
         Queue all images for a job to a NATS JetStream stream for the job.
 
@@ -564,6 +564,8 @@ class MLJob(JobType):
         """
         import asyncio
 
+        from django.core.cache import cache
+
         from ami.utils.nats_queue import TaskQueueManager
 
         job_id = f"job{job.pk}"
@@ -571,10 +573,13 @@ class MLJob(JobType):
 
         # Prepare all messages outside of async context to avoid Django ORM issues
         messages = []
+        image_ids = []
         for i, image in enumerate(images):
+            image_id = str(image.pk)
+            image_ids.append(image_id)
             message = {
                 "job_id": job.pk,
-                "image_id": image.id if hasattr(image, "id") else image.pk,
+                "image_id": image_id,
                 "image_url": image.url() if hasattr(image, "url") else None,
                 "timestamp": (
                     image.timestamp.isoformat() if hasattr(image, "timestamp") and image.timestamp else None
@@ -584,6 +589,15 @@ class MLJob(JobType):
                 "queue_timestamp": datetime.datetime.now().isoformat(),
             }
             messages.append((image.pk, message))
+
+        # Store all image IDs in Redis for progress tracking
+        # TODO CGJS: put these formats in a common place
+        redis_key = f"job:{job.pk}:pending_images"  # noqa E231
+        redis_key_total = f"job:{job.pk}:pending_images_total"  # noqa E231
+        # TODO CGJS: Make the timeout proportional to the expected job duration, e.g. the number of images
+        cache.set(redis_key, image_ids, timeout=86400 * 7)  # 7 days timeout
+        cache.set(redis_key_total, len(image_ids), timeout=86400 * 7)  # 7 days timeout
+        job.logger.info(f"Stored {len(image_ids)} image IDs in Redis at key '{redis_key}'")
 
         async def queue_all_images():
             successful_queues = 0
@@ -618,6 +632,10 @@ class MLJob(JobType):
             successful_queues, failed_queues = loop.run_until_complete(queue_all_images())
         finally:
             loop.close()
+
+        if not images:
+            job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
+            job.save()
 
         # Log results (back in sync context)
         if successful_queues > 0:
