@@ -69,9 +69,14 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
 
     logger.debug(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
     permissions = response_data.get("user_permissions", set())
+    create_permission = f"create_{model.__name__.lower()}"
     if user and user.is_superuser:
         permissions.add("create")
-    if user and project and f"create_{model.__name__.lower()}" in get_perms(user, project):
+    # If no project is provided, use model level permissions
+    if user and not project and user.has_perm(f"main.{create_permission}"):
+        permissions.add("create")
+    # If project is provided, use object-level permissions
+    if user and project and create_permission in get_perms(user, project):
         permissions.add("create")
     response_data["user_permissions"] = list(permissions)
     return response_data
