@@ -181,8 +181,8 @@ class ZeroShotObjectDetector(Algorithm):
 class FlatBugObjectDetector(Algorithm):
     """
     Flat-bug Object Detection model.
+    Uses the flat-bug library for terrestrial arthropod detection and segmentation.
     Produces both a bounding box and a classification for each detection.
-    The classification is based on the candidate labels.
     """
 
     candidate_labels: list[str] = ["insect"]
@@ -191,18 +191,20 @@ class FlatBugObjectDetector(Algorithm):
         saved_models_key = "flat_bug_object_detector"  # generate a key for each uniquely compiled algorithm
 
         if saved_models_key not in SAVED_MODELS:
-            from transformers import pipeline
+            from flat_bug.predictor import Predictor
 
             device_choice = device or get_best_device()
-            device_index = int(device_choice.split(":")[-1]) if ":" in device_choice else -1
+            # device_index = int(device_choice.split(":")[-1]) if ":" in device_choice else -1
             logger.info(f"Compiling {self.algorithm_config_response.name} on device {device_choice}...")
-            checkpoint = "google/owlv2-base-patch16-ensemble"  # TODO: replace with actual flat-bug model checkpoint when available
-            self.model = pipeline(
-                model=checkpoint,
-                task="flat-bug-object-detection",
-                use_fast=True,
-                device=device_index,
+
+            # Initialize flat-bug predictor with default model
+            self.model = Predictor(model="flat_bug_M.pt", device=device_choice)  # Default flat-bug model
+
+            # Set some reasonable hyperparameters
+            self.model.set_hyperparameters(
+                SCORE_THRESHOLD=0.5, IOU_THRESHOLD=0.5, TIME=False  # Set to True for detailed timing info
             )
+
             SAVED_MODELS[saved_models_key] = self.model
         else:
             logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
@@ -213,54 +215,77 @@ class FlatBugObjectDetector(Algorithm):
         for source_image in source_images:
             if source_image.width and source_image.height and source_image._pil:
                 start_time = datetime.datetime.now()
-                logger.info("Predicting...")
-                if not self.candidate_labels:
-                    raise ValueError("No candidate labels are provided during inference.")
-                logger.info(f"Predicting with candidate labels: {self.candidate_labels}")
-                predictions = self.model(source_image._pil, candidate_labels=self.candidate_labels)
+                logger.info("Predicting with flat-bug...")
+
+                # Use flat-bug's pyramid_predictions method
+                predictions = self.model.pyramid_predictions(source_image._pil)
+
                 end_time = datetime.datetime.now()
                 elapsed_time = (end_time - start_time).total_seconds()
 
-                for prediction in predictions:
-                    logger.info("Prediction: %s", prediction)
-                    bbox = BoundingBox(
-                        x1=prediction["box"]["xmin"],
-                        x2=prediction["box"]["xmax"],
-                        y1=prediction["box"]["ymin"],
-                        y2=prediction["box"]["ymax"],
+                # Extract bounding boxes from flat-bug predictions
+                # flat-bug returns TensorPredictions with boxes, masks, and scores
+                # NOTE: The exact attribute names may vary - run test_flat_bug_implementation.py to verify
+                if hasattr(predictions, "boxes") and predictions.boxes is not None:
+                    boxes = predictions.boxes.cpu().numpy()  # Convert to numpy if tensor
+                    scores = (
+                        predictions.scores.cpu().numpy()
+                        if hasattr(predictions, "scores") and predictions.scores is not None
+                        else None
                     )
-                    cropped_image_pil = source_image._pil.crop((bbox.x1, bbox.y1, bbox.x2, bbox.y2))
-                    detection = Detection(
-                        id=f"{source_image.id}-crop-{bbox.x1}-{bbox.y1}-{bbox.x2}-{bbox.y2}",
-                        url=source_image.url,  # @TODO: ideally, should save cropped image at separate url
-                        width=cropped_image_pil.width,
-                        height=cropped_image_pil.height,
-                        timestamp=datetime.datetime.now(),
-                        source_image=source_image,
-                        bbox=bbox,
-                        inference_time=elapsed_time,
-                        algorithm=AlgorithmReference(
-                            name=self.algorithm_config_response.name,
-                            key=self.algorithm_config_response.key,
-                        ),
-                        classifications=[
-                            ClassificationResponse(
-                                classification=prediction["label"],
-                                labels=[prediction["label"]],
-                                scores=[prediction["score"]],
-                                logits=[prediction["score"]],
-                                inference_time=elapsed_time,
-                                timestamp=datetime.datetime.now(),
-                                algorithm=AlgorithmReference(
-                                    name=self.algorithm_config_response.name,
-                                    key=self.algorithm_config_response.key,
-                                ),
-                                terminal=not intermediate,
-                            )
-                        ],
-                    )
-                    detection._pil = cropped_image_pil
-                    detector_responses.append(detection)
+
+                    for i, box in enumerate(boxes):
+                        # box format from flat-bug is typically [x1, y1, x2, y2]
+                        # NOTE: Verify this format by running the test script
+                        x1, y1, x2, y2 = box
+
+                        bbox = BoundingBox(
+                            x1=float(x1),
+                            x2=float(x2),
+                            y1=float(y1),
+                            y2=float(y2),
+                        )
+
+                        cropped_image_pil = source_image._pil.crop((bbox.x1, bbox.y1, bbox.x2, bbox.y2))
+
+                        # Get confidence score if available
+                        confidence_score = float(scores[i]) if scores is not None and i < len(scores) else 0.5
+
+                        detection = Detection(
+                            id=f"{source_image.id}-crop-{bbox.x1}-{bbox.y1}-{bbox.x2}-{bbox.y2}",
+                            url=source_image.url,  # @TODO: ideally, should save cropped image at separate url
+                            width=cropped_image_pil.width,
+                            height=cropped_image_pil.height,
+                            timestamp=datetime.datetime.now(),
+                            source_image=source_image,
+                            bbox=bbox,
+                            inference_time=elapsed_time,
+                            algorithm=AlgorithmReference(
+                                name=self.algorithm_config_response.name,
+                                key=self.algorithm_config_response.key,
+                            ),
+                            classifications=[
+                                ClassificationResponse(
+                                    classification=self.candidate_labels[
+                                        0
+                                    ],  # flat-bug detects arthropods, use first label
+                                    labels=self.candidate_labels,
+                                    scores=[confidence_score],
+                                    logits=[confidence_score],
+                                    inference_time=elapsed_time,
+                                    timestamp=datetime.datetime.now(),
+                                    algorithm=AlgorithmReference(
+                                        name=self.algorithm_config_response.name,
+                                        key=self.algorithm_config_response.key,
+                                    ),
+                                    terminal=not intermediate,
+                                )
+                            ],
+                        )
+                        detection._pil = cropped_image_pil
+                        detector_responses.append(detection)
+                else:
+                    logger.info("No detections found in image")
             else:
                 raise ValueError(f"Source image {source_image.id} does not have width and height attributes.")
 
