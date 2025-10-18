@@ -219,74 +219,16 @@ class TestMLJobBatchProcessing(TransactionTestCase):
         self.source_image_collection = self.project.sourceimage_collections.get(name="Test Source Image Collection")
         self.pipeline = Pipeline.objects.get(slug="constant")
 
-        # remove detections and classifications from the source image collection
+        # remove existing detections from the source image collection
         for image in self.source_image_collection.images.all():
             image.detections.all().delete()
             image.save()
-
-    def _check_correct_job_progress(
-        self, job: Job, expected_num_process_subtasks: int, expected_num_results_subtasks: int
-    ):
-        """Helper function to check that the job progress is correct."""
-        # Check that the job stages are as expected
-        self.assertEqual(job.progress.stages[0].key, "delay")
-        self.assertEqual(job.progress.stages[1].key, "collect")
-        self.assertEqual(job.progress.stages[2].key, "process")
-        self.assertEqual(job.progress.stages[3].key, "results")
-
-        # If job is only created, all stages should be CREATED and progress 0
-        if job.status == JobState.CREATED.value:
-            for stage in job.progress.stages:
-                self.assertEqual(stage.status, JobState.CREATED)
-                self.assertEqual(stage.progress, 0)
-            self.assertEqual(job.progress.summary.status, JobState.CREATED)
-            self.assertEqual(job.progress.summary.progress, 0)
-            return
-
-        # Get all MLTaskRecords which are created
-        completed_process_subtasks = job.ml_task_records.filter(
-            task_name=MLSubtaskNames.process_pipeline_request.value,
-            status__in=[MLSubtaskState.SUCCESS.value, MLSubtaskState.FAIL.value],
-        )
-        completed_results_subtasks = job.ml_task_records.filter(
-            task_name=MLSubtaskNames.save_results.value,
-            status__in=[MLSubtaskState.SUCCESS.value, MLSubtaskState.FAIL.value],
-        )
-
-        if (
-            completed_process_subtasks.count() < expected_num_process_subtasks
-            or completed_results_subtasks.count() < expected_num_results_subtasks
-        ):
-            # If there are any in-progress subtasks, the job should be IN_PROGRESS
-            self.assertEqual(job.status, JobState.STARTED.value)
-            self.assertEqual(job.progress.summary.status, JobState.STARTED)
-            self.assertGreater(job.progress.summary.progress, 0)
-            self.assertLess(job.progress.summary.progress, 1)
-
-        if completed_process_subtasks.count() == expected_num_process_subtasks:
-            # If there are no in-progress process subtasks, the process stage should be SUCCESS
-            self.assertEqual(job.progress.stages[2].status, JobState.SUCCESS)
-            self.assertEqual(job.progress.stages[2].progress, 1)
-        else:
-            # If there are in-progress process subtasks, the process stage should be IN_PROGRESS
-            self.assertEqual(job.progress.stages[2].status, JobState.STARTED)
-            self.assertGreater(job.progress.stages[2].progress, 0)
-            self.assertLess(job.progress.stages[2].progress, 1)
-
-        if completed_results_subtasks.count() == expected_num_results_subtasks:
-            # If there are no in-progress results subtasks, the results stage should be SUCCESS
-            self.assertEqual(job.progress.stages[3].status, JobState.SUCCESS)
-            self.assertEqual(job.progress.stages[3].progress, 1)
-        else:
-            # If there are in-progress results subtasks, the results stage should be IN_PROGRESS
-            self.assertEqual(job.progress.stages[3].status, JobState.STARTED)
-            # self.assertGreater(job.progress.stages[3].progress, 0) # the results stage could be at 0 progress
-            self.assertLess(job.progress.stages[3].progress, 1)
 
     def test_run_ml_job(self):
         """Test running a batch processing job end-to-end."""
         from celery.result import AsyncResult
 
+        from ami.ml.tasks import check_ml_job_status
         from config import celery_app
 
         logger.info(
@@ -296,7 +238,6 @@ class TestMLJobBatchProcessing(TransactionTestCase):
             f"and project {self.project}"
         )
 
-        # Create job
         job = Job.objects.create(
             job_type_key=MLJob.key,
             project=self.project,
@@ -323,10 +264,11 @@ class TestMLJobBatchProcessing(TransactionTestCase):
         self.assertEqual(job.progress.summary.progress, 0)
         self.assertEqual(job.progress.summary.status, JobState.CREATED)
 
-        # celery_app.conf.task_always_eager = False  # make sure tasks are run asyncronously for this test
         inspector = celery_app.control.inspect()
         # Ensure workers are available
         self.assertEqual(len(inspector.active()), 1, "No celery workers are running.")
+
+        # -- Begin helper functions for checking celery tasks and worker stats --#
 
         def check_all_celery_tasks():
             active = inspector.active()
@@ -343,7 +285,7 @@ class TestMLJobBatchProcessing(TransactionTestCase):
             )
             return total_tasks
 
-        def check_celery_results():
+        def check_celery_worker_stats():
             i = celery_app.control.inspect()
             results = i.stats()
             if not results:
@@ -357,9 +299,7 @@ class TestMLJobBatchProcessing(TransactionTestCase):
                     logger.info(f"Worker {worker} stats: {stats}")
             return True
 
-        def get_ml_subtask_details(task_name, job):
-            """Get details for the ML job's subtasks."""
-            # Check the results of the ml tasks from the results backend
+        def get_ml_job_subtask_details(task_name, job):
             from ami.jobs.models import MLSubtaskNames
 
             assert task_name in [name.value for name in MLSubtaskNames]
@@ -388,6 +328,8 @@ class TestMLJobBatchProcessing(TransactionTestCase):
 
             return details
 
+        # -- End helper functions --#
+
         job.run()
         connection.commit()
         job.refresh_from_db()
@@ -401,17 +343,14 @@ class TestMLJobBatchProcessing(TransactionTestCase):
                 break
             elapsed_time = time.time() - start_time
             logger.info(f"Waiting for job to complete... elapsed time: {elapsed_time:.2f} seconds")
+
             check_all_celery_tasks()
-            check_celery_results()
-            details = get_ml_subtask_details("process_pipeline_request", job)
-            logger.info(f"process_pipeline_request subtask details: {details}")
-            # @TODO: likely need a separate test to check this functionality
-            # i.e. use mock MLTaskRecords and make sure the progress is correctly updated
-            # self._check_correct_job_progress(job, expected_num_process_subtasks=6, expected_num_results_subtasks=6)
+            check_celery_worker_stats()
 
-            # # Run the task directly (bypassing job.run())
-            from ami.ml.tasks import check_ml_job_status
+            get_ml_job_subtask_details("process_pipeline_request", job)
+            get_ml_job_subtask_details("save_results", job)
 
+            # Update the job status/progress within the test to get the latest db values
             check_ml_job_status(job.pk)
             MLJob.update_job_progress(job)
 
@@ -419,7 +358,14 @@ class TestMLJobBatchProcessing(TransactionTestCase):
         ml_subtask_records = job.ml_task_records.all()
         self.assertTrue(all(subtask.status == MLSubtaskState.SUCCESS.value for subtask in ml_subtask_records))
 
-        # Check each source image is part of 2 tasks
+        # Ensure a unique process_pipeline_request task was created per image
+        total_images = self.source_image_collection.images.count()
+        process_tasks = ml_subtask_records.filter(task_name=MLSubtaskNames.process_pipeline_request.value)
+        self.assertEqual(process_tasks.count(), total_images)
+        task_ids = process_tasks.values_list("task_id", flat=True).distinct()
+        self.assertEqual(task_ids.count(), total_images)
+
+        # Each source image should be part of 2 tasks: process_pipeline_request and save_results
         for image in self.source_image_collection.images.all():
             tasks_for_image = ml_subtask_records.filter(source_images=image)
             self.assertEqual(
@@ -427,7 +373,7 @@ class TestMLJobBatchProcessing(TransactionTestCase):
                 2,
                 f"Image {image.id} is part of {tasks_for_image.count()} tasks instead of 2",
             )
-            # check one task is process_pipeline_request and the other is save_results
+
             task_names = set(tasks_for_image.values_list("task_name", flat=True))
             self.assertEqual(
                 task_names,
@@ -461,21 +407,3 @@ class TestMLJobBatchProcessing(TransactionTestCase):
         self.assertEqual(job.progress.summary.progress, 1)
         self.assertEqual(job.progress.summary.status, JobState.SUCCESS)
         job.save()
-
-        # NOTE: due to the nature of async tasks, the detections are not visible within pytest
-        # validating above that the ml task records are all successful and each image
-        # was part of 2 tasks should be sufficient to ensure the job ran correctly.
-
-        # # Check that the detections were created correctly (i.e. 1 per image)
-        # # Get the source image processed by the job
-        # for image in self.source_image_collection.images.all():
-        #     jobs = image.jobs.filter(id=job.pk)
-        #     if job in jobs:
-        #         logger.info(f"Image {image.id} was processed by job {job.pk}")
-        #         detections = image.detections.all()
-        #         # log the detections for debugging
-        #         logger.info(f"Image {image.id} has detections: {detections}")
-        #         num_detections = image.get_detections_count()
-        #         assert num_detections == 1, f"Image {image.id} has {num_detections} detections instead of 1"
-        #     else:
-        #         logger.error(f"Image {image.id} was NOT processed by job {job.pk}")
