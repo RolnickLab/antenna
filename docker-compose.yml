@@ -199,22 +199,7 @@ services:
       default:
         aliases:
           - processing_service
-    depends_on:
-      - celeryworker_ml
 
-  celeryworker_ml:
-    build:
-      context: ./processing_services/minimal
-    command: ./celery_worker/start_celery.sh
-    environment:
-      - CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672//
-    extra_hosts:
-      - minio:host-gateway
-    networks:
-      - antenna_network
-    volumes: # fixes drift issue
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
 
 networks:
   antenna_network:
