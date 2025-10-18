@@ -168,7 +168,7 @@ def check_dangling_ml_jobs():
         ):
             logger.warning(f"Job {job.pk} appears to be dangling. Marking as failed.")
             job.logger.error(f"Job {job.pk} appears to be dangling. Marking as failed.")
-            job.update_status(JobState.FAILURE)
+            job.update_status(JobState.REVOKED)
             job.finished_at = datetime.datetime.now()
             job.save()
         else:
