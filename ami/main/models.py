@@ -321,6 +321,13 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Add owner to members
         self.ensure_owner_membership()
 
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        # Handle project creation at model level
+        logger.info(f"Project.check_permission action: {action}")
+        if action == "create":
+            return self.check_model_level_permission(user, action)
+        return super().check_object_level_permission(user, action)
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
