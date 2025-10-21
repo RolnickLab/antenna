@@ -330,6 +330,13 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Add owner to members
         self.ensure_owner_membership()
 
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        # Handle project creation at model level
+        logger.info(f"Project.check_permission action: {action}")
+        if action == "create":
+            return self.check_model_level_permission(user, action)
+        return super().check_object_level_permission(user, action)
+
     def check_custom_permission(self, user, action: str) -> bool:
         """
         Check custom permissions for actions like 'charts'.
