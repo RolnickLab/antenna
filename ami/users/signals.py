@@ -2,11 +2,12 @@ import logging
 
 from django.contrib.auth.models import Group
 from django.db import transaction
-from django.db.models.signals import m2m_changed
+from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 
 from ami.main.models import Project, UserProjectMembership
-from ami.users.roles import Role, create_roles_for_project
+from ami.users.models import User
+from ami.users.roles import AuthenticatedUsers, Role, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
@@ -76,3 +77,10 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
         # Reconnect the signal after updating members
         m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
         logger.debug("Reconnecting signal after updating project members.")
+
+
+@receiver(post_save, sender=User)
+def assign_authenticated_users_group(sender, instance, created, **kwargs):
+    if created:
+        logger.info(f"Assigning AuthenticatedUsers role to new user {instance.email}")
+        AuthenticatedUsers.assign_user(instance)
