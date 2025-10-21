@@ -1297,12 +1297,12 @@ class TestProjectPermissions(APITestCase):
         response = self.client.post(self.project_create_endpoint, data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_regular_user_cannot_create_project(self):
-        """Ensure a regular user cannot create a project."""
+    def test_regular_user_can_create_project(self):
+        """Ensure a regular user can create a project."""
         self.client.force_authenticate(user=self.regular_user)
         data = {"name": "Regular User Project", "description": "Created by regular user"}
         response = self.client.post(self.project_create_endpoint, data)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_anonymous_user_cannot_create_project(self):
         """Ensure an anonymous user cannot create a project."""
@@ -1328,7 +1328,7 @@ class TestRolePermissions(APITestCase):
         self._create_job()
         self.PERMISSIONS_MAPS = {
             "project_manager": {
-                "project": {"create": False, "update": True, "delete": True},
+                "project": {"create": True, "update": True, "delete": True},
                 "collection": {"create": True, "update": True, "delete": True, "populate": True},
                 "storage": {"create": True, "update": True, "delete": True, "test": True},
                 "sourceimage": {"create": True, "update": True, "delete": True},
@@ -1348,7 +1348,7 @@ class TestRolePermissions(APITestCase):
                 "capture": {"star": True, "unstar": True},
             },
             "basic_member": {
-                "project": {"create": False, "update": False, "delete": False},
+                "project": {"create": True, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
@@ -1368,7 +1368,7 @@ class TestRolePermissions(APITestCase):
                 "capture": {"star": True, "unstar": True},
             },
             "identifier": {
-                "project": {"create": False, "update": False, "delete": False},
+                "project": {"create": True, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "sourceimage": {"create": False, "update": False, "delete": False},
@@ -1388,7 +1388,7 @@ class TestRolePermissions(APITestCase):
                 "capture": {"star": True, "unstar": True},
             },
             "regular_user": {
-                "project": {"create": False, "update": False, "delete": False},
+                "project": {"create": True, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "sourceimage": {"create": False, "update": False, "delete": False},
@@ -1751,7 +1751,7 @@ class TestRolePermissions(APITestCase):
     def test_identifier_permissions(self):
         """Test Identifier role permissions."""
 
-        expected_permissions = Identifier.permissions
+        expected_permissions = Identifier.object_level_permissions
         assigned_permissions = set(get_perms(self.identifier, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
         self._test_role_permissions(Identifier, self.identifier, self.PERMISSIONS_MAPS["identifier"])
@@ -1764,7 +1764,7 @@ class TestRolePermissions(APITestCase):
 
     def test_basic_member_permissions_(self):
         """Test Basic Member role permissions."""
-        expected_permissions = BasicMember.permissions
+        expected_permissions = BasicMember.object_level_permissions
         assigned_permissions = set(get_perms(self.basic_member, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
 
@@ -1788,7 +1788,7 @@ class TestRolePermissions(APITestCase):
 
     def test_project_manager_permissions_(self):
         """Test Project Manager role permissions."""
-        expected_permissions = ProjectManager.permissions
+        expected_permissions = ProjectManager.object_level_permissions
         assigned_permissions = set(get_perms(self.project_manager, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
         self._test_role_permissions(ProjectManager, self.project_manager, self.PERMISSIONS_MAPS["project_manager"])
@@ -3443,3 +3443,29 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         detail_url = f"/api/v2/taxa/{excluded_taxon.id}/?project_id={self.project.pk}"
         res = self.client.get(detail_url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+
+class TestModelLevelPermissions(APITestCase):
+    """
+    Tests for model-level permissions.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
+
+        self.client.force_authenticate(user=self.user)
+
+    def test_authenticated_user_can_create_project(self):
+        """Ensure any authenticated user can create a project via model-level permission."""
+        project_endpoint = "/api/v2/projects/"
+        payload = {"name": "User Created Project", "description": "Created via model-level permission"}
+        response = self.client.post(project_endpoint, payload)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            f"Authenticated users should be able to create projects, got {response.status_code}.",
+        )
+
+        project = Project.objects.filter(name="User Created Project").first()
+        self.assertIsNotNone(project)
+        self.assertEqual(project.name, "User Created Project")
