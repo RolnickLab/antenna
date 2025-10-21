@@ -180,7 +180,37 @@ class BaseModel(models.Model):
         object_perms = [perm for perm in all_perms if perm.endswith(f"_{model_name}")]
         return object_perms
 
+    def check_model_level_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        model = self._meta.model_name
+        app_label = self._meta.app_label
+
+        crud_map = {
+            "create": f"{app_label}.create_{model}",
+            "update": f"{app_label}.update_{model}",
+            "partial_update": f"{app_label}.update_{model}",
+            "destroy": f"{app_label}.delete_{model}",
+            "retrieve": f"{app_label}.view_{model}",
+        }
+
+        perm = crud_map.get(action, f"{app_label}.{action}_{model}")
+
+        return user.has_perm(perm)
+
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        """
+        Entry point for all permission checks.
+        Decides whether to perform model-level or object-level permission check.
+        """
+        # Get related project accessor
+        accessor = self.get_project_accessor()
+        if accessor is None:
+            # If there is no project relation, use model-level permission
+            return self.check_model_level_permission(user, action)
+
+        # If the object is linked to a project then use object-level permission
+        return self.check_object_level_permission(user, action)
+
+    def check_object_level_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         """
         Check if the user has permission to perform the action
         on this instance.
@@ -196,11 +226,11 @@ class BaseModel(models.Model):
             "partial_update": f"update_{model}",
             "destroy": f"delete_{model}",
         }
-        project = self.get_project() if hasattr(self, "get_project") else None
-        # Check if the related project exists
-        if not project.pk:
-            return user.has_perm(f"main.{crud_map[action]}")
 
+        project = self.get_project() if hasattr(self, "get_project") else None
+        if not project:
+            # No specific project instance found; fallback to model-level
+            return self.check_model_level_permission(user, action)
         if action == "retrieve":
             if project.draft:
                 # Allow view permission for members and owners of draft projects
@@ -211,10 +241,10 @@ class BaseModel(models.Model):
             return user.has_perm(crud_map[action], project)
 
         # Delegate to model-specific logic
-        return self.check_custom_permission(user, action)
+        return self.check_custom_object_level_permission(user, action)
 
-    def check_custom_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        """Check custom permissions for the user on this instance.
+    def check_custom_object_level_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        """Check custom object level permissions for the user on this instance.
         This is used for actions that are not standard CRUD operations.
         """
         assert self._meta.model_name is not None, "Model must have a model_name defined in Meta class."
