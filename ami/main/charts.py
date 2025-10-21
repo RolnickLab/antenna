@@ -414,7 +414,7 @@ def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None):
     tickvals = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     return {
-        "title": "Average occurrences per month",
+        "title": "Occurrences per month",
         "data": {"x": labels, "y": counts, "tickvals": tickvals},
         "type": "bar",
     }
@@ -440,6 +440,12 @@ def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
         days = [(datetime.date(3000, 1, 1) + datetime.timedelta(days=i)) for i in range(365)]
         counts = [occurrences_per_day_dict.get(f"{d:%b %d}", 0) for d in days]
 
+        # Limit days and counts to show active period
+        first_activity_index = next(i for i, x in enumerate(counts) if x > 0)
+        last_activity_index = len(counts) - 1 - next(i for i, x in enumerate(reversed(counts)) if x > 0)
+        days = days[first_activity_index : last_activity_index + 1]
+        counts = counts[first_activity_index : last_activity_index + 1]
+
         # Generate labels for all days
         labels = [f"{d:%b %d}" for d in days]
 
@@ -450,7 +456,7 @@ def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
         tickvals = []
 
     return {
-        "title": "Average occurrences per day",
+        "title": "Occurrences per day",
         "data": {"x": labels, "y": counts, "tickvals": tickvals},
         "type": "scatter",
     }
