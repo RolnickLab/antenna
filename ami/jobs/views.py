@@ -176,7 +176,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         job: Job = serializer.save()  # type: ignore
         if url_boolean_param(self.request, "start_now", default=False):
-            if job.check_custom_permission(self.request.user, "run"):
+            if job.check_custom_object_level_permission(self.request.user, "run"):
                 # If the user has permission, enqueue the job
                 job.enqueue()
             else:

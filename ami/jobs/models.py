@@ -964,7 +964,7 @@ class Job(BaseModel):
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
 
-    def check_custom_permission(self, user, action: str) -> bool:
+    def check_custom_object_level_permission(self, user, action: str) -> bool:
         job_type = self.job_type_key.lower()
         if self.source_image_single:
             action = "run_single_image"
