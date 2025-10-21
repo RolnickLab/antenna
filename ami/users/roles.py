@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class Role:
     """Base class for all roles."""
 
-    permissions = {Project.Permissions.VIEW_PROJECT}
+    object_level_permissions = {Project.Permissions.VIEW_PROJECT}
 
     # @TODO : Refactor after adding the project <-> Group formal relationship
     @classmethod
@@ -52,8 +52,49 @@ class Role:
         return any(role_class.has_role(user, project) for role_class in Role.__subclasses__())
 
 
+class GlobalRole:
+    """Base class for model-level roles."""
+
+    model_level_permissions: set[str] = set()
+
+    @classmethod
+    def get_group_name(cls):
+        """Get associated permission group name."""
+        return cls.__name__
+
+    @classmethod
+    def assign_user(cls, user):
+        group, created = Group.objects.get_or_create(name=cls.get_group_name())
+        if created:
+            logger.info(f"Created global permission group {cls.get_group_name()}")
+        else:
+            logger.info(f"Global permission group {cls.get_group_name()} already exists")
+        cls.assign_model_level_permissions(group)
+        user.groups.add(group)
+
+    @classmethod
+    def unassign_user(cls, user):
+        group, _ = Group.objects.get_or_create(name=cls.get_group_name())
+        user.groups.remove(group)
+
+    @classmethod
+    def assign_model_level_permissions(cls, group):
+        from django.contrib.contenttypes.models import ContentType
+
+        ct = ContentType.objects.get_for_model(Project)
+        for perm_codename in cls.model_level_permissions:
+            perm_codename = f"{perm_codename}"
+            perm, _ = Permission.objects.get_or_create(
+                codename=perm_codename,
+                content_type=ct,
+                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+            )
+            logger.info(f"Assigning model-level permission {perm_codename} to group {group.name}")
+            group.permissions.add(perm)
+
+
 class BasicMember(Role):
-    permissions = Role.permissions | {
+    object_level_permissions = Role.object_level_permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
         Project.Permissions.STAR_SOURCE_IMAGE,
         Project.Permissions.CREATE_JOB,
@@ -62,11 +103,11 @@ class BasicMember(Role):
 
 
 class Researcher(Role):
-    permissions = BasicMember.permissions | {Project.Permissions.TRIGGER_EXPORT}
+    object_level_permissions = BasicMember.object_level_permissions | {Project.Permissions.TRIGGER_EXPORT}
 
 
 class Identifier(Role):
-    permissions = BasicMember.permissions | {
+    object_level_permissions = BasicMember.object_level_permissions | {
         Project.Permissions.CREATE_IDENTIFICATION,
         Project.Permissions.UPDATE_IDENTIFICATION,
         Project.Permissions.DELETE_IDENTIFICATION,
@@ -74,7 +115,7 @@ class Identifier(Role):
 
 
 class MLDataManager(Role):
-    permissions = BasicMember.permissions | {
+    object_level_permissions = BasicMember.object_level_permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
         # RUN ML jobs is revoked for now
@@ -88,11 +129,11 @@ class MLDataManager(Role):
 
 
 class ProjectManager(Role):
-    permissions = (
-        BasicMember.permissions
-        | Researcher.permissions
-        | Identifier.permissions
-        | MLDataManager.permissions
+    object_level_permissions = (
+        BasicMember.object_level_permissions
+        | Researcher.object_level_permissions
+        | Identifier.object_level_permissions
+        | MLDataManager.object_level_permissions
         | {
             Project.Permissions.UPDATE_PROJECT,
             Project.Permissions.DELETE_PROJECT,
@@ -126,13 +167,19 @@ class ProjectManager(Role):
     )
 
 
+class AuthenticatedUsers(GlobalRole):
+    """A role that grants project create permission to all authenticated users."""
+
+    model_level_permissions = {Project.Permissions.CREATE_PROJECT}
+
+
 def create_roles_for_project(project):
     """Creates role-based permission groups for a given project."""
     project_ct = ContentType.objects.get_for_model(Project)
 
     for role_class in Role.__subclasses__():
         role_name = f"{project.pk}_{project.name}_{role_class.__name__}"
-        permissions = role_class.permissions
+        object_level_permissions = role_class.object_level_permissions
         group, created = Group.objects.get_or_create(name=role_name)
         if created:
             logger.debug(f"Role created {role_class} for project {project}")
@@ -143,7 +190,7 @@ def create_roles_for_project(project):
             assigned_perms = get_perms(group, project)
             for perm_codename in assigned_perms:
                 remove_perm(perm_codename, group, project)
-        for perm_codename in permissions:
+        for perm_codename in object_level_permissions:
             permission, perm_created = Permission.objects.get_or_create(
                 codename=perm_codename,
                 content_type=project_ct,
