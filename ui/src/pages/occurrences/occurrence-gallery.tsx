@@ -7,7 +7,8 @@ import { Taxon } from 'data-services/models/taxa'
 import cardStyles from 'design-system/components/card/card.module.scss'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { IdentificationScore } from 'nova-ui-kit'
+import { CheckIcon } from 'lucide-react'
+import { Button, IdentificationScore } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
@@ -26,13 +27,19 @@ export const isGenusOrBelow = (taxon: Taxon) =>
 export const OccurrenceGallery = ({
   error,
   isLoading,
-  occurrences = [],
+  items = [],
+  onSelectedItemsChange,
+  selectable,
+  selectedItems,
 }: {
   error?: any
   isLoading: boolean
-  occurrences?: Occurrence[]
+  items?: Occurrence[]
+  onSelectedItemsChange?: (selectedItems: string[]) => void
+  selectable?: boolean
+  selectedItems: string[]
 }) => {
-  const showQuickActions = true
+  const isSelecting = selectedItems?.length > 0
   const { projectId } = useParams()
   const { userInfo } = useUserInfo()
 
@@ -48,13 +55,13 @@ export const OccurrenceGallery = ({
     return <ErrorState error={error} />
   }
 
-  if (occurrences.length === 0) {
+  if (items.length === 0) {
     return <EmptyState />
   }
 
   return (
     <div className={classNames(galleryStyles.gallery, galleryStyles.large)}>
-      {occurrences.map((item) => {
+      {items.map((item) => {
         const detailsRoute = getAppRoute({
           to: APP_ROUTES.OCCURRENCE_DETAILS({
             projectId: projectId as string,
@@ -65,14 +72,53 @@ export const OccurrenceGallery = ({
         const image = item.images[0]
         const canUpdate = item.userPermissions.includes(UserPermission.Update)
         const agreed = userInfo ? item.userAgreed(userInfo.id) : false
+        const checked = selectedItems.includes(item.id)
+        const onCheckedToggle = () => {
+          onSelectedItemsChange?.(
+            !checked
+              ? [...selectedItems, item.id]
+              : selectedItems.filter((id) => id !== item.id)
+          )
+        }
 
         return (
           <div
             key={item.id}
             className="flex flex-col bg-background border border-border rounded-lg overflow-hidden"
           >
-            <div className="aspect-square border-b border-border relative">
-              <img src={image.src} className={cardStyles.image} />
+            <div className="aspect-square border-b border-border group relative">
+              {isSelecting ? (
+                <div
+                  className="w-full h-full relative cursor-pointer"
+                  onClick={onCheckedToggle}
+                >
+                  <img src={image.src} className={cardStyles.image} />
+                </div>
+              ) : (
+                <Link className="w-full h-full relative" to={detailsRoute}>
+                  <img src={image.src} className={cardStyles.image} />
+                </Link>
+              )}
+              {selectable ? (
+                <div
+                  className={classNames(
+                    'absolute top-2 left-2 group-hover:visible',
+                    { invisible: !isSelecting }
+                  )}
+                >
+                  <Button
+                    className={classNames('hover:text-opacity-100', {
+                      'text-opacity-0': !checked,
+                      'group-hover:text-opacity-100': isSelecting,
+                    })}
+                    onClick={onCheckedToggle}
+                    size="icon"
+                    variant={checked ? 'default' : 'outline'}
+                  >
+                    <CheckIcon className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <div className="grow flex flex-col justify-between gap-2 p-4">
               <div className="flex items-center gap-2">
@@ -89,7 +135,7 @@ export const OccurrenceGallery = ({
                   </span>
                 </Link>
               </div>
-              <div className="flex items-center justify-start gap-2">
+              <div className="flex flex-wrap items-center justify-start gap-2">
                 {item.determinationScore !== undefined ? (
                   <BasicTooltip
                     content={
@@ -108,7 +154,7 @@ export const OccurrenceGallery = ({
                     />
                   </BasicTooltip>
                 ) : null}
-                {showQuickActions && canUpdate && (
+                {!isSelecting && canUpdate && (
                   <>
                     <Agree
                       agreed={agreed}
@@ -134,7 +180,7 @@ export const OccurrenceGallery = ({
           </div>
         )
       })}
-      {!isLoading && occurrences.length === 0 && <EmptyState />}
+      {!isLoading && items.length === 0 && <EmptyState />}
     </div>
   )
 }

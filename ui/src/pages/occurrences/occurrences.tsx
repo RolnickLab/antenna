@@ -176,7 +176,10 @@ export const Occurrences = () => {
             <OccurrenceGallery
               error={error}
               isLoading={!id && isLoading}
-              occurrences={occurrences}
+              items={occurrences}
+              onSelectedItemsChange={setSelectedItems}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
             />
           )}
         </div>
