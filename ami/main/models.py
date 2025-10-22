@@ -2627,6 +2627,12 @@ class Occurrence(BaseModel):
         ):
             yield get_media_url(path)
 
+    def pixel_area(self) -> float:
+        """
+        This is calculated by a queryset annotation.
+        """
+        return 0
+
     def get_best_detection(self) -> Detection | None:
         """
         Pick the detection to represent the occurrence, for example which image to show in the UI.
