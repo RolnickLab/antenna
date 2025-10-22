@@ -21,12 +21,10 @@ from ami.ml.schemas import (
     SourceImageResponse,
 )
 from ami.tests.fixtures.main import (
-    create_captures,
     create_captures_from_files,
     create_detections,
     create_processing_service,
     create_taxa,
-    group_images_into_events,
     setup_test_project,
 )
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
@@ -773,38 +771,33 @@ class TestClustering(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         create_taxa(project=self.project)
-        create_captures(deployment=self.deployment, num_nights=2, images_per_night=10, interval_minutes=1)
-        group_images_into_events(deployment=self.deployment)
-
-        sample_size = 10
-        self.collection = SourceImageCollection.objects.create(
-            name="Test Random Source Image Collection",
-            project=self.project,
-            method="random",
-            kwargs={"size": sample_size},
-        )
-        self.collection.save()
-        self.collection.populate_sample()
-        assert self.collection.images.count() == sample_size
-        self.populate_collection_with_detections()
-        self.collection.save()
-        # create_occurrences(deployment=self.deployment)
-
-        self.detections = Detection.objects.filter(source_image__collections=self.collection)
+        self.captures = create_captures_from_files(self.deployment, skip_existing=False)
+        self.test_images = [image for image, frame in self.captures]
+        assert len(self.test_images) > 0, "No test images found. Please check the setup."
+        self.processing_service_instance = create_processing_service(self.project)
+        self.processing_service = self.processing_service_instance
+        assert self.processing_service_instance.pipelines.exists()
+        self.pipeline: Pipeline = self.processing_service_instance.pipelines.all().get(slug="random")
+        pipeline_response = self.pipeline.process_images(self.test_images, job_id=None, project_id=self.project.pk)
+        created = save_results(pipeline_response, return_created=True, create_subtasks=False)
+        assert created is not None, "Expected results to be returned in a PipelineSaveResults object"
+        self.detections = created.detections
+        self.collection = created.source_images[0].collections.all()[0]
         self.assertGreater(len(self.detections), 0, "No detections found in the collection")
-        self._populate_detection_features()
 
     def populate_collection_with_detections(self):
         """Populate the collection with random detections."""
         for image in self.collection.images.all():
             # Create a random detection for each image
+            # Ensure the detections are not on the edge of the image
             create_detections(
-                source_image=image, bboxes=[(0.0, 0.0, 1.0, 1.0), (0.1, 0.1, 0.9, 0.9), (0.2, 0.2, 0.8, 0.8)]
+                source_image=image, bboxes=[(0.2, 0.2, 0.9, 0.9), (0.1, 0.1, 0.6, 0.6), (0.2, 0.2, 0.7, 0.7)]
             )
 
     def _populate_detection_features(self):
         """Populate detection features with random values."""
         classifier = Algorithm.objects.get(key="random-species-classifier")
+        taxon = Taxon.objects.last()
         for detection in self.detections:
             detection.associate_new_occurrence()
             # Create a random feature vector
@@ -813,7 +806,7 @@ class TestClustering(TestCase):
             classification = Classification.objects.create(
                 detection=detection,
                 algorithm=classifier,
-                taxon=None,
+                taxon=taxon,
                 score=0.5,
                 ood_score=0.5,
                 features_2048=feature_vector,
@@ -838,8 +831,7 @@ class TestClustering(TestCase):
             "pca": {"n_components": 5},  # Use fewer components for test performance
         }
         # Execute the clustering function
-        clusters = cluster_detections(self.collection, params)
-
+        clusters = cluster_detections(self.collection, params, filter_by_critera=False)
         # The exact number could vary based on the random features and threshold
         self.assertGreaterEqual(len(clusters), 1, "Should create at least 1 cluster")
 
