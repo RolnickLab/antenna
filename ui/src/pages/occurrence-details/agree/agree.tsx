@@ -41,8 +41,19 @@ export const Agree = ({
     )
   }
 
+  const label = applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)
+  const tooltip = (() => {
+    if (error) {
+      return error
+    }
+
+    if (compact) {
+      return label
+    }
+  })()
+
   return (
-    <BasicTooltip asChild content={error}>
+    <BasicTooltip asChild content={tooltip}>
       <Button
         size={compact ? 'icon' : 'small'}
         variant="outline"
@@ -61,11 +72,7 @@ export const Agree = ({
         ) : (
           <CheckIcon className="w-4 h-4" />
         )}
-        {!compact ? (
-          <span>
-            {applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)}
-          </span>
-        ) : null}
+        {!compact ? <span>{label}</span> : null}
       </Button>
     </BasicTooltip>
   )
