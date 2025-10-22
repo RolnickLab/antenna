@@ -69,13 +69,27 @@ export const OccurrenceGallery = ({
         return (
           <div
             key={item.id}
-            className="flex flex-col bg-background border border-border rounded-lg"
+            className="flex flex-col bg-background border border-border rounded-lg overflow-hidden"
           >
             <div className="aspect-square border-b border-border relative">
               <img src={image.src} className={cardStyles.image} />
             </div>
             <div className="grow flex flex-col justify-between gap-2 p-4">
               <div className="flex items-center gap-2">
+                <Link to={detailsRoute}>
+                  <span
+                    className={classNames(
+                      'body-base font-medium text-primary',
+                      {
+                        italic: isGenusOrBelow(item.determinationTaxon),
+                      }
+                    )}
+                  >
+                    {item.determinationTaxon.name}
+                  </span>
+                </Link>
+              </div>
+              <div className="flex items-center justify-start gap-2">
                 {item.determinationScore !== undefined ? (
                   <BasicTooltip
                     content={
@@ -94,39 +108,28 @@ export const OccurrenceGallery = ({
                     />
                   </BasicTooltip>
                 ) : null}
-                <Link to={detailsRoute}>
-                  <span
-                    className={classNames(
-                      'body-large font-medium text-primary',
-                      {
-                        italic: isGenusOrBelow(item.determinationTaxon),
-                      }
-                    )}
-                  >
-                    {item.determinationTaxon.name}
-                  </span>
-                </Link>
+                {showQuickActions && canUpdate && (
+                  <>
+                    <Agree
+                      agreed={agreed}
+                      agreeWith={{
+                        identificationId: item.determinationIdentificationId,
+                        predictionId: item.determinationPredictionId,
+                      }}
+                      applied
+                      compact
+                      occurrenceId={item.id}
+                      taxonId={item.determinationTaxon.id}
+                    />
+                    <SuggestIdPopover occurrenceIds={[item.id]} />
+                    <IdQuickActions
+                      occurrenceIds={[item.id]}
+                      occurrenceTaxa={[item.determinationTaxon]}
+                      zIndex={1}
+                    />
+                  </>
+                )}
               </div>
-              {showQuickActions && canUpdate && (
-                <div className="flex items-center justify-start gap-2">
-                  <Agree
-                    agreed={agreed}
-                    agreeWith={{
-                      identificationId: item.determinationIdentificationId,
-                      predictionId: item.determinationPredictionId,
-                    }}
-                    applied
-                    occurrenceId={item.id}
-                    taxonId={item.determinationTaxon.id}
-                  />
-                  <SuggestIdPopover occurrenceIds={[item.id]} />
-                  <IdQuickActions
-                    occurrenceIds={[item.id]}
-                    occurrenceTaxa={[item.determinationTaxon]}
-                    zIndex={1}
-                  />
-                </div>
-              )}
             </div>
           </div>
         )

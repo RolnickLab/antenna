@@ -12,6 +12,7 @@ interface AgreeProps {
     predictionId?: string
   }
   applied?: boolean
+  compact?: boolean
   occurrenceId: string
   taxonId: string
 }
@@ -20,6 +21,7 @@ export const Agree = ({
   agreed,
   agreeWith,
   applied,
+  compact,
   occurrenceId,
   taxonId,
 }: AgreeProps) => {
@@ -32,9 +34,9 @@ export const Agree = ({
 
   if (isSuccess || agreed) {
     return (
-      <Button disabled size="small" variant="outline">
+      <Button disabled size={compact ? 'icon' : 'small'} variant="outline">
         <CheckIcon className="w-4 h-4" />
-        <span>{translate(STRING.CONFIRMED)}</span>
+        {!compact ? <span>{translate(STRING.CONFIRMED)}</span> : null}
       </Button>
     )
   }
@@ -42,7 +44,7 @@ export const Agree = ({
   return (
     <BasicTooltip asChild content={error}>
       <Button
-        size="small"
+        size={compact ? 'icon' : 'small'}
         variant="outline"
         onClick={() =>
           createIdentification({
@@ -56,10 +58,14 @@ export const Agree = ({
           <Loader2Icon className="w-4 h-4 animate-spin" />
         ) : error ? (
           <AlertCircleIcon className="w-4 h-4 text-destructive" />
+        ) : (
+          <CheckIcon className="w-4 h-4" />
+        )}
+        {!compact ? (
+          <span>
+            {applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)}
+          </span>
         ) : null}
-        <span>
-          {applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)}
-        </span>
       </Button>
     </BasicTooltip>
   )
