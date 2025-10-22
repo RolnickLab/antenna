@@ -437,7 +437,7 @@ def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
 
     if occurrences_per_day:
         occurrences_per_day_dict = {f"{d:%b %d}": count for d, count in occurrences_per_day if d is not None}
-        days = [(datetime.date(3000, 1, 1) + datetime.timedelta(days=i)) for i in range(365)]
+        days = [(datetime.date(2000, 1, 1) + datetime.timedelta(days=i)) for i in range(365)]
         counts = [occurrences_per_day_dict.get(f"{d:%b %d}", 0) for d in days]
 
         # Limit days and counts to show active period
