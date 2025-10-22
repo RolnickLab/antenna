@@ -13,6 +13,7 @@ interface GalleryItem {
     src: string
     alt?: string
   }
+  label?: string
   subTitle?: string
   title: string
   to: string | undefined

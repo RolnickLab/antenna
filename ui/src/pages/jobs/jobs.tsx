@@ -76,7 +76,7 @@ export const Jobs = () => {
         </PageHeader>
         <Table
           columns={columns(projectId as string).filter(
-            (column) => !!columnSettings[column.id]
+            (column) => column.id === 'actions' || !!columnSettings[column.id]
           )}
           error={error}
           items={jobs}
