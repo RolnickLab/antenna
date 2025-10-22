@@ -55,6 +55,20 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
+    id: 'device',
+    name: translate(STRING.FIELD_LABEL_DEVICE),
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.device?.name} />
+    ),
+  },
+  {
+    id: 'research-site',
+    name: translate(STRING.FIELD_LABEL_RESEARCH_SITE),
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.researchSite?.name} />
+    ),
+  },
+  {
     id: 'status',
     name: 'Latest job status',
     renderCell: (item: Deployment) => {
@@ -158,20 +172,6 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
       >
         <BasicTableCell value={item.numTaxa} theme={CellTheme.Bubble} />
       </Link>
-    ),
-  },
-  {
-    id: 'device',
-    name: translate(STRING.FIELD_LABEL_DEVICE),
-    sortField: 'device',
-    renderCell: (item: Deployment) => <BasicTableCell value={item.device} />,
-  },
-  {
-    id: 'research-site',
-    name: translate(STRING.FIELD_LABEL_RESEARCH_SITE),
-    sortField: 'researchSite',
-    renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.researchSite} />
     ),
   },
   {
