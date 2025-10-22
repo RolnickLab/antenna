@@ -59,7 +59,7 @@ export const Occurrences = () => {
     field: 'updated_at',
     order: 'desc',
   })
-  const { pagination, setPage } = usePagination()
+  const { pagination, setPage } = usePagination({ perPage: 50 })
   const { activeFilters, filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
