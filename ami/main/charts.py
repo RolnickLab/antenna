@@ -441,10 +441,12 @@ def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
         counts = [occurrences_per_day_dict.get(f"{d:%b %d}", 0) for d in days]
 
         # Limit days and counts to show active period
-        first_activity_index = next(i for i, x in enumerate(counts) if x > 0)
-        last_activity_index = len(counts) - 1 - next(i for i, x in enumerate(reversed(counts)) if x > 0)
-        days = days[first_activity_index : last_activity_index + 1]
-        counts = counts[first_activity_index : last_activity_index + 1]
+        # Check if there are any non-zero counts
+        if any(x > 0 for x in counts):
+            first_activity_index = next(i for i, x in enumerate(counts) if x > 0)
+            last_activity_index = len(counts) - 1 - next(i for i, x in enumerate(reversed(counts)) if x > 0)
+            days = days[first_activity_index : last_activity_index + 1]
+            counts = counts[first_activity_index : last_activity_index + 1]
 
         # Generate labels for all days
         labels = [f"{d:%b %d}" for d in days]
