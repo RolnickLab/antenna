@@ -355,6 +355,9 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
 
+    def get_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+        return self.get_object_level_permissions(user)
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
@@ -1952,12 +1955,12 @@ class SourceImage(BaseModel):
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
 
-    def check_custom_permission(self, user, action: str) -> bool:
+    def check_custom_object_level_permission(self, user, action: str) -> bool:
         project = self.get_project() if hasattr(self, "get_project") else None
         if action in ["star", "unstar"]:
             return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
 
-    def get_custom_user_permissions(self, user) -> list[str]:
+    def get_custom_object_level_permissions(self, user) -> list[str]:
         project = self.get_project()
         if not project:
             return []

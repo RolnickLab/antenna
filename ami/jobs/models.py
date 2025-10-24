@@ -976,7 +976,7 @@ class Job(BaseModel):
         project = self.get_project() if hasattr(self, "get_project") else None
         return user.has_perm(permission_codename, project)
 
-    def get_custom_user_permissions(self, user) -> list[str]:
+    def get_custom_object_level_permissions(self, user) -> list[str]:
         project = self.get_project()
         if not project:
             return []
@@ -992,7 +992,9 @@ class Job(BaseModel):
                 # make sure to exclude standard CRUD actions
                 if action not in ["view", "create", "update", "delete"]:
                     custom_perms.add(action)
-        logger.debug(f"Custom permissions for user {user} on project {self}, with jobtype {job_type}: {custom_perms}")
+        logger.debug(
+            f"Custom object permissions for user {user} on project {self}, with jobtype {job_type}: {custom_perms}"
+        )
         return list(custom_perms)
 
     @classmethod
