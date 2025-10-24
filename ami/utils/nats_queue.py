@@ -36,7 +36,7 @@ class TaskQueueManager:
             await manager.acknowledge_job(task['reply_subject'])
     """
 
-    def __init__(self, nats_url: str = None):
+    def __init__(self, nats_url: str | None = None):
         self.nats_url = nats_url or getattr(settings, "NATS_URL", "nats://nats:4222")
         self.nc: nats.NATS | None = None
         self.js: JetStreamContext | None = None
@@ -69,7 +69,8 @@ class TaskQueueManager:
 
     async def _ensure_stream(self, job_id: str, ttr: int = 30):
         """Ensure stream exists for the given job."""
-        assert self.js is not None, "Connection is not open. Use TaskQueueManager as an async context manager."
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         stream_name = self._get_stream_name(job_id)
         subject = self._get_subject(job_id)
@@ -89,7 +90,8 @@ class TaskQueueManager:
 
     async def _ensure_consumer(self, job_id: str, ttr: int = 30):
         """Ensure consumer exists for the given job."""
-        assert self.js is not None, "Connection is not open. Use TaskQueueManager as an async context manager."
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         stream_name = self._get_stream_name(job_id)
         consumer_name = self._get_consumer_name(job_id)
@@ -126,7 +128,8 @@ class TaskQueueManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        assert self.js is not None, "Connection is not open. Use TaskQueueManager as an async context manager."
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         try:
             # Ensure stream and consumer exist
@@ -157,7 +160,8 @@ class TaskQueueManager:
         Returns:
             Dict with job details including 'reply_subject' for acknowledgment, or None if no job available
         """
-        assert self.js is not None, "Connection is not open. Use TaskQueueManager as an async context manager."
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         if timeout is None:
             timeout = 5
@@ -214,7 +218,8 @@ class TaskQueueManager:
         Returns:
             bool: True if successful
         """
-        assert self.nc is not None, "Connection is not open. Use TaskQueueManager as an async context manager."
+        if self.nc is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         try:
             await self.nc.publish(reply_subject, b"+ACK")
@@ -234,7 +239,8 @@ class TaskQueueManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        assert self.js is not None, "Connection is not open. Use TaskQueueManager as an async context manager."
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         try:
             stream_name = self._get_stream_name(job_id)
@@ -257,7 +263,8 @@ class TaskQueueManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        assert self.js is not None, "Connection is not open. Use TaskQueueManager as an async context manager."
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         try:
             stream_name = self._get_stream_name(job_id)

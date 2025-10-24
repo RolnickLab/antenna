@@ -10,7 +10,7 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 
-# Define a namedtuple for a TaskProgress with x and y coordinates
+# Define a namedtuple for a TaskProgress with the image counts
 TaskProgress = namedtuple("TaskProgress", ["remaining", "total", "processed", "percentage"])
 
 
