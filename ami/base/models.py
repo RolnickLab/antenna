@@ -254,40 +254,71 @@ class BaseModel(models.Model):
 
         return user.has_perm(permission_codename, project)
 
-    def get_user_object_permissions(self, user) -> list[str]:
+    def get_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
-        Returns a list of object-level permissions the user has on this instance.
-        This is used by frontend to determine what actions the user can perform.
+        Entry point for retrieving user permissions on this instance.
+        Decides whether to return model-level or object-level permissions.
         """
-        # Return all permissions for superusers
+        accessor = self.get_project_accessor()
+
+        if accessor is None:
+            # No project relation, use model-level permissions
+            return self.get_model_level_permissions(user)
+
+        # Otherwise, get object-level permissions
+        return self.get_object_level_permissions(user)
+
+    def get_model_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+        """
+        Retrieve model-level permissions for the given user.
+        Returns a list of allowed actions such as ["create", "update", "delete"].
+        """
         if user.is_superuser:
-            allowed_custom_actions = self.get_custom_user_permissions(user)
-            return ["update", "delete"] + allowed_custom_actions
+            # Superusers get all possible actions
+            return ["update", "delete", "view"]
+
+        model = self._meta.model_name
+        app_label = self._meta.app_label
+        crud_map = {
+            "update": f"{app_label}.update_{model}",
+            "delete": f"{app_label}.delete_{model}",
+            "view": f"{app_label}.view_{model}",
+        }
+
+        allowed_actions = [action for action, perm in crud_map.items() if user.has_perm(perm)]
+        return allowed_actions
+
+    def get_object_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+        """
+        Retrieve object-level permissions (including custom ones) for this instance.
+        """
+
+        if user.is_superuser:
+            return ["update", "delete"] + self.get_custom_object_level_permissions(user)
+
+        project = self.get_project()
+        if not project:
+            # Fallback to model-level permissions if no related project found
+            return self.get_model_level_permissions(user)
 
         object_perms = self._get_object_perms(user)
-        # Check for update and delete permissions
-        allowed_actions = set()
-        for perm in object_perms:
-            action = perm.split("_", 1)[0]
-            if action in {"update", "delete"}:
-                allowed_actions.add(action)
+        allowed_actions = {
+            perm.split("_", 1)[0] for perm in object_perms if perm.split("_", 1)[0] in {"update", "delete"}
+        }
 
-        allowed_custom_actions = self.get_custom_user_permissions(user)
-        allowed_actions.update(set(allowed_custom_actions))
-        return list(allowed_actions)
+        custom_actions = self.get_custom_object_level_permissions(user)
+        return list(allowed_actions.union(custom_actions))
 
-    def get_custom_user_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+    def get_custom_object_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
-        Returns a list of custom permissions (not standard CRUD actions) that the user has on this instance.
+        Retrieve custom (non-CRUD) permissions for this instance.
         """
         object_perms = self._get_object_perms(user)
-        custom_perms = set()
-        # Extract custom permissions that are not standard CRUD actions
-        for perm in object_perms:
-            action = perm.split("_", 1)[0]
-            # Make sure to exclude standard CRUD actions
-            if action not in ["view", "create", "update", "delete"]:
-                custom_perms.add(action)
+        custom_perms = {
+            perm.split("_", 1)[0]
+            for perm in object_perms
+            if perm.split("_", 1)[0] not in ["view", "create", "update", "delete"]
+        }
         return list(custom_perms)
 
     class Meta:

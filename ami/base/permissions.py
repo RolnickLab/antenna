@@ -53,7 +53,7 @@ def add_object_level_permissions(
 
     permissions = response_data.get("user_permissions", set())
     if isinstance(instance, BaseModel):
-        permissions.update(instance.get_user_object_permissions(user))
+        permissions.update(instance.get_permissions(user))
     response_data["user_permissions"] = list(permissions)
     return response_data
 
@@ -68,15 +68,18 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     """
 
     logger.debug(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
+
     permissions = response_data.get("user_permissions", set())
-    create_permission = f"create_{model.__name__.lower()}"
+    app_label = model._meta.app_label
+    create_permission = f"{app_label}.create_{model.__name__.lower()}"
+    project_accessor = model.get_project_accessor()
     if user and user.is_superuser:
         permissions.add("create")
     # If no project is provided, use model level permissions
-    if user and not project and user.has_perm(f"main.{create_permission}"):
+    if user and project_accessor is None and user.has_perm(create_permission):
         permissions.add("create")
     # If project is provided, use object-level permissions
-    if user and project and create_permission in get_perms(user, project):
+    if user and project_accessor is not None and project is not None and create_permission in get_perms(user, project):
         permissions.add("create")
     response_data["user_permissions"] = list(permissions)
     return response_data
