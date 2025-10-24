@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import random
@@ -15,9 +16,11 @@ from guardian.shortcuts import get_perms
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
+from ami.jobs.task_state import TaskStateManager
 from ami.jobs.tasks import run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.utils.nats_queue import TaskQueueManager
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -394,10 +397,9 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
-        # WIP: don't commit
-        # TODO: do this conditionally based on the type of processing service this job is using
-        # cls.process_images(job, images)
-        cls.queue_images_to_nats(job, images)
+        cls.process_images(job, images)
+        # TODO CGJS: do this conditionally based on the type of processing service this job is using
+        # cls.queue_images_to_nats(job, images)
 
     @classmethod
     def process_images(cls, job, images):
@@ -525,10 +527,6 @@ class MLJob(JobType):
         Args:
             job: The Job instance
         """
-        import asyncio
-
-        from ami.utils.nats_queue import TaskQueueManager
-
         job_id = f"job{job.pk}"
 
         async def cleanup():
@@ -536,19 +534,7 @@ class MLJob(JobType):
                 success = await manager.cleanup_job_resources(job_id)
                 return success
 
-        # Run cleanup in a new event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            success = loop.run_until_complete(cleanup())
-            if success:
-                job.logger.info(f"Cleaned up NATS resources for job '{job_id}'")
-            else:
-                job.logger.warning(f"Failed to fully clean up NATS resources for job '{job_id}'")
-        except Exception as e:
-            job.logger.error(f"Error cleaning up NATS resources for job '{job_id}': {e}")
-        finally:
-            loop.close()
+        _run_in_async_loop(cleanup, f"cleaning up NATS resources for job '{job_id}'")
 
     @classmethod
     def queue_images_to_nats(cls, job: "Job", images: list[SourceImage]):
@@ -562,12 +548,6 @@ class MLJob(JobType):
         Returns:
             bool: True if all images were successfully queued, False otherwise
         """
-        import asyncio
-
-        from django.core.cache import cache
-
-        from ami.utils.nats_queue import TaskQueueManager
-
         job_id = f"job{job.pk}"
         job.logger.info(f"Queuing {len(images)} images to NATS stream for job '{job_id}'")
 
@@ -591,13 +571,9 @@ class MLJob(JobType):
             messages.append((image.pk, message))
 
         # Store all image IDs in Redis for progress tracking
-        # TODO CGJS: put these formats in a common place
-        redis_key = f"job:{job.pk}:pending_images"  # noqa E231
-        redis_key_total = f"job:{job.pk}:pending_images_total"  # noqa E231
-        # TODO CGJS: Make the timeout proportional to the expected job duration, e.g. the number of images
-        cache.set(redis_key, image_ids, timeout=86400 * 7)  # 7 days timeout
-        cache.set(redis_key_total, len(image_ids), timeout=86400 * 7)  # 7 days timeout
-        job.logger.info(f"Stored {len(image_ids)} image IDs in Redis at key '{redis_key}'")
+        state_manager = TaskStateManager(job.pk)
+        state_manager.initialize_job(image_ids)
+        job.logger.info(f"Initialized task state tracking for {len(image_ids)} images")
 
         async def queue_all_images():
             successful_queues = 0
@@ -624,14 +600,11 @@ class MLJob(JobType):
 
             return successful_queues, failed_queues
 
-        # Run the async function in a new event loop to avoid conflicts with Django
-        # Use new_event_loop() to ensure we're not mixing with Django's async context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            successful_queues, failed_queues = loop.run_until_complete(queue_all_images())
-        finally:
-            loop.close()
+        result = _run_in_async_loop(queue_all_images, f"queuing images to NATS for job '{job_id}'")
+        if result is None:
+            job.logger.error(f"Failed to queue images to NATS for job '{job_id}'")
+            return False
+        successful_queues, failed_queues = result
 
         if not images:
             job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
@@ -1104,3 +1077,16 @@ class Job(BaseModel):
         # permissions = [
         #     ("run_job", "Can run a job"),
         #     ("cancel_job", "Can cancel a job"),
+
+
+def _run_in_async_loop(func: typing.Callable, error_msg: str) -> typing.Any:
+    # helper to use new_event_loop() to ensure we're not mixing with Django's async context
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(func())
+    except Exception as e:
+        logger.error(f"Error in async loop - {error_msg}: {e}")
+        return None
+    finally:
+        loop.close()

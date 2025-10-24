@@ -1,6 +1,6 @@
-import asyncio
 import logging
 
+from asgiref.sync import async_to_sync
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
@@ -12,6 +12,7 @@ from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
+from ami.jobs.tasks import process_pipeline_result
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 from ami.utils.requests import project_id_doc_param
@@ -257,7 +258,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                         tasks.append(task)
             return tasks
 
-        tasks = asyncio.run(get_tasks())
+        # Use async_to_sync to properly handle the async call
+        tasks = async_to_sync(get_tasks)()
+
         return Response({"tasks": tasks})
 
     @action(detail=True, methods=["post"], name="result")
@@ -286,8 +289,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
         """
 
-        from ami.jobs.tasks import process_pipeline_result
-
         job_id = pk if pk else self.kwargs.get("pk")
         if not job_id:
             raise ValidationError("Job ID is required")
@@ -296,17 +297,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # Validate request data is a list
         if not isinstance(request.data, list):
             raise ValidationError("Request body must be a list of results")
-
-        if not request.data:
-            task = process_pipeline_result.delay(job_id=job_id, result_data={}, reply_subject="")
-            return Response(
-                {
-                    "status": "accepted",
-                    "job_id": job_id,
-                    "tasks": [{"reply_subject": "", "status": "queued", "task_id": task.id}],
-                }
-            )
-            # raise ValidationError("Request body cannot be empty")
 
         # Queue each result for background processing
         queued_tasks = []

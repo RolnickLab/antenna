@@ -4,6 +4,9 @@ import logging
 from celery.result import AsyncResult
 from celery.signals import task_failure, task_postrun, task_prerun
 
+from ami.jobs.models import Job, JobState
+from ami.jobs.task_state import TaskStateManager
+from ami.ml.schemas import PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from ami.utils.nats_queue import TaskQueueManager
 from config import celery_app
@@ -59,71 +62,39 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         dict with status information
     """
 
-    from django.core.cache import cache
-
-    from ami.jobs.models import Job, JobState
-    from ami.ml.schemas import PipelineResultsResponse
-
     try:
         job = Job.objects.get(pk=job_id)
         job.logger.info(f"Processing pipeline result for job {job_id}, reply_subject: {reply_subject}")
-
-        # Deserialize the result
 
         # Save to database (this is the slow operation)
         if not job.pipeline:
             job.logger.warning(f"Job {job_id} has no pipeline, skipping save_results")
             return
 
-        # TODO CGJS: do we need this? it was for jobs that got in a bad state
-        # if len(result_data) == 0:
-        #     job.logger.warning(f"Job {job_id} received empty result_data, skipping save_results")
-        #     job.progress.update_stage(
-        #         "results",
-        #         status=JobState.SUCCESS,
-        #         progress=1.0,
-        #     )
-        #     job.progress.update_stage(
-        #         "process",
-        #         status=JobState.SUCCESS,
-        #         progress=1.0,
-        #     )
-        #     job.save()
-        #     return
-
         job.logger.info(f"Successfully saved results for job {job_id}")
 
-        # Update progress tracking in Redis
-        redis_key = f"job:{job.pk}:pending_images"  # noqa E231
-        redis_key_total = f"job:{job.pk}:pending_images_total"  # noqa E231
-        pending_images = cache.get(redis_key)
-        total_images = cache.get(redis_key_total)
-        logger.info(f"Pending images from Redis for job {job_id}: {len(pending_images)}/{total_images}")
-        progress_percentage = 1.0
+        # Deserialize the result
         pipeline_result = PipelineResultsResponse(**result_data)
-        if pending_images is not None:
-            # Extract processed image IDs from the result
-            processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
 
-            remaining_images = [img_id for img_id in pending_images if img_id not in processed_image_ids]
+        # Update progress tracking in Redis
+        state_manager = TaskStateManager(job.pk)
+        processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
+        state_manager.mark_images_processed(processed_image_ids)
 
-            # Update Redis with remaining images
-            if remaining_images:
-                cache.set(redis_key, remaining_images, timeout=86400 * 7)  # 7 days
-            else:
-                cache.delete(redis_key)
+        progress_info = state_manager.get_progress()
+        progress_percentage = 0.0
 
-            # Calculate progress percentage
-            images_processed = total_images - len(remaining_images)
-            progress_percentage = float(images_processed) / total_images if total_images > 0 else 1.0
+        if progress_info is not None:
+            # Get updated progress
+            progress_percentage = progress_info.percentage
 
             job.logger.info(
-                f"Job {job_id} progress: {images_processed}/{total_images} images processed "
-                f"({progress_percentage*100}%), {len(remaining_images)} remaining"
+                f"Job {job_id} progress: {progress_info.processed}/{progress_info.total} images processed "
+                f"({progress_percentage*100}%), {progress_info.remaining} remaining"
             )
-
         else:
             job.logger.warning(f"No pending images found in Redis for job {job_id}, setting progress to 100%")
+            progress_percentage = 1.0
 
         job.progress.update_stage(
             "process",
@@ -154,7 +125,7 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         # Update job stage with calculated progress
         job.progress.update_stage(
             "results",
-            status=JobState.STARTED if remaining_images else JobState.SUCCESS,
+            status=JobState.STARTED if progress_percentage < 1.0 else JobState.SUCCESS,
             progress=progress_percentage,
         )
         job.save()
