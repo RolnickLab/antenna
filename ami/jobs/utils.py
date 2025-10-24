@@ -1,7 +1,8 @@
 import asyncio
+import logging
 import typing
 
-from ami.jobs.models import logger
+logger = logging.getLogger(__name__)
 
 
 def _run_in_async_loop(func: typing.Callable, error_msg: str) -> typing.Any:

@@ -3,7 +3,6 @@ import logging
 from celery.result import AsyncResult
 from celery.signals import task_failure, task_postrun, task_prerun
 
-from ami.jobs.models import Job, JobState
 from ami.jobs.task_state import TaskStateManager
 from ami.jobs.utils import _run_in_async_loop
 from ami.ml.schemas import PipelineResultsResponse
@@ -61,6 +60,7 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
     Returns:
         dict with status information
     """
+    from ami.jobs.models import Job, JobState  # avoid circular import
 
     try:
         job = Job.objects.get(pk=job_id)

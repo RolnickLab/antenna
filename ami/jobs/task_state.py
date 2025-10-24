@@ -58,10 +58,7 @@ class TaskStateManager:
 
         remaining_images = [img_id for img_id in pending_images if img_id not in processed_image_ids]
 
-        if remaining_images:
-            cache.set(self._pending_key, remaining_images, timeout=self.TIMEOUT)
-        else:
-            cache.delete(self._pending_key)
+        cache.set(self._pending_key, remaining_images, timeout=self.TIMEOUT)
 
     def get_progress(self) -> TaskProgress | None:
         """
