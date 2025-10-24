@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import logging
 import random
@@ -18,6 +17,7 @@ from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.task_state import TaskStateManager
 from ami.jobs.tasks import run_job
+from ami.jobs.utils import _run_in_async_loop
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.utils.nats_queue import TaskQueueManager
@@ -371,7 +371,7 @@ class MLJob(JobType):
                 deployment=job.deployment,
                 source_images=[job.source_image_single] if job.source_image_single else None,
                 job_id=job.pk,
-                skip_processed=False,  # WIP don't commit
+                skip_processed=True,
                 # shuffle=job.shuffle,
             )
         )
@@ -1077,16 +1077,3 @@ class Job(BaseModel):
         # permissions = [
         #     ("run_job", "Can run a job"),
         #     ("cancel_job", "Can cancel a job"),
-
-
-def _run_in_async_loop(func: typing.Callable, error_msg: str) -> typing.Any:
-    # helper to use new_event_loop() to ensure we're not mixing with Django's async context
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(func())
-    except Exception as e:
-        logger.error(f"Error in async loop - {error_msg}: {e}")
-        return None
-    finally:
-        loop.close()

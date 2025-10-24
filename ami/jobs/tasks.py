@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from celery.result import AsyncResult
@@ -6,6 +5,7 @@ from celery.signals import task_failure, task_postrun, task_prerun
 
 from ami.jobs.models import Job, JobState
 from ami.jobs.task_state import TaskStateManager
+from ami.jobs.utils import _run_in_async_loop
 from ami.ml.schemas import PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from ami.utils.nats_queue import TaskQueueManager
@@ -111,13 +111,12 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
                 async with TaskQueueManager() as manager:
                     return await manager.acknowledge_job(reply_subject)
 
-            ack_success = asyncio.run(ack_task())
+            ack_success = _run_in_async_loop(ack_task, f"acknowledging job {job.pk} via NATS")
 
             if ack_success:
-                if ack_success:
-                    job.logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
-                else:
-                    job.logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
+                job.logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
+            else:
+                job.logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
         except Exception as ack_error:
             job.logger.error(f"Error acknowledging task via NATS: {ack_error}")
             # Don't fail the task if ACK fails - data is already saved
