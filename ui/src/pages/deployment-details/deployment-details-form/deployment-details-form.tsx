@@ -1,7 +1,7 @@
 import { FormError as _FormError } from 'components/form/layout/layout'
 import {
-  DeploymentDetails,
-  DeploymentFieldValues,
+    DeploymentDetails,
+    DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -145,7 +145,7 @@ const FormStepper = () => {
         },
         {
           id: Section.SourceImages,
-          label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
+          label: translate(STRING.FIELD_LABEL_DATA_SOURCE),
         },
       ]}
       currentItemId={currentSection}
