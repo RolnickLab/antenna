@@ -182,7 +182,7 @@ class BaseModel(models.Model):
 
     def check_model_level_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         model = self._meta.model_name
-        app_label = self._meta.app_label
+        app_label = "main"  # Assume all model level permissions are in 'main' app
 
         crud_map = {
             "create": f"{app_label}.create_{model}",
@@ -193,7 +193,8 @@ class BaseModel(models.Model):
         }
 
         perm = crud_map.get(action, f"{app_label}.{action}_{model}")
-
+        if action == "retrieve":
+            return True  # allow view permission for all users
         return user.has_perm(perm)
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
@@ -203,7 +204,7 @@ class BaseModel(models.Model):
         """
         # Get related project accessor
         accessor = self.get_project_accessor()
-        if accessor is None:
+        if accessor is None or accessor == "projects":
             # If there is no project relation, use model-level permission
             return self.check_model_level_permission(user, action)
 
@@ -261,8 +262,8 @@ class BaseModel(models.Model):
         """
         accessor = self.get_project_accessor()
 
-        if accessor is None:
-            # No project relation, use model-level permissions
+        if accessor is None or accessor == "projects":
+            # M2M or no project relation, use model-level permissions
             return self.get_model_level_permissions(user)
 
         # Otherwise, get object-level permissions
@@ -278,7 +279,7 @@ class BaseModel(models.Model):
             return ["update", "delete", "view"]
 
         model = self._meta.model_name
-        app_label = self._meta.app_label
+        app_label = "main"  # self._meta.app_label
         crud_map = {
             "update": f"{app_label}.update_{model}",
             "delete": f"{app_label}.delete_{model}",
@@ -320,6 +321,25 @@ class BaseModel(models.Model):
             if perm.split("_", 1)[0] not in ["view", "create", "update", "delete"]
         }
         return list(custom_perms)
+
+    @classmethod
+    def get_collection_level_permissions(cls, project, user: AbstractUser | AnonymousUser):
+        """
+        Retrieve collection-level permissions for the given user.
+        """
+        app_label = "main"
+        if user.is_superuser:
+            return ["create"]
+        # If the model is m2m related to projects or has no project relation, use model-level permissions
+        if cls.get_project_accessor() is None or cls.get_project_accessor() == "projects":
+            if user.has_perm(f"{app_label}.create_{cls._meta.model_name}"):
+                return ["create"]
+        # If the model is related to a single project, check create permission at object level
+        if cls.get_project_accessor() is not None and project:
+            if user.has_perm(f"{app_label}.create_{cls._meta.model_name}", project):
+                return ["create"]
+
+        return []
 
     class Meta:
         abstract = True
