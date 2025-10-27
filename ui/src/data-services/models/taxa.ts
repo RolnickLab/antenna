@@ -1,3 +1,5 @@
+import { RANKS } from 'utils/constants'
+
 export type ServerTaxon = {
   id: string
   name: string
@@ -7,19 +9,6 @@ export type ServerTaxon = {
   parents?: ServerTaxon[]
 }
 
-const SORTED_RANKS = [
-  'Unknown',
-  'ORDER',
-  'SUBORDER',
-  'SUPERFAMILY',
-  'FAMILY',
-  'SUBFAMILY',
-  'TRIBE',
-  'SUBTRIBE',
-  'GENUS',
-  'SPECIES',
-  'SUBSPECIES',
-]
 export class Taxon {
   readonly id: string
   readonly name: string
@@ -46,8 +35,8 @@ export class Taxon {
 
     // TODO: Perhaps sorting should happen backend side? If so, let's remove this later.
     this.ranks.sort((r1, r2) => {
-      const value1 = SORTED_RANKS.indexOf(r1.rank)
-      const value2 = SORTED_RANKS.indexOf(r2.rank)
+      const value1 = RANKS.indexOf(r1.rank)
+      const value2 = RANKS.indexOf(r2.rank)
 
       return value1 - value2
     })

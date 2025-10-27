@@ -23,10 +23,11 @@ export const API_ROUTES = {
   SESSIONS: 'events',
   SITES: 'deployments/sites',
   SPECIES: 'taxa',
-  TAGS: 'tags',
-  TAXA_LISTS: 'taxa/lists',
   STORAGE: 'storage',
   SUMMARY: 'status/summary',
+  TAGS: 'tags',
+  TAXA_LISTS: 'taxa/lists',
+  TAXA: 'taxa',
   USERS: 'users',
 }
 
