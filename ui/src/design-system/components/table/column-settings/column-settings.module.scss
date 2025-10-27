@@ -2,7 +2,7 @@
 @import 'src/design-system/variables/typography.scss';
 
 .wrapper {
-  width: auto;
+  width: auto !important;
   min-width: 180px;
   padding: 20px;
   box-sizing: border-box;
