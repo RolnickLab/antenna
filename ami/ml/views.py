@@ -10,6 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
@@ -147,6 +148,7 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProcessingServiceSerializer
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
+    permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
@@ -164,6 +166,8 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         data["slug"] = slugify(data["name"])
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
+        instance_before_creation = serializer.get_instance_for_permission_check()  # type: ignore
+        self.check_object_permissions(request, instance_before_creation)
         self.perform_create(serializer)
         # immediately get status after creating a processing service
         instance: ProcessingService | None = serializer.instance

@@ -332,7 +332,7 @@ class Project(ProjectSettingsMixin, BaseModel):
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         # Handle project creation at model level
-        logger.info(f"Project.check_permission action: {action}")
+        logger.debug(f"Project.check_permission action: {action}")
         if action == "create":
             return self.check_model_level_permission(user, action)
         return super().check_object_level_permission(user, action)
@@ -447,8 +447,6 @@ class Project(ProjectSettingsMixin, BaseModel):
     class Meta:
         ordering = ["-priority", "created_at"]
         permissions = [
-            # Project permissions
-            ("create_project", "Can create a project"),
             # Identification permissions
             ("create_identification", "Can create identifications"),
             ("update_identification", "Can update identifications"),
@@ -506,6 +504,17 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("delete_dataexport", "Can delete a data export"),
             # Other permissions
             ("view_private_data", "Can view private data"),
+            # Model-level permissions
+            # Project permissions
+            ("create_project", "Can create a project globally"),
+            # ProcessingService permissions
+            ("create_processingservice", "Can create processing service globally"),
+            ("delete_processingservice", "Can delete processing service globally"),
+            ("update_processingservice", "Can update processing service globally"),
+            # Taxon permissions
+            ("create_taxon", "Can create taxon globally"),
+            ("update_taxon", "Can update taxon globally"),
+            ("delete_taxon", "Can delete taxon globally"),
         ]
 
 
