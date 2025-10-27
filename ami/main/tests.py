@@ -3,7 +3,8 @@ import logging
 import typing
 from io import BytesIO
 
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, Permission
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase, override_settings
@@ -1311,6 +1312,122 @@ class TestProjectPermissions(APITestCase):
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
 
+class TestProjectRoleBasedPermissions(APITestCase):
+    """
+    Ensures that role-based permissions on the Project model are correct
+    both in backend (guardian perms) and in API user_permissions fields.
+    """
+
+    def setUp(self):
+        # Create users with various roles
+        self.owner = User.objects.create_user(email="owner@insectai.org")
+        self.project_manager = User.objects.create_user(email="pm@insectai.org")
+        self.basic_member = User.objects.create_user(email="basic@insectai.org")
+        self.identifier = User.objects.create_user(email="identifier@insectai.org")
+        self.regular_user = User.objects.create_user(email="regular@insectai.org")
+        self.superuser = User.objects.create_superuser(email="super@insectai.org", password="pass")
+
+        # Create a project
+        self.project, _ = setup_test_project(reuse=False)
+        self.project.owner = self.owner
+        self.project.save()
+
+        # Assign roles
+        ProjectManager.assign_user(self.project_manager, self.project)
+        BasicMember.assign_user(self.basic_member, self.project)
+        Identifier.assign_user(self.identifier, self.project)
+
+        self.endpoint = "/api/v2/projects/"
+
+    # Helpers
+    def _get_project_object(self):
+        """Fetch project from API detail endpoint."""
+        url = f"{self.endpoint}{self.project.id}/"
+        return self.client.get(url)
+
+    def _get_project_list(self):
+        """Fetch all projects for the current user."""
+        return self.client.get(self.endpoint)
+
+    def _assert_permissions_match_api(self, user, expected_model_perms):
+        """Compare backend guardian perms with API user_permissions."""
+        self.client.force_authenticate(user=user)
+        # Collection-level (list endpoint)
+        list_resp = self._get_project_list()
+        self.assertEqual(list_resp.status_code, 200)
+        collection_perms = list_resp.json().get("user_permissions", [])
+
+        # Object-level (detail endpoint)
+        detail_resp = self._get_project_object()
+        self.assertEqual(detail_resp.status_code, 200)
+        object_perms = detail_resp.json().get("user_permissions", [])
+
+        logger.info(
+            f"{user.email} collection_perms={collection_perms}, object_perms={object_perms}, "
+            f"expected={expected_model_perms}"
+        )
+
+        # Assert API matches backend expectations
+        if expected_model_perms.get("create"):
+            self.assertIn("create", collection_perms)
+        else:
+            self.assertNotIn("create", collection_perms)
+
+        for perm in ["update", "delete"]:
+            if expected_model_perms.get(perm):
+                self.assertIn(perm, object_perms)
+            else:
+                self.assertNotIn(perm, object_perms)
+
+    # Tests
+    def test_superuser_permissions(self):
+        """Superuser should have all permissions on projects."""
+        expected = {"create": True, "update": True, "delete": True}
+        self._assert_permissions_match_api(self.superuser, expected)
+
+        # Guardian check
+        backend_perms = set(get_perms(self.superuser, self.project))
+        for perm in [
+            Project.Permissions.VIEW_PROJECT,
+            Project.Permissions.UPDATE_PROJECT,
+            Project.Permissions.DELETE_PROJECT,
+        ]:
+            self.assertIn(perm, backend_perms)
+
+    def test_owner_permissions(self):
+        """Owner should have full CRUD rights."""
+        expected = {"create": True, "update": True, "delete": True}
+        self._assert_permissions_match_api(self.owner, expected)
+
+        backend_perms = set(get_perms(self.owner, self.project))
+        for perm in [
+            Project.Permissions.VIEW_PROJECT,
+            Project.Permissions.UPDATE_PROJECT,
+            Project.Permissions.DELETE_PROJECT,
+        ]:
+            self.assertIn(perm, backend_perms)
+
+    def test_project_manager_permissions(self):
+        """Project Manager should have full CRUD rights."""
+        expected = {"create": True, "update": True, "delete": True}
+        self._assert_permissions_match_api(self.project_manager, expected)
+
+    def test_basic_member_permissions(self):
+        """Basic Member should only have create but not update/delete."""
+        expected = {"create": True, "update": False, "delete": False}
+        self._assert_permissions_match_api(self.basic_member, expected)
+
+    def test_identifier_permissions(self):
+        """Identifier can view but not update or delete."""
+        expected = {"create": True, "update": False, "delete": False}
+        self._assert_permissions_match_api(self.identifier, expected)
+
+    def test_regular_user_permissions(self):
+        """Regular user can only create new projects"""
+        expected = {"create": True, "update": False, "delete": False}
+        self._assert_permissions_match_api(self.regular_user, expected)
+
+
 class TestRolePermissions(APITestCase):
     # Create users
     def setUp(self) -> None:
@@ -1328,7 +1445,6 @@ class TestRolePermissions(APITestCase):
         self._create_job()
         self.PERMISSIONS_MAPS = {
             "project_manager": {
-                "project": {"create": True, "update": True, "delete": True},
                 "collection": {"create": True, "update": True, "delete": True, "populate": True},
                 "storage": {"create": True, "update": True, "delete": True, "test": True},
                 "sourceimage": {"create": True, "update": True, "delete": True},
@@ -1348,7 +1464,6 @@ class TestRolePermissions(APITestCase):
                 "capture": {"star": True, "unstar": True},
             },
             "basic_member": {
-                "project": {"create": True, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "site": {"create": False, "update": False, "delete": False},
@@ -1368,7 +1483,6 @@ class TestRolePermissions(APITestCase):
                 "capture": {"star": True, "unstar": True},
             },
             "identifier": {
-                "project": {"create": True, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "sourceimage": {"create": False, "update": False, "delete": False},
@@ -1388,7 +1502,6 @@ class TestRolePermissions(APITestCase):
                 "capture": {"star": True, "unstar": True},
             },
             "regular_user": {
-                "project": {"create": True, "update": False, "delete": False},
                 "collection": {"create": False, "update": False, "delete": False, "populate": False},
                 "storage": {"create": False, "update": False, "delete": False},
                 "sourceimage": {"create": False, "update": False, "delete": False},
@@ -1478,7 +1591,6 @@ class TestRolePermissions(APITestCase):
             "storage": "/api/v2/storage/",
             "job": "/api/v2/jobs/",
             "identification": "/api/v2/identifications/",
-            "project": "/api/v2/projects/",
             "capture_star": f"/api/v2/captures/{capture_id}/star/",
             "capture_unstar": f"/api/v2/captures/{capture_id}/unstar/",
         }
@@ -1486,7 +1598,6 @@ class TestRolePermissions(APITestCase):
         self.client.force_authenticate(user=user)
 
         entity_ids = {
-            "project": self.project.pk,
             "collection": self.project.sourceimage_collections.first().pk,
             "storage": self.project.storage_sources.first().pk,
             "device": self.project.devices.first().pk,
@@ -1506,7 +1617,6 @@ class TestRolePermissions(APITestCase):
             "storage": {"name": "New Storage", "project": self.project.pk, "bucket": "test-bucket"},
             "job": {"delay": "1", "name": "Test Job", "project_id": self.project.pk},
             "identification": {"occurrence_id": occurrence_id, "taxon_id": "5", "comment": "Identifier comment"},
-            "project": {"name": "New Project", "description": "This is a test project."},
         }
 
         for entity, actions in permissions_map.items():
@@ -1532,14 +1642,10 @@ class TestRolePermissions(APITestCase):
             logger.info(f"Testing {role_class} create permission for {entity} ")
             can_create = actions["create"] if "create" in actions else False
             logger.info(f"entity endpoint : {endpoints[entity]}")
-            if entity == "project":
-                response = self.client.post(endpoints[entity], create_data.get(entity, {}), format="multipart")
-            else:
-                response = self.client.post(endpoints[entity], create_data.get(entity, {}))
+            response = self.client.post(endpoints[entity], create_data.get(entity, {}))
             expected_status = status.HTTP_201_CREATED if can_create else status.HTTP_403_FORBIDDEN
             self.assertEqual(response.status_code, expected_status)
             entity_ids[entity] = response.json().get("id") if can_create else entity_ids.get(entity, None)
-
             #  Check Object-Level Permissions in List Response
             if entity_ids[entity]:
                 response = self.client.get(endpoints[entity])
@@ -1662,17 +1768,6 @@ class TestRolePermissions(APITestCase):
                     logger.info(f"{role_class} delete response status for {entity} : {response.status_code}")
                     expected_status = status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN
                     self.assertEqual(response.status_code, expected_status, f"Delete permission failed for {entity}")
-
-            # try to delete the project
-            entity = "project"
-            actions = permissions_map[entity]
-            if "delete" in actions and actions["delete"] and entity_ids[entity]:
-                logger.info(f"Testing {role_class} for delete permission on {entity}")
-                can_delete = actions["delete"]
-                response = self.client.delete(f"{endpoints[entity]}{entity_ids[entity]}/")
-                logger.info(f"{role_class} delete response status for {entity} : {response.status_code}")
-                expected_status = status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN
-                self.assertEqual(response.status_code, expected_status)
 
     def _test_sourceimageupload_permissions(self, user, permission_map):
         self._create_project(owner=self.project_manager)
@@ -3445,27 +3540,361 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
 
-class TestModelLevelPermissions(APITestCase):
+class TestProcessingServiceModelLevelPermissions(APITestCase):
     """
-    Tests for model-level permissions.
+    Tests model-level permissions for ProcessingService model.
+    Ensures that create, update, and delete actions are controlled by model-level permissions
+    and correctly reflected in the API responses.
     """
 
     def setUp(self):
-        self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
-
+        self.user = User.objects.create_user(
+            email="perm_tester@insectai.org",
+            is_staff=False,
+            is_superuser=False,
+        )
+        self.project, _ = setup_test_project(reuse=False)
         self.client.force_authenticate(user=self.user)
 
-    def test_authenticated_user_can_create_project(self):
-        """Ensure any authenticated user can create a project via model-level permission."""
-        project_endpoint = "/api/v2/projects/"
-        payload = {"name": "User Created Project", "description": "Created via model-level permission"}
-        response = self.client.post(project_endpoint, payload)
+        self.endpoint = "/api/v2/ml/processing_services/"
+        self.payload = {
+            "name": "Test Processing Service",
+            "description": "For permission testing",
+            "endpoint_url": "https://example.com/endpoint/",
+            "project": self.project.id,
+        }
+
+    def _assign_user_permission_and_reset_caches(
+        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
+    ):
+        # Ensure the Permission object exists
+        ct = ContentType.objects.get(app_label=app_label, model=model_name)
+        perm, _ = Permission.objects.get_or_create(
+            codename=perm_codename,
+            content_type=ct,
+            defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+        )
+
+        # Assign permission to user
+        user.user_permissions.add(perm)
+
+        # Reset Django's internal permission caches
+        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
+            if hasattr(user, attr):
+                delattr(user, attr)
+
+        # Reload user from DB to ensure cache rebuild on next access
+        user.refresh_from_db()
+
+        return perm
+
+    def _remove_user_permission_and_reset_cache(
+        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
+    ):
+        try:
+            ct = ContentType.objects.get(app_label=app_label, model=model_name)
+            perm = Permission.objects.get(codename=perm_codename, content_type=ct)
+            user.user_permissions.remove(perm)
+        except Permission.DoesNotExist:
+            # Gracefully ignore if permission doesn't exist
+            return False
+
+        # Reset Django's internal permission caches
+        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
+            if hasattr(user, attr):
+                delattr(user, attr)
+
+        # Reload user from DB to ensure cache rebuild on next access
+        user.refresh_from_db()
+
+        return True
+
+    def test_create_requires_model_level_permission(self):
+        """User cannot create ProcessingService without model-level create permission."""
+        response = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without create_processingservice permission should not be able to create a ProcessingService",
+        )
+
+        # Grant model-level create permission
+        self._assign_user_permission_and_reset_caches(self.user, "create_processingservice")
+        response = self.client.post(self.endpoint, self.payload, format="json")
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
-            f"Authenticated users should be able to create projects, got {response.status_code}.",
+            "User with create_processingservice permission should be able to create a ProcessingService",
         )
 
-        project = Project.objects.filter(name="User Created Project").first()
-        self.assertIsNotNone(project)
-        self.assertEqual(project.name, "User Created Project")
+    def test_update_requires_model_level_permission(self):
+        """User cannot update ProcessingService without model-level update permission."""
+        self._assign_user_permission_and_reset_caches(self.user, "create_processingservice")
+        create_resp = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(create_resp.status_code, 201)
+        service_id = create_resp.data["instance"]["id"]
+
+        update_url = f"{self.endpoint}{service_id}/"
+
+        # Remove create permission
+        self._remove_user_permission_and_reset_cache(self.user, "create_processingservice")
+        response = self.client.patch(update_url, {"description": "Updated"}, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without update_processingservice permission should not be able to update a ProcessingService",
+        )
+
+        # Grant update permission
+        self._assign_user_permission_and_reset_caches(self.user, "update_processingservice")
+        response = self.client.patch(update_url, {"description": "Updated Description"}, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            "User with update_processingservice permission should be able to update a ProcessingService",
+        )
+
+    def test_delete_requires_model_level_permission(self):
+        """User cannot delete ProcessingService without model-level delete permission."""
+        self._assign_user_permission_and_reset_caches(self.user, "create_processingservice")
+        create_resp = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(create_resp.status_code, 201)
+        service_id = create_resp.data["instance"]["id"]
+        delete_url = f"{self.endpoint}{service_id}/"
+
+        # No delete permission yet
+        response = self.client.delete(delete_url)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without delete_processingservice permission should not be able to delete a ProcessingService",
+        )
+
+        # Grant delete permission
+        self._assign_user_permission_and_reset_caches(self.user, "delete_processingservice")
+        response = self.client.delete(delete_url)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_204_NO_CONTENT,
+            "User with delete_processingservice permission should be able to delete a ProcessingService",
+        )
+
+    def test_permissions_reflected_in_collection_user_permissions(self):
+        """
+        Verify that model-level permissions (create, update, delete)
+        appear correctly in the API responses at both collection and object levels.
+        """
+        # Grant all model-level permissions
+        self._assign_user_permission_and_reset_caches(self.user, "create_processingservice")
+        self._assign_user_permission_and_reset_caches(self.user, "update_processingservice")
+        self._assign_user_permission_and_reset_caches(self.user, "delete_processingservice")
+        # Create one instance
+        response = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(response.status_code, 201)
+        service_id = response.data["instance"]["id"]
+
+        # Check collection-level permissions
+        list_resp = self.client.get(self.endpoint)
+        self.assertEqual(list_resp.status_code, 200)
+        collection_perms = list_resp.data.get("user_permissions", [])
+
+        self.assertIn(
+            "create",
+            collection_perms,
+            "create permission should appear in collection-level user_permissions for ProcessingService",
+        )
+
+        # Check object-level user_permissions in results
+        found_obj = next(
+            (item for item in list_resp.data.get("results", []) if item["id"] == service_id),
+            None,
+        )
+        self.assertIsNotNone(found_obj, "ProcessingService should appear in list results")
+        for perm in ["update", "delete"]:
+            self.assertIn(
+                perm,
+                found_obj.get("user_permissions", []),
+                f"'{perm}' should appear in object-level user_permissions for ProcessingService",
+            )
+
+
+class TestTaxonModelLevelPermissions(APITestCase):
+    """
+    Tests model-level permissions for Taxon.
+    Ensures that create, update, and delete actions are controlled by model-level permissions
+    and correctly reflected in the API responses.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="perm_tester@insectai.org",
+            is_staff=False,
+            is_superuser=False,
+        )
+        self.project, _ = setup_test_project(reuse=False)
+        self.client.force_authenticate(user=self.user)
+
+        self.endpoint = "/api/v2/taxa/"
+        self.parent_taxon = Taxon.objects.create(name="ParentTaxon", rank="GENUS")
+
+        self.payload = {
+            "name": "Test Taxon",
+            "rank": "SPECIES",
+            "parent_id": self.parent_taxon.id,
+            "project": self.project.id,
+        }
+
+    # ---------- helpers ----------
+    def _add_taxon_to_project(self, taxon_id: int):
+        taxon = Taxon.objects.get(pk=taxon_id)
+        taxon.projects.add(self.project)
+        taxon.save()
+
+    def _assign_user_permission_and_reset_caches(
+        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
+    ):
+        ct = ContentType.objects.get(app_label=app_label, model=model_name)
+        perm, _ = Permission.objects.get_or_create(
+            codename=perm_codename,
+            content_type=ct,
+            defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+        )
+
+        user.user_permissions.add(perm)
+        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
+            if hasattr(user, attr):
+                delattr(user, attr)
+        user.refresh_from_db()
+        return perm
+
+    def _remove_user_permission_and_reset_cache(
+        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
+    ):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        try:
+            ct = ContentType.objects.get(app_label=app_label, model=model_name)
+            perm = Permission.objects.get(codename=perm_codename, content_type=ct)
+            user.user_permissions.remove(perm)
+        except Permission.DoesNotExist:
+            return False
+
+        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
+            if hasattr(user, attr):
+                delattr(user, attr)
+        user.refresh_from_db()
+        return True
+
+    # ---------- tests ----------
+
+    def test_create_requires_model_level_permission(self):
+        """User cannot create Taxon without model-level create permission."""
+        response = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without create_taxon permission should not be able to create a Taxon",
+        )
+
+        # Grant model-level create permission
+        self._assign_user_permission_and_reset_caches(self.user, "create_taxon")
+        response = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            "User with create_taxon permission should be able to create a Taxon",
+        )
+        # Remove the created taxon object
+        taxon_id = response.data["id"]
+        taxon = Taxon.objects.get(pk=taxon_id)
+        taxon.delete()
+
+    def test_update_requires_model_level_permission(self):
+        """User cannot update Taxon without model-level update permission."""
+        self._assign_user_permission_and_reset_caches(self.user, "create_taxon")
+        create_resp = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(create_resp.status_code, 201)
+        taxon_id = create_resp.data["id"]
+        self._add_taxon_to_project(taxon_id)
+        update_url = f"{self.endpoint}{taxon_id}/"
+
+        # Remove create permission
+        self._remove_user_permission_and_reset_cache(self.user, "create_taxon")
+        response = self.client.patch(update_url, {"name": "Updated Taxon"}, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without update_taxon permission should not be able to update a Taxon",
+        )
+
+        # Grant update permission
+        self._assign_user_permission_and_reset_caches(self.user, "update_taxon")
+        response = self.client.patch(update_url, {"name": "Updated Taxon"}, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            "User with update_taxon permission should be able to update a Taxon",
+        )
+
+    def test_delete_requires_model_level_permission(self):
+        """User cannot delete Taxon without model-level delete permission."""
+        self._assign_user_permission_and_reset_caches(self.user, "create_taxon")
+        create_resp = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(create_resp.status_code, 201)
+        taxon_id = create_resp.data["id"]
+        self._add_taxon_to_project(taxon_id)
+        delete_url = f"{self.endpoint}{taxon_id}/"
+
+        # No delete permission yet
+        response = self.client.delete(delete_url)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without delete_taxon permission should not be able to delete a Taxon",
+        )
+
+        # Grant delete permission
+        self._assign_user_permission_and_reset_caches(self.user, "delete_taxon")
+        response = self.client.delete(delete_url)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_204_NO_CONTENT,
+            "User with delete_taxon permission should be able to delete a Taxon",
+        )
+
+    def test_permissions_reflected_in_collection_user_permissions(self):
+        """
+        Verify that model-level permissions (create, update, delete)
+        appear correctly in the API responses at both collection and object levels.
+        """
+        # Grant all model-level permissions
+        for perm in ["create_taxon", "update_taxon", "delete_taxon"]:
+            self._assign_user_permission_and_reset_caches(self.user, perm)
+
+        # Create one instance
+        create_resp = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(create_resp.status_code, 201)
+        taxon_id = create_resp.data["id"]
+        self._add_taxon_to_project(taxon_id)
+
+        # Check collection-level permissions
+        list_resp = self.client.get(self.endpoint)
+        self.assertEqual(list_resp.status_code, 200)
+        collection_perms = list_resp.data.get("user_permissions", [])
+        self.assertIn(
+            "create", collection_perms, "create permission should appear in collection-level user_permissions"
+        )
+
+        # Check object-level user_permissions in results
+        found_obj = next(
+            (item for item in list_resp.data.get("results", []) if item["id"] == taxon_id),
+            None,
+        )
+        self.assertIsNotNone(found_obj, "Taxon should appear in list results")
+        for perm in ["update", "delete"]:
+            self.assertIn(
+                perm,
+                found_obj.get("user_permissions", []),
+                f"'{perm}' should appear in object-level user_permissions for Taxon",
+            )
