@@ -49,6 +49,7 @@ class TestProcessingServiceAPI(APITestCase):
         self.user = User.objects.create_user(  # type: ignore
             email="testuser@insectai.org",
             is_staff=True,
+            is_superuser=True,
         )
         self.factory = APIRequestFactory()
 
