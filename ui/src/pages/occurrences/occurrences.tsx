@@ -148,12 +148,6 @@ export const Occurrences = () => {
               setSort={setSort}
               sort={sort}
             />
-            <ColumnSettings
-              columns={columns(projectId as string)}
-              columnSettings={columnSettings}
-              onColumnSettingsChange={setColumnSettings}
-            />
-
             <Link
               className={buttonVariants({ size: 'small', variant: 'outline' })}
               to={APP_ROUTES.EXPORTS({ projectId: projectId as string })}
@@ -161,6 +155,11 @@ export const Occurrences = () => {
               <DownloadIcon className="w-4 h-4" />
               <span>Export </span>
             </Link>
+            <ColumnSettings
+              columns={columns(projectId as string)}
+              columnSettings={columnSettings}
+              onColumnSettingsChange={setColumnSettings}
+            />
           </PageHeader>
           {selectedView === 'table' && (
             <Table

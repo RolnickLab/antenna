@@ -11,6 +11,7 @@ import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
@@ -110,6 +111,11 @@ export const Species = () => {
               ]}
               value={selectedView}
               onValueChange={setSelectedView}
+            />
+            <SortControl
+              columns={columns({ projectId: projectId as string })}
+              setSort={setSort}
+              sort={sort}
             />
             <ColumnSettings
               columns={columns({ projectId: projectId as string })}
