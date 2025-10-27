@@ -358,6 +358,13 @@ class Project(ProjectSettingsMixin, BaseModel):
     def get_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         return self.get_object_level_permissions(user)
 
+    @classmethod
+    def get_collection_level_permissions(
+        cls, user: AbstractUser | AnonymousUser, project: "Project | None" = None
+    ) -> list[str]:
+        # Use model-level permissions for project collection-level actions
+        return ["create"] if user.has_perm("main.create_project") else []
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
