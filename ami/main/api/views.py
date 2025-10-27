@@ -1253,6 +1253,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         TaxonTagFilter,
         TagInverseFilter,
     ]
+    permission_classes = [ObjectPermission]
     filterset_fields = [
         "name",
         "rank",
