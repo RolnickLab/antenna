@@ -3446,8 +3446,8 @@ class Taxon(BaseModel):
 
         plots = []
 
+        plots.append(charts.average_occurrences_per_day(project_pk=project.pk, taxon_pk=self.pk))
         plots.append(charts.average_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
-        plots.append(charts.relative_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
 
         return plots
 
