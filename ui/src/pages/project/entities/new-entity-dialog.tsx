@@ -16,12 +16,14 @@ export const NewEntityDialog = ({
   buttonSize = 'small',
   buttonVariant = 'outline',
   collection,
+  customLabel,
   type,
   isCompact,
 }: {
   buttonSize?: string
   buttonVariant?: string
   collection: string
+  customLabel?: string
   type: string
   isCompact?: boolean
 }) => {
@@ -35,9 +37,11 @@ export const NewEntityDialog = ({
       }, CLOSE_TIMEOUT)
   )
 
-  const label = translate(STRING.ENTITY_CREATE, {
-    type,
-  })
+  const label =
+    customLabel ??
+    translate(STRING.ENTITY_CREATE, {
+      type,
+    })
 
   const DetailsForm = customFormMap[type] ?? EntityDetailsForm
 
