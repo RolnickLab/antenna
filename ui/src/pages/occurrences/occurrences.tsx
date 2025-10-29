@@ -12,6 +12,7 @@ import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
@@ -142,10 +143,10 @@ export const Occurrences = () => {
               value={selectedView}
               onValueChange={setSelectedView}
             />
-            <ColumnSettings
+            <SortControl
               columns={columns(projectId as string)}
-              columnSettings={columnSettings}
-              onColumnSettingsChange={setColumnSettings}
+              setSort={setSort}
+              sort={sort}
             />
             <Link
               className={buttonVariants({ size: 'small', variant: 'outline' })}
@@ -154,6 +155,11 @@ export const Occurrences = () => {
               <DownloadIcon className="w-4 h-4" />
               <span>Export </span>
             </Link>
+            <ColumnSettings
+              columns={columns(projectId as string)}
+              columnSettings={columnSettings}
+              onColumnSettingsChange={setColumnSettings}
+            />
           </PageHeader>
           {selectedView === 'table' && (
             <Table
@@ -176,7 +182,10 @@ export const Occurrences = () => {
             <OccurrenceGallery
               error={error}
               isLoading={!id && isLoading}
-              occurrences={occurrences}
+              items={occurrences}
+              onSelectedItemsChange={setSelectedItems}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
             />
           )}
         </div>

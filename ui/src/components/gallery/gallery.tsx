@@ -1,4 +1,3 @@
-import classNames from 'classnames'
 import { EmptyState } from 'components/empty-state/empty-state'
 import { ErrorState } from 'components/error-state/error-state'
 import { Card, CardSize } from 'design-system/components/card/card'
@@ -51,12 +50,7 @@ export const Gallery = ({
   }
 
   return (
-    <div
-      className={classNames(styles.gallery, {
-        [styles.large]: cardSize === CardSize.Large,
-      })}
-      style={style}
-    >
+    <div className={styles.gallery} style={style}>
       {items?.map(
         (item) =>
           renderItem?.(item) ??
