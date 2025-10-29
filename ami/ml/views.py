@@ -188,7 +188,7 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
 
     @action(detail=True, methods=["post"])
     def register_pipelines(self, request: Request, pk=None) -> Response:
-        processing_service = ProcessingService.objects.get(pk=pk)
+        processing_service = self.get_object()
         response = processing_service.create_pipelines()
         processing_service.save()
         return Response(response.dict())
