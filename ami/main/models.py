@@ -468,10 +468,12 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_processingservice", "Can create processing service"),
             ("delete_processingservice", "Can delete processing service"),
             ("update_processingservice", "Can update processing service"),
+            ("register_pipelines_processingservice", "Can register pipelines for processing service"),
             # Taxon permissions
             ("create_taxon", "Can create taxon"),
             ("update_taxon", "Can update taxon"),
             ("delete_taxon", "Can delete taxon"),
+            ("assign_tags_taxon", "Can assign tags to taxon"),
         ]
 
 
