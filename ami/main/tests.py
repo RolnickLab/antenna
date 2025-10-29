@@ -3540,7 +3540,52 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
 
-class TestProcessingServiceModelLevelPermissions(APITestCase):
+class BasePermissionTestCase(APITestCase):
+    """
+    Base class for tests that verify model-level permissions.
+    Provides reusable helpers for assigning and removing user permissions.
+    """
+
+    def _assign_user_permission_and_reset_caches(
+        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
+    ):
+        ct = ContentType.objects.get(app_label=app_label, model=model_name)
+        perm, _ = Permission.objects.get_or_create(
+            codename=perm_codename,
+            content_type=ct,
+            defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+        )
+
+        user.user_permissions.add(perm)
+
+        # Clear cached permissions
+        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
+            if hasattr(user, attr):
+                delattr(user, attr)
+        user.refresh_from_db()
+
+        return perm
+
+    def _remove_user_permission_and_reset_cache(
+        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
+    ):
+        try:
+            ct = ContentType.objects.get(app_label=app_label, model=model_name)
+            perm = Permission.objects.get(codename=perm_codename, content_type=ct)
+            user.user_permissions.remove(perm)
+        except Permission.DoesNotExist:
+            return False
+
+        # Clear cached permissions
+        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
+            if hasattr(user, attr):
+                delattr(user, attr)
+        user.refresh_from_db()
+
+        return True
+
+
+class TestProcessingServiceModelLevelPermissions(BasePermissionTestCase):
     """
     Tests model-level permissions for ProcessingService model.
     Ensures that create, update, and delete actions are controlled by model-level permissions
@@ -3561,53 +3606,8 @@ class TestProcessingServiceModelLevelPermissions(APITestCase):
             "name": "Test Processing Service",
             "description": "For permission testing",
             "endpoint_url": "https://example.com/endpoint/",
-            "project": self.project.id,
+            "project": self.project.pk,
         }
-
-    def _assign_user_permission_and_reset_caches(
-        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
-    ):
-        # Ensure the Permission object exists
-        ct = ContentType.objects.get(app_label=app_label, model=model_name)
-        perm, _ = Permission.objects.get_or_create(
-            codename=perm_codename,
-            content_type=ct,
-            defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
-        )
-
-        # Assign permission to user
-        user.user_permissions.add(perm)
-
-        # Reset Django's internal permission caches
-        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
-            if hasattr(user, attr):
-                delattr(user, attr)
-
-        # Reload user from DB to ensure cache rebuild on next access
-        user.refresh_from_db()
-
-        return perm
-
-    def _remove_user_permission_and_reset_cache(
-        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
-    ):
-        try:
-            ct = ContentType.objects.get(app_label=app_label, model=model_name)
-            perm = Permission.objects.get(codename=perm_codename, content_type=ct)
-            user.user_permissions.remove(perm)
-        except Permission.DoesNotExist:
-            # Gracefully ignore if permission doesn't exist
-            return False
-
-        # Reset Django's internal permission caches
-        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
-            if hasattr(user, attr):
-                delattr(user, attr)
-
-        # Reload user from DB to ensure cache rebuild on next access
-        user.refresh_from_db()
-
-        return True
 
     def test_create_requires_model_level_permission(self):
         """User cannot create ProcessingService without model-level create permission."""
@@ -3718,7 +3718,7 @@ class TestProcessingServiceModelLevelPermissions(APITestCase):
             )
 
 
-class TestTaxonModelLevelPermissions(APITestCase):
+class TestTaxonModelLevelPermissions(BasePermissionTestCase):
     """
     Tests model-level permissions for Taxon.
     Ensures that create, update, and delete actions are controlled by model-level permissions
@@ -3750,44 +3750,7 @@ class TestTaxonModelLevelPermissions(APITestCase):
         taxon.projects.add(self.project)
         taxon.save()
 
-    def _assign_user_permission_and_reset_caches(
-        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
-    ):
-        ct = ContentType.objects.get(app_label=app_label, model=model_name)
-        perm, _ = Permission.objects.get_or_create(
-            codename=perm_codename,
-            content_type=ct,
-            defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
-        )
-
-        user.user_permissions.add(perm)
-        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
-            if hasattr(user, attr):
-                delattr(user, attr)
-        user.refresh_from_db()
-        return perm
-
-    def _remove_user_permission_and_reset_cache(
-        self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
-    ):
-        from django.contrib.auth.models import Permission
-        from django.contrib.contenttypes.models import ContentType
-
-        try:
-            ct = ContentType.objects.get(app_label=app_label, model=model_name)
-            perm = Permission.objects.get(codename=perm_codename, content_type=ct)
-            user.user_permissions.remove(perm)
-        except Permission.DoesNotExist:
-            return False
-
-        for attr in ["_perm_cache", "_user_perm_cache", "_group_perm_cache"]:
-            if hasattr(user, attr):
-                delattr(user, attr)
-        user.refresh_from_db()
-        return True
-
     # ---------- tests ----------
-
     def test_create_requires_model_level_permission(self):
         """User cannot create Taxon without model-level create permission."""
         response = self.client.post(self.endpoint, self.payload, format="json")
