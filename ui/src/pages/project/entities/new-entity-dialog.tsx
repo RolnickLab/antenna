@@ -3,7 +3,7 @@ import { useCreateEntity } from 'data-services/hooks/entities/useCreateEntity'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { customFormMap } from './details-form/constants'
@@ -29,13 +29,15 @@ export const NewEntityDialog = ({
 }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
-  const { createEntity, isLoading, isSuccess, error } = useCreateEntity(
+  const { createEntity, isLoading, isSuccess, error, reset } = useCreateEntity(
     collection,
     () =>
       setTimeout(() => {
         setIsOpen(false)
       }, CLOSE_TIMEOUT)
   )
+
+  useEffect(reset, [isOpen])
 
   const label =
     customLabel ??

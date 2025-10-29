@@ -26,5 +26,5 @@ export const useCreateEntity = (collection: string, onSuccess?: () => void) => {
     },
   })
 
-  return { createEntity: mutateAsync, isLoading, isSuccess, error }
+  return { createEntity: mutateAsync, isLoading, isSuccess, error, reset }
 }
