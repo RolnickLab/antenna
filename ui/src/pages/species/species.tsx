@@ -76,7 +76,10 @@ export const Species = () => {
           <FilterControl field="deployment" />
           <FilterControl field="taxon" />
           {taxaLists.length > 0 && (
-            <FilterControl data={taxaLists} field="taxa_list_id" />
+            <>
+              <FilterControl data={taxaLists} field="taxa_list_id" />
+              <FilterControl data={taxaLists} field="not_taxa_list_id" />
+            </>
           )}
           <FilterControl field="include_unobserved" />
           {project?.featureFlags.tags ? (
