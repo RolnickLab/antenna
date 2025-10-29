@@ -1221,24 +1221,23 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
             request.query_params.get(self.query_param_exclusive)
         )
 
+        def _get_filter(taxa_list: TaxaList) -> models.Q:
+            taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
+            query_filter = Q(id__in=taxa)
+            for taxon in taxa:
+                query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+            return query_filter
+
         if taxalist_id:
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
-                query_filter = Q(id__in=taxa)
-                for taxon in taxa:
-                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
-
+                query_filter = _get_filter(taxa_list)
                 queryset = queryset.filter(query_filter)
 
         if taxalist_id_exclusive:
             taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
-                query_filter = Q(id__in=taxa)
-                for taxon in taxa:
-                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
-
+                query_filter = _get_filter(taxa_list)
                 queryset = queryset.exclude(query_filter)
 
         return queryset
