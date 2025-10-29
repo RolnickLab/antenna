@@ -109,7 +109,7 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
 
             async def ack_task():
                 async with TaskQueueManager() as manager:
-                    return await manager.acknowledge_job(reply_subject)
+                    return await manager.acknowledge_task(reply_subject)
 
             ack_success = _run_in_async_loop(ack_task, f"acknowledging job {job.pk} via NATS")
 

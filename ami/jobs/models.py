@@ -398,9 +398,10 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
-        cls.process_images(job, images)
-        # TODO CGJS: do this conditionally based on the type of processing service this job is using
-        # cls.queue_images_to_nats(job, images)
+        if job.project.feature_flags.async_pipeline_workers:
+            cls.queue_images_to_nats(job, images)
+        else:
+            cls.process_images(job, images)
 
     @classmethod
     def process_images(cls, job, images):
@@ -585,7 +586,7 @@ class MLJob(JobType):
                     try:
                         logger.info(f"Queueing image {image_pk} to stream for job '{job_id}': {message}")
                         # Use TTR of 300 seconds (5 minutes) for image processing
-                        success = await manager.publish_job(
+                        success = await manager.publish_task(
                             job_id=job_id,
                             data=message,
                             ttr=120,  # visibility timeout in seconds

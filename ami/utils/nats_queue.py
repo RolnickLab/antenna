@@ -31,9 +31,9 @@ class TaskQueueManager:
 
     Use as an async context manager:
         async with TaskQueueManager() as manager:
-            await manager.publish_job('job123', {'data': 'value'})
-            task = await manager.reserve_job('job123')
-            await manager.acknowledge_job(task['reply_subject'])
+            await manager.publish_task('job123', {'data': 'value'})
+            task = await manager.reserve_task('job123')
+            await manager.acknowledge_task(task['reply_subject'])
     """
 
     def __init__(self, nats_url: str | None = None):
@@ -116,13 +116,13 @@ class TaskQueueManager:
             )
             logger.info(f"Created consumer {consumer_name}")
 
-    async def publish_job(self, job_id: str, data: dict[str, Any], ttr: int = 30) -> bool:
+    async def publish_task(self, job_id: str, data: dict[str, Any], ttr: int = 30) -> bool:
         """
-        Publish a job to a stream.
+        Publish a task to it's job queue.
 
         Args:
             job_id: The job ID (e.g., 'job123' or '123')
-            data: Job data (dict will be JSON-encoded)
+            data: Task data (dict will be JSON-encoded)
             ttr: Time-to-run in seconds (visibility timeout, default 30)
 
         Returns:
@@ -137,28 +137,28 @@ class TaskQueueManager:
             await self._ensure_consumer(job_id, ttr)
 
             subject = self._get_subject(job_id)
-            job_data = json.dumps(data)
+            task_data = json.dumps(data)
 
             # Publish to JetStream
-            ack = await self.js.publish(subject, job_data.encode())
+            ack = await self.js.publish(subject, task_data.encode())
 
-            logger.info(f"Published job to stream for job '{job_id}', sequence {ack.seq}")
+            logger.info(f"Published task to stream for job '{job_id}', sequence {ack.seq}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to publish job to stream for job '{job_id}': {e}")
+            logger.error(f"Failed to publish task to stream for job '{job_id}': {e}")
             return False
 
-    async def reserve_job(self, job_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+    async def reserve_task(self, job_id: str, timeout: float | None = None) -> dict[str, Any] | None:
         """
-        Reserve a job from the specified stream.
+        Reserve a task from the specified stream.
 
         Args:
             job_id: The job ID to pull tasks from
             timeout: Timeout in seconds for reservation (default: 5 seconds)
 
         Returns:
-            Dict with job details including 'reply_subject' for acknowledgment, or None if no job available
+            Dict with task details including 'reply_subject' for acknowledgment, or None if no task available
         """
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -171,7 +171,6 @@ class TaskQueueManager:
             await self._ensure_stream(job_id)
             await self._ensure_consumer(job_id)
 
-            # stream_name = self._get_stream_name(job_id)
             consumer_name = self._get_consumer_name(job_id)
             subject = self._get_subject(job_id)
 
@@ -184,36 +183,36 @@ class TaskQueueManager:
 
                 if msgs:
                     msg = msgs[0]
-                    job_data = json.loads(msg.data.decode())
+                    task_data = json.loads(msg.data.decode())
                     metadata = msg.metadata
 
                     result = {
                         "id": metadata.sequence.stream,
-                        "body": job_data,
+                        "body": task_data,
                         "reply_subject": msg.reply,  # For acknowledgment
                     }
 
-                    logger.debug(f"Reserved job from stream for job '{job_id}', sequence {metadata.sequence.stream}")
+                    logger.debug(f"Reserved task from stream for job '{job_id}', sequence {metadata.sequence.stream}")
                     return result
 
             except nats.errors.TimeoutError:
                 # No messages available
-                logger.debug(f"No jobs available in stream for job '{job_id}'")
+                logger.debug(f"No tasks available in stream for job '{job_id}'")
                 return None
             finally:
                 # Always unsubscribe
                 await psub.unsubscribe()
 
         except Exception as e:
-            logger.error(f"Failed to reserve job from stream for job '{job_id}': {e}")
+            logger.error(f"Failed to reserve task from stream for job '{job_id}': {e}")
             return None
 
-    async def acknowledge_job(self, reply_subject: str) -> bool:
+    async def acknowledge_task(self, reply_subject: str) -> bool:
         """
-        Acknowledge (delete) a completed job using its reply subject.
+        Acknowledge (delete) a completed task using its reply subject.
 
         Args:
-            reply_subject: The reply subject from reserve_job
+            reply_subject: The reply subject from reserve_task
 
         Returns:
             bool: True if successful
@@ -223,10 +222,10 @@ class TaskQueueManager:
 
         try:
             await self.nc.publish(reply_subject, b"+ACK")
-            logger.debug(f"Acknowledged job with reply subject {reply_subject}")
+            logger.debug(f"Acknowledged task with reply subject {reply_subject}")
             return True
         except Exception as e:
-            logger.error(f"Failed to acknowledge job: {e}")
+            logger.error(f"Failed to acknowledge task: {e}")
             return False
 
     async def delete_consumer(self, job_id: str) -> bool:

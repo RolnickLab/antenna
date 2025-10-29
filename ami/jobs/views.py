@@ -242,7 +242,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             tasks = []
             async with TaskQueueManager() as manager:
                 for i in range(batch):
-                    task = await manager.reserve_job(job_id, timeout=0.1)
+                    task = await manager.reserve_task(job_id, timeout=0.1)
                     if task:
                         tasks.append(task)
             return tasks
