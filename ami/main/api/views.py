@@ -190,12 +190,12 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         return context
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
         # Check if user is authenticated
         if not self.request.user or not self.request.user.is_authenticated:
             raise PermissionDenied("You must be authenticated to create a project.")
 
-        # Add current user as project owner
+        # Save once with owner set - this allows the set_project_owner_permissions post_save signal to fire correctly
+        # Signal fires with both created=True AND owner set, assigning ProjectManager role
         serializer.save(owner=self.request.user)
 
     @action(detail=True, methods=["get"], name="charts")
