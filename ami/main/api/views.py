@@ -1050,23 +1050,41 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
     """
 
     query_param = "taxa_list_id"
+    query_param_exclusive = f"not_{query_param}"
 
     def filter_queryset(self, request, queryset, view):
         taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        taxalist_id_exclusive = IntegerField(required=False).clean(
+            request.query_params.get(self.query_param_exclusive)
+        )
+
         if taxalist_id:
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxalist taxon objects
+                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
 
-                # filter by the exact determination
+                # Filter by the exact determination
                 query_filter = Q(determination__in=taxa)
 
-                # filter by the taxon's children
+                # Filter by the taxon's children
                 for taxon in taxa:
                     query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
 
                 queryset = queryset.filter(query_filter)
-                return queryset
+
+        if taxalist_id_exclusive:
+            taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
+            if taxa_list:
+                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
+
+                # Filter by the exact determination
+                query_filter = Q(determination__in=taxa)
+
+                # Filter by the taxon's children
+                for taxon in taxa:
+                    query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
+
+                queryset = queryset.exclude(query_filter)
 
         return queryset
 
@@ -1195,19 +1213,32 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
 
     query_param = "taxa_list_id"
+    query_param_exclusive = f"not_{query_param}"
 
     def filter_queryset(self, request, queryset, view):
         taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        taxalist_id_exclusive = IntegerField(required=False).clean(
+            request.query_params.get(self.query_param_exclusive)
+        )
+
+        def _get_filter(taxa_list: TaxaList) -> models.Q:
+            taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
+            query_filter = Q(id__in=taxa)
+            for taxon in taxa:
+                query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+            return query_filter
+
         if taxalist_id:
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa in the TaxaList
-                query_filter = Q(id__in=taxa)
-                for taxon in taxa:
-                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
-
+                query_filter = _get_filter(taxa_list)
                 queryset = queryset.filter(query_filter)
-                return queryset
+
+        if taxalist_id_exclusive:
+            taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
+            if taxa_list:
+                query_filter = _get_filter(taxa_list)
+                queryset = queryset.exclude(query_filter)
 
         return queryset
 
