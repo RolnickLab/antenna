@@ -13,6 +13,6 @@ export type DetailsFormProps = {
 }
 
 export type FormValues = {
-  name: string
+  name?: string
   description?: string
 }

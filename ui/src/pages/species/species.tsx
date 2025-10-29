@@ -120,7 +120,6 @@ export const Species = () => {
               <NewEntityDialog
                 collection={API_ROUTES.TAXA}
                 customLabel="Add taxon"
-                isCompact
                 type="taxon"
               />
             )}
