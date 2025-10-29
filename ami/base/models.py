@@ -323,7 +323,7 @@ class BaseModel(models.Model):
         return list(custom_perms)
 
     @classmethod
-    def get_collection_level_permissions(cls, project, user: AbstractUser | AnonymousUser):
+    def get_collection_level_permissions(cls, user: AbstractUser | AnonymousUser, project) -> list[str]:
         """
         Retrieve collection-level permissions for the given user.
         """
