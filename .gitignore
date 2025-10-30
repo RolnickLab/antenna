@@ -276,3 +276,6 @@ sandbox/
 
 # Other
 flower
+
+# Temporary files in current work session
+.agents/todo
