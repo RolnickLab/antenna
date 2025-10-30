@@ -41,6 +41,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   libpq-dev \
   # Translations dependencies
   gettext \
+  # healthcheck dependencies
+  procps \
   # cleaning up unused files
   && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
   && rm -rf /var/lib/apt/lists/*
@@ -73,6 +75,10 @@ RUN chmod +x /start-celerybeat
 COPY ./compose/local/django/celery/flower/start /start-flower
 RUN sed -i 's/\r$//g' /start-flower
 RUN chmod +x /start-flower
+
+# Copy celery scripts directory for healthcheck
+COPY ./compose/local/django/celery /celery
+RUN chmod +x /celery/healthcheck.sh
 
 
 # copy application code to WORKDIR

@@ -4,4 +4,23 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-exec newrelic-admin run-program celery -A config.celery_app worker -l INFO
+# Celery worker with built-in protections against stuck/leaking workers:
+#
+# --max-tasks-per-child=50
+#   Restart worker process after 50 tasks to prevent memory leaks
+#   Conservative value since ML tasks can be memory-intensive
+#
+# --max-memory-per-child=4000000
+#   Restart worker if memory exceeds 4GB (4,000,000 KB)
+#   Prevents runaway memory consumption from large images/models
+#
+# These options work in conjunction with the Docker healthcheck:
+# - Healthcheck detects STUCK workers (not responding to ping)
+# - These options prevent RESOURCE LEAKS (memory/task buildup)
+# - Autoheal restarts UNHEALTHY containers
+# - restart:always brings containers back after any exit
+
+exec newrelic-admin run-program celery -A config.celery_app worker \
+    -l INFO \
+    --max-tasks-per-child=50 \
+    --max-memory-per-child=4000000

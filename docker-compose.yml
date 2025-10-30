@@ -90,11 +90,21 @@ services:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
-    # For remote debugging with debugpy, should get overridden for production
+    # For remote debugging with debugpy, set CELERY_DEBUG=1 in environment
+    # To disable watchfiles auto-reload, set CELERY_NO_RELOAD=1
     # Also make sure to install debugpy in your requirements/local.txt
     ports:
       - "5678:5678"
-    command: python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker -l INFO
+    # environment:
+    #   - CELERY_DEBUG=1
+    #   - CELERY_NO_RELOAD=1
+    command: /start-celeryworker
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck.sh"]
+      interval: 30s      # Check every 30 seconds
+      timeout: 15s       # Healthcheck must complete within 15s (ping timeout is 10s + overhead)
+      retries: 3         # Mark unhealthy after 3 consecutive failures (90s total)
+      start_period: 60s  # Grace period during container startup
 
   celerybeat:
     <<: *django
