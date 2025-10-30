@@ -344,7 +344,7 @@ class BaseModel(models.Model):
         """
         object_perms = self._get_object_perms(user)
         custom_perms = {
-            perm.split("_", 1)[0]
+            perm.rsplit("_", 1)[0]
             for perm in object_perms
             if perm.split("_", 1)[0] not in ["view", "create", "update", "delete"]
         }
