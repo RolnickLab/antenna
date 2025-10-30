@@ -3717,6 +3717,51 @@ class TestProcessingServiceModelLevelPermissions(BasePermissionTestCase):
                 f"'{perm}' should appear in object-level user_permissions for ProcessingService",
             )
 
+    def test_register_pipelines_custom_action_requires_permission(self):
+        """
+        Verify that the custom 'register_pipelines' action requires the corresponding
+        model-level permission and appears in user_permissions after granting it.
+        """
+        # Grant create permission to allow instance creation
+        self._assign_user_permission_and_reset_caches(self.user, "create_processingservice")
+        create_resp = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(create_resp.status_code, 201)
+        service_id = create_resp.data["instance"]["id"]
+
+        # Try performing the custom action WITHOUT permission
+        action_url = f"{self.endpoint}{service_id}/register_pipelines/"
+        response = self.client.post(action_url, {}, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without 'register_pipelines_processingservice' permission should not be able to register pipelines.",
+        )
+
+        # Grant the custom permission
+        self._assign_user_permission_and_reset_caches(self.user, "register_pipelines_processingservice")
+
+        # Retry performing the custom action — should now be allowed
+        response = self.client.post(action_url, {}, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            "User with 'register_pipelines_processingservice' permission should be able to register pipelines.",
+        )
+
+        # Fetch list and confirm custom permission now appears for this object
+        list_resp = self.client.get(self.endpoint)
+        self.assertEqual(list_resp.status_code, 200)
+        found_obj = next(
+            (item for item in list_resp.data.get("results", []) if item["id"] == service_id),
+            None,
+        )
+        self.assertIsNotNone(found_obj, "ProcessingService should appear in list results.")
+        self.assertIn(
+            "register_pipelines",
+            found_obj.get("user_permissions", []),
+            "Custom permission 'register_pipelines' should appear in object-level user_permissions after granting it.",
+        )
+
 
 class TestTaxonModelLevelPermissions(BasePermissionTestCase):
     """
@@ -3861,3 +3906,51 @@ class TestTaxonModelLevelPermissions(BasePermissionTestCase):
                 found_obj.get("user_permissions", []),
                 f"'{perm}' should appear in object-level user_permissions for Taxon",
             )
+
+    def test_assign_tags_custom_action_requires_permission(self):
+        """
+        Verify that the custom 'assign_tags' action requires the corresponding
+        model-level permission and appears in user_permissions after granting it.
+        """
+        # Grant create permission to create a taxon
+        self._assign_user_permission_and_reset_caches(self.user, "create_taxon")
+        create_resp = self.client.post(self.endpoint, self.payload, format="json")
+        self.assertEqual(create_resp.status_code, 201)
+        taxon_id = create_resp.data["id"]
+
+        # Prepare custom action URL
+        action_url = f"{self.endpoint}{taxon_id}/assign_tags/"
+        payload = {"tags": ["test-tag"]}
+
+        # Try performing the custom action WITHOUT permission
+        response = self.client.post(action_url, payload, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "User without 'assign_tags_taxon' permission should not be able to assign tags to a Taxon.",
+        )
+
+        # Grant the custom permission
+        self._assign_user_permission_and_reset_caches(self.user, "assign_tags_taxon")
+
+        # Retry performing the action — should now succeed
+        response = self.client.post(action_url, payload, format="json")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            "User with 'assign_tags_taxon' permission should be able to assign tags to a Taxon.",
+        )
+
+        # Fetch list and confirm permission appears on the object
+        list_resp = self.client.get(self.endpoint)
+        self.assertEqual(list_resp.status_code, 200)
+        found_obj = next(
+            (item for item in list_resp.data.get("results", []) if item["id"] == taxon_id),
+            None,
+        )
+        self.assertIsNotNone(found_obj, "Taxon should appear in list results.")
+        self.assertIn(
+            "assign_tags",
+            found_obj.get("user_permissions", []),
+            "Custom permission 'assign_tags' should appear in object-level user_permissions after granting it.",
+        )
