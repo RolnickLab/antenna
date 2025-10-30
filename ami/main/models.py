@@ -331,7 +331,15 @@ class Project(ProjectSettingsMixin, BaseModel):
         self.ensure_owner_membership()
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        # Handle project creation at model level
+        """
+        Override BaseModel.check_permission for Project.
+
+        Project has no project accessor,
+        so its permissions are handled  differently:
+        - The "create" action is treated as a model-level permission (since there is
+        no associated project to check object-level permissions against).
+        - All other actions fall back to  object-level permission checks.
+        """
         logger.debug(f"Project.check_permission action: {action}")
         if action == "create":
             return self.check_model_level_permission(user, action)
