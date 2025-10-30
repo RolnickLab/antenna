@@ -24,7 +24,7 @@
     "black-formatter.args": ["--line-length", "119"],
     "flake8.args": [
         "--max-line-length", "119",
-        "--extend-ignore", "F541"
+        "--extend-ignore", "F541, E203, E231"
     ],
     "[javascript]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode"

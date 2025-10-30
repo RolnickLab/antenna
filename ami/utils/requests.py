@@ -1,9 +1,14 @@
+import typing
+
 import requests
-from django.forms import FloatField
+from django.forms import BooleanField, FloatField
 from drf_spectacular.utils import OpenApiParameter
 from requests.adapters import HTTPAdapter
 from rest_framework.request import Request
 from urllib3.util import Retry
+
+if typing.TYPE_CHECKING:
+    from ami.main.models import Project
 
 
 def create_session(
@@ -95,6 +100,49 @@ def get_active_classification_threshold(request: Request) -> float:
     else:
         classification_threshold = 0
     return classification_threshold
+
+
+def get_apply_default_filters_flag(request: Request | None = None) -> bool:
+    """
+    Get the apply_default_filters parameter from request parameters.
+
+    Args:
+        request: The incoming request object
+    Returns:
+        The apply_default_filters value, defaulting to True if not specified
+    """
+    default = True
+
+    if request is None:
+        return default
+
+    apply_default_filters = request.query_params.get("apply_defaults") or default
+    apply_default_filters = BooleanField(required=False).clean(apply_default_filters)
+    return apply_default_filters
+
+
+def get_default_classification_threshold(project: "Project | None" = None, request: Request | None = None) -> float:
+    """
+    Get the classification threshold from project settings by default,
+    or from request query parameters if `apply_defaults=false` is set in the request.
+
+    Args:
+        project: A Project instance.
+        request: The incoming request object (optional).
+
+    Returns:
+        The classification threshold value from project settings by default,
+        or from request if `apply_defaults=false` is provided.
+    """
+    default_threshold = 0.0
+
+    if get_apply_default_filters_flag(request) is False:
+        return get_active_classification_threshold(request)
+
+    if project:
+        return project.default_filters_score_threshold
+    else:
+        return default_threshold
 
 
 project_id_doc_param = OpenApiParameter(

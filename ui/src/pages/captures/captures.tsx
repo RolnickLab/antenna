@@ -5,8 +5,10 @@ import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { SortControl } from 'design-system/components/sort-control'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
@@ -19,6 +21,7 @@ import { CaptureGallery } from './capture-gallery'
 import { UploadImagesDialog } from './upload-images-dialog/upload-images-dialog'
 
 export const Captures = () => {
+  const [isUploadOpen, setIsUploadOpen] = useState(false)
   const { projectId } = useParams()
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { filters } = useFilters()
@@ -34,7 +37,7 @@ export const Captures = () => {
       pagination,
       filters,
     })
-  const canCreate = userPermissions?.includes(UserPermission.Create)
+  const showUpload = userPermissions?.includes(UserPermission.Create)
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
@@ -69,7 +72,17 @@ export const Captures = () => {
             value={selectedView}
             onValueChange={setSelectedView}
           />
-          {canCreate ? <UploadImagesDialog /> : null}
+          <SortControl
+            columns={columns(projectId as string)}
+            setSort={setSort}
+            sort={sort}
+          />
+          {showUpload ? (
+            <UploadImagesDialog
+              isOpen={isUploadOpen}
+              setIsOpen={setIsUploadOpen}
+            />
+          ) : null}
         </PageHeader>
         {selectedView === 'table' && (
           <Table

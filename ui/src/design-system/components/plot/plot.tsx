@@ -83,7 +83,7 @@ const Plot = ({
         },
         xaxis: {
           color: textColor,
-          fixedrange: true,
+          fixedrange: type !== 'scatter', // Make zoom available for scatter plots
           showgrid: false,
           zeroline: false,
           tickvals: data.tickvals,

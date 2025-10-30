@@ -7,6 +7,7 @@ from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
+from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
@@ -789,11 +790,16 @@ class TaxonSerializer(DefaultSerializer):
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     tags = serializers.SerializerMethodField()
+    summary_data = serializers.SerializerMethodField()
 
     def get_tags(self, obj):
         # Use prefetched tags
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
+
+    def get_summary_data(self, obj: Taxon):
+        project = get_active_project(request=self.context["request"], required=False)
+        return obj.summary_data(project)
 
     class Meta:
         model = Taxon
@@ -815,6 +821,7 @@ class TaxonSerializer(DefaultSerializer):
             "fieldguide_id",
             "cover_image_url",
             "cover_image_credit",
+            "summary_data",
         ]
 
 
@@ -924,6 +931,7 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "bbox",
             "occurrence",
             "classifications",
+            "occurrence_meets_criteria",
         ]
 
     def get_classifications(self, obj) -> str:

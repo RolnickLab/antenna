@@ -1,13 +1,24 @@
 import datetime
+import pathlib
 import unittest
+import uuid
 
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.main.models import Detection, Project, SourceImage, SourceImageCollection
+from ami.main.models import (
+    Classification,
+    Detection,
+    Project,
+    SourceImage,
+    SourceImageCollection,
+    Taxon,
+    group_images_into_events,
+)
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -17,7 +28,12 @@ from ami.ml.schemas import (
     PipelineResultsResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures_from_files,
+    create_processing_service,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
 
@@ -101,6 +117,40 @@ class TestProcessingServiceAPI(APITestCase):
 
 
 class TestPipelineWithProcessingService(TestCase):
+    def test_run_pipeline_with_errors_from_processing_service(self):
+        """
+        Run a real pipeline and verify that if an error occurs for one image, the error is logged in job.logs.stderr.
+        """
+        from ami.jobs.models import Job
+
+        # Setup test project, images, and job
+        project, deployment = setup_test_project()
+        captures = create_captures_from_files(deployment, skip_existing=False)
+        test_images = [image for image, frame in captures]
+        processing_service_instance = create_processing_service(project)
+        pipeline = processing_service_instance.pipelines.all().get(slug="constant")
+        job = Job.objects.create(project=project, name="Test Job Real Pipeline Error Handling", pipeline=pipeline)
+
+        # Simulate an error by passing an invalid image (e.g., missing file or corrupt)
+        # Here, we manually set the path of one image to a non-existent file
+        error_image = test_images[0]
+        error_image.path = "/tmp/nonexistent_image.jpg"
+        error_image.save()
+        images = [error_image] + test_images[1:2]  # Only two images for brevity
+
+        # Run the pipeline and catch any error
+        try:
+            pipeline.process_images(images, job_id=job.pk, project_id=project.pk)
+        except Exception:
+            pass  # Expected if the backend raises
+
+        job.refresh_from_db()
+        stderr_logs = job.logs.stderr
+        # Check that an error message mentioning the failed image is present
+        assert any(
+            "Failed to process" in log for log in stderr_logs
+        ), f"Expected error message in job.logs.stderr, got: {stderr_logs}"
+
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
@@ -713,3 +763,95 @@ class TestAlgorithmCategoryMaps(TestCase):
         # Verify conversions are correct
         self.assertEqual(test_data, converted_data)
         self.assertEqual(test_labels, converted_labels)
+
+
+class TestPostProcessingTasks(TestCase):
+    def setUp(self):
+        # Create test project, deployment, and default setup
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        self._create_images_with_dimensions(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+
+        # Create a simple SourceImageCollection for testing
+        self.collection = SourceImageCollection.objects.create(
+            name="Test PostProcessing Collection",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": list(self.deployment.captures.values_list("pk", flat=True))},
+        )
+        self.collection.populate_sample()
+
+    def _create_images_with_dimensions(
+        self,
+        deployment,
+        num_images: int = 5,
+        width: int = 640,
+        height: int = 480,
+        update_deployment: bool = True,
+    ):
+        """
+        Create SourceImages for a deployment with specified width and height.
+        """
+
+        created = []
+        base_time = datetime.datetime.now(datetime.timezone.utc)
+
+        for i in range(num_images):
+            random_prefix = uuid.uuid4().hex[:8]
+            path = pathlib.Path("test") / f"{random_prefix}_{i}.jpg"
+
+            image = SourceImage.objects.create(
+                deployment=deployment,
+                project=deployment.project,
+                timestamp=base_time + datetime.timedelta(minutes=i * 5),
+                path=path,
+                width=width,
+                height=height,
+            )
+            created.append(image)
+
+        if update_deployment:
+            deployment.save(update_calculated_fields=True, regroup_async=False)
+
+    def test_small_size_filter_assigns_not_identifiable(self):
+        """
+        Test that SmallSizeFilterTask correctly assigns 'Not identifiable'
+        to detections below the configured minimum size.
+        """
+        # Create small detections on the collection images
+        for image in self.collection.images.all():
+            Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small detection
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).associate_new_occurrence()
+
+        # Prepare the task configuration
+        task = SmallSizeFilterTask(
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        )
+
+        task.run()
+
+        # Verify that all small detections are now classified as "Not identifiable"
+        not_identifiable_taxon = Taxon.objects.get(name="Not identifiable")
+        detections = Detection.objects.filter(source_image__in=self.collection.images.all())
+
+        for det in detections:
+            latest_classification = Classification.objects.filter(detection=det).order_by("-created_at").first()
+            self.assertIsNotNone(latest_classification, "Each detection should have a classification.")
+            self.assertEqual(
+                latest_classification.taxon,
+                not_identifiable_taxon,
+                f"Detection {det.pk} should be classified as 'Not identifiable'",
+            )
+            occurrence = det.occurrence
+            self.assertIsNotNone(occurrence, f"Detection {det.pk} should belong to an occurrence.")
+            occurrence.refresh_from_db()
+            self.assertEqual(
+                occurrence.determination,
+                not_identifiable_taxon,
+                f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
+            )

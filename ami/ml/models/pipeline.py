@@ -242,12 +242,14 @@ def process_images(
     session = create_session()
     resp = session.post(endpoint_url, json=request_data.dict())
     if not resp.ok:
-        msg = extract_error_message_from_response(resp)
+        summary = request_data.summary()
+        error_msg = extract_error_message_from_response(resp)
+        msg = f"Failed to process {summary}: {error_msg}"
 
         if job:
-            job.logger.error(f"Processing service request failed: {msg}")
+            job.logger.error(msg)
         else:
-            logger.error(f"Processing service request failed: {msg}")
+            logger.error(msg)
             raise requests.HTTPError(msg)
 
         results = PipelineResultsResponse(

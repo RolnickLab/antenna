@@ -13,10 +13,14 @@ import styles from './styles.module.scss'
 const CLOSE_TIMEOUT = 1000
 
 export const NewEntityDialog = ({
+  buttonSize = 'small',
+  buttonVariant = 'outline',
   collection,
   type,
   isCompact,
 }: {
+  buttonSize?: string
+  buttonVariant?: string
   collection: string
   type: string
   isCompact?: boolean
@@ -40,7 +44,7 @@ export const NewEntityDialog = ({
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <Button size="small" variant="outline">
+        <Button size={buttonSize} variant={buttonVariant}>
           <PlusIcon className="w-4 h-4" />
           <span>{label}</span>
         </Button>
