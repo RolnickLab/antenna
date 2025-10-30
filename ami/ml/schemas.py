@@ -176,6 +176,25 @@ class PipelineRequest(pydantic.BaseModel):
     detections: list[DetectionRequest] | None = None
     config: PipelineRequestConfigParameters | dict | None = None
 
+    def summary(self) -> str:
+        """
+        Return a human-friendly summary string of the request key details.
+        (number of images, pipeline name, number of detections, etc.)
+
+        e.g. "pipeline request with 10 images and 25 detections to 'panama_moths_2023'"
+
+        Returns:
+            str: A summary string.
+        """
+
+        num_images = len(self.source_images)
+        num_detections = len(self.detections) if self.detections else 0
+        return (
+            f"pipeline request with {num_images} image{'s' if num_images != 1 else ''} "
+            f"and {num_detections} detection{'s' if num_detections != 1 else ''} "
+            f"to pipeline '{self.pipeline}'"
+        )
+
 
 class PipelineResultsResponse(pydantic.BaseModel):
     # pipeline: PipelineChoice
