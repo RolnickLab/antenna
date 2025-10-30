@@ -287,7 +287,35 @@ class BaseModel(models.Model):
         }
 
         allowed_actions = [action for action, perm in crud_map.items() if user.has_perm(perm)]
+        # Add any non-CRUD custom model-level permissions
+        custom_actions = self.get_custom_model_level_permissions(user)
+        allowed_actions.extend(custom_actions)
+
         return allowed_actions
+
+    def get_custom_model_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+        """
+        Retrieve custom (non-CRUD) model-level permissions for the given user.
+        Custom permissions follow the pattern: <app_label>.<custom_action>_<model_name>
+        Example: "main.register_pipelines_processingservice"
+        """
+        model = self._meta.model_name
+        app_label = "main"
+
+        user_perms = user.get_all_permissions()
+        custom_actions = set()
+
+        for perm in user_perms:
+            if not perm.startswith(f"{app_label}."):
+                continue
+            try:
+                _, perm_name = perm.split(".", 1)
+                action, target_model = perm_name.rsplit("_", 1)
+                if target_model == model and action not in {"view", "create", "update", "delete"}:
+                    custom_actions.add(action)
+            except ValueError:
+                continue
+        return list(custom_actions)
 
     def get_object_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
