@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Guidelines
 
 **IMPORTANT - Cost Optimization:**
-Every call to the AI model API incurs a cost. Be smart and make as few requests as possible. Each request gets subsequently more expensive as the context increases.
+Every call to the AI model API incurs a cost and requires electricity. Be smart and make as few requests as possible. Each request gets subsequently more expensive as the context increases.
 
 **Efficient Development Practices:**
 - Add learnings and gotchas to this file to avoid repeating mistakes and trial & error
