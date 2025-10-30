@@ -15,10 +15,13 @@ from guardian.shortcuts import get_perms
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
+from ami.jobs.task_state import TaskStateManager
 from ami.jobs.tasks import run_job
+from ami.jobs.utils import _run_in_async_loop
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
+from ami.utils.nats_queue import TaskQueueManager
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -72,7 +75,7 @@ def get_status_label(status: JobState, progress: float) -> str:
     if status in [JobState.CREATED, JobState.PENDING, JobState.RECEIVED]:
         return "Waiting to start"
     elif status in [JobState.STARTED, JobState.RETRY, JobState.SUCCESS]:
-        return f"{progress:.0%} complete"
+        return f"{progress:.0%} complete"  # noqa E231
     else:
         return f"{status.name}"
 
@@ -133,14 +136,14 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             if stage.key == stage_key:
                 return stage
-        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
+        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")  # noqa E713
 
     def get_stage_param(self, stage_key: str, param_key: str) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         for param in stage.params:
             if param.key == param_key:
                 return param
-        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
+        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")  # noqa E713
 
     def add_stage_param(self, stage_key: str, param_name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
@@ -327,10 +330,6 @@ class MLJob(JobType):
         job.finished_at = None
         job.save()
 
-        # Keep track of sub-tasks for saving results, pair with batch number
-        save_tasks: list[tuple[int, AsyncResult]] = []
-        save_tasks_completed: list[tuple[int, AsyncResult]] = []
-
         if job.delay:
             update_interval_seconds = 2
             last_update = time.time()
@@ -365,7 +364,7 @@ class MLJob(JobType):
             progress=0,
         )
 
-        images = list(
+        images: list[SourceImage] = list(
             # @TODO return generator plus image count
             # @TODO pass to celery group chain?
             job.pipeline.collect_images(
@@ -389,8 +388,6 @@ class MLJob(JobType):
             images = images[: job.limit]
             image_count = len(images)
             job.progress.add_stage_param("collect", "Limit", image_count)
-        else:
-            image_count = source_image_count
 
         job.progress.update_stage(
             "collect",
@@ -401,6 +398,17 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
+        if job.project.feature_flags.async_pipeline_workers:
+            cls.queue_images_to_nats(job, images)
+        else:
+            cls.process_images(job, images)
+
+    @classmethod
+    def process_images(cls, job, images):
+        image_count = len(images)
+        # Keep track of sub-tasks for saving results, pair with batch number
+        save_tasks: list[tuple[int, AsyncResult]] = []
+        save_tasks_completed: list[tuple[int, AsyncResult]] = []
         total_captures = 0
         total_detections = 0
         total_classifications = 0
@@ -420,7 +428,7 @@ class MLJob(JobType):
                     job_id=job.pk,
                     project_id=job.project.pk,
                 )
-                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
+                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")  # noqa E231
             except Exception as e:
                 # Log error about image batch and continue
                 job.logger.error(f"Failed to process image batch {i+1}: {e}")
@@ -472,7 +480,7 @@ class MLJob(JobType):
 
         if image_count:
             percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
-            job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
+            job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")  # noqa E231
 
         # Check all Celery sub-tasks if they have completed saving results
         save_tasks_remaining = set(save_tasks) - set(save_tasks_completed)
@@ -511,6 +519,110 @@ class MLJob(JobType):
         job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
         job.save()
+
+    # TODO: This needs to happen once a job is done
+    @classmethod
+    def cleanup_nats_resources(cls, job: "Job"):
+        """
+        Clean up NATS JetStream resources (stream and consumer) for a completed job.
+
+        Args:
+            job: The Job instance
+        """
+        job_id = f"job{job.pk}"
+
+        async def cleanup():
+            async with TaskQueueManager() as manager:
+                success = await manager.cleanup_job_resources(job_id)
+                return success
+
+        _run_in_async_loop(cleanup, f"cleaning up NATS resources for job '{job_id}'")
+
+    @classmethod
+    def queue_images_to_nats(cls, job: "Job", images: list[SourceImage]):
+        """
+        Queue all images for a job to a NATS JetStream stream for the job.
+
+        Args:
+            job: The Job instance
+            images: List of SourceImage instances to queue
+
+        Returns:
+            bool: True if all images were successfully queued, False otherwise
+        """
+        job_id = f"job{job.pk}"
+        job.logger.info(f"Queuing {len(images)} images to NATS stream for job '{job_id}'")
+
+        # Prepare all messages outside of async context to avoid Django ORM issues
+        messages = []
+        image_ids = []
+        for i, image in enumerate(images):
+            image_id = str(image.pk)
+            image_ids.append(image_id)
+            message = {
+                "job_id": job.pk,
+                "image_id": image_id,
+                "image_url": image.url() if hasattr(image, "url") else None,
+                "timestamp": (
+                    image.timestamp.isoformat() if hasattr(image, "timestamp") and image.timestamp else None
+                ),
+                "batch_index": i,
+                "total_images": len(images),
+                "queue_timestamp": datetime.datetime.now().isoformat(),
+            }
+            messages.append((image.pk, message))
+
+        # Store all image IDs in Redis for progress tracking
+        state_manager = TaskStateManager(job.pk)
+        state_manager.initialize_job(image_ids)
+        job.logger.info(f"Initialized task state tracking for {len(image_ids)} images")
+
+        async def queue_all_images():
+            successful_queues = 0
+            failed_queues = 0
+
+            async with TaskQueueManager() as manager:
+                for i, (image_pk, message) in enumerate(messages):
+                    try:
+                        logger.info(f"Queueing image {image_pk} to stream for job '{job_id}': {message}")
+                        # Use TTR of 300 seconds (5 minutes) for image processing
+                        success = await manager.publish_task(
+                            job_id=job_id,
+                            data=message,
+                            ttr=120,  # visibility timeout in seconds
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to queue image {image_pk} to stream for job '{job_id}': {e}")
+                        success = False
+
+                    if success:
+                        successful_queues += 1
+                    else:
+                        failed_queues += 1
+
+            return successful_queues, failed_queues
+
+        result = _run_in_async_loop(queue_all_images, f"queuing images to NATS for job '{job_id}'")
+        if result is None:
+            job.logger.error(f"Failed to queue images to NATS for job '{job_id}'")
+            return False
+        successful_queues, failed_queues = result
+
+        if not images:
+            job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
+            job.save()
+
+        # Log results (back in sync context)
+        if successful_queues > 0:
+            job.logger.info(
+                f"Successfully queued {successful_queues}/{len(images)} images to stream for job '{job_id}'"
+            )
+
+        if failed_queues > 0:
+            job.logger.warning(f"Failed to queue {failed_queues}/{len(images)} images to stream for job '{job_id}'")
+            return False
+
+        return True
 
 
 class DataStorageSyncJob(JobType):
