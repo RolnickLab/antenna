@@ -58,3 +58,10 @@ class TestUtils(TestCase):
         mock_response.text = "Service unavailable"
         result = extract_error_message_from_response(mock_response)
         self.assertIn("Response text: Service unavailable", result)
+
+        # Test fallback to raw bytes when text access fails
+        mock_response.json.side_effect = ValueError("404 Not Found: Could not fetch image")
+        mock_response.text = property(lambda self: (_ for _ in ()).throw(Exception("text error")))
+        mock_response.content = b"Raw error bytes"
+        result = extract_error_message_from_response(mock_response)
+        self.assertIn("Response content: b'Raw error bytes'", result)
