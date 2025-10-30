@@ -3605,7 +3605,7 @@ class TestProcessingServiceModelLevelPermissions(BasePermissionTestCase):
         self.payload = {
             "name": "Test Processing Service",
             "description": "For permission testing",
-            "endpoint_url": "https://example.com/endpoint/",
+            "endpoint_url": "http://processing_service:2000",
             "project": self.project.pk,
         }
 
@@ -3917,10 +3917,11 @@ class TestTaxonModelLevelPermissions(BasePermissionTestCase):
         create_resp = self.client.post(self.endpoint, self.payload, format="json")
         self.assertEqual(create_resp.status_code, 201)
         taxon_id = create_resp.data["id"]
-
+        self._add_taxon_to_project(taxon_id)
         # Prepare custom action URL
         action_url = f"{self.endpoint}{taxon_id}/assign_tags/"
-        payload = {"tags": ["test-tag"]}
+        tag = Tag.objects.create(name="test-tag", project=self.project)
+        payload = {"tag_ids": [tag.pk]}
 
         # Try performing the custom action WITHOUT permission
         response = self.client.post(action_url, payload, format="json")
