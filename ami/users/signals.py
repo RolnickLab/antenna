@@ -7,7 +7,7 @@ from django.dispatch import receiver
 
 from ami.main.models import Project, UserProjectMembership
 from ami.users.models import User
-from ami.users.roles import AuthenticatedUsers, Role, create_roles_for_project
+from ami.users.roles import AuthorizedUser, Role, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
@@ -82,5 +82,5 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
 @receiver(post_save, sender=User)
 def assign_authenticated_users_group(sender, instance, created, **kwargs):
     if created:
-        logger.info(f"Assigning AuthenticatedUsers role to new user {instance.email}")
-        AuthenticatedUsers.assign_user(instance)
+        logger.info(f"Assigning AuthorizedUser role to new user {instance.email}")
+        AuthorizedUser.assign_user(instance)

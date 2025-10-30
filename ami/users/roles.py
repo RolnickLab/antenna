@@ -235,7 +235,7 @@ class ProjectManager(Role):
     )
 
 
-class AuthenticatedUsers(GlobalRole):
+class AuthorizedUser(GlobalRole):
     """A role that grants project create permission to all authenticated users."""
 
     model_level_permissions = {Project.Permissions.CREATE_PROJECT}

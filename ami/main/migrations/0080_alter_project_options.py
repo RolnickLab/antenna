@@ -5,7 +5,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0079_assign_authenticated_users_group"),
+        ("main", "0079_assign_authorized_user_group"),
     ]
 
     operations = [
