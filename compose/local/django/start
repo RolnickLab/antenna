@@ -6,4 +6,17 @@ set -o nounset
 
 
 python manage.py migrate
-exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+if [ "$DJANGO_DEBUG" = "1" ]; then
+  echo "Starting Django under debugpy..."
+  python -m debugpy --listen 0.0.0.0:5679 \
+    -m uvicorn config.asgi:application \
+    --host 0.0.0.0 \
+    --reload \
+    --reload-include '*.html'
+else
+  echo "Starting Django normally..."
+  exec uvicorn config.asgi:application \
+    --host 0.0.0.0 \
+    --reload \
+    --reload-include '*.html'
+fi
