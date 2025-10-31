@@ -45,9 +45,17 @@ def add_object_level_permissions(
     user: AbstractBaseUser | AnonymousUser, instance: BaseModel, response_data: dict
 ) -> dict:
     """
-    Adds object-level permissions to the response data for a given user and instance.
-    This function updates the `response_data` dictionary with the permissions that the
-    specified `user` has on the given `instance`'s project.
+    Add object-level permissions for `user` on `instance` into `response_data`.
+    
+    Retrieves existing `user_permissions` from `response_data` (defaults to an empty set), adds permissions returned by `instance.get_permissions(user)` when `instance` is a BaseModel, stores the resulting permissions as a list under `user_permissions`, and returns the updated `response_data`.
+    
+    Parameters:
+        user (AbstractBaseUser | AnonymousUser): The user for whom permissions are collected.
+        instance (BaseModel): The model instance whose object-level permissions are queried.
+        response_data (dict): Response dictionary to be augmented; may already contain a `user_permissions` entry.
+    
+    Returns:
+        dict: The updated `response_data` with `user_permissions` set to a list of permission strings.
     """
 
     permissions = response_data.get("user_permissions", set())
@@ -58,12 +66,19 @@ def add_object_level_permissions(
 
 
 def add_collection_level_permissions(user: User | None, response_data: dict, model, project) -> dict:
-    """Add collection-level permissions to the response data for a list view.
-
-    This function modifies the `response_data` dictionary to include user permissions
-    for creating new objects of the specified model type. If the user is logged in and
-    is an active staff member, or if the user has create_model permission, the
-    "create" permission is added to the `user_permissions` set in the `response_data`.
+    """
+    Add collection-level permissions for a model to the response payload for a list view.
+    
+    Queries the model for collection-level permissions for the given user and project, merges them into the response_data's "user_permissions" entry, and returns the updated response_data.
+    
+    Parameters:
+        user (User | None): The requesting user or None for anonymous requests.
+        response_data (dict): The response payload to augment; its "user_permissions" key will be updated.
+        model: The model class providing collection-level permissions via a `get_collection_level_permissions(user, project)` method.
+        project: The project context passed to the model's permission lookup.
+    
+    Returns:
+        dict: The updated response_data with "user_permissions" set to a list of permission strings.
     """
 
     logger.info(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")

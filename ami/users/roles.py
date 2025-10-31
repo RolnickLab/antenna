@@ -48,7 +48,12 @@ class Role:
 
     @staticmethod
     def user_has_any_role(user, project):
-        """Checks if the user has any role assigned to a given project."""
+        """
+        Determine whether a user has any role for the given project.
+        
+        Returns:
+            True if the user has at least one role for the project, False otherwise.
+        """
         return any(role_class.has_role(user, project) for role_class in Role.__subclasses__())
 
 
@@ -59,11 +64,22 @@ class GlobalRole:
 
     @classmethod
     def get_group_name(cls):
-        """Get associated permission group name."""
+        """
+        Return the group name used to represent this role at the model level.
+        
+        Returns:
+            group_name (str): Group name derived from the role class's name.
+        """
         return cls.__name__
 
     @classmethod
     def assign_user(cls, user):
+        """
+        Ensure the global role's group exists, grant that group the role's model-level permissions, and add the given user to the group.
+        
+        Parameters:
+            user (django.contrib.auth.models.User): The user to assign to this global role's group.
+        """
         group, created = Group.objects.get_or_create(name=cls.get_group_name())
         if created:
             logger.info(f"Created global permission group {cls.get_group_name()}")
@@ -74,11 +90,25 @@ class GlobalRole:
 
     @classmethod
     def unassign_user(cls, user):
+        """
+        Remove a user from the global permission group associated with this role class.
+        
+        Parameters:
+            user (django.contrib.auth.models.User): The user to remove from the role's global group.
+        """
         group, _ = Group.objects.get_or_create(name=cls.get_group_name())
         user.groups.remove(group)
 
     @classmethod
     def assign_model_level_permissions(cls, group):
+        """
+        Ensure each codename in the class's `model_level_permissions` exists for the Project model and add those Permission objects to the provided group.
+        
+        For each permission codename in `cls.model_level_permissions`, this creates the corresponding Permission (using the Project content type and a human-readable name if needed) and attaches it to `group.permissions`.
+        
+        Parameters:
+            group (django.contrib.auth.models.Group): The Django group that will receive the model-level permissions.
+        """
         from django.contrib.contenttypes.models import ContentType
 
         ct = ContentType.objects.get_for_model(Project)
@@ -174,7 +204,14 @@ class AuthorizedUser(GlobalRole):
 
 
 def create_roles_for_project(project):
-    """Creates role-based permission groups for a given project."""
+    """
+    Create or refresh role-based permission groups for the given project.
+    
+    For each subclass of Role, ensures a group named "<project.pk>_<project.name>_<RoleClassName>" exists, synchronizes the group's object-level permissions to the role's `object_level_permissions`, and assigns those permissions to the group for the specific project (project-scoped). Existing groups have their permissions cleared and project-scoped permissions removed before reassigning to reflect the current role definitions.
+    
+    Parameters:
+        project (Project): The Project instance for which role groups and permissions should be created or updated.
+    """
     project_ct = ContentType.objects.get_for_model(Project)
 
     for role_class in Role.__subclasses__():

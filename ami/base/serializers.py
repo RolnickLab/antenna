@@ -54,15 +54,30 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
         )
 
     def to_representation(self, instance):
+        """
+        Serialize the given object and augment its representation with object-level permission information.
+        
+        Parameters:
+            instance: The model instance (or object) to serialize.
+        
+        Returns:
+            dict: Serialized representation of the instance with permission-related fields merged into the output.
+        """
         instance_data = super().to_representation(instance)
         instance_data = self.get_permissions(instance=instance, instance_data=instance_data)
         return instance_data
 
     def get_instance_for_permission_check(self):
         """
-        Returns an unsaved model instance built from validated_data,
-        excluding ManyToMany fields and any non-model fields (like 'project').
-        Safe to use for permission checking before saving.
+        Builds an unsaved model instance from the serializer's validated_data for permission checks.
+        
+        Only fields that correspond to the model's fields are included; many-to-many relations and any keys not defined on the model are excluded.
+        
+        Returns:
+            An unsaved instance of self.Meta.model populated with the filtered validated data.
+        
+        Raises:
+            ValueError: If the serializer has not been validated (no validated_data present).
         """
         validated_data = getattr(self, "validated_data", {})
         if not validated_data:

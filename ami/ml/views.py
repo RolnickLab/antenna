@@ -146,6 +146,12 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
+        """
+        Return the base queryset optionally filtered to the currently active project.
+        
+        Returns:
+            QuerySet: The queryset filtered to the active project if one is set, otherwise the unmodified base queryset.
+        """
         qs: QuerySet = super().get_queryset()
         project = self.get_active_project()
         if project:
@@ -157,6 +163,14 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
+        """
+        Create a new ProcessingService, enforce object-level permissions, and return the created instance with its status.
+        
+        The request data's "name" field is slugified into the instance's "slug" before validation. Object-level permissions are checked against a representative instance prior to saving. On success, the response contains the serialized ProcessingService and a status dictionary.
+        
+        Returns:
+            dict: Response payload with keys "instance" (serialized ProcessingService) and "status" (status dict of the created instance), returned with HTTP 201 Created.
+        """
         data = request.data.copy()
         data["slug"] = slugify(data["name"])
         serializer = self.get_serializer(data=data)
@@ -183,6 +197,17 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
 
     @action(detail=True, methods=["post"])
     def register_pipelines(self, request: Request, pk=None) -> Response:
+        """
+        Register pipelines for the targeted processing service and return the registration status.
+        
+        Calls the processing service's pipeline registration routine, persists any changes, and returns the resulting status information.
+        
+        Parameters:
+            pk (int|str): Primary key of the ProcessingService to register pipelines for.
+        
+        Returns:
+            Response: A DRF Response containing a dictionary of registration/status details.
+        """
         processing_service = self.get_object()
         response = processing_service.create_pipelines()
         processing_service.save()

@@ -938,7 +938,12 @@ class Job(BaseModel):
 
     def save(self, update_progress=True, *args, **kwargs):
         """
-        Create the job stages if they don't exist.
+        Ensure job progress/stages are initialized or refreshed and persist the Job model.
+        
+        If the job exists and has stages and update_progress is True, recompute overall progress from stages before saving; otherwise ensure default stages are created. Persist the model and emit a warning when the progress summary's status does not match the model's status.
+        
+        Parameters:
+            update_progress (bool): If True, update the JobProgress summary from current stages before saving. If False, skip recomputation (but still create stages if missing).
         """
         if self.pk and self.progress.stages and update_progress:
             self.update_progress(save=False)
@@ -950,6 +955,16 @@ class Job(BaseModel):
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
 
     def check_custom_object_level_permission(self, user, action: str) -> bool:
+        """
+        Determine whether a given user has the custom object-level permission to perform an action on this job.
+        
+        Parameters:
+            user: The user whose permissions are checked.
+            action (str): The action name (e.g., "run", "cancel", "retry", or other custom action). If this job references a single source image, the action is treated as "run_single_image".
+        
+        Returns:
+            bool: `true` if the user has the computed permission for the job's project (or globally if no project), `false` otherwise.
+        """
         job_type = self.job_type_key.lower()
         if self.source_image_single:
             action = "run_single_image"
@@ -962,6 +977,12 @@ class Job(BaseModel):
         return user.has_perm(permission_codename, project)
 
     def get_custom_object_level_permissions(self, user) -> list[str]:
+        """
+        Collect the custom object-level permission action names the given user has for this job's project and job type.
+        
+        Returns:
+            list[str]: A list of permission action names (for example, "export" or "run") that the user has for this job on its project. Returns an empty list if the job has no associated project or no matching custom permissions.
+        """
         project = self.get_project()
         if not project:
             return []
