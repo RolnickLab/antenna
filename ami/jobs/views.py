@@ -14,7 +14,7 @@ from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 from ami.utils.requests import project_id_doc_param
 
-from .models import Job, JobState
+from .models import Job, JobState, MLJob
 from .serializers import JobListSerializer, JobSerializer
 
 logger = logging.getLogger(__name__)
@@ -156,3 +156,21 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], name="check-inprogress-subtasks")
+    def check_inprogress_subtasks(self, request, pk=None):
+        """
+        Check in-progress subtasks for a job.
+        """
+        # @TODO: add additional stats here? i.e. time fo each task, progress stats
+        job: Job = self.get_object()
+        assert job.job_type_key == MLJob.key, f"{job} is not an ML job."
+        has_inprogress_tasks = job.check_inprogress_subtasks()
+        if has_inprogress_tasks:
+            # Schedule task to update the job status
+            from django.db import transaction
+
+            from ami.ml.tasks import check_ml_job_status
+
+            transaction.on_commit(lambda: check_ml_job_status.apply_async((job.pk,)))
+        return Response({"inprogress_subtasks": has_inprogress_tasks})
