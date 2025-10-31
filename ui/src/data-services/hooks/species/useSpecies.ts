@@ -2,6 +2,7 @@ import { API_ROUTES } from 'data-services/constants'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useMemo } from 'react'
+import { UserPermission } from 'utils/user/types'
 import { ServerSpecies, Species } from '../../models/species'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
@@ -12,6 +13,7 @@ export const useSpecies = (
 ): {
   species?: Species[]
   total: number
+  userPermissions?: UserPermission[]
   isLoading: boolean
   isFetching: boolean
   error?: unknown
@@ -20,6 +22,7 @@ export const useSpecies = (
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     results: ServerSpecies[]
+    user_permissions?: UserPermission[]
     count: number
   }>({
     queryKey: [API_ROUTES.SPECIES, params],
@@ -31,6 +34,7 @@ export const useSpecies = (
   return {
     species,
     total: data?.count ?? 0,
+    userPermissions: data?.user_permissions,
     isLoading,
     isFetching,
     error,

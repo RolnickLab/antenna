@@ -1,6 +1,7 @@
 import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
+import { API_ROUTES } from 'data-services/constants'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
@@ -15,6 +16,7 @@ import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -25,6 +27,7 @@ import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
@@ -46,12 +49,13 @@ export const Species = () => {
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
-  const { species, total, isLoading, isFetching, error } = useSpecies({
-    projectId,
-    sort,
-    pagination,
-    filters,
-  })
+  const { species, userPermissions, total, isLoading, isFetching, error } =
+    useSpecies({
+      projectId,
+      sort,
+      pagination,
+      filters,
+    })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
@@ -67,6 +71,7 @@ export const Species = () => {
       ? activeTaxaList.name
       : translate(STRING.NAV_ITEM_TAXA)
   }, [filters, taxaLists])
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
     <>
@@ -120,6 +125,13 @@ export const Species = () => {
               setSort={setSort}
               sort={sort}
             />
+            {canCreate && (
+              <NewEntityDialog
+                collection={API_ROUTES.TAXA}
+                customLabel="Add taxon"
+                type="taxon"
+              />
+            )}
             <ColumnSettings
               columns={columns({ projectId: projectId as string })}
               columnSettings={columnSettings}

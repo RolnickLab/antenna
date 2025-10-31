@@ -107,3 +107,15 @@ export const SCORE_THRESHOLDS = {
   WARNING: 0.8,
   ALERT: 0.6,
 }
+
+export const RANKS = [
+  'ORDER',
+  'SUPERFAMILY',
+  'FAMILY',
+  'SUBFAMILY',
+  'TRIBE',
+  'SUBTRIBE',
+  'GENUS',
+  'SPECIES',
+  'UNKNOWN',
+]
