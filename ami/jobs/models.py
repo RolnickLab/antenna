@@ -722,11 +722,22 @@ class Job(BaseModel):
     # Hide old failed jobs after 3 days
     FAILED_CUTOFF_HOURS = 24 * 3
 
+    # Job status checking configuration constants
+    NO_TASK_ID_TIMEOUT_SECONDS = 300  # 5 minutes
+    DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS = 300  # 5 minutes
+    MAX_JOB_RUNTIME_SECONDS = 7 * 24 * 60 * 60  # 7 days
+    STUCK_PENDING_TIMEOUT_SECONDS = 600  # 10 minutes
+
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    last_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time job status was checked by periodic task",
+    )
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
@@ -948,6 +959,23 @@ class Job(BaseModel):
         logger.debug(f"Saved job {self}")
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
+
+    def check_status(self, force: bool = False, save: bool = True) -> bool:
+        """
+        Check if the job's Celery task still exists and update status accordingly.
+
+        This delegates to the status_checker module to avoid bloating this file.
+
+        Args:
+            force: Skip the recent check time limit
+            save: Save the job if status changes
+
+        Returns:
+            bool: True if job status was changed, False otherwise
+        """
+        from ami.jobs.status_checker import check_job_status
+
+        return check_job_status(self, force=force, save=save)
 
     def check_custom_permission(self, user, action: str) -> bool:
         job_type = self.job_type_key.lower()
