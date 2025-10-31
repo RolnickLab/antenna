@@ -16,24 +16,43 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
     127.0.0.1 minio
     127.0.0.1 django
 ```
+3) The following commands will build all services, run them in the background, and then stream the logs.
+   1) Standard development: will use a pre-built version of the frontend that will not have hot-reloading enabled. However, it will make startup time faster when restarting the stack.
+      ```sh
+      # Start the whole compose stack
+      docker compose up -d
 
-2) The following commands will build all services, run them in the background, and then stream the logs.
+      # To stream the logs
+      docker compose logs -f django celeryworker ui
+      # Ctrl+c to close the logs
 
-```sh
-    docker compose up -d
-    docker compose logs -f django celeryworker ui
-    # Ctrl+c to close the logs
-```
-NOTE: If you see docker build errors such as `At least one invalid signature was encountered`, these could happen if docker runs out of space. Commands like `docker image prune -f` and `docker system prune` can be helpful to clean up space.
+      NOTE: If you see docker build errors such as `At least one invalid signature was encountered`, these could happen if docker runs out of space. Commands like `docker image prune -f` and `docker system prune` can be helpful to clean up space.
 
-3) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
+      ```
+      To update the UI Docker container, use the following command to rebuild the frontend and load the new changes
+      (and remember to refresh your browser after!).
+      ```sh
+      docker compose stop ui && docker compose build ui &&  docker compose up ui -d
+      ```
+
+   2) With Hot Reload UI**: Hot reload is enabled for frontend development, but the primary web interface will be slow to load at startup and later restarts.
+      ```sh
+      # Run docker compose with the override config
+      docker compose -f docker-compose.yml -f docker-compose-frontend-dev.override.yml up -d
+      ```
+      _**Do note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
+      in the [docker-compose-frontend-dev.override.yml](docker-compose-frontend-dev.override.yml), and is written by a `root` user.
+      It will need to be removed, or you will need to modify its access permissions with the `chown` command if you later want to work on the frontend using the [instructions here](#frontend)._
+
+
+4) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
 
 ```
 docker compose -f processing_services/example/docker-compose.yml up -d
 # Once running, in Antenna register a new processing service called: http://ml_backend_example:2000
 ```
 
-4) Access the platform with the following URLs:
+5) Access the platform with the following URLs:
 
 - Primary web interface: http://localhost:4000
 - API browser: http://localhost:8000/api/v2/
@@ -48,7 +67,7 @@ A default user will be created with the following credentials. Use these to log 
 - Email: `antenna@insectai.org`
 - Password: `localadmin`
 
-5) Stop all services with:
+6) Stop all services with:
 
     $ docker compose down
 
