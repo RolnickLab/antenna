@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser, User
-from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
 from ami.main.models import BaseModel
@@ -53,7 +52,7 @@ def add_object_level_permissions(
 
     permissions = response_data.get("user_permissions", set())
     if isinstance(instance, BaseModel):
-        permissions.update(instance.get_user_object_permissions(user))
+        permissions.update(instance.get_permissions(user))
     response_data["user_permissions"] = list(permissions)
     return response_data
 
@@ -67,12 +66,10 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     "create" permission is added to the `user_permissions` set in the `response_data`.
     """
 
-    logger.debug(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
+    logger.info(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
     permissions = response_data.get("user_permissions", set())
-    if user and user.is_superuser:
-        permissions.add("create")
-    if user and project and f"create_{model.__name__.lower()}" in get_perms(user, project):
-        permissions.add("create")
+    collection_level_perms = model.get_collection_level_permissions(user=user, project=project)
+    permissions.update(collection_level_perms)
     response_data["user_permissions"] = list(permissions)
     return response_data
 

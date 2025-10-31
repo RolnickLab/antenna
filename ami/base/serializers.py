@@ -58,6 +58,31 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
         instance_data = self.get_permissions(instance=instance, instance_data=instance_data)
         return instance_data
 
+    def get_instance_for_permission_check(self):
+        """
+        Returns an unsaved model instance built from validated_data,
+        excluding ManyToMany fields and any non-model fields (like 'project').
+        Safe to use for permission checking before saving.
+        """
+        validated_data = getattr(self, "validated_data", {})
+        if not validated_data:
+            raise ValueError("Serializer must be validated before calling this method.")
+
+        model_cls = self.Meta.model
+        model_field_names = {f.name for f in model_cls._meta.get_fields()}
+        m2m_fields = {f.name for f in model_cls._meta.many_to_many}
+
+        safe_data = {}
+        for key, value in validated_data.items():
+            # skip many-to-many and non-model fields
+            if key in m2m_fields:
+                continue
+            if key not in model_field_names:
+                continue
+            safe_data[key] = value
+
+        return model_cls(**safe_data)
+
 
 class MinimalNestedModelSerializer(DefaultSerializer):
     """
