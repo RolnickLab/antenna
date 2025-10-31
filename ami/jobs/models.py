@@ -520,7 +520,6 @@ class MLJob(JobType):
         job.save()
 
 
-# TODO: This needs to happen once a job is done
 class DataStorageSyncJob(JobType):
     name = "Data storage sync"
     key = "data_storage_sync"
