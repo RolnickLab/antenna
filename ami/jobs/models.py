@@ -398,7 +398,15 @@ class MLJob(JobType):
         job.save()
 
         if job.project.feature_flags.async_pipeline_workers:
-            queue_images_to_nats(job, images)
+        if job.project.feature_flags.async_pipeline_workers:
+            queued = queue_images_to_nats(job, images)
+            if not queued:
+                job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
+                job.progress.update_stage("collect", status=JobState.FAILURE)
+                job.update_status(JobState.FAILURE)
+                job.finished_at = datetime.datetime.now()
+                job.save()
+                return
         else:
             cls.process_images(job, images)
 
